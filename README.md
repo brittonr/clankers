@@ -109,7 +109,7 @@ The MCP adapter publishes allowlisted tools such as `send_prompt`, `interrupt`, 
 
 ### Self-Evolution Dry Runs
 
-Self-evolution is disabled by default. The first safe path is a deterministic dry run that records the target artifact, baseline command/eval label, isolated candidate output directory, fake MCP/session-control receipts, metrics, and promotion recommendation without changing the active target:
+Self-evolution is disabled by default. The first safe path is a deterministic dry run that records the target artifact, baseline command/eval label, isolated candidate output directory, fake MCP/session-control receipts, metrics, a readiness report, and promotion recommendation without changing the active target:
 
 ```
 clankers self-evolution run \
@@ -118,13 +118,16 @@ clankers self-evolution run \
   --candidate-output target/self-evolution \
   --candidate-file target/self-evolution/candidate.txt \
   --session <id> \
+  --profile dry-run-only \
   --dry-run \
   --json
 ```
 
 The dry-run executor writes `candidate.txt` and `receipt.json` under a run-scoped output directory. By default it copies the target into the isolated candidate; pass `--candidate-file <path>` or `--candidate-body <text>` for a changed candidate while still leaving the active target untouched. It treats unchanged candidates as evaluation noise, records simulated evaluation failures as non-promotable receipts (`--simulate-eval-failure`), never promotes automatically, and always reports `human_approval_required=true` before any install/merge/replacement can happen.
 
-Review `receipt.json` before trusting a run. The important fields are the target path and baseline hash, the isolated candidate path, baseline/candidate evaluation status, changed-vs-unchanged evidence, `recommended`, `promotion_status`, and the fake MCP/session-control receipts that show the run used the normal session substrate. A good first local target is a non-production prompt, README section, or disposable skill copy under `target/self-evolution/`; avoid installed skills, active prompts, and production code until a human has reviewed the receipt and candidate diff.
+Productionization profiles prevent overclaiming. The default `dry-run-only` profile records mechanical safety only. `controlled-dogfood` and `promotion-eligible` require `--corpus-manifest <path>` pointing at a local JSON manifest with `version`, `targets`, `cases`, `redaction_policy`, `min_improvement`, and `regression_budget`. Missing or invalid corpus evidence marks `readiness.label=blocked`; passing corpus, threshold, regression-budget, unchanged-candidate, and daemon/session-observability gates can mark `readiness.label=promotion_eligible`, but still requires explicit human approval and application before active artifacts change.
+
+Review `receipt.json` before trusting a run. The important fields are the target path and baseline hash, the isolated candidate path, baseline/candidate evaluation status, changed-vs-unchanged evidence, readiness label/reasons, `recommended`, `promotion_status`, and the fake MCP/session-control receipts that show the run used the normal session substrate. A good first local target is a non-production prompt, README section, or disposable skill copy under `target/self-evolution/`; avoid installed skills, active prompts, and production code until a human has reviewed the receipt and candidate diff.
 
 If a run recommends a changed candidate, record explicit human approval through the same session-control confirmation surface before any future install/merge step:
 

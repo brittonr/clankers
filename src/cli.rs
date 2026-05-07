@@ -472,6 +472,12 @@ pub enum SelfEvolutionAction {
         /// Deterministically mark the fake baseline-vs-candidate evaluation as failed
         #[arg(long)]
         simulate_eval_failure: bool,
+        /// Productionization profile: dry-run-only, controlled-dogfood, or promotion-eligible
+        #[arg(long, default_value = "dry-run-only")]
+        profile: String,
+        /// Local eval corpus manifest for controlled-dogfood/promotion readiness
+        #[arg(long, value_name = "PATH")]
+        corpus_manifest: Option<std::path::PathBuf>,
         /// Emit machine-readable JSON receipt
         #[arg(long)]
         json: bool,
@@ -1500,6 +1506,8 @@ mod tests {
                         candidate_file,
                         dry_run,
                         simulate_eval_failure,
+                        profile,
+                        corpus_manifest,
                         json,
                     },
             } => {
@@ -1511,6 +1519,8 @@ mod tests {
                 assert_eq!(candidate_file, Some(std::path::PathBuf::from("target/self-evolution/candidate.txt")));
                 assert!(dry_run);
                 assert!(simulate_eval_failure);
+                assert_eq!(profile, "dry-run-only");
+                assert_eq!(corpus_manifest, None);
                 assert!(json);
             }
             other => panic!("unexpected command: {other:?}"),

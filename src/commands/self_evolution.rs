@@ -31,6 +31,8 @@ pub fn run(_ctx: &CommandContext, action: SelfEvolutionAction) -> Result<()> {
             candidate_file,
             dry_run,
             simulate_eval_failure,
+            profile,
+            corpus_manifest,
             json,
         } => {
             let candidate_body = load_candidate_body(candidate_body, candidate_file)?;
@@ -42,6 +44,8 @@ pub fn run(_ctx: &CommandContext, action: SelfEvolutionAction) -> Result<()> {
                 dry_run,
                 candidate_body,
                 simulate_eval_failure,
+                production_profile: profile,
+                corpus_manifest,
             };
             let mut executor = FakeMcpExecutor::default();
             let receipt =

@@ -29,6 +29,8 @@ pub struct SelfEvolutionRunOptions {
     pub dry_run: bool,
     pub candidate_body: Option<String>,
     pub simulate_eval_failure: bool,
+    pub production_profile: String,
+    pub corpus_manifest: Option<PathBuf>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -42,6 +44,7 @@ pub struct SelfEvolutionRunReceipt {
     pub candidate: CandidateRecord,
     pub mcp_receipts: Vec<McpOrchestrationReceipt>,
     pub recommendation: PromotionRecommendation,
+    pub readiness: SelfEvolutionReadinessReport,
     pub created_at: String,
 }
 
@@ -192,6 +195,39 @@ pub struct PromotionRecommendation {
     pub promotion_status: String,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct EvalCorpusManifest {
+    pub version: u32,
+    pub targets: Vec<String>,
+    pub cases: Vec<EvalCorpusCase>,
+    pub redaction_policy: String,
+    pub min_improvement: f64,
+    pub regression_budget: u32,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct EvalCorpusCase {
+    pub id: String,
+    pub objective: String,
+    pub oracle_command: String,
+    pub expected_evidence: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct SelfEvolutionReadinessReport {
+    pub label: String,
+    pub profile: String,
+    pub corpus_manifest_path: Option<String>,
+    pub corpus_cases: usize,
+    pub threshold_passed: bool,
+    pub regression_budget_passed: bool,
+    pub unchanged_candidate_control_passed: bool,
+    pub daemon_session_observable: bool,
+    pub evidence_refs: Vec<String>,
+    pub reasons: Vec<String>,
+    pub known_limitations: Vec<String>,
+}
+
 pub trait SelfEvolutionExecutor {
     fn submit_tool(&mut self, session_id: Option<&str>, tool: &str, arguments: Value) -> McpOrchestrationReceipt;
 }
@@ -236,6 +272,7 @@ pub fn run_self_evolution_dry_run(
     let baseline_hash = baseline_body.as_deref().map(|body| sha256_hex(body.as_bytes()));
     let changed = baseline_hash.as_deref() != Some(candidate_hash.as_str());
     let eval = deterministic_evaluation(changed, options.simulate_eval_failure);
+    let corpus = load_eval_corpus_manifest(options.corpus_manifest.as_deref())?;
 
     let prompt_receipt = executor.submit_tool(
         options.session_id.as_deref(),
@@ -251,29 +288,9 @@ pub fn run_self_evolution_dry_run(
         json!({ "purpose": "self_evolution_receipt_evidence" }),
     );
 
-    let recommendation = if eval.failed {
-        PromotionRecommendation {
-            recommended: false,
-            reason: "baseline-vs-candidate evaluation failed; candidate is not eligible for promotion".to_string(),
-            human_approval_required: true,
-            promotion_status: "not_promoted_eval_failed".to_string(),
-        }
-    } else if !changed {
-        PromotionRecommendation {
-            recommended: false,
-            reason: "candidate artifact is unchanged from baseline; score deltas would be treated as evaluation noise"
-                .to_string(),
-            human_approval_required: true,
-            promotion_status: "not_promoted".to_string(),
-        }
-    } else {
-        PromotionRecommendation {
-            recommended: true,
-            reason: "candidate changed and deterministic fake score improved; human approval is still required before promotion".to_string(),
-            human_approval_required: true,
-            promotion_status: "awaiting_human_approval".to_string(),
-        }
-    };
+    let readiness =
+        readiness_report(options, corpus.as_ref(), &eval, changed, &[prompt_receipt.clone(), history_receipt.clone()]);
+    let recommendation = promotion_recommendation_from_readiness(&readiness, &eval, changed);
 
     let candidate = CandidateRecord {
         output_dir: output_dir.display().to_string(),
@@ -309,6 +326,7 @@ pub fn run_self_evolution_dry_run(
         candidate,
         mcp_receipts: vec![prompt_receipt, history_receipt],
         recommendation,
+        readiness,
         created_at: Utc::now().to_rfc3339_opts(SecondsFormat::Secs, true),
     };
 
@@ -317,6 +335,149 @@ pub fn run_self_evolution_dry_run(
     fs::write(&receipt_path, receipt_json).map_err(|err| format!("failed to write receipt: {err}"))?;
 
     Ok(receipt)
+}
+
+pub fn load_eval_corpus_manifest(path: Option<&Path>) -> std::result::Result<Option<EvalCorpusManifest>, String> {
+    let Some(path) = path else {
+        return Ok(None);
+    };
+    let body = fs::read_to_string(path).map_err(|err| format!("failed to read eval corpus manifest: {err}"))?;
+    let manifest: EvalCorpusManifest =
+        serde_json::from_str(&body).map_err(|err| format!("failed to parse eval corpus manifest: {err}"))?;
+    validate_eval_corpus_manifest(&manifest)?;
+    Ok(Some(manifest))
+}
+
+fn validate_eval_corpus_manifest(manifest: &EvalCorpusManifest) -> std::result::Result<(), String> {
+    if manifest.version == 0 {
+        return Err("eval corpus manifest version must be greater than zero".to_string());
+    }
+    if manifest.targets.is_empty() {
+        return Err("eval corpus manifest must declare at least one target".to_string());
+    }
+    if manifest.cases.is_empty() {
+        return Err("eval corpus manifest must declare at least one case".to_string());
+    }
+    if manifest.redaction_policy.trim().is_empty() {
+        return Err("eval corpus manifest must declare a redaction policy".to_string());
+    }
+    for case in &manifest.cases {
+        if case.id.trim().is_empty() || case.oracle_command.trim().is_empty() {
+            return Err("eval corpus cases require id and oracle_command".to_string());
+        }
+    }
+    Ok(())
+}
+
+fn readiness_report(
+    options: &SelfEvolutionRunOptions,
+    corpus: Option<&EvalCorpusManifest>,
+    eval: &DeterministicEvaluation,
+    changed: bool,
+    receipts: &[McpOrchestrationReceipt],
+) -> SelfEvolutionReadinessReport {
+    let profile = normalized_profile(&options.production_profile);
+    let daemon_session_observable = receipts.iter().all(|receipt| receipt.submitted) && !receipts.is_empty();
+    let improvement = eval.candidate_score - eval.baseline_score;
+    let threshold = corpus.map(|manifest| manifest.min_improvement).unwrap_or(0.0);
+    let threshold_passed = !eval.failed && improvement >= threshold;
+    let regression_budget_passed = corpus.map(|manifest| manifest.regression_budget == 0).unwrap_or(false);
+    let unchanged_candidate_control_passed = changed;
+    let corpus_cases = corpus.map(|manifest| manifest.cases.len()).unwrap_or(0);
+
+    let mut reasons = Vec::new();
+    let label = if eval.failed {
+        reasons.push("evaluation failed".to_string());
+        "blocked"
+    } else if profile == "dry_run_only" {
+        reasons.push("dry-run profile does not claim production evidence".to_string());
+        "dry_run_only"
+    } else if corpus.is_none() {
+        reasons.push("production profile requires a valid local eval corpus manifest".to_string());
+        "blocked"
+    } else if !daemon_session_observable {
+        reasons.push("run did not record observable daemon/session receipts".to_string());
+        "blocked"
+    } else if !unchanged_candidate_control_passed {
+        reasons.push("candidate was unchanged from baseline; positive deltas are treated as noise".to_string());
+        "controlled_dogfood"
+    } else if !threshold_passed {
+        reasons.push("minimum improvement threshold was not met".to_string());
+        "controlled_dogfood"
+    } else if !regression_budget_passed {
+        reasons.push("regression budget was not fully satisfied".to_string());
+        "controlled_dogfood"
+    } else {
+        reasons.push(
+            "corpus, threshold, regression budget, unchanged-control, and session observability gates passed"
+                .to_string(),
+        );
+        "promotion_eligible"
+    };
+
+    SelfEvolutionReadinessReport {
+        label: label.to_string(),
+        profile,
+        corpus_manifest_path: options.corpus_manifest.as_ref().map(|path| path.display().to_string()),
+        corpus_cases,
+        threshold_passed,
+        regression_budget_passed,
+        unchanged_candidate_control_passed,
+        daemon_session_observable,
+        evidence_refs: receipts.iter().map(|receipt| format!("{}:{}", receipt.tool, receipt.status)).collect(),
+        reasons,
+        known_limitations: vec![
+            "deterministic local evaluator; no active artifacts are mutated by run".to_string(),
+            "human approval and explicit application remain required before adoption".to_string(),
+        ],
+    }
+}
+
+fn promotion_recommendation_from_readiness(
+    readiness: &SelfEvolutionReadinessReport,
+    eval: &DeterministicEvaluation,
+    changed: bool,
+) -> PromotionRecommendation {
+    if eval.failed {
+        return PromotionRecommendation {
+            recommended: false,
+            reason: "baseline-vs-candidate evaluation failed; candidate is not eligible for promotion".to_string(),
+            human_approval_required: true,
+            promotion_status: "not_promoted_eval_failed".to_string(),
+        };
+    }
+    if !changed {
+        return PromotionRecommendation {
+            recommended: false,
+            reason: "candidate artifact is unchanged from baseline; score deltas would be treated as evaluation noise"
+                .to_string(),
+            human_approval_required: true,
+            promotion_status: "not_promoted".to_string(),
+        };
+    }
+    PromotionRecommendation {
+        recommended: true,
+        reason: if readiness.label == "promotion_eligible" {
+            readiness.reasons.join("; ")
+        } else {
+            format!(
+                "candidate changed and deterministic fake score improved; readiness remains {}: {}",
+                readiness.label,
+                readiness.reasons.join("; ")
+            )
+        },
+        human_approval_required: true,
+        promotion_status: "awaiting_human_approval".to_string(),
+    }
+}
+
+fn normalized_profile(profile: &str) -> String {
+    match profile.trim() {
+        "controlled-dogfood" | "controlled_dogfood" => "controlled_dogfood".to_string(),
+        "promotion-eligible" | "promotion_eligible" => "promotion_eligible".to_string(),
+        "blocked" => "blocked".to_string(),
+        _ => "dry_run_only".to_string(),
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -840,6 +1001,12 @@ fn validate_promotable_receipt(receipt: &SelfEvolutionRunReceipt) -> std::result
     if receipt.recommendation.promotion_status != "awaiting_human_approval" {
         return Err("candidate is not awaiting human approval".to_string());
     }
+    if receipt.readiness.label != "promotion_eligible" {
+        return Err(format!(
+            "candidate readiness is {}; promotion approval requires promotion_eligible corpus evidence",
+            receipt.readiness.label
+        ));
+    }
     Ok(())
 }
 
@@ -925,6 +1092,29 @@ mod tests {
 
     use super::*;
 
+    fn write_valid_corpus_manifest(tmp: &TempDir) -> PathBuf {
+        let manifest_path = tmp.path().join("corpus.json");
+        fs::write(
+            &manifest_path,
+            serde_json::json!({
+                "version": 1,
+                "targets": ["prompt.md"],
+                "cases": [{
+                    "id": "case-1",
+                    "objective": "candidate improves deterministic score",
+                    "oracle_command": "cargo test self_evolution",
+                    "expected_evidence": ["receipt.json", "session_history"]
+                }],
+                "redaction_policy": "safe metadata only",
+                "min_improvement": 0.05,
+                "regression_budget": 0
+            })
+            .to_string(),
+        )
+        .unwrap();
+        manifest_path
+    }
+
     #[test]
     fn self_evolution_dry_run_writes_isolated_receipt_and_uses_fake_mcp() {
         let tmp = tempdir().unwrap();
@@ -939,6 +1129,8 @@ mod tests {
             dry_run: true,
             simulate_eval_failure: false,
             candidate_body: Some("baseline skill\nimproved\n".to_string()),
+            production_profile: "dry-run-only".to_string(),
+            corpus_manifest: None,
         };
         let mut executor = FakeMcpExecutor::default();
 
@@ -949,6 +1141,8 @@ mod tests {
         assert!(receipt.candidate.changed_from_baseline);
         assert!(receipt.recommendation.recommended);
         assert!(receipt.recommendation.human_approval_required);
+        assert_eq!(receipt.readiness.label, "dry_run_only");
+        assert_eq!(receipt.readiness.corpus_cases, 0);
         assert_eq!(executor.calls.len(), 2);
         assert_eq!(executor.calls[0].tool, "send_prompt");
         assert_eq!(executor.calls[1].tool, "session_history");
@@ -970,6 +1164,8 @@ mod tests {
             dry_run: true,
             simulate_eval_failure: false,
             candidate_body: None,
+            production_profile: "dry-run-only".to_string(),
+            corpus_manifest: None,
         };
         let mut executor = FakeMcpExecutor::default();
 
@@ -998,6 +1194,8 @@ mod tests {
             dry_run: true,
             simulate_eval_failure: true,
             candidate_body: Some("candidate\n".to_string()),
+            production_profile: "promotion-eligible".to_string(),
+            corpus_manifest: Some(write_valid_corpus_manifest(&tmp)),
         };
         let mut executor = FakeMcpExecutor::default();
 
@@ -1015,6 +1213,105 @@ mod tests {
     }
 
     #[test]
+    fn self_evolution_production_profile_requires_valid_corpus_manifest() {
+        let tmp = tempdir().unwrap();
+        let target = tmp.path().join("prompt.md");
+        fs::write(&target, "baseline\n").unwrap();
+        let options = SelfEvolutionRunOptions {
+            target,
+            baseline_command: "eval".to_string(),
+            candidate_output: tmp.path().join("out"),
+            session_id: Some("sess-1".to_string()),
+            dry_run: true,
+            simulate_eval_failure: false,
+            candidate_body: Some("candidate\n".to_string()),
+            production_profile: "controlled-dogfood".to_string(),
+            corpus_manifest: None,
+        };
+        let mut executor = FakeMcpExecutor::default();
+
+        let receipt = run_self_evolution_dry_run(&options, &mut executor).unwrap();
+
+        assert!(receipt.recommendation.recommended);
+        assert_eq!(receipt.recommendation.promotion_status, "awaiting_human_approval");
+        assert_eq!(receipt.readiness.label, "blocked");
+        assert!(receipt.readiness.reasons.iter().any(|reason| reason.contains("corpus manifest")));
+        assert!(receipt.readiness.daemon_session_observable);
+    }
+
+    #[test]
+    fn self_evolution_rejects_invalid_corpus_manifest() {
+        let tmp = tempdir().unwrap();
+        let manifest_path = tmp.path().join("bad-corpus.json");
+        fs::write(
+            &manifest_path,
+            serde_json::json!({
+                "version": 1,
+                "targets": [],
+                "cases": [],
+                "redaction_policy": "safe metadata only",
+                "min_improvement": 0.05,
+                "regression_budget": 0
+            })
+            .to_string(),
+        )
+        .unwrap();
+
+        let err = load_eval_corpus_manifest(Some(&manifest_path)).unwrap_err();
+
+        assert!(err.contains("at least one target"));
+    }
+
+    #[test]
+    fn self_evolution_valid_corpus_can_mark_promotion_eligible_readiness() {
+        let tmp = tempdir().unwrap();
+        let target = tmp.path().join("prompt.md");
+        fs::write(&target, "baseline\n").unwrap();
+        let manifest_path = tmp.path().join("corpus.json");
+        fs::write(
+            &manifest_path,
+            serde_json::json!({
+                "version": 1,
+                "targets": ["prompt.md"],
+                "cases": [{
+                    "id": "case-1",
+                    "objective": "candidate improves deterministic score",
+                    "oracle_command": "cargo test self_evolution",
+                    "expected_evidence": ["receipt.json", "session_history"]
+                }],
+                "redaction_policy": "safe metadata only",
+                "min_improvement": 0.05,
+                "regression_budget": 0
+            })
+            .to_string(),
+        )
+        .unwrap();
+        let options = SelfEvolutionRunOptions {
+            target,
+            baseline_command: "eval".to_string(),
+            candidate_output: tmp.path().join("out"),
+            session_id: Some("sess-1".to_string()),
+            dry_run: true,
+            simulate_eval_failure: false,
+            candidate_body: Some("candidate\n".to_string()),
+            production_profile: "promotion-eligible".to_string(),
+            corpus_manifest: Some(manifest_path.clone()),
+        };
+        let mut executor = FakeMcpExecutor::default();
+
+        let receipt = run_self_evolution_dry_run(&options, &mut executor).unwrap();
+
+        assert_eq!(receipt.readiness.label, "promotion_eligible");
+        assert_eq!(receipt.readiness.corpus_manifest_path, Some(manifest_path.display().to_string()));
+        assert_eq!(receipt.readiness.corpus_cases, 1);
+        assert!(receipt.readiness.threshold_passed);
+        assert!(receipt.readiness.regression_budget_passed);
+        assert!(receipt.readiness.unchanged_candidate_control_passed);
+        assert!(receipt.readiness.daemon_session_observable);
+        assert_eq!(receipt.recommendation.promotion_status, "awaiting_human_approval");
+    }
+
+    #[test]
     fn self_evolution_rejects_live_in_place_and_non_dry_run() {
         let tmp = tempdir().unwrap();
         let target = tmp.path().join("live");
@@ -1027,6 +1324,8 @@ mod tests {
             dry_run: false,
             simulate_eval_failure: false,
             candidate_body: None,
+            production_profile: "dry-run-only".to_string(),
+            corpus_manifest: None,
         };
         assert!(validate_run_options(&non_dry).unwrap_err().contains("disabled by default"));
 
@@ -1038,6 +1337,8 @@ mod tests {
             dry_run: true,
             simulate_eval_failure: false,
             candidate_body: None,
+            production_profile: "dry-run-only".to_string(),
+            corpus_manifest: None,
         };
         assert!(validate_run_options(&in_place).unwrap_err().contains("live target directory"));
     }
@@ -1055,6 +1356,8 @@ mod tests {
             dry_run: true,
             simulate_eval_failure: false,
             candidate_body: Some("candidate\n".to_string()),
+            production_profile: "promotion-eligible".to_string(),
+            corpus_manifest: Some(write_valid_corpus_manifest(&tmp)),
         };
         let mut executor = FakeMcpExecutor::default();
         let run_receipt = run_self_evolution_dry_run(&options, &mut executor).unwrap();
@@ -1095,6 +1398,8 @@ mod tests {
             dry_run: true,
             simulate_eval_failure: false,
             candidate_body: None,
+            production_profile: "dry-run-only".to_string(),
+            corpus_manifest: None,
         };
         let mut executor = FakeMcpExecutor::default();
         let run_receipt = run_self_evolution_dry_run(&options, &mut executor).unwrap();
@@ -1215,6 +1520,8 @@ mod tests {
             dry_run: true,
             simulate_eval_failure: false,
             candidate_body: None,
+            production_profile: "dry-run-only".to_string(),
+            corpus_manifest: None,
         };
         let mut executor = FakeMcpExecutor::default();
         let run_receipt = run_self_evolution_dry_run(&options, &mut executor).unwrap();
@@ -1393,6 +1700,8 @@ mod tests {
             dry_run: true,
             simulate_eval_failure: false,
             candidate_body: Some("candidate\n".to_string()),
+            production_profile: "promotion-eligible".to_string(),
+            corpus_manifest: Some(write_valid_corpus_manifest(&tmp)),
         };
         let mut executor = FakeMcpExecutor::default();
         let run_receipt = run_self_evolution_dry_run(&options, &mut executor).unwrap();
