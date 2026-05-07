@@ -30,7 +30,7 @@ impl ToolGatewayTool {
                     "properties": {
                         "action": {
                             "type": "string",
-                            "enum": ["status", "validate", "deliver_receipt"],
+                            "enum": ["status", "validate", "deliver", "deliver_receipt", "delivery_status", "retry"],
                             "description": "Gateway action to perform"
                         },
                         "toolsets": {
@@ -52,6 +52,14 @@ impl ToolGatewayTool {
                         "path": {
                             "type": "string",
                             "description": "Optional artifact path; only the basename is recorded in receipts"
+                        },
+                        "outbox": {
+                            "type": "string",
+                            "description": "Optional outbox path for deliver/status/retry actions"
+                        },
+                        "attempt_id": {
+                            "type": "string",
+                            "description": "Safe delivery attempt id for retry"
                         }
                     },
                     "required": ["action"]
@@ -77,7 +85,10 @@ impl Tool for ToolGatewayTool {
         match params.get("action").and_then(|value| value.as_str()) {
             Some("status") => validation_result(tool_gateway::status_summary()),
             Some("validate") => validate_params(&params),
-            Some("deliver_receipt") => delivery_params(&params),
+            Some("deliver") => deliver_params(&params, true),
+            Some("deliver_receipt") => deliver_params(&params, false),
+            Some("delivery_status") => delivery_status_params(&params),
+            Some("retry") => retry_params(&params),
             Some(other) => ToolResult::error(format!("Unknown tool_gateway action: {other}")),
             None => ToolResult::error("Missing required parameter: action"),
         }
@@ -98,17 +109,61 @@ fn validate_params(params: &Value) -> ToolResult {
     validation_result(tool_gateway::validate(&toolsets, &target, matrix_active))
 }
 
-fn delivery_params(params: &Value) -> ToolResult {
+fn deliver_params(params: &Value, record: bool) -> ToolResult {
     let artifact_type = match params.get("artifact_type").and_then(|value| value.as_str()) {
         Some("file") => tool_gateway::ArtifactKind::File,
         Some("media") => tool_gateway::ArtifactKind::Media,
         Some("scheduled-output" | "scheduled_output" | "scheduled") => tool_gateway::ArtifactKind::ScheduledOutput,
         Some(other) => return ToolResult::error(format!("unknown artifact type '{other}'")),
-        None => return ToolResult::error("Missing required parameter for deliver_receipt: artifact_type"),
+        None => return ToolResult::error("Missing required parameter for deliver: artifact_type"),
     };
     let target = tool_gateway::parse_delivery_target(params.get("deliver").and_then(|value| value.as_str()));
     let path = params.get("path").and_then(|value| value.as_str()).map(std::path::Path::new);
-    delivery_result(tool_gateway::local_delivery_receipt(artifact_type, path, &target))
+    let matrix_active = params.get("matrix_active").and_then(|value| value.as_bool()).unwrap_or(false);
+    let context = if matrix_active {
+        tool_gateway::DeliveryContext::matrix("active_matrix_session")
+    } else {
+        tool_gateway::DeliveryContext::local()
+    };
+    let attempt = tool_gateway::deliver_artifact(artifact_type, path, &target, &context);
+    if record {
+        if let Some(outbox) = params.get("outbox").and_then(|value| value.as_str()) {
+            match tool_gateway::record_attempt(std::path::Path::new(outbox), attempt) {
+                Ok(attempt) => return attempt_result(attempt),
+                Err(message) => return ToolResult::error(message),
+            }
+        }
+    }
+    if record {
+        attempt_result(attempt)
+    } else {
+        delivery_result(attempt.receipt)
+    }
+}
+
+fn delivery_status_params(params: &Value) -> ToolResult {
+    let Some(outbox) = params.get("outbox").and_then(|value| value.as_str()) else {
+        return ToolResult::error("Missing required parameter for delivery_status: outbox");
+    };
+    match tool_gateway::read_outbox(std::path::Path::new(outbox)) {
+        Ok(outbox) => ToolResult::text(format!("Tool gateway delivery status: {} attempts", outbox.attempts.len()))
+            .with_details(serde_json::to_value(outbox).unwrap_or_else(|_| json!({"source": "tool_gateway"}))),
+        Err(message) => ToolResult::error(message),
+    }
+}
+
+fn retry_params(params: &Value) -> ToolResult {
+    let Some(outbox) = params.get("outbox").and_then(|value| value.as_str()) else {
+        return ToolResult::error("Missing required parameter for retry: outbox");
+    };
+    let Some(attempt_id) = params.get("attempt_id").and_then(|value| value.as_str()) else {
+        return ToolResult::error("Missing required parameter for retry: attempt_id");
+    };
+    let context = tool_gateway::DeliveryContext::local();
+    match tool_gateway::retry_attempt(std::path::Path::new(outbox), attempt_id, &context) {
+        Ok(attempt) => attempt_result(attempt),
+        Err(message) => ToolResult::error(message),
+    }
 }
 
 fn validation_result(validation: tool_gateway::GatewayValidation) -> ToolResult {
@@ -128,6 +183,20 @@ fn validation_result(validation: tool_gateway::GatewayValidation) -> ToolResult 
         )
     };
     let result = if validation.supported {
+        ToolResult::text(text)
+    } else {
+        ToolResult::error(text)
+    };
+    result.with_details(details)
+}
+
+fn attempt_result(attempt: tool_gateway::DeliveryAttempt) -> ToolResult {
+    let details = serde_json::to_value(&attempt).unwrap_or_else(|_| json!({"source": "tool_gateway"}));
+    let text = format!(
+        "Tool gateway delivery attempt: {} via {} ({})",
+        attempt.artifact_type, attempt.receipt.backend, attempt.target_kind
+    );
+    let result = if attempt.status == "success" {
         ToolResult::text(text)
     } else {
         ToolResult::error(text)

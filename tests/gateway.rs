@@ -98,6 +98,50 @@ async fn gateway_tool_deliver_receipt_returns_safe_details() {
     assert!(!serde_json::to_string(&details).expect("serialize").contains("secret"));
 }
 
+#[test]
+fn gateway_matrix_adapter_requires_active_context_and_redacts_handle() {
+    let inactive = clankers::tool_gateway::deliver_artifact(
+        clankers::tool_gateway::ArtifactKind::File,
+        Some(std::path::Path::new("/tmp/secret/report.txt")),
+        &clankers::tool_gateway::DeliveryTarget::Matrix,
+        &clankers::tool_gateway::DeliveryContext::local(),
+    );
+    assert_eq!(inactive.status, "unsupported");
+    assert!(inactive.receipt.platform_handle.is_none());
+    assert!(inactive.safe_path.is_none());
+
+    let active = clankers::tool_gateway::deliver_artifact(
+        clankers::tool_gateway::ArtifactKind::File,
+        Some(std::path::Path::new("/tmp/secret/report.txt")),
+        &clankers::tool_gateway::DeliveryTarget::Matrix,
+        &clankers::tool_gateway::DeliveryContext::matrix("!room:example.org"),
+    );
+    assert_eq!(active.status, "success");
+    assert_eq!(active.receipt.backend, "matrix");
+    assert_eq!(active.safe_path.as_deref(), Some("report.txt"));
+    let encoded = serde_json::to_string(&active).expect("serialize");
+    assert!(!encoded.contains("secret"));
+    assert!(!encoded.contains("example.org"));
+}
+
+#[test]
+fn gateway_outbox_records_attempts_without_raw_destinations() {
+    let temp = tempfile::tempdir().expect("tempdir");
+    let outbox = temp.path().join("gateway-outbox.json");
+    let attempt = clankers::tool_gateway::deliver_artifact(
+        clankers::tool_gateway::ArtifactKind::ScheduledOutput,
+        Some(std::path::Path::new("/tmp/token/schedule-result.json")),
+        &clankers::tool_gateway::DeliveryTarget::Session,
+        &clankers::tool_gateway::DeliveryContext::local(),
+    );
+    let attempt = clankers::tool_gateway::record_attempt(&outbox, attempt).expect("record attempt");
+    let reloaded = clankers::tool_gateway::find_attempt(&outbox, &attempt.attempt_id).expect("find attempt");
+    assert_eq!(reloaded.safe_path.as_deref(), Some("schedule-result.json"));
+    let encoded = std::fs::read_to_string(outbox).expect("read outbox");
+    assert!(encoded.contains(&attempt.attempt_id));
+    assert!(!encoded.contains("token"));
+}
+
 fn text(result: &clankers::tools::ToolResult) -> &str {
     match result.content.first().expect("tool result content") {
         ToolResultContent::Text { text } => text,

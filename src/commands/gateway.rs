@@ -31,6 +31,37 @@ pub fn run(_ctx: &CommandContext, action: GatewayAction) -> Result<()> {
                 });
             }
         }
+        GatewayAction::Deliver {
+            artifact_type,
+            path,
+            deliver,
+            outbox,
+            matrix_active,
+            matrix_binding,
+            json,
+        } => {
+            let artifact_type = parse_artifact_kind(&artifact_type)?;
+            let path = path.map(PathBuf::from);
+            let target = tool_gateway::parse_delivery_target(deliver.as_deref());
+            let context = delivery_context(matrix_active, matrix_binding);
+            let attempt = tool_gateway::deliver_artifact(artifact_type, path.as_deref(), &target, &context);
+            let attempt = if let Some(outbox) = outbox {
+                tool_gateway::record_attempt(&PathBuf::from(outbox), attempt)
+                    .map_err(|message| crate::error::Error::Config { message })?
+            } else {
+                attempt
+            };
+            print_json_or_attempt(&attempt, json)?;
+            if attempt.status != "success" {
+                return Err(crate::error::Error::Config {
+                    message: attempt
+                        .receipt
+                        .error_message
+                        .clone()
+                        .unwrap_or_else(|| "gateway delivery target is unsupported".to_string()),
+                });
+            }
+        }
         GatewayAction::DeliverReceipt {
             artifact_type,
             path,
@@ -50,8 +81,40 @@ pub fn run(_ctx: &CommandContext, action: GatewayAction) -> Result<()> {
                 });
             }
         }
+        GatewayAction::DeliveryStatus { outbox, json } => {
+            let outbox = tool_gateway::read_outbox(&PathBuf::from(outbox))
+                .map_err(|message| crate::error::Error::Config { message })?;
+            if json {
+                println!(
+                    "{}",
+                    serde_json::to_string_pretty(&outbox).map_err(|source| crate::error::Error::Json { source })?
+                );
+            } else {
+                println!("tool gateway: {} recorded delivery attempts", outbox.attempts.len());
+            }
+        }
+        GatewayAction::Retry {
+            outbox,
+            attempt_id,
+            matrix_active,
+            matrix_binding,
+            json,
+        } => {
+            let context = delivery_context(matrix_active, matrix_binding);
+            let attempt = tool_gateway::retry_attempt(&PathBuf::from(outbox), &attempt_id, &context)
+                .map_err(|message| crate::error::Error::Config { message })?;
+            print_json_or_attempt(&attempt, json)?;
+        }
     }
     Ok(())
+}
+
+fn delivery_context(matrix_active: bool, matrix_binding: Option<String>) -> tool_gateway::DeliveryContext {
+    if matrix_active {
+        tool_gateway::DeliveryContext::matrix(matrix_binding.unwrap_or_else(|| "active_matrix_session".to_string()))
+    } else {
+        tool_gateway::DeliveryContext::local()
+    }
 }
 
 fn parse_artifact_kind(input: &str) -> Result<tool_gateway::ArtifactKind> {
@@ -88,6 +151,15 @@ fn print_json_or_validation(validation: &tool_gateway::GatewayValidation, json: 
             validation.error_message.as_deref().unwrap_or("unsupported target")
         );
     }
+    Ok(())
+}
+
+fn print_json_or_attempt(attempt: &tool_gateway::DeliveryAttempt, json: bool) -> Result<()> {
+    if json {
+        println!("{}", serde_json::to_string_pretty(attempt).map_err(|source| crate::error::Error::Json { source })?);
+        return Ok(());
+    }
+    println!("tool gateway: {} {} delivery attempt {}", attempt.status, attempt.target_kind, attempt.attempt_id);
     Ok(())
 }
 

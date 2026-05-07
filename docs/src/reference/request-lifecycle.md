@@ -122,7 +122,8 @@ Add or update tests around these seams when touching them:
 - Daemon attach replay ordering, conversation block metadata, and `HistoryEnd` finalization.
 - Attach slash command parity for thinking level, disabled tools, model/role, and plugin fetches.
 - Tool gateway policy helpers for active toolsets plus disabled-tool filtering; standalone and daemon rebuild paths should not fork this logic.
-- Platform delivery receipts should record artifact kind, safe basename/handle, status, target kind, and error class only; never raw destinations, tokens, headers, or full paths.
+- Tool gateway delivery attempts route generated file/media/scheduled-output artifacts through one adapter boundary before recording safe outbox receipts. Local/session targets are adapter-backed, Matrix requires an explicit active bridge context, and retry/status operate on safe attempt ids rather than raw destinations.
+- Platform delivery receipts should record artifact kind, safe basename/handle, status, target kind, attempt id, retryability, and error class only; never raw destinations, tokens, headers, or full paths.
 - Provider request-shape parity between `clankers-provider` and `clanker-router`.
 - Runtime SSE/parser entrypoints, not only helper-level stream state machines.
 

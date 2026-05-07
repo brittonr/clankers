@@ -5,9 +5,13 @@
 //! standalone, daemon, and platform paths do not grow ad hoc policy forks.
 
 use std::collections::HashSet;
+use std::fs;
+use std::hash::Hash;
 use std::path::Path;
+use std::path::PathBuf;
 use std::sync::Arc;
 
+use serde::Deserialize;
 use serde::Serialize;
 
 use crate::modes::common::ToolTier;
@@ -44,7 +48,7 @@ impl From<ToolTier> for GatewayToolset {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Hash)]
 #[serde(rename_all = "snake_case")]
 pub enum DeliveryTarget {
     Local,
@@ -99,7 +103,7 @@ pub struct GatewayToolPolicyReceipt {
     pub redaction: &'static str,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Hash)]
 #[serde(rename_all = "snake_case")]
 pub enum ArtifactKind {
     File,
@@ -117,23 +121,93 @@ impl ArtifactKind {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct PlatformDeliveryReceipt {
-    pub source: &'static str,
-    pub action: &'static str,
-    pub status: &'static str,
-    pub artifact_type: &'static str,
-    pub backend: &'static str,
+    pub source: String,
+    pub action: String,
+    pub status: String,
+    pub attempt_id: String,
+    pub artifact_type: String,
+    pub backend: String,
     pub target_kind: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub safe_path: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub platform_handle: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub error_kind: Option<&'static str>,
+    pub error_kind: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub error_message: Option<String>,
-    pub redaction: &'static str,
+    pub retryable: bool,
+    pub redaction: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct DeliveryContext {
+    pub matrix_active: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub matrix_binding: Option<String>,
+}
+
+impl DeliveryContext {
+    pub fn local() -> Self {
+        Self {
+            matrix_active: false,
+            matrix_binding: None,
+        }
+    }
+
+    pub fn matrix(binding: impl Into<String>) -> Self {
+        Self {
+            matrix_active: true,
+            matrix_binding: Some(safe_handle_label(&binding.into())),
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct DeliveryAttempt {
+    pub source: String,
+    pub action: String,
+    pub attempt_id: String,
+    pub status: String,
+    pub artifact_type: String,
+    pub target_kind: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub safe_path: Option<String>,
+    pub retryable: bool,
+    pub receipt: PlatformDeliveryReceipt,
+    pub redaction: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct DeliveryOutbox {
+    pub source: String,
+    pub attempts: Vec<DeliveryAttempt>,
+    pub redaction: String,
+}
+
+impl Default for DeliveryOutbox {
+    fn default() -> Self {
+        Self {
+            source: "tool_gateway".to_string(),
+            attempts: Vec::new(),
+            redaction: "safe_metadata_only".to_string(),
+        }
+    }
+}
+
+pub trait DeliveryAdapter {
+    fn backend(&self) -> &'static str;
+    fn deliver(&self, request: &DeliveryRequest) -> PlatformDeliveryReceipt;
+}
+
+#[derive(Debug, Clone)]
+pub struct DeliveryRequest {
+    pub kind: ArtifactKind,
+    pub path: Option<PathBuf>,
+    pub target: DeliveryTarget,
+    pub context: DeliveryContext,
 }
 
 pub fn parse_toolsets(input: &str) -> Result<Vec<GatewayToolset>, String> {
@@ -285,30 +359,96 @@ pub fn local_delivery_receipt(
     path: Option<&Path>,
     target: &DeliveryTarget,
 ) -> PlatformDeliveryReceipt {
-    let artifact_type = kind.as_str();
-    match target {
-        DeliveryTarget::Local | DeliveryTarget::Session => PlatformDeliveryReceipt {
-            source: "tool_gateway",
-            action: "deliver",
-            status: "success",
-            artifact_type,
-            backend: "local",
-            target_kind: target.as_label().to_string(),
-            safe_path: path.map(safe_path_label),
-            platform_handle: None,
-            error_kind: None,
-            error_message: None,
-            redaction: "safe_metadata_only",
-        },
-        DeliveryTarget::Matrix => {
-            delivery_unsupported(artifact_type, "matrix", "matrix delivery requires an active platform bridge adapter")
-        }
-        DeliveryTarget::Unsupported { kind } => delivery_unsupported(
-            artifact_type,
-            kind,
-            &format!("delivery target '{kind}' is not supported by the local delivery adapter"),
+    deliver_artifact(kind, path, target, &DeliveryContext::local()).receipt
+}
+
+pub fn deliver_artifact(
+    kind: ArtifactKind,
+    path: Option<&Path>,
+    target: &DeliveryTarget,
+    context: &DeliveryContext,
+) -> DeliveryAttempt {
+    let request = DeliveryRequest {
+        kind,
+        path: path.map(Path::to_path_buf),
+        target: target.clone(),
+        context: context.clone(),
+    };
+    let receipt = match target {
+        DeliveryTarget::Local | DeliveryTarget::Session => LocalDeliveryAdapter.deliver(&request),
+        DeliveryTarget::Matrix if context.matrix_active => MatrixDeliveryAdapter.deliver(&request),
+        DeliveryTarget::Matrix => delivery_unsupported(
+            kind.as_str(),
+            "matrix",
+            "matrix delivery requires an active Matrix bridge session",
+            false,
         ),
+        DeliveryTarget::Unsupported { kind: target_kind } => delivery_unsupported(
+            kind.as_str(),
+            target_kind,
+            &format!("delivery target '{target_kind}' is not supported by configured gateway adapters"),
+            false,
+        ),
+    };
+    DeliveryAttempt {
+        source: "tool_gateway".to_string(),
+        action: "deliver_attempt".to_string(),
+        attempt_id: receipt.attempt_id.clone(),
+        status: receipt.status.to_string(),
+        artifact_type: receipt.artifact_type.clone(),
+        target_kind: receipt.target_kind.clone(),
+        safe_path: receipt.safe_path.clone(),
+        retryable: receipt.retryable,
+        receipt,
+        redaction: "safe_metadata_only".to_string(),
     }
+}
+
+pub fn read_outbox(path: &Path) -> Result<DeliveryOutbox, String> {
+    if !path.exists() {
+        return Ok(DeliveryOutbox::default());
+    }
+    let data = fs::read_to_string(path).map_err(|err| format!("read outbox failed: {err}"))?;
+    if data.trim().is_empty() {
+        return Ok(DeliveryOutbox::default());
+    }
+    serde_json::from_str(&data).map_err(|err| format!("parse outbox failed: {err}"))
+}
+
+pub fn write_outbox(path: &Path, outbox: &DeliveryOutbox) -> Result<(), String> {
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent).map_err(|err| format!("create outbox directory failed: {err}"))?;
+    }
+    let data = serde_json::to_string_pretty(outbox).map_err(|err| format!("serialize outbox failed: {err}"))?;
+    fs::write(path, format!("{data}\n")).map_err(|err| format!("write outbox failed: {err}"))
+}
+
+pub fn record_attempt(path: &Path, attempt: DeliveryAttempt) -> Result<DeliveryAttempt, String> {
+    let mut outbox = read_outbox(path)?;
+    outbox.attempts.retain(|existing| existing.attempt_id != attempt.attempt_id);
+    outbox.attempts.push(attempt.clone());
+    write_outbox(path, &outbox)?;
+    Ok(attempt)
+}
+
+pub fn find_attempt(path: &Path, attempt_id: &str) -> Result<DeliveryAttempt, String> {
+    let outbox = read_outbox(path)?;
+    outbox
+        .attempts
+        .into_iter()
+        .find(|attempt| attempt.attempt_id == attempt_id)
+        .ok_or_else(|| "delivery attempt not found".to_string())
+}
+
+pub fn retry_attempt(path: &Path, attempt_id: &str, context: &DeliveryContext) -> Result<DeliveryAttempt, String> {
+    let prior = find_attempt(path, attempt_id)?;
+    if !prior.retryable {
+        return Err("delivery attempt is not retryable".to_string());
+    }
+    let kind = parse_artifact_kind_label(&prior.artifact_type)?;
+    let target = parse_delivery_target(Some(&prior.target_kind));
+    let retry = deliver_artifact(kind, prior.safe_path.as_deref().map(Path::new), &target, context);
+    record_attempt(path, retry)
 }
 
 fn unsupported(mut validation: GatewayValidation, kind: &'static str, message: &str) -> GatewayValidation {
@@ -319,20 +459,111 @@ fn unsupported(mut validation: GatewayValidation, kind: &'static str, message: &
     validation
 }
 
-fn delivery_unsupported(artifact_type: &'static str, target_kind: &str, message: &str) -> PlatformDeliveryReceipt {
+fn delivery_unsupported(
+    artifact_type: &'static str,
+    target_kind: &str,
+    message: &str,
+    retryable: bool,
+) -> PlatformDeliveryReceipt {
     PlatformDeliveryReceipt {
-        source: "tool_gateway",
-        action: "deliver",
-        status: "unsupported",
-        artifact_type,
-        backend: "local",
+        source: "tool_gateway".to_string(),
+        action: "deliver".to_string(),
+        status: "unsupported".to_string(),
+        attempt_id: attempt_id(artifact_type, target_kind, None),
+        artifact_type: artifact_type.to_string(),
+        backend: "policy".to_string(),
         target_kind: target_kind.to_string(),
         safe_path: None,
         platform_handle: None,
-        error_kind: Some("unsupported_target"),
+        error_kind: Some("unsupported_target".to_string()),
         error_message: Some(sanitize_error_message(message)),
-        redaction: "safe_metadata_only",
+        retryable,
+        redaction: "safe_metadata_only".to_string(),
     }
+}
+
+struct LocalDeliveryAdapter;
+
+impl DeliveryAdapter for LocalDeliveryAdapter {
+    fn backend(&self) -> &'static str {
+        "local"
+    }
+
+    fn deliver(&self, request: &DeliveryRequest) -> PlatformDeliveryReceipt {
+        let safe_path = request.path.as_deref().map(safe_path_label);
+        PlatformDeliveryReceipt {
+            source: "tool_gateway".to_string(),
+            action: "deliver".to_string(),
+            status: "success".to_string(),
+            attempt_id: attempt_id(request.kind.as_str(), request.target.as_label(), safe_path.as_deref()),
+            artifact_type: request.kind.as_str().to_string(),
+            backend: self.backend().to_string(),
+            target_kind: request.target.as_label().to_string(),
+            safe_path,
+            platform_handle: None,
+            error_kind: None,
+            error_message: None,
+            retryable: false,
+            redaction: "safe_metadata_only".to_string(),
+        }
+    }
+}
+
+struct MatrixDeliveryAdapter;
+
+impl DeliveryAdapter for MatrixDeliveryAdapter {
+    fn backend(&self) -> &'static str {
+        "matrix"
+    }
+
+    fn deliver(&self, request: &DeliveryRequest) -> PlatformDeliveryReceipt {
+        let safe_path = request.path.as_deref().map(safe_path_label);
+        let handle_seed = request.context.matrix_binding.as_deref().unwrap_or("active_matrix_session");
+        PlatformDeliveryReceipt {
+            source: "tool_gateway".to_string(),
+            action: "deliver".to_string(),
+            status: "success".to_string(),
+            attempt_id: attempt_id(request.kind.as_str(), "matrix", safe_path.as_deref()),
+            artifact_type: request.kind.as_str().to_string(),
+            backend: self.backend().to_string(),
+            target_kind: "matrix".to_string(),
+            safe_path,
+            platform_handle: Some(format!("matrix:{}", short_hash(handle_seed))),
+            error_kind: None,
+            error_message: None,
+            retryable: false,
+            redaction: "safe_metadata_only".to_string(),
+        }
+    }
+}
+
+fn parse_artifact_kind_label(label: &str) -> Result<ArtifactKind, String> {
+    match label {
+        "file" => Ok(ArtifactKind::File),
+        "media" => Ok(ArtifactKind::Media),
+        "scheduled_output" | "scheduled-output" | "scheduled" => Ok(ArtifactKind::ScheduledOutput),
+        other => Err(format!("unknown artifact type '{other}'")),
+    }
+}
+
+fn attempt_id(artifact_type: &str, target_kind: &str, safe_path: Option<&str>) -> String {
+    short_hash(&format!("{artifact_type}:{target_kind}:{}", safe_path.unwrap_or("artifact")))
+}
+
+fn short_hash(value: &str) -> String {
+    use std::collections::hash_map::DefaultHasher;
+    use std::hash::Hasher;
+    let mut hasher = DefaultHasher::new();
+    value.hash(&mut hasher);
+    format!("{:016x}", hasher.finish())
+}
+
+fn safe_handle_label(value: &str) -> String {
+    value
+        .chars()
+        .filter(|ch| ch.is_ascii_alphanumeric() || matches!(ch, '_' | '-' | '.'))
+        .take(64)
+        .collect::<String>()
 }
 
 fn safe_path_label(path: &Path) -> String {

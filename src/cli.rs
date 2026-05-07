@@ -571,7 +571,7 @@ pub enum CheckpointAction {
 
 #[derive(Subcommand, Debug, Clone, PartialEq, Eq)]
 pub enum GatewayAction {
-    /// Show supported first-pass gateway toolsets and delivery targets
+    /// Show supported gateway toolsets and delivery targets
     Status {
         /// Emit machine-readable JSON
         #[arg(long)]
@@ -589,7 +589,31 @@ pub enum GatewayAction {
         #[arg(long)]
         json: bool,
     },
-    /// Build a safe local/platform delivery receipt without sending data
+    /// Deliver through the gateway adapter boundary and record an outbox attempt
+    Deliver {
+        /// Artifact type: file, media, or scheduled-output
+        #[arg(long)]
+        artifact_type: String,
+        /// Optional artifact path; only the basename is recorded
+        #[arg(long)]
+        path: Option<String>,
+        /// Delivery target: local, session, matrix, or an unsupported platform target
+        #[arg(long)]
+        deliver: Option<String>,
+        /// Optional outbox JSON path for attempt recording
+        #[arg(long)]
+        outbox: Option<String>,
+        /// Treat this command as an active Matrix bridge context
+        #[arg(long)]
+        matrix_active: bool,
+        /// Safe Matrix binding label used only to derive a redacted handle
+        #[arg(long)]
+        matrix_binding: Option<String>,
+        /// Emit machine-readable JSON
+        #[arg(long)]
+        json: bool,
+    },
+    /// Build a safe local/platform delivery receipt without recording an outbox attempt
     DeliverReceipt {
         /// Artifact type: file, media, or scheduled-output
         #[arg(long)]
@@ -600,6 +624,33 @@ pub enum GatewayAction {
         /// Delivery target: local, session, matrix, or an unsupported platform target
         #[arg(long)]
         deliver: Option<String>,
+        /// Emit machine-readable JSON
+        #[arg(long)]
+        json: bool,
+    },
+    /// Show recorded delivery attempts from an outbox
+    DeliveryStatus {
+        /// Outbox JSON path
+        #[arg(long)]
+        outbox: String,
+        /// Emit machine-readable JSON
+        #[arg(long)]
+        json: bool,
+    },
+    /// Retry a retryable delivery attempt by id without exposing raw destinations
+    Retry {
+        /// Outbox JSON path
+        #[arg(long)]
+        outbox: String,
+        /// Attempt id returned by deliver/status
+        #[arg(long)]
+        attempt_id: String,
+        /// Treat this command as an active Matrix bridge context
+        #[arg(long)]
+        matrix_active: bool,
+        /// Safe Matrix binding label used only to derive a redacted handle
+        #[arg(long)]
+        matrix_binding: Option<String>,
         /// Emit machine-readable JSON
         #[arg(long)]
         json: bool,
