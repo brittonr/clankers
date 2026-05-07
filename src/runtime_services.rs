@@ -8,6 +8,8 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use clankers_runtime::AuthService;
+use clankers_runtime::AuthStoreAccessRequest;
+use clankers_runtime::AuthStoreOperation;
 use clankers_runtime::CacheStore;
 use clankers_runtime::CheckpointStore;
 use clankers_runtime::CredentialPoolPolicyService;
@@ -50,7 +52,7 @@ impl DesktopRuntimeServiceAdapters {
         project_paths: &crate::config::ProjectPaths,
         plugin_manager: Arc<std::sync::Mutex<crate::plugin::PluginManager>>,
     ) -> RuntimeServices {
-        Self::from_paths_with_optional_extensions(paths, project_paths, None, Some(plugin_manager))
+        Self::from_paths_with_optional_extensions(paths, project_paths, None, Some(plugin_manager), None)
     }
 
     #[must_use]
@@ -59,7 +61,16 @@ impl DesktopRuntimeServiceAdapters {
         project_paths: &crate::config::ProjectPaths,
         provider_router: Arc<dyn clankers_provider::Provider>,
     ) -> RuntimeServices {
-        Self::from_paths_with_optional_extensions(paths, project_paths, Some(provider_router), None)
+        Self::from_paths_with_optional_extensions(paths, project_paths, Some(provider_router), None, None)
+    }
+
+    #[must_use]
+    pub fn from_paths_with_auth_store(
+        paths: &crate::config::ClankersPaths,
+        project_paths: &crate::config::ProjectPaths,
+        auth_store: Arc<std::sync::Mutex<clankers_provider::auth::AuthStore>>,
+    ) -> RuntimeServices {
+        Self::from_paths_with_optional_extensions(paths, project_paths, None, None, Some(auth_store))
     }
 
     fn from_paths_with_optional_plugin_manager(
@@ -67,7 +78,7 @@ impl DesktopRuntimeServiceAdapters {
         project_paths: &crate::config::ProjectPaths,
         plugin_manager: Option<Arc<std::sync::Mutex<crate::plugin::PluginManager>>>,
     ) -> RuntimeServices {
-        Self::from_paths_with_optional_extensions(paths, project_paths, None, plugin_manager)
+        Self::from_paths_with_optional_extensions(paths, project_paths, None, plugin_manager, None)
     }
 
     fn from_paths_with_optional_extensions(
@@ -75,6 +86,7 @@ impl DesktopRuntimeServiceAdapters {
         project_paths: &crate::config::ProjectPaths,
         provider_router: Option<Arc<dyn clankers_provider::Provider>>,
         plugin_manager: Option<Arc<std::sync::Mutex<crate::plugin::PluginManager>>>,
+        auth_store: Option<Arc<std::sync::Mutex<clankers_provider::auth::AuthStore>>>,
     ) -> RuntimeServices {
         let settings = Arc::new(DesktopSettingsService {
             global_settings: paths.global_settings.clone(),
@@ -107,8 +119,10 @@ impl DesktopRuntimeServiceAdapters {
         });
         let extensions = ExtensionServices {
             provider_router: Arc::new(DesktopProviderRouterService { provider_router }),
-            auth_store: Arc::new(DesktopExtensionAuthStoreService),
-            credential_pool: Arc::new(DesktopCredentialPoolPolicyService),
+            auth_store: Arc::new(DesktopExtensionAuthStoreService {
+                auth_store: auth_store.clone(),
+            }),
+            credential_pool: Arc::new(DesktopCredentialPoolPolicyService { auth_store }),
             runtime: Arc::new(DesktopExtensionRuntimeService { plugin_manager }),
         };
         RuntimeServices {
@@ -215,8 +229,12 @@ impl CheckpointStore for DesktopCheckpointStore {
 struct DesktopProviderRouterService {
     provider_router: Option<Arc<dyn clankers_provider::Provider>>,
 }
-struct DesktopExtensionAuthStoreService;
-struct DesktopCredentialPoolPolicyService;
+struct DesktopExtensionAuthStoreService {
+    auth_store: Option<Arc<std::sync::Mutex<clankers_provider::auth::AuthStore>>>,
+}
+struct DesktopCredentialPoolPolicyService {
+    auth_store: Option<Arc<std::sync::Mutex<clankers_provider::auth::AuthStore>>>,
+}
 struct DesktopExtensionRuntimeService {
     plugin_manager: Option<Arc<std::sync::Mutex<crate::plugin::PluginManager>>>,
 }
@@ -381,13 +399,75 @@ impl ExtensionAuthStoreService for DesktopExtensionAuthStoreService {
         "desktop_extension_auth_store"
     }
 
-    fn access(&self, request: clankers_runtime::AuthStoreAccessRequest) -> Result<ExtensionReceipt, RuntimeError> {
-        Ok(ExtensionReceipt::new(
-            "desktop_extension_auth_store",
-            format!("{:?}", request.operation),
-            clankers_runtime::ExtensionStatus::Succeeded,
-        )
-        .with_metadata("provider", request.provider))
+    fn access(&self, request: AuthStoreAccessRequest) -> Result<ExtensionReceipt, RuntimeError> {
+        let Some(auth_store) = &self.auth_store else {
+            return Err(RuntimeError::ExtensionUnavailable("desktop auth store not injected".to_string()));
+        };
+        match request.operation {
+            AuthStoreOperation::Lookup => auth_lookup_receipt(auth_store, request),
+            AuthStoreOperation::RefreshPersist => Err(RuntimeError::ExtensionUnavailable(
+                "desktop runtime auth refresh persistence not injected".to_string(),
+            )),
+            AuthStoreOperation::PendingLoginVerifier => Err(RuntimeError::ExtensionUnavailable(
+                "desktop runtime pending login verifier store not injected".to_string(),
+            )),
+        }
+    }
+}
+
+fn auth_lookup_receipt(
+    auth_store: &Arc<std::sync::Mutex<clankers_provider::auth::AuthStore>>,
+    request: AuthStoreAccessRequest,
+) -> Result<ExtensionReceipt, RuntimeError> {
+    let store = auth_store.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+    let credentials = store.all_credentials(&request.provider);
+    let selected = select_credential_summary(&credentials, request.account_label.as_deref());
+    let mut receipt = ExtensionReceipt::new(
+        "desktop_extension_auth_store",
+        "lookup",
+        if selected.is_some() {
+            clankers_runtime::ExtensionStatus::Succeeded
+        } else {
+            clankers_runtime::ExtensionStatus::Unavailable
+        },
+    )
+    .with_metadata("provider", request.provider)
+    .with_metadata("credential_count", credentials.len().to_string());
+    if let Some(account_label) = request.account_label {
+        receipt = receipt.with_metadata("requested_account", account_label);
+    }
+    if let Some(summary) = selected {
+        receipt = receipt
+            .with_metadata("selected_account", summary.account)
+            .with_metadata("credential_kind", summary.kind);
+    } else {
+        receipt = receipt.with_error_class(clankers_runtime::ErrorClass::Extension);
+    }
+    Ok(receipt)
+}
+
+struct CredentialSummary {
+    account: String,
+    kind: &'static str,
+}
+
+fn select_credential_summary(
+    credentials: &[(String, clankers_provider::auth::StoredCredential)],
+    account_label: Option<&str>,
+) -> Option<CredentialSummary> {
+    let (account, credential) = account_label
+        .and_then(|requested| credentials.iter().find(|(account, _)| account == requested))
+        .or_else(|| credentials.first())?;
+    Some(CredentialSummary {
+        account: account.clone(),
+        kind: credential_kind(credential),
+    })
+}
+
+fn credential_kind(credential: &clankers_provider::auth::StoredCredential) -> &'static str {
+    match credential {
+        clankers_provider::auth::StoredCredential::ApiKey { .. } => "static",
+        clankers_provider::auth::StoredCredential::OAuth { .. } => "oauth",
     }
 }
 
@@ -397,11 +477,35 @@ impl CredentialPoolPolicyService for DesktopCredentialPoolPolicyService {
     }
 
     fn select(&self, request: CredentialPoolRequest) -> Result<ExtensionReceipt, RuntimeError> {
-        Ok(
-            ExtensionReceipt::new("desktop_credential_pool", "select", clankers_runtime::ExtensionStatus::Succeeded)
-                .with_metadata("provider", request.provider)
-                .with_metadata("strategy", request.strategy),
+        let Some(auth_store) = &self.auth_store else {
+            return Err(RuntimeError::ExtensionUnavailable("desktop credential pool not injected".to_string()));
+        };
+        let store = auth_store.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+        let credentials = store.all_credentials(&request.provider);
+        let selected = select_credential_summary(&credentials, request.account_label.as_deref());
+        let mut receipt = ExtensionReceipt::new(
+            "desktop_credential_pool",
+            "select",
+            if selected.is_some() {
+                clankers_runtime::ExtensionStatus::Succeeded
+            } else {
+                clankers_runtime::ExtensionStatus::Unavailable
+            },
         )
+        .with_metadata("provider", request.provider)
+        .with_metadata("strategy", request.strategy)
+        .with_metadata("available_credentials", credentials.len().to_string());
+        if let Some(account_label) = request.account_label {
+            receipt = receipt.with_metadata("requested_account", account_label);
+        }
+        if let Some(summary) = selected {
+            receipt = receipt
+                .with_metadata("selected_account", summary.account)
+                .with_metadata("credential_kind", summary.kind);
+        } else {
+            receipt = receipt.with_error_class(clankers_runtime::ErrorClass::Extension);
+        }
+        Ok(receipt)
     }
 }
 
@@ -511,6 +615,9 @@ mod tests {
     use std::sync::Arc;
     use std::sync::Mutex;
 
+    use clankers_runtime::AuthStoreAccessRequest;
+    use clankers_runtime::AuthStoreOperation;
+    use clankers_runtime::CredentialPoolRequest;
     use clankers_runtime::ExtensionRuntimeKind;
     use clankers_runtime::ExtensionRuntimeRequest;
     use clankers_runtime::ExtensionStatus;
@@ -563,6 +670,37 @@ mod tests {
             system_prompt: Some("system secret text must not appear in receipt".to_string()),
             max_tokens: Some(32),
             session_id: Some("session-provider-runtime".to_string()),
+        }
+    }
+
+    fn injected_auth_store() -> Arc<Mutex<clankers_provider::auth::AuthStore>> {
+        let mut store = clankers_provider::auth::AuthStore::default();
+        store.set_credential("openrouter", "primary", clankers_provider::auth::StoredCredential::ApiKey {
+            api_key: "sk-secret-runtime-auth-value".to_string(),
+            label: Some("primary label must not leak".to_string()),
+        });
+        store.set_credential("openrouter", "backup", clankers_provider::auth::StoredCredential::OAuth {
+            access_token: "oauth-access-secret-runtime-auth-value".to_string(),
+            refresh_token: "oauth-refresh-secret-runtime-auth-value".to_string(),
+            expires_at_ms: i64::MAX,
+            label: None,
+        });
+        Arc::new(Mutex::new(store))
+    }
+
+    fn lookup_request(account_label: Option<&str>) -> AuthStoreAccessRequest {
+        AuthStoreAccessRequest {
+            provider: "openrouter".to_string(),
+            account_label: account_label.map(ToString::to_string),
+            operation: AuthStoreOperation::Lookup,
+        }
+    }
+
+    fn pool_request(account_label: Option<&str>) -> CredentialPoolRequest {
+        CredentialPoolRequest {
+            provider: "openrouter".to_string(),
+            strategy: "round_robin".to_string(),
+            account_label: account_label.map(ToString::to_string),
         }
     }
 
@@ -630,6 +768,90 @@ mod tests {
 
         assert_eq!(error, RuntimeError::InvalidPrompt("provider execution request missing prompt".to_string()),);
         assert!(provider_for_assert.requests.lock().unwrap().is_empty());
+    }
+
+    #[test]
+    fn desktop_runtime_auth_services_fail_closed_without_injection() {
+        let paths = crate::config::ClankersPaths::resolve();
+        let temp = tempfile::tempdir().expect("temp project root");
+        let project_paths = crate::config::ProjectPaths::resolve(temp.path());
+        let services = DesktopRuntimeServiceAdapters::from_paths(&paths, &project_paths);
+
+        let auth_error = services.extensions.auth_store.access(lookup_request(Some("primary"))).unwrap_err();
+        let pool_error = services.extensions.credential_pool.select(pool_request(Some("primary"))).unwrap_err();
+
+        assert_eq!(auth_error, RuntimeError::ExtensionUnavailable("desktop auth store not injected".to_string()));
+        assert_eq!(pool_error, RuntimeError::ExtensionUnavailable("desktop credential pool not injected".to_string()));
+    }
+
+    #[test]
+    fn desktop_runtime_auth_lookup_uses_injected_store_with_safe_receipt() {
+        let paths = crate::config::ClankersPaths::resolve();
+        let temp = tempfile::tempdir().expect("temp project root");
+        let project_paths = crate::config::ProjectPaths::resolve(temp.path());
+        let services =
+            DesktopRuntimeServiceAdapters::from_paths_with_auth_store(&paths, &project_paths, injected_auth_store());
+
+        let receipt = services.extensions.auth_store.access(lookup_request(Some("backup"))).expect("lookup receipt");
+
+        assert_eq!(receipt.status, ExtensionStatus::Succeeded);
+        assert_eq!(receipt.source, "desktop_extension_auth_store");
+        assert_eq!(receipt.action, "lookup");
+        assert_eq!(receipt.metadata.fields.get("provider").unwrap(), "openrouter");
+        assert_eq!(receipt.metadata.fields.get("requested_account").unwrap(), "backup");
+        assert_eq!(receipt.metadata.fields.get("selected_account").unwrap(), "backup");
+        assert_eq!(receipt.metadata.fields.get("credential_kind").unwrap(), "oauth");
+        assert_eq!(receipt.metadata.fields.get("credential_count").unwrap(), "2");
+        assert!(!receipt.metadata.fields.values().any(|value| value.contains("secret-runtime-auth-value")));
+        assert!(!receipt.metadata.fields.values().any(|value| value.contains("primary label must not leak")));
+        assert!(!receipt.contains_secret_markers());
+    }
+
+    #[test]
+    fn desktop_runtime_credential_pool_selects_from_injected_store_with_safe_receipt() {
+        let paths = crate::config::ClankersPaths::resolve();
+        let temp = tempfile::tempdir().expect("temp project root");
+        let project_paths = crate::config::ProjectPaths::resolve(temp.path());
+        let services =
+            DesktopRuntimeServiceAdapters::from_paths_with_auth_store(&paths, &project_paths, injected_auth_store());
+
+        let receipt = services.extensions.credential_pool.select(pool_request(Some("primary"))).expect("pool receipt");
+
+        assert_eq!(receipt.status, ExtensionStatus::Succeeded);
+        assert_eq!(receipt.source, "desktop_credential_pool");
+        assert_eq!(receipt.metadata.fields.get("provider").unwrap(), "openrouter");
+        assert_eq!(receipt.metadata.fields.get("strategy").unwrap(), "round_robin");
+        assert_eq!(receipt.metadata.fields.get("selected_account").unwrap(), "primary");
+        assert_eq!(receipt.metadata.fields.get("credential_kind").unwrap(), "static");
+        assert_eq!(receipt.metadata.fields.get("available_credentials").unwrap(), "2");
+        assert!(!receipt.metadata.fields.values().any(|value| value.contains("secret-runtime-auth-value")));
+        assert!(!receipt.metadata.fields.values().any(|value| value.contains("primary label must not leak")));
+        assert!(!receipt.contains_secret_markers());
+    }
+
+    #[test]
+    fn desktop_runtime_auth_mutations_fail_closed_even_with_read_only_store() {
+        let paths = crate::config::ClankersPaths::resolve();
+        let temp = tempfile::tempdir().expect("temp project root");
+        let project_paths = crate::config::ProjectPaths::resolve(temp.path());
+        let services =
+            DesktopRuntimeServiceAdapters::from_paths_with_auth_store(&paths, &project_paths, injected_auth_store());
+        let mut refresh = lookup_request(Some("primary"));
+        refresh.operation = AuthStoreOperation::RefreshPersist;
+        let mut verifier = lookup_request(Some("primary"));
+        verifier.operation = AuthStoreOperation::PendingLoginVerifier;
+
+        let refresh_error = services.extensions.auth_store.access(refresh).unwrap_err();
+        let verifier_error = services.extensions.auth_store.access(verifier).unwrap_err();
+
+        assert_eq!(
+            refresh_error,
+            RuntimeError::ExtensionUnavailable("desktop runtime auth refresh persistence not injected".to_string())
+        );
+        assert_eq!(
+            verifier_error,
+            RuntimeError::ExtensionUnavailable("desktop runtime pending login verifier store not injected".to_string())
+        );
     }
 
     #[test]
