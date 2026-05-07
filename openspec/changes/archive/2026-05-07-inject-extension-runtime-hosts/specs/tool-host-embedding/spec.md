@@ -42,6 +42,8 @@ The tool catalog MUST expose named capability packs for coarse host policy selec
 - THEN the disabled tool is omitted even if its pack is enabled
 - THEN the omission is visible in safe catalog metadata for debugging
 
+## ADDED Requirements
+
 ### Requirement: Extension runtime publication is explicit [r[tool-host-embedding.extension-runtime.explicit-publication]]
 
 The catalog builder MUST publish plugin, MCP, router-backed, auth-backed, and gateway-backed tools only when the host explicitly enables the corresponding capability pack and supplies or selects an extension runtime service that is allowed to publish that tool.

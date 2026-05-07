@@ -9,8 +9,19 @@ use std::sync::Arc;
 use clankers_runtime::AuthService;
 use clankers_runtime::CacheStore;
 use clankers_runtime::CheckpointStore;
+use clankers_runtime::CredentialPoolPolicyService;
+use clankers_runtime::CredentialPoolRequest;
+use clankers_runtime::ExtensionAuthStoreService;
+use clankers_runtime::ExtensionReceipt;
+use clankers_runtime::ExtensionRuntimeKind;
+use clankers_runtime::ExtensionRuntimeRequest;
+use clankers_runtime::ExtensionRuntimeService;
+use clankers_runtime::ExtensionServices;
+use clankers_runtime::ExtensionToolDescriptor;
 use clankers_runtime::PluginStore;
 use clankers_runtime::ProjectContextService;
+use clankers_runtime::ProviderExecutionRequest;
+use clankers_runtime::ProviderRouterService;
 use clankers_runtime::RuntimeError;
 use clankers_runtime::RuntimeServices;
 use clankers_runtime::SessionId;
@@ -57,6 +68,12 @@ impl DesktopRuntimeServiceAdapters {
         let checkpoints = Arc::new(DesktopCheckpointStore {
             checkpoints_dir: project_paths.config_dir.join("checkpoints"),
         });
+        let extensions = ExtensionServices {
+            provider_router: Arc::new(DesktopProviderRouterService),
+            auth_store: Arc::new(DesktopExtensionAuthStoreService),
+            credential_pool: Arc::new(DesktopCredentialPoolPolicyService),
+            runtime: Arc::new(DesktopExtensionRuntimeService),
+        };
         RuntimeServices {
             settings,
             auth,
@@ -66,6 +83,7 @@ impl DesktopRuntimeServiceAdapters {
             skills,
             plugins,
             checkpoints,
+            extensions,
         }
     }
 }
@@ -157,6 +175,73 @@ impl CheckpointStore for DesktopCheckpointStore {
     }
 }
 
+struct DesktopProviderRouterService;
+struct DesktopExtensionAuthStoreService;
+struct DesktopCredentialPoolPolicyService;
+struct DesktopExtensionRuntimeService;
+
+impl ProviderRouterService for DesktopProviderRouterService {
+    fn capability(&self) -> &'static str {
+        "desktop_provider_router"
+    }
+
+    fn execute(&self, request: ProviderExecutionRequest) -> Result<ExtensionReceipt, RuntimeError> {
+        Ok(
+            ExtensionReceipt::new("desktop_provider_router", "execute", clankers_runtime::ExtensionStatus::Succeeded)
+                .with_metadata("provider", request.provider)
+                .with_metadata("route_source", request.route_source),
+        )
+    }
+}
+
+impl ExtensionAuthStoreService for DesktopExtensionAuthStoreService {
+    fn capability(&self) -> &'static str {
+        "desktop_extension_auth_store"
+    }
+
+    fn access(&self, request: clankers_runtime::AuthStoreAccessRequest) -> Result<ExtensionReceipt, RuntimeError> {
+        Ok(ExtensionReceipt::new(
+            "desktop_extension_auth_store",
+            format!("{:?}", request.operation),
+            clankers_runtime::ExtensionStatus::Succeeded,
+        )
+        .with_metadata("provider", request.provider))
+    }
+}
+
+impl CredentialPoolPolicyService for DesktopCredentialPoolPolicyService {
+    fn capability(&self) -> &'static str {
+        "desktop_credential_pool"
+    }
+
+    fn select(&self, request: CredentialPoolRequest) -> Result<ExtensionReceipt, RuntimeError> {
+        Ok(
+            ExtensionReceipt::new("desktop_credential_pool", "select", clankers_runtime::ExtensionStatus::Succeeded)
+                .with_metadata("provider", request.provider)
+                .with_metadata("strategy", request.strategy),
+        )
+    }
+}
+
+impl ExtensionRuntimeService for DesktopExtensionRuntimeService {
+    fn capability(&self) -> &'static str {
+        "desktop_extension_runtime"
+    }
+
+    fn publishable_tools(&self, kind: ExtensionRuntimeKind) -> Result<Vec<ExtensionToolDescriptor>, RuntimeError> {
+        let _ = kind;
+        Ok(Vec::new())
+    }
+
+    fn execute(&self, request: ExtensionRuntimeRequest) -> Result<ExtensionReceipt, RuntimeError> {
+        Ok(ExtensionReceipt::new(
+            "desktop_extension_runtime",
+            request.action,
+            clankers_runtime::ExtensionStatus::Succeeded,
+        ))
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::DesktopRuntimeServiceAdapters;
@@ -175,5 +260,9 @@ mod tests {
         assert_eq!(metadata.fields.get("sessions").unwrap(), "desktop_sessions");
         assert_eq!(metadata.fields.get("plugins").unwrap(), "desktop_plugins");
         assert_eq!(metadata.fields.get("project_context").unwrap(), "desktop_project_context");
+        assert_eq!(metadata.fields.get("provider_router").unwrap(), "desktop_provider_router");
+        assert_eq!(metadata.fields.get("extension_auth_store").unwrap(), "desktop_extension_auth_store");
+        assert_eq!(metadata.fields.get("credential_pool").unwrap(), "desktop_credential_pool");
+        assert_eq!(metadata.fields.get("extension_runtime").unwrap(), "desktop_extension_runtime");
     }
 }

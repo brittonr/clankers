@@ -45,9 +45,20 @@ Every descriptor declares its `SideEffectLevel` and whether confirmation is requ
 
 ## Host-owned runtime services
 
-`RuntimeServices::in_memory()` is the minimal no-ambient-path profile. It uses noop settings/auth/cache/project/skills/plugins/checkpoints and an in-memory session store.
+`RuntimeServices::in_memory()` is the minimal no-ambient-path profile. It uses noop settings/auth/cache/project/skills/plugins/checkpoints, an in-memory session store, and disabled extension services.
 
-Desktop Clankers adapters should wrap existing `~/.clankers`, project `.clankers`, auth, plugin, and session defaults explicitly instead of letting embedders inherit those paths by accident.
+Extension systems are split from ordinary stores through `ExtensionServices`:
+
+- `provider_router` owns provider/router execution. The default disabled service does not autostart the desktop router daemon or contact provider backends.
+- `auth_store` owns provider-scoped auth lookup, OAuth verifier persistence, and token-refresh persistence policy. The default disabled service cannot write login verifiers or refreshed credentials.
+- `credential_pool` owns account selection, rotation, cooldown, and pool strategy. The default disabled service never reads desktop credential pools.
+- `runtime` owns plugin, MCP, and gateway publication/execution. The default disabled service publishes no extension tools and does not launch plugin subprocesses, connect to MCP servers, inherit environment/header values, or deliver gateway artifacts.
+
+Desktop Clankers adapters wrap existing `~/.clankers`, project `.clankers`, auth, plugin, MCP, gateway, and session defaults explicitly. CLI/TUI/daemon/ACP/MCP shells should opt into those adapters when they want current desktop behavior; embedders should supply their own services or keep the disabled profile.
+
+Extension receipts and descriptors carry safe replay/debug metadata only: source class, action, status, timing, provider/server/tool labels, and error class. They must not contain API keys, OAuth/refresh tokens, authorization headers, environment values, raw provider request/response bodies, login-verifier secrets, credential file contents, raw plugin/MCP arguments, raw plugin output, or plugin state contents.
+
+Catalog construction remains separate from extension execution. Building a catalog may include extension-backed descriptors only when the host supplied/enabled the matching runtime service; metadata queries must not start routers, OAuth flows, plugin subprocesses, MCP servers, or gateway delivery paths.
 
 ## Confirmation broker
 

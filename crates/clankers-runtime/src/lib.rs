@@ -561,8 +561,13 @@ impl EventMetadata {
 
     #[must_use]
     pub fn with(mut self, key: impl Into<String>, value: impl Into<String>) -> Self {
-        let key = sanitize_metadata_value(key.into());
-        let value = sanitize_metadata_value(value.into());
+        let key: String = key.into().chars().take(160).collect();
+        let value = value.into();
+        let value = if contains_secret_marker(&key) {
+            "[REDACTED]".to_string()
+        } else {
+            sanitize_metadata_value(value)
+        };
         self.fields.insert(key, value);
         self
     }
@@ -575,7 +580,7 @@ impl EventMetadata {
 
     #[must_use]
     pub fn contains_secret_markers(&self) -> bool {
-        self.fields.iter().any(|(key, value)| contains_secret_marker(key) || contains_secret_marker(value))
+        self.fields.values().any(|value| contains_secret_marker(value))
     }
 }
 
@@ -596,7 +601,6 @@ fn contains_secret_marker(value: &str) -> bool {
         "api_key",
         "authorization",
         "bearer",
-        "credential",
         "cookie",
     ]
     .iter()
@@ -1125,6 +1129,7 @@ pub struct RuntimeServices {
     pub skills: Arc<dyn SkillStore>,
     pub plugins: Arc<dyn PluginStore>,
     pub checkpoints: Arc<dyn CheckpointStore>,
+    pub extensions: ExtensionServices,
 }
 
 impl RuntimeServices {
@@ -1140,11 +1145,13 @@ impl RuntimeServices {
             skills: noop.clone(),
             plugins: noop.clone(),
             checkpoints: noop,
+            extensions: ExtensionServices::disabled(),
         }
     }
 
     #[must_use]
     pub fn capability_metadata(&self) -> EventMetadata {
+        let extension_metadata = self.extensions.capability_metadata();
         EventMetadata::empty()
             .with("settings", self.settings.capability())
             .with("auth", self.auth.capability())
@@ -1154,6 +1161,54 @@ impl RuntimeServices {
             .with("skills", self.skills.capability())
             .with("plugins", self.plugins.capability())
             .with("checkpoints", self.checkpoints.capability())
+            .with(
+                "provider_router",
+                extension_metadata.fields.get("provider_router").cloned().unwrap_or_else(|| "disabled".to_string()),
+            )
+            .with(
+                "extension_auth_store",
+                extension_metadata.fields.get("auth_store").cloned().unwrap_or_else(|| "disabled".to_string()),
+            )
+            .with(
+                "credential_pool",
+                extension_metadata.fields.get("credential_pool").cloned().unwrap_or_else(|| "disabled".to_string()),
+            )
+            .with(
+                "extension_runtime",
+                extension_metadata.fields.get("runtime").cloned().unwrap_or_else(|| "disabled".to_string()),
+            )
+    }
+}
+
+/// Host-owned extension services for side-effectful provider/router/auth/plugin/MCP/gateway
+/// systems.
+#[derive(Clone)]
+pub struct ExtensionServices {
+    pub provider_router: Arc<dyn ProviderRouterService>,
+    pub auth_store: Arc<dyn ExtensionAuthStoreService>,
+    pub credential_pool: Arc<dyn CredentialPoolPolicyService>,
+    pub runtime: Arc<dyn ExtensionRuntimeService>,
+}
+
+impl ExtensionServices {
+    #[must_use]
+    pub fn disabled() -> Self {
+        let disabled = Arc::new(DisabledExtensionService);
+        Self {
+            provider_router: disabled.clone(),
+            auth_store: disabled.clone(),
+            credential_pool: disabled.clone(),
+            runtime: disabled,
+        }
+    }
+
+    #[must_use]
+    pub fn capability_metadata(&self) -> EventMetadata {
+        EventMetadata::empty()
+            .with("provider_router", self.provider_router.capability())
+            .with("auth_store", self.auth_store.capability())
+            .with("credential_pool", self.credential_pool.capability())
+            .with("runtime", self.runtime.capability())
     }
 }
 
@@ -1177,6 +1232,154 @@ pub trait PluginStore: Send + Sync {
 }
 pub trait CheckpointStore: Send + Sync {
     fn capability(&self) -> &'static str;
+}
+
+pub trait ProviderRouterService: Send + Sync {
+    fn capability(&self) -> &'static str;
+    fn execute(&self, request: ProviderExecutionRequest) -> Result<ExtensionReceipt, RuntimeError>;
+}
+
+pub trait ExtensionAuthStoreService: Send + Sync {
+    fn capability(&self) -> &'static str;
+    fn access(&self, request: AuthStoreAccessRequest) -> Result<ExtensionReceipt, RuntimeError>;
+}
+
+pub trait CredentialPoolPolicyService: Send + Sync {
+    fn capability(&self) -> &'static str;
+    fn select(&self, request: CredentialPoolRequest) -> Result<ExtensionReceipt, RuntimeError>;
+}
+
+pub trait ExtensionRuntimeService: Send + Sync {
+    fn capability(&self) -> &'static str;
+    fn publishable_tools(&self, kind: ExtensionRuntimeKind) -> Result<Vec<ExtensionToolDescriptor>, RuntimeError>;
+    fn execute(&self, request: ExtensionRuntimeRequest) -> Result<ExtensionReceipt, RuntimeError>;
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ProviderExecutionRequest {
+    pub provider: String,
+    pub model: Option<String>,
+    pub account_label: Option<String>,
+    pub route_source: String,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum AuthStoreOperation {
+    Lookup,
+    RefreshPersist,
+    PendingLoginVerifier,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct AuthStoreAccessRequest {
+    pub provider: String,
+    pub account_label: Option<String>,
+    pub operation: AuthStoreOperation,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct CredentialPoolRequest {
+    pub provider: String,
+    pub strategy: String,
+    pub account_label: Option<String>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ExtensionRuntimeKind {
+    Plugin,
+    Mcp,
+    Gateway,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ExtensionRuntimeRequest {
+    pub kind: ExtensionRuntimeKind,
+    pub action: String,
+    pub visible_tool_name: Option<String>,
+    pub original_tool_name: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ExtensionToolDescriptor {
+    pub source: ExtensionRuntimeKind,
+    pub visible_tool_name: String,
+    pub original_tool_name: Option<String>,
+    pub side_effect: SideEffectLevel,
+    pub prerequisites: Vec<String>,
+    pub metadata: EventMetadata,
+}
+
+impl ExtensionToolDescriptor {
+    #[must_use]
+    pub fn new(
+        source: ExtensionRuntimeKind,
+        visible_tool_name: impl Into<String>,
+        original_tool_name: Option<String>,
+        side_effect: SideEffectLevel,
+    ) -> Self {
+        Self {
+            source,
+            visible_tool_name: sanitize_metadata_value(visible_tool_name.into()),
+            original_tool_name: original_tool_name.map(sanitize_metadata_value),
+            side_effect,
+            prerequisites: Vec::new(),
+            metadata: EventMetadata::empty().with("source", format!("{source:?}")),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ExtensionStatus {
+    Succeeded,
+    Failed,
+    Disabled,
+    Unavailable,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ExtensionReceipt {
+    pub source: String,
+    pub action: String,
+    pub status: ExtensionStatus,
+    pub duration_ms: Option<u64>,
+    pub error_class: Option<ErrorClass>,
+    pub metadata: EventMetadata,
+}
+
+impl ExtensionReceipt {
+    #[must_use]
+    pub fn new(source: impl Into<String>, action: impl Into<String>, status: ExtensionStatus) -> Self {
+        Self {
+            source: sanitize_metadata_value(source.into()),
+            action: sanitize_metadata_value(action.into()),
+            status,
+            duration_ms: None,
+            error_class: None,
+            metadata: EventMetadata::empty(),
+        }
+    }
+
+    #[must_use]
+    pub fn with_metadata(mut self, key: impl Into<String>, value: impl Into<String>) -> Self {
+        self.metadata = self.metadata.with(key, value);
+        self
+    }
+
+    #[must_use]
+    pub fn with_error_class(mut self, class: ErrorClass) -> Self {
+        self.error_class = Some(class);
+        self
+    }
+
+    #[must_use]
+    pub fn contains_secret_markers(&self) -> bool {
+        contains_secret_marker(&self.source)
+            || contains_secret_marker(&self.action)
+            || self.metadata.contains_secret_markers()
+    }
 }
 
 pub trait SessionStore: Send + Sync {
@@ -1216,6 +1419,57 @@ pub struct PromptReplayEntry {
     pub user_prompt: String,
     pub assembled_prompt: AssembledPrompt,
     pub completed_at: DateTime<Utc>,
+}
+
+pub struct DisabledExtensionService;
+
+impl ProviderRouterService for DisabledExtensionService {
+    fn capability(&self) -> &'static str {
+        "disabled"
+    }
+
+    fn execute(&self, request: ProviderExecutionRequest) -> Result<ExtensionReceipt, RuntimeError> {
+        let _ = request;
+        Err(RuntimeError::ExtensionUnavailable("provider router disabled".to_string()))
+    }
+}
+
+impl ExtensionAuthStoreService for DisabledExtensionService {
+    fn capability(&self) -> &'static str {
+        "disabled"
+    }
+
+    fn access(&self, request: AuthStoreAccessRequest) -> Result<ExtensionReceipt, RuntimeError> {
+        let _ = request;
+        Err(RuntimeError::ExtensionUnavailable("extension auth store disabled".to_string()))
+    }
+}
+
+impl CredentialPoolPolicyService for DisabledExtensionService {
+    fn capability(&self) -> &'static str {
+        "disabled"
+    }
+
+    fn select(&self, request: CredentialPoolRequest) -> Result<ExtensionReceipt, RuntimeError> {
+        let _ = request;
+        Err(RuntimeError::ExtensionUnavailable("credential pool disabled".to_string()))
+    }
+}
+
+impl ExtensionRuntimeService for DisabledExtensionService {
+    fn capability(&self) -> &'static str {
+        "disabled"
+    }
+
+    fn publishable_tools(&self, kind: ExtensionRuntimeKind) -> Result<Vec<ExtensionToolDescriptor>, RuntimeError> {
+        let _ = kind;
+        Ok(Vec::new())
+    }
+
+    fn execute(&self, request: ExtensionRuntimeRequest) -> Result<ExtensionReceipt, RuntimeError> {
+        let _ = request;
+        Err(RuntimeError::ExtensionUnavailable("extension runtime disabled".to_string()))
+    }
 }
 
 pub struct NoopService;
@@ -1315,6 +1569,8 @@ pub enum RuntimeError {
     ConfirmationCancelled,
     #[error("confirmation denied: {0}")]
     ConfirmationDenied(String),
+    #[error("extension unavailable: {0}")]
+    ExtensionUnavailable(String),
     #[error("public runtime boundary leaked adapter type: {0}")]
     PublicBoundaryLeak(String),
     #[error("model failed: {0}")]
@@ -1339,6 +1595,7 @@ impl RuntimeError {
             | Self::ConfirmationTimedOut
             | Self::ConfirmationCancelled
             | Self::ConfirmationDenied(_) => ErrorClass::Confirmation,
+            Self::ExtensionUnavailable(_) => ErrorClass::Extension,
             Self::PublicBoundaryLeak(_) => ErrorClass::Boundary,
             Self::Model(_) => ErrorClass::Model,
         }
@@ -1354,6 +1611,7 @@ pub enum ErrorClass {
     Tooling,
     Storage,
     Confirmation,
+    Extension,
     Boundary,
     Model,
 }
@@ -1491,8 +1749,167 @@ mod tests {
         assert_eq!(metadata.fields.get("settings").unwrap(), "noop");
         assert_eq!(metadata.fields.get("auth").unwrap(), "noop");
         assert_eq!(metadata.fields.get("sessions").unwrap(), "in_memory");
+        assert_eq!(metadata.fields.get("provider_router").unwrap(), "disabled");
+        assert_eq!(metadata.fields.get("extension_auth_store").unwrap(), "disabled");
+        assert_eq!(metadata.fields.get("credential_pool").unwrap(), "disabled");
+        assert_eq!(metadata.fields.get("extension_runtime").unwrap(), "disabled");
         let session = runtime.create_session(SessionOptions::default()).await.unwrap();
         session.submit_prompt(PromptInput::new("no ambient path access")).await.unwrap();
+    }
+
+    #[test]
+    fn disabled_extension_services_fail_closed_without_startup_side_effects() {
+        let extensions = ExtensionServices::disabled();
+        assert_eq!(extensions.runtime.publishable_tools(ExtensionRuntimeKind::Plugin).unwrap(), Vec::new());
+        assert_eq!(extensions.runtime.publishable_tools(ExtensionRuntimeKind::Mcp).unwrap(), Vec::new());
+        assert_eq!(extensions.runtime.publishable_tools(ExtensionRuntimeKind::Gateway).unwrap(), Vec::new());
+
+        let provider_error = extensions
+            .provider_router
+            .execute(ProviderExecutionRequest {
+                provider: "openai-codex".to_string(),
+                model: Some("gpt-5.3-codex".to_string()),
+                account_label: Some("desktop".to_string()),
+                route_source: "embedded".to_string(),
+            })
+            .unwrap_err();
+        assert_eq!(provider_error, RuntimeError::ExtensionUnavailable("provider router disabled".to_string()));
+
+        let auth_error = extensions
+            .auth_store
+            .access(AuthStoreAccessRequest {
+                provider: "anthropic".to_string(),
+                account_label: Some("default".to_string()),
+                operation: AuthStoreOperation::PendingLoginVerifier,
+            })
+            .unwrap_err();
+        assert_eq!(auth_error, RuntimeError::ExtensionUnavailable("extension auth store disabled".to_string()));
+
+        let pool_error = extensions
+            .credential_pool
+            .select(CredentialPoolRequest {
+                provider: "anthropic".to_string(),
+                strategy: "fill_first".to_string(),
+                account_label: None,
+            })
+            .unwrap_err();
+        assert_eq!(pool_error, RuntimeError::ExtensionUnavailable("credential pool disabled".to_string()));
+
+        let runtime_error = extensions
+            .runtime
+            .execute(ExtensionRuntimeRequest {
+                kind: ExtensionRuntimeKind::Plugin,
+                action: "call".to_string(),
+                visible_tool_name: Some("plugin_secret_token_tool".to_string()),
+                original_tool_name: Some("raw".to_string()),
+            })
+            .unwrap_err();
+        assert_eq!(runtime_error, RuntimeError::ExtensionUnavailable("extension runtime disabled".to_string()));
+    }
+
+    #[test]
+    fn extension_receipts_and_descriptors_redact_secret_like_metadata() {
+        let receipt =
+            ExtensionReceipt::new("bearer token provider", "authorization header call", ExtensionStatus::Failed)
+                .with_metadata("api_key", "abc123")
+                .with_metadata("provider", "anthropic")
+                .with_error_class(ErrorClass::Extension);
+        assert_eq!(receipt.source, "[REDACTED]");
+        assert_eq!(receipt.action, "[REDACTED]");
+        assert_eq!(receipt.metadata.fields.get("api_key").unwrap(), "[REDACTED]");
+        assert_eq!(receipt.metadata.fields.get("provider").unwrap(), "anthropic");
+        assert!(!receipt.contains_secret_markers());
+
+        let descriptor = ExtensionToolDescriptor::new(
+            ExtensionRuntimeKind::Mcp,
+            "mcp_authorization_header_tool",
+            Some("plugin token payload".to_string()),
+            SideEffectLevel::ExternalIo,
+        );
+        assert_eq!(descriptor.visible_tool_name, "[REDACTED]");
+        assert_eq!(descriptor.original_tool_name.as_deref(), Some("[REDACTED]"));
+        assert!(!descriptor.metadata.contains_secret_markers());
+    }
+
+    struct StaticExtensionService;
+
+    impl ProviderRouterService for StaticExtensionService {
+        fn capability(&self) -> &'static str {
+            "host_provider_router"
+        }
+
+        fn execute(&self, request: ProviderExecutionRequest) -> Result<ExtensionReceipt, RuntimeError> {
+            Ok(ExtensionReceipt::new("host_provider_router", "execute", ExtensionStatus::Succeeded)
+                .with_metadata("provider", request.provider)
+                .with_metadata("route_source", request.route_source))
+        }
+    }
+
+    impl ExtensionAuthStoreService for StaticExtensionService {
+        fn capability(&self) -> &'static str {
+            "host_auth_store"
+        }
+
+        fn access(&self, request: AuthStoreAccessRequest) -> Result<ExtensionReceipt, RuntimeError> {
+            Ok(
+                ExtensionReceipt::new(
+                    "host_auth_store",
+                    format!("{:?}", request.operation),
+                    ExtensionStatus::Succeeded,
+                )
+                .with_metadata("provider", request.provider),
+            )
+        }
+    }
+
+    impl CredentialPoolPolicyService for StaticExtensionService {
+        fn capability(&self) -> &'static str {
+            "host_credential_pool"
+        }
+
+        fn select(&self, request: CredentialPoolRequest) -> Result<ExtensionReceipt, RuntimeError> {
+            Ok(ExtensionReceipt::new("host_credential_pool", request.strategy, ExtensionStatus::Succeeded)
+                .with_metadata("provider", request.provider))
+        }
+    }
+
+    impl ExtensionRuntimeService for StaticExtensionService {
+        fn capability(&self) -> &'static str {
+            "host_extension_runtime"
+        }
+
+        fn publishable_tools(&self, kind: ExtensionRuntimeKind) -> Result<Vec<ExtensionToolDescriptor>, RuntimeError> {
+            Ok(vec![ExtensionToolDescriptor::new(
+                kind,
+                "host_visible_tool",
+                Some("original_tool".to_string()),
+                SideEffectLevel::ExternalIo,
+            )])
+        }
+
+        fn execute(&self, request: ExtensionRuntimeRequest) -> Result<ExtensionReceipt, RuntimeError> {
+            Ok(ExtensionReceipt::new("host_extension_runtime", request.action, ExtensionStatus::Succeeded))
+        }
+    }
+
+    #[test]
+    fn host_supplied_extension_services_are_explicit_capabilities() {
+        let service = Arc::new(StaticExtensionService);
+        let extensions = ExtensionServices {
+            provider_router: service.clone(),
+            auth_store: service.clone(),
+            credential_pool: service.clone(),
+            runtime: service,
+        };
+        let metadata = extensions.capability_metadata();
+        assert_eq!(metadata.fields.get("provider_router").unwrap(), "host_provider_router");
+        assert_eq!(metadata.fields.get("auth_store").unwrap(), "host_auth_store");
+        assert_eq!(metadata.fields.get("credential_pool").unwrap(), "host_credential_pool");
+        assert_eq!(metadata.fields.get("runtime").unwrap(), "host_extension_runtime");
+
+        let tools = extensions.runtime.publishable_tools(ExtensionRuntimeKind::Mcp).unwrap();
+        assert_eq!(tools.len(), 1);
+        assert_eq!(tools[0].visible_tool_name, "host_visible_tool");
     }
 
     #[test]
