@@ -7,5 +7,5 @@
 
 ## Phase 2: Adapter convergence
 
-- [ ] [serial] Wire one existing headless or daemon path through the runtime facade, or add a parity harness proving identical semantics against a real existing path. [covers=embeddable-runtime-api.adapter-parity.prompt]
+- [x] [serial] Wire one existing headless or daemon path through the runtime facade, or add a parity harness proving identical semantics against a real existing path. ✅ (completed: 2026-05-07T03:52:50Z) [covers=embeddable-runtime-api.adapter-parity.prompt] [evidence=cargo test -p clankers runtime_facade_batch_executor_matches_existing_batch_semantics]
 - [x] [parallel] Document the supported Rust embedding API and current non-goals. ✅ 26m (started: 2026-05-07T02:22:19Z → completed: 2026-05-07T02:48:26Z) [covers=embeddable-runtime-api.facade.create-session] [evidence=docs/src/reference/embedding.md]

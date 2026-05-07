@@ -133,6 +133,53 @@ pub trait BatchJobExecutor: Send + Sync {
     }
 }
 
+/// Batch executor that runs existing batch/headless prompts through the embeddable runtime facade.
+pub struct RuntimeFacadeBatchExecutor;
+
+#[async_trait::async_trait]
+impl BatchJobExecutor for RuntimeFacadeBatchExecutor {
+    async fn execute(&self, job: &BatchJob) -> Result<String, String> {
+        self.execute_batch_job("batch", "job", None, job).await
+    }
+
+    async fn execute_batch_job(
+        &self,
+        _run_id: &str,
+        _job_id: &str,
+        session_id: Option<&str>,
+        job: &BatchJob,
+    ) -> Result<String, String> {
+        let runtime = clankers_runtime::RuntimeBuilder::new().build().map_err(|err| err.safe_message())?;
+        let session = runtime
+            .create_session(clankers_runtime::SessionOptions {
+                session_id: session_id.map(clankers_runtime::SessionId::from_host),
+                model: self.model_label().map(str::to_string),
+            })
+            .await
+            .map_err(|err| err.safe_message())?;
+        let mut events = session.take_events().await.map_err(|err| err.safe_message())?;
+        session
+            .submit_prompt(clankers_runtime::PromptInput::new(job.prompt.clone()))
+            .await
+            .map_err(|err| err.safe_message())?;
+
+        let mut assistant = String::new();
+        while let Some(event) = events.recv().await {
+            match event {
+                clankers_runtime::SessionEvent::AssistantDelta { text, .. } => assistant.push_str(&text),
+                clankers_runtime::SessionEvent::Completed { .. } => break,
+                clankers_runtime::SessionEvent::Error { message, .. } => return Err(message),
+                _ => {}
+            }
+        }
+        Ok(assistant)
+    }
+
+    fn model_label(&self) -> Option<&str> {
+        Some("runtime-echo")
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum BatchPolicyError {
     BlankPrompt,
@@ -625,6 +672,38 @@ mod tests {
         fn model_label(&self) -> Option<&str> {
             Some("fake-model")
         }
+    }
+
+    #[tokio::test]
+    async fn runtime_facade_batch_executor_matches_existing_batch_semantics() {
+        let local_cfg = BatchRunConfig::new("prompts.jsonl", "out", 2, TrajectoryFormat::Jsonl, false);
+        let jobs =
+            parse_jsonl_jobs(r#"{"id":"a","prompt":"hello runtime","metadata":{"expected_contains":"hello runtime"}}"#)
+                .unwrap();
+
+        let (_existing_summary, existing) = run_batch_jobs(&local_cfg, jobs.clone(), &EchoExecutor).await.unwrap();
+        let (_runtime_summary, runtime) =
+            run_batch_jobs(&local_cfg, jobs.clone(), &RuntimeFacadeBatchExecutor).await.unwrap();
+
+        assert_eq!(existing[0].status, runtime[0].status);
+        assert_eq!(existing[0].id, runtime[0].id);
+        assert_eq!(existing[0].prompt, runtime[0].prompt);
+        assert_eq!(existing[0].response, runtime[0].response);
+        assert_eq!(runtime[0].metadata.as_ref().unwrap().get("execution").unwrap(), "local");
+        assert!(!runtime[0].metadata.as_ref().unwrap().to_string().contains("hello runtime"));
+
+        let daemon_cfg = BatchRunConfig::new("prompts.jsonl", "out", 2, TrajectoryFormat::EvalJsonl, false)
+            .with_execution(BatchExecutionMode::Daemon)
+            .with_run_id(Some("runtime-parity".to_string()));
+        let (_existing_daemon_summary, existing_daemon) =
+            run_batch_jobs(&daemon_cfg, jobs.clone(), &EchoExecutor).await.unwrap();
+        let (_runtime_daemon_summary, runtime_daemon) =
+            run_batch_jobs(&daemon_cfg, jobs, &RuntimeFacadeBatchExecutor).await.unwrap();
+
+        assert_eq!(existing_daemon[0].response, runtime_daemon[0].response);
+        assert_eq!(existing_daemon[0].session_id, runtime_daemon[0].session_id);
+        assert_eq!(runtime_daemon[0].session_id.as_deref(), Some("batch-runtime-parity-a"));
+        assert_eq!(runtime_daemon[0].objective.as_ref().unwrap().status, "scored");
     }
 
     #[tokio::test]
