@@ -9,5 +9,5 @@
 
 - [ ] [serial] Extract default Clankers publication from existing built-in/plugin/MCP/gateway registration and add parity tests against that source. [covers=tool-host-embedding.catalog-builder.default-parity]
 - [x] [parallel] Add negative tests proving dangerous packs are absent unless explicitly enabled. ✅ 26m (started: 2026-05-07T02:22:19Z → completed: 2026-05-07T02:48:26Z) [covers=tool-host-embedding.capability-packs.dangerous-opt-in] [evidence=clankers-runtime::tests::tool_catalog_embedding_safe_excludes_dangerous_packs]
-- [ ] [parallel] Add disabled-tool filtering to the catalog builder and tests proving disabled tools are omitted from host-visible metadata. [covers=tool-host-embedding.catalog-builder.disabled-tools]
+- [x] [parallel] Add disabled-tool filtering to the catalog builder and tests proving disabled tools are omitted from host-visible metadata. ✅ (completed: 2026-05-07T02:54:44Z) [covers=tool-host-embedding.catalog-builder.disabled-tools] [evidence=clankers-runtime::tests::tool_catalog_filters_disabled_tools_from_host_metadata]
 - [x] [parallel] Document embedding-safe tool profiles and pack prerequisites. ✅ 26m (started: 2026-05-07T02:22:19Z → completed: 2026-05-07T02:48:26Z) [covers=tool-host-embedding.capability-packs] [evidence=docs/src/reference/embedding.md]

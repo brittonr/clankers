@@ -806,6 +806,7 @@ impl ToolCatalog {
 pub struct ToolCatalogBuilder {
     tools: BTreeMap<String, ToolDescriptor>,
     packs: BTreeSet<CapabilityPack>,
+    disabled_tools: BTreeSet<String>,
 }
 
 impl ToolCatalogBuilder {
@@ -822,6 +823,9 @@ impl ToolCatalogBuilder {
         if descriptor.name.trim().is_empty() {
             return Err(RuntimeError::InvalidTool("tool name cannot be blank".to_string()));
         }
+        if self.disabled_tools.contains(&descriptor.name) {
+            return Ok(self);
+        }
         if self.tools.contains_key(&descriptor.name) {
             return Err(RuntimeError::ToolNameCollision(descriptor.name));
         }
@@ -829,9 +833,32 @@ impl ToolCatalogBuilder {
         Ok(self)
     }
 
+    #[must_use]
+    pub fn disabled_tool(mut self, name: impl Into<String>) -> Self {
+        let name = name.into();
+        if !name.trim().is_empty() {
+            self.tools.remove(&name);
+            self.disabled_tools.insert(name);
+        }
+        self
+    }
+
+    #[must_use]
+    pub fn disabled_tools<I, S>(mut self, names: I) -> Self
+    where
+        I: IntoIterator<Item = S>,
+        S: Into<String>,
+    {
+        for name in names {
+            self = self.disabled_tool(name);
+        }
+        self
+    }
+
     pub fn build(self) -> Result<ToolCatalog, RuntimeError> {
+        let tools = self.tools.into_iter().filter(|(name, _)| !self.disabled_tools.contains(name)).collect();
         Ok(ToolCatalog {
-            tools: self.tools,
+            tools,
             packs: self.packs,
         })
     }
@@ -1392,6 +1419,25 @@ mod tests {
         let builder = ToolCatalog::builder().pack(CapabilityPack::ReadOnly).custom_tool(descriptor.clone()).unwrap();
         let err = builder.custom_tool(descriptor).unwrap_err();
         assert_eq!(err, RuntimeError::ToolNameCollision("host_search".to_string()));
+    }
+
+    #[test]
+    fn tool_catalog_filters_disabled_tools_from_host_metadata() {
+        let custom = ToolDescriptor::new("host_search", "host search", SideEffectLevel::ReadOnly);
+        let catalog = ToolCatalog::builder()
+            .pack(CapabilityPack::ReadOnly)
+            .pack(CapabilityPack::ShellCommands)
+            .disabled_tools(["search", "bash", "host_search"])
+            .custom_tool(custom)
+            .unwrap()
+            .build()
+            .unwrap();
+
+        assert!(catalog.contains_tool("read"));
+        assert!(!catalog.contains_tool("search"));
+        assert!(!catalog.contains_tool("bash"));
+        assert!(!catalog.contains_tool("host_search"));
+        assert!(catalog.tools().all(|tool| !matches!(tool.name.as_str(), "search" | "bash" | "host_search")));
     }
 
     #[test]
