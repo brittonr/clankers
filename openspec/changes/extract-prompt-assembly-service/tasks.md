@@ -8,5 +8,5 @@
 ## Phase 2: Clankers parity
 
 - [ ] [serial] Route normal Clankers prompt assembly through the service or add parity fixtures proving identical section order against the current prompt assembly path. [covers=prompt-assembly.service.clankers-parity]
-- [ ] [parallel] Add context-reference policy tests for disabled and unsupported embedding modes with structured unsupported-reference metadata. [covers=prompt-assembly.context-reference-boundary.disabled]
+- [x] [parallel] Add context-reference policy tests for disabled and unsupported embedding modes with structured unsupported-reference metadata. ✅ (completed: 2026-05-07T02:54:44Z) [covers=prompt-assembly.context-reference-boundary.disabled] [evidence=clankers-runtime::tests::prompt_assembly_reports_disabled_context_references_without_content]
 - [x] [parallel] Document prompt assembly policy knobs for embedders. ✅ 26m (started: 2026-05-07T02:22:19Z → completed: 2026-05-07T02:48:26Z) [covers=prompt-assembly.service] [evidence=docs/src/reference/embedding.md]

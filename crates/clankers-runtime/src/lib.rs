@@ -680,8 +680,27 @@ impl PromptAssembler {
             sections,
             provenance,
             context_references_enabled: policy.context_references_enabled,
+            unsupported_context_references: unsupported_context_references(policy, sources),
         })
     }
+}
+
+fn unsupported_context_references(
+    policy: &PromptAssemblyPolicy,
+    sources: &PromptSources,
+) -> Vec<UnsupportedContextReference> {
+    if policy.context_references_enabled {
+        return Vec::new();
+    }
+    sources
+        .context_references
+        .iter()
+        .map(|reference| UnsupportedContextReference {
+            label: sanitize_metadata_value(reference.label.clone()),
+            kind: reference.kind,
+            reason: "context references disabled by host policy".to_string(),
+        })
+        .collect()
 }
 
 fn sanitize_prompt_context(content: &str) -> String {
@@ -721,6 +740,7 @@ pub struct PromptSources {
     pub system_prompt: Option<String>,
     pub host_context: Vec<HostContext>,
     pub filesystem_context_requested: bool,
+    pub context_references: Vec<ContextReferenceRequest>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -735,6 +755,7 @@ pub struct AssembledPrompt {
     pub sections: Vec<PromptSection>,
     pub provenance: Vec<PromptProvenance>,
     pub context_references_enabled: bool,
+    pub unsupported_context_references: Vec<UnsupportedContextReference>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -756,6 +777,38 @@ pub enum PromptSourceKind {
     Host,
     Filesystem,
     Generated,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ContextReferenceRequest {
+    pub label: String,
+    pub kind: ContextReferenceKind,
+}
+
+impl ContextReferenceRequest {
+    #[must_use]
+    pub fn new(label: impl Into<String>, kind: ContextReferenceKind) -> Self {
+        Self {
+            label: label.into(),
+            kind,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ContextReferenceKind {
+    File,
+    Directory,
+    Url,
+    Custom,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct UnsupportedContextReference {
+    pub label: String,
+    pub kind: ContextReferenceKind,
+    pub reason: String,
 }
 
 /// Host-facing tool catalog.
@@ -1450,6 +1503,7 @@ mod tests {
                 content: "safe app context".to_string(),
             }],
             filesystem_context_requested: false,
+            ..PromptSources::default()
         };
         let assembled = PromptAssembler::assemble(&policy, &sources, "hello".to_string()).unwrap();
         assert_eq!(assembled.sections[0].content, "safe app context");
@@ -1468,6 +1522,27 @@ mod tests {
             PromptAssembler::assemble(&policy, &sources, "hello".to_string()).unwrap_err(),
             RuntimeError::FilesystemDiscoveryDisabled
         );
+    }
+
+    #[test]
+    fn prompt_assembly_reports_disabled_context_references_without_content() {
+        let policy = PromptAssemblyPolicy::host_context_only();
+        let sources = PromptSources {
+            context_references: vec![ContextReferenceRequest::new(
+                "src/secret-token.rs",
+                ContextReferenceKind::File,
+            )],
+            ..PromptSources::default()
+        };
+        let assembled = PromptAssembler::assemble(&policy, &sources, "hello".to_string()).unwrap();
+
+        assert!(!assembled.context_references_enabled);
+        assert_eq!(assembled.unsupported_context_references.len(), 1);
+        let unsupported = &assembled.unsupported_context_references[0];
+        assert_eq!(unsupported.label, "[REDACTED]");
+        assert_eq!(unsupported.kind, ContextReferenceKind::File);
+        assert!(unsupported.reason.contains("disabled"));
+        assert!(assembled.sections.is_empty());
     }
 
     struct ErrorBroker(RuntimeError);
