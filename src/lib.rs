@@ -15,6 +15,7 @@ pub mod plugin;
 pub use clankers_procmon as procmon;
 pub mod provider;
 pub mod runtime_prompt;
+pub mod runtime_services;
 pub use clankers_session;
 pub mod self_evolution;
 pub mod session;

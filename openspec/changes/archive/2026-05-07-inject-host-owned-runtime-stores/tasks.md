@@ -3,7 +3,7 @@
 - [x] [serial] Write the host-owned runtime stores OpenSpec package. [covers=embeddable-runtime-stores.host-owned-services] [evidence=openspec validate inject-host-owned-runtime-stores --strict]
 - [x] [serial] Define runtime service/config traits or structs for settings, auth, sessions, cache, project context, skills, plugins, and checkpoints. ✅ 26m (started: 2026-05-07T02:22:19Z → completed: 2026-05-07T02:48:26Z) [covers=embeddable-runtime-stores.host-owned-services] [evidence=clankers_runtime::RuntimeServices]
 - [x] [parallel] Add in-memory/noop service implementations for minimal embedded runtime tests. ✅ 26m (started: 2026-05-07T02:22:19Z → completed: 2026-05-07T02:48:26Z) [covers=embeddable-runtime-stores.host-owned-services.no-ambient-paths] [evidence=clankers-runtime::tests::default_runtime_does_not_need_ambient_paths]
-- [ ] [parallel] Wrap existing Clankers path/auth/session/plugin defaults as explicit desktop adapters instead of marker placeholders. [covers=embeddable-runtime-stores.host-owned-services.desktop-adapters]
+- [x] [parallel] Wrap existing Clankers path/auth/session/plugin defaults as explicit desktop adapters instead of marker placeholders. ✅ (completed: 2026-05-07T03:41:21Z) [covers=embeddable-runtime-stores.host-owned-services.desktop-adapters] [evidence=clankers::runtime_services::tests::desktop_runtime_services_publish_explicit_capabilities]
 
 ## Phase 2: Capability and parity tests
 
