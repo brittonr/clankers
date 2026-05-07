@@ -25,6 +25,7 @@ members = [
     "crates/clankers-prompts",
     "crates/clankers-protocol",
     "crates/clankers-provider",
+    "crates/clankers-runtime",
     "crates/clankers-session",
     "crates/clankers-skills",
 

@@ -1852,6 +1852,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "clankers-runtime"
+version = "0.1.0"
+dependencies = [
+ "chrono",
+ "serde",
+ "serde_json",
+ "static_assertions",
+ "thiserror 2.0.18",
+ "tokio",
+ "uuid",
+]
+
+[[package]]
 name = "clankers-session"
 version = "0.1.0"
 dependencies = [
