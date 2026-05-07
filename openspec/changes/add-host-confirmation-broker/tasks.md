@@ -8,5 +8,5 @@
 ## Phase 2: Adapter parity
 
 - [ ] [serial] Route at least one existing confirmation-required tool/action through the broker substrate. [covers=embeddable-confirmation-broker.adapter-parity]
-- [ ] [parallel] Add negative tests proving actions do not execute before approval. [covers=embeddable-confirmation-broker.adapter-parity.no-bypass]
+- [x] [parallel] Add negative tests proving actions do not execute before approval. ✅ (completed: 2026-05-07T02:54:44Z) [covers=embeddable-confirmation-broker.adapter-parity.no-bypass] [evidence=clankers-runtime::tests::confirmed_action_does_not_execute_before_approval]
 - [x] [parallel] Document host confirmation broker integration for embedded apps. ✅ 26m (started: 2026-05-07T02:22:19Z → completed: 2026-05-07T02:48:26Z) [covers=embeddable-confirmation-broker.interface] [evidence=docs/src/reference/embedding.md]

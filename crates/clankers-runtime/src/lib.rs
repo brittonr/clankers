@@ -208,6 +208,19 @@ impl Runtime {
     ) -> Result<ConfirmationDecision, RuntimeError> {
         request_confirmation_fail_closed(self.inner.confirmation_broker.as_ref(), request)
     }
+
+    /// Execute a host action only after the broker approves the typed request.
+    pub async fn run_confirmed_action<T>(
+        &self,
+        request: ConfirmationRequest,
+        action: impl FnOnce() -> Result<T, RuntimeError>,
+    ) -> Result<T, RuntimeError> {
+        let decision = self.request_confirmation(request).await?;
+        if !decision.approved {
+            return Err(RuntimeError::ConfirmationDenied(decision.reason));
+        }
+        action()
+    }
 }
 
 /// Options used when creating an embedded session.
@@ -1296,6 +1309,8 @@ pub enum RuntimeError {
     ConfirmationTimedOut,
     #[error("confirmation cancelled")]
     ConfirmationCancelled,
+    #[error("confirmation denied: {0}")]
+    ConfirmationDenied(String),
     #[error("public runtime boundary leaked adapter type: {0}")]
     PublicBoundaryLeak(String),
     #[error("model failed: {0}")]
@@ -1316,9 +1331,10 @@ impl RuntimeError {
             Self::FilesystemDiscoveryDisabled => ErrorClass::Policy,
             Self::InvalidTool(_) | Self::ToolNameCollision(_) => ErrorClass::Tooling,
             Self::StoreUnavailable(_) => ErrorClass::Storage,
-            Self::ConfirmationUnavailable(_) | Self::ConfirmationTimedOut | Self::ConfirmationCancelled => {
-                ErrorClass::Confirmation
-            }
+            Self::ConfirmationUnavailable(_)
+            | Self::ConfirmationTimedOut
+            | Self::ConfirmationCancelled
+            | Self::ConfirmationDenied(_) => ErrorClass::Confirmation,
             Self::PublicBoundaryLeak(_) => ErrorClass::Boundary,
             Self::Model(_) => ErrorClass::Model,
         }
@@ -1592,6 +1608,14 @@ mod tests {
         }
     }
 
+    struct StaticBroker(ConfirmationDecision);
+
+    impl ConfirmationBroker for StaticBroker {
+        fn decide(&self, _request: ConfirmationRequest) -> Result<ConfirmationDecision, RuntimeError> {
+            Ok(self.0.clone())
+        }
+    }
+
     #[test]
     fn confirmation_broker_fail_closed_for_absent_timeout_cancelled() {
         for error in [
@@ -1614,6 +1638,38 @@ mod tests {
         let request =
             ConfirmationRequest::new(ConfirmationAction::Custom("deploy".to_string()), "use bearer token abc123");
         assert_eq!(request.summary, "[REDACTED]");
+    }
+
+    #[tokio::test]
+    async fn confirmed_action_does_not_execute_before_approval() {
+        let denied_runtime = RuntimeBuilder::new()
+            .confirmation_broker(Arc::new(StaticBroker(ConfirmationDecision::deny("no"))))
+            .build()
+            .unwrap();
+        let mut executed = false;
+        let err = denied_runtime
+            .run_confirmed_action(ConfirmationRequest::new(ConfirmationAction::RunCommand, "run command"), || {
+                executed = true;
+                Ok(())
+            })
+            .await
+            .unwrap_err();
+        assert!(!executed);
+        assert_eq!(err, RuntimeError::ConfirmationDenied("no".to_string()));
+
+        let approved_runtime = RuntimeBuilder::new()
+            .confirmation_broker(Arc::new(StaticBroker(ConfirmationDecision::approve("yes"))))
+            .build()
+            .unwrap();
+        let mut approved_executed = false;
+        approved_runtime
+            .run_confirmed_action(ConfirmationRequest::new(ConfirmationAction::RunCommand, "run command"), || {
+                approved_executed = true;
+                Ok(())
+            })
+            .await
+            .unwrap();
+        assert!(approved_executed);
     }
 
     #[tokio::test]
