@@ -138,6 +138,19 @@ pub fn assemble_system_prompt(
     settings_prefix: Option<&str>,
     settings_suffix: Option<&str>,
 ) -> String {
+    assemble_system_prompt_sections(base_prompt, resources, settings_prefix, settings_suffix).join("\n\n")
+}
+
+/// Assemble the full system prompt into ordered sections before final joining.
+///
+/// This is the canonical section-order source for adapter parity checks and
+/// embeddable prompt assembly bridges.
+pub fn assemble_system_prompt_sections(
+    base_prompt: &str,
+    resources: &PromptResources,
+    settings_prefix: Option<&str>,
+    settings_suffix: Option<&str>,
+) -> Vec<String> {
     let mut parts = Vec::new();
 
     // Settings prefix first
@@ -200,7 +213,7 @@ pub fn assemble_system_prompt(
         parts.push(suffix.to_string());
     }
 
-    parts.join("\n\n")
+    parts
 }
 
 /// Load markdown files from a directory (sorted by path)
