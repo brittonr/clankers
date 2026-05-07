@@ -12,6 +12,14 @@ From the repository root:
 
 This is the normal readiness harness. It runs formatting, workspace tests, clippy, repository verification rails, and Tigerstyle. Treat `target/test-harness/summary.md` or `target/test-harness/results.json` as the pass/fail source of truth; inspect per-step logs only for failed steps.
 
+The assertion layer for release-readiness gaps is Rust/nextest-owned. The credential-free E2E tier is:
+
+```bash
+cargo nextest run -p clankers --test readiness_e2e --no-fail-fast
+```
+
+The legacy `tests/e2e/run-tests.sh` script and `./scripts/test-harness.sh e2e ...` are compatibility wrappers around that nextest test binary; they do not own the readiness assertions.
+
 Required result before a release/readiness claim:
 
 - `failed: 0`
@@ -20,9 +28,13 @@ Required result before a release/readiness claim:
 
 ## Live local-model smoke
 
-Before calling a candidate runtime-ready on a machine that can reach the local model endpoint, run:
+Before calling a candidate runtime-ready on a machine that can reach the local model endpoint, run the opt-in nextest adapter directly or through the harness:
 
 ```bash
+CLANKERS_RUN_LIVE_READINESS=1 \
+  cargo nextest run -p clankers --test readiness_opt_in --no-fail-fast \
+  -E 'test(readiness_live_local_model_aspen2_qwen36_nextest_opt_in)'
+
 ./scripts/test-harness.sh live aspen2-qwen36
 ```
 
@@ -42,13 +54,31 @@ CLANKERS_ENABLE_LIVE_CHECKS=1 \
   --option sandbox false -L
 ```
 
+## Opt-in VM and flake readiness
+
+VM and flake/CI readiness are also nextest-owned and gated by explicit environment variables so default workspace tests remain credential-free and bounded:
+
+```bash
+CLANKERS_RUN_VM_READINESS=1 \
+  cargo nextest run -p clankers --test readiness_opt_in --no-fail-fast \
+  -E 'test(readiness_vm_required_nixos_checks_nextest_opt_in)'
+
+CLANKERS_RUN_FLAKE_READINESS=1 \
+  cargo nextest run -p clankers --test readiness_opt_in --no-fail-fast \
+  -E 'test(readiness_flake_ci_nextest_opt_in)'
+```
+
+`CLANKERS_VM_READINESS_SELECTOR` may be `all`, `core`, `module`, `smoke`, or an explicit check name such as `vm-plugin-runtime`; the harness sets it from `./scripts/test-harness.sh vm <selector>`. Do not claim a VM or flake pass unless the corresponding opt-in env var was set and the nextest adapter actually ran.
+
 ## Release-candidate checklist
 
 1. Start from a clean branch that tracks the intended release branch.
 2. Run `./scripts/test-harness.sh full` and confirm the summary reports no failures.
-3. Run `./scripts/test-harness.sh live aspen2-qwen36` when the Lemonade/Qwen3.6 endpoint is reachable.
-4. Confirm OAuth login commands print authorization URLs instead of opening a browser automatically.
-5. Inspect `git diff --check`, commit the verified changes, push, and verify `main`/`origin/main` match.
-6. Include both harness summaries in the release/readiness note, clearly separating pure readiness from optional live local-model coverage.
+3. Run `cargo nextest run -p clankers --test readiness_e2e --no-fail-fast` if the baseline summary was produced by older tooling or if you need a focused credential-free E2E receipt.
+4. Run `./scripts/test-harness.sh live aspen2-qwen36` when the Lemonade/Qwen3.6 endpoint is reachable.
+5. Run `./scripts/test-harness.sh vm all` and `./scripts/test-harness.sh ci` on machines authorized for NixOS VM and flake-heavy checks.
+6. Confirm OAuth login commands print authorization URLs instead of opening a browser automatically.
+7. Inspect `git diff --check`, commit the verified changes, push, and verify `main`/`origin/main` match.
+8. Include the full harness summary plus any opt-in nextest live/VM/flake summaries in the release/readiness note, clearly separating pure readiness from optional host-dependent coverage.
 
 Do not make a general external-production claim from these gates alone. They support trusted/internal dogfooding and release-candidate hygiene; public unattended production readiness still depends on the active roadmap, security boundary review, packaging/deployment surface, and operator documentation.

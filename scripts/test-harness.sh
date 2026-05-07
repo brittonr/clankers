@@ -190,7 +190,7 @@ run_live_selector() {
 
     case "$selector" in
         all|local-model|aspen2-qwen36)
-            run_step "live aspen2 qwen36" cargo nextest run -p clankers --test aspen2_qwen36_integration --no-fail-fast
+            run_step "live readiness $selector" env CLANKERS_RUN_LIVE_READINESS=1 CLANKERS_LIVE_READINESS_SELECTOR="$selector" cargo nextest run -p clankers --test readiness_opt_in --no-fail-fast -E 'test(readiness_live_local_model_aspen2_qwen36_nextest_opt_in)'
             ;;
         *)
             echo "error: unknown live selector: $selector" >&2
@@ -316,16 +316,25 @@ main() {
             ;;
         e2e)
             local selector="${1:-fake}"
-            run_step "e2e $selector" ./tests/e2e/run-tests.sh "$selector"
+            case "$selector" in
+                all|fake|deterministic)
+                    run_step "e2e $selector" cargo nextest run -p clankers --test readiness_e2e --no-fail-fast -E 'test(/^readiness_e2e_/)' ;;
+                fast)
+                    run_step "e2e $selector" cargo nextest run -p clankers --test readiness_e2e --no-fail-fast -E 'test(readiness_e2e_version_help_config_and_auth_are_credential_free)' ;;
+                api)
+                    run_step "e2e $selector" cargo nextest run -p clankers --test readiness_e2e --no-fail-fast -E 'test(readiness_e2e_fake_provider_print_bash_read_find_and_json) | test(readiness_e2e_fake_provider_write_edit_read_round_trip)' ;;
+                *)
+                    run_step "e2e $selector" ./tests/e2e/run-tests.sh "$selector" ;;
+            esac
             ;;
         live)
             run_live_selector "${1:-local-model}"
             ;;
         vm)
-            run_vm_selector "${1:-all}"
+            run_step "vm readiness ${1:-all}" env CLANKERS_RUN_VM_READINESS=1 CLANKERS_VM_READINESS_SELECTOR="${1:-all}" cargo nextest run -p clankers --test readiness_opt_in --no-fail-fast -E 'test(readiness_vm_required_nixos_checks_nextest_opt_in)'
             ;;
         ci)
-            run_step "nix flake check" nix flake check "$@"
+            run_step "flake readiness" env CLANKERS_RUN_FLAKE_READINESS=1 cargo nextest run -p clankers --test readiness_opt_in --no-fail-fast -E 'test(readiness_flake_ci_nextest_opt_in)'
             ;;
         help|-h|--help)
             usage
