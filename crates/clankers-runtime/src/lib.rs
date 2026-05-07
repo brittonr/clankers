@@ -8,6 +8,8 @@
 use std::collections::BTreeMap;
 use std::collections::BTreeSet;
 use std::fmt;
+use std::future::Future;
+use std::pin::Pin;
 use std::sync::Arc;
 
 use chrono::DateTime;
@@ -206,7 +208,7 @@ impl Runtime {
         &self,
         request: ConfirmationRequest,
     ) -> Result<ConfirmationDecision, RuntimeError> {
-        request_confirmation_fail_closed(self.inner.confirmation_broker.as_ref(), request)
+        request_confirmation_fail_closed(self.inner.confirmation_broker.as_ref(), request).await
     }
 
     /// Execute a host action only after the broker approves the typed request.
@@ -1085,23 +1087,25 @@ impl ConfirmationDecision {
     }
 }
 
+pub type ConfirmationFuture<'a> = Pin<Box<dyn Future<Output = Result<ConfirmationDecision, RuntimeError>> + Send + 'a>>;
+
 pub trait ConfirmationBroker: Send + Sync + 'static {
-    fn decide(&self, request: ConfirmationRequest) -> Result<ConfirmationDecision, RuntimeError>;
+    fn decide(&self, request: ConfirmationRequest) -> ConfirmationFuture<'_>;
 }
 
 pub struct FailClosedConfirmationBroker;
 
 impl ConfirmationBroker for FailClosedConfirmationBroker {
-    fn decide(&self, _request: ConfirmationRequest) -> Result<ConfirmationDecision, RuntimeError> {
-        Ok(ConfirmationDecision::deny("confirmation broker unavailable"))
+    fn decide(&self, _request: ConfirmationRequest) -> ConfirmationFuture<'_> {
+        Box::pin(async { Ok(ConfirmationDecision::deny("confirmation broker unavailable")) })
     }
 }
 
-pub fn request_confirmation_fail_closed(
+pub async fn request_confirmation_fail_closed(
     broker: &dyn ConfirmationBroker,
     request: ConfirmationRequest,
 ) -> Result<ConfirmationDecision, RuntimeError> {
-    match broker.decide(request) {
+    match broker.decide(request).await {
         Ok(decision) => Ok(decision),
         Err(RuntimeError::ConfirmationUnavailable(reason)) => Ok(ConfirmationDecision::deny(reason)),
         Err(RuntimeError::ConfirmationTimedOut) => Ok(ConfirmationDecision::deny("confirmation timed out")),
@@ -1603,21 +1607,23 @@ mod tests {
     struct ErrorBroker(RuntimeError);
 
     impl ConfirmationBroker for ErrorBroker {
-        fn decide(&self, _request: ConfirmationRequest) -> Result<ConfirmationDecision, RuntimeError> {
-            Err(self.0.clone())
+        fn decide(&self, _request: ConfirmationRequest) -> ConfirmationFuture<'_> {
+            let error = self.0.clone();
+            Box::pin(async move { Err(error) })
         }
     }
 
     struct StaticBroker(ConfirmationDecision);
 
     impl ConfirmationBroker for StaticBroker {
-        fn decide(&self, _request: ConfirmationRequest) -> Result<ConfirmationDecision, RuntimeError> {
-            Ok(self.0.clone())
+        fn decide(&self, _request: ConfirmationRequest) -> ConfirmationFuture<'_> {
+            let decision = self.0.clone();
+            Box::pin(async move { Ok(decision) })
         }
     }
 
-    #[test]
-    fn confirmation_broker_fail_closed_for_absent_timeout_cancelled() {
+    #[tokio::test]
+    async fn confirmation_broker_fail_closed_for_absent_timeout_cancelled() {
         for error in [
             RuntimeError::ConfirmationUnavailable("missing".to_string()),
             RuntimeError::ConfirmationTimedOut,
@@ -1628,6 +1634,7 @@ mod tests {
                 &broker,
                 ConfirmationRequest::new(ConfirmationAction::RunCommand, "run command"),
             )
+            .await
             .unwrap();
             assert!(!decision.approved);
         }

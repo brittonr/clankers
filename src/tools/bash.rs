@@ -37,6 +37,38 @@ pub fn confirm_channel() -> (ConfirmTx, ConfirmRx) {
     tokio::sync::mpsc::unbounded_channel()
 }
 
+struct BashConfirmationBroker {
+    confirm_tx: ConfirmTx,
+    command: String,
+    reason: &'static str,
+}
+
+impl clankers_runtime::ConfirmationBroker for BashConfirmationBroker {
+    fn decide(&self, _request: clankers_runtime::ConfirmationRequest) -> clankers_runtime::ConfirmationFuture<'_> {
+        let confirm_tx = self.confirm_tx.clone();
+        let command = self.command.clone();
+        let reason = self.reason;
+        Box::pin(async move {
+            let (resp_tx, resp_rx) = tokio::sync::oneshot::channel();
+            let req = ConfirmRequest {
+                command,
+                reason,
+                resp_tx,
+            };
+            if confirm_tx.send(req).is_err() {
+                return Err(clankers_runtime::RuntimeError::ConfirmationUnavailable(
+                    "confirmation channel closed".to_string(),
+                ));
+            }
+            match resp_rx.await {
+                Ok(true) => Ok(clankers_runtime::ConfirmationDecision::approve("approved by host")),
+                Ok(false) => Ok(clankers_runtime::ConfirmationDecision::deny("denied by host")),
+                Err(_) => Err(clankers_runtime::RuntimeError::ConfirmationCancelled),
+            }
+        })
+    }
+}
+
 /// Patterns that trigger a confirmation prompt before execution.
 ///
 /// Note: The .expect() calls on Regex::new() are justified because these are
@@ -153,21 +185,31 @@ impl BashTool {
     async fn check_and_confirm_dangerous(&self, command: &str) -> Result<(), ToolResult> {
         if let Some(reason) = check_dangerous(command) {
             if let Some(ref tx) = self.confirm_tx {
-                let (resp_tx, resp_rx) = tokio::sync::oneshot::channel();
-                let req = ConfirmRequest {
+                let broker = BashConfirmationBroker {
+                    confirm_tx: tx.clone(),
                     command: command.to_string(),
                     reason,
-                    resp_tx,
                 };
-                if tx.send(req).is_ok() {
-                    match resp_rx.await {
-                        Ok(true) => { /* approved, continue */ }
-                        _ => {
-                            return Err(ToolResult::error(format!(
-                                "Command blocked by user ({}). Rephrase the command or ask the user for approval.",
-                                reason
-                            )));
-                        }
+                let request = clankers_runtime::ConfirmationRequest {
+                    metadata: clankers_runtime::EventMetadata::empty().with("reason", reason),
+                    ..clankers_runtime::ConfirmationRequest::new(
+                        clankers_runtime::ConfirmationAction::RunCommand,
+                        format!("Run shell command flagged as {reason}"),
+                    )
+                };
+                match clankers_runtime::request_confirmation_fail_closed(&broker, request).await {
+                    Ok(decision) if decision.approved => { /* approved, continue */ }
+                    Ok(decision) => {
+                        return Err(ToolResult::error(format!(
+                            "Command blocked by user ({}). Rephrase the command or ask the user for approval.",
+                            decision.reason
+                        )));
+                    }
+                    Err(error) => {
+                        return Err(ToolResult::error(format!(
+                            "Command confirmation failed ({}). Rephrase the command or ask the user for approval.",
+                            error.safe_message()
+                        )));
                     }
                 }
             } else {
@@ -387,8 +429,24 @@ async fn drain_reader(
 
 #[cfg(test)]
 mod tests {
+    use super::BashTool;
     use super::check_dangerous;
+    use super::confirm_channel;
+    use crate::tools::ToolResult;
+    use crate::tools::ToolResultContent;
     use crate::util::ansi::strip_ansi;
+
+    fn result_text(result: &ToolResult) -> String {
+        result
+            .content
+            .iter()
+            .filter_map(|content| match content {
+                ToolResultContent::Text { text } => Some(text.as_str()),
+                ToolResultContent::Image { .. } => None,
+            })
+            .collect::<Vec<_>>()
+            .join("\n")
+    }
 
     #[test]
     fn strip_plain_text_unchanged() {
@@ -431,6 +489,42 @@ mod tests {
         assert!(check_dangerous("rm -rf /tmp/foo").is_some());
         assert!(check_dangerous("rm -f important.txt").is_some());
         assert!(check_dangerous("rm --force file").is_some());
+    }
+
+    #[tokio::test]
+    async fn dangerous_command_confirmation_uses_runtime_broker_and_blocks_denied_action() {
+        let (tx, mut rx) = confirm_channel();
+        let tool = BashTool::with_confirm(tx);
+        let confirm = tokio::spawn(async move {
+            let request = rx.recv().await.expect("confirmation request");
+            assert_eq!(request.command, "rm -rf should-not-run");
+            assert_eq!(request.reason, "forced removal");
+            request.resp_tx.send(false).expect("send denial");
+        });
+
+        let result = tool.check_and_confirm_dangerous("rm -rf should-not-run").await;
+        confirm.await.expect("confirmation task");
+        let error = result.expect_err("denied dangerous command should be blocked");
+        assert!(error.is_error);
+        assert!(result_text(&error).contains("Command blocked by user"));
+        assert!(result_text(&error).contains("denied by host"));
+    }
+
+    #[tokio::test]
+    async fn dangerous_command_confirmation_uses_runtime_broker_and_allows_approved_action() {
+        let (tx, mut rx) = confirm_channel();
+        let tool = BashTool::with_confirm(tx);
+        let confirm = tokio::spawn(async move {
+            let request = rx.recv().await.expect("confirmation request");
+            assert_eq!(request.command, "git reset --hard HEAD~5");
+            assert_eq!(request.reason, "hard reset");
+            request.resp_tx.send(true).expect("send approval");
+        });
+
+        tool.check_and_confirm_dangerous("git reset --hard HEAD~5")
+            .await
+            .expect("approved dangerous command should pass confirmation gate");
+        confirm.await.expect("confirmation task");
     }
 
     #[test]

@@ -107,6 +107,7 @@ clankers-plugin = { version = "0.1.0", path = "crates/clankers-plugin" }
 clankers-procmon = { version = "0.1.0", path = "crates/clankers-procmon" }
 clankers-prompts = { version = "0.1.0", path = "crates/clankers-prompts" }
 clankers-provider = { version = "0.1.0", path = "crates/clankers-provider" }
+clankers-runtime = { version = "0.1.0", path = "crates/clankers-runtime" }
 clankers-matrix = { version = "0.1.0", path = "crates/clankers-matrix" }
 clanker-router = { workspace = true, features = ["rpc"] }
 clanker-scheduler = { workspace = true }
