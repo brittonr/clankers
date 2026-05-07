@@ -652,6 +652,44 @@ pub fn build_all_tiered_tools(
     tiered
 }
 
+/// Publish the existing Clankers tool registration as a host-facing runtime catalog.
+///
+/// This keeps embedders on the same source of truth as the CLI/TUI/daemon path:
+/// built-ins come from [`build_tiered_tools`], plugin tools from [`build_plugin_tools`],
+/// MCP tools from `build_tools_from_settings`, and gateway/optional tools from the
+/// same tiered list above.
+pub fn runtime_tool_catalog_from_tiered_tools(
+    tiered_tools: &[(ToolTier, Arc<dyn Tool>)],
+    disabled_tools: &std::collections::HashSet<String>,
+) -> Result<clankers_runtime::ToolCatalog, clankers_runtime::RuntimeError> {
+    let mut builder = clankers_runtime::ToolCatalog::builder().disabled_tools(disabled_tools.iter().cloned());
+    for (tier, tool) in tiered_tools {
+        let definition = tool.definition();
+        builder = builder.custom_tool(clankers_runtime::ToolDescriptor::new(
+            definition.name.clone(),
+            definition.description.clone(),
+            side_effect_for_runtime_tool(*tier, definition.name.as_str()),
+        ))?;
+    }
+    builder.build()
+}
+
+fn side_effect_for_runtime_tool(tier: ToolTier, name: &str) -> clankers_runtime::SideEffectLevel {
+    match name {
+        "read" | "grep" | "find" | "ls" | "session_search" | "skill_view" => {
+            clankers_runtime::SideEffectLevel::ReadOnly
+        }
+        "write" | "edit" | "patch" => clankers_runtime::SideEffectLevel::WorkspaceMutation,
+        "web" | "browser" | "image_gen" | "tts" | "external_memory" => clankers_runtime::SideEffectLevel::ExternalIo,
+        "bash" | "execute_code" | "process" | "nix" | "nix_eval" | "commit" | "schedule" | "checkpoint"
+        | "tool_gateway" | "voice_mode" | "mcp" => clankers_runtime::SideEffectLevel::Dangerous,
+        _ => match tier {
+            ToolTier::Core | ToolTier::Orchestration | ToolTier::Matrix => clankers_runtime::SideEffectLevel::Dangerous,
+            ToolTier::Specialty => clankers_runtime::SideEffectLevel::ExternalIo,
+        },
+    }
+}
+
 /// Resolve active tiers from CLI `--tools` flag value.
 ///
 /// Returns `None` when the caller should use mode defaults.
@@ -876,6 +914,56 @@ mod tests {
                 .iter()
                 .any(|(tier, tool)| *tier == ToolTier::Specialty && tool.definition().name == "tool_gateway")
         );
+    }
+
+    #[test]
+    fn runtime_catalog_matches_existing_default_tool_registration() {
+        let tiered = build_all_tiered_tools(&ToolEnv::default(), None);
+        let source_names = tiered
+            .iter()
+            .map(|(_, tool)| tool.definition().name.clone())
+            .collect::<std::collections::BTreeSet<_>>();
+
+        let catalog = runtime_tool_catalog_from_tiered_tools(&tiered, &std::collections::HashSet::new())
+            .expect("default tool registration should publish runtime catalog");
+        let catalog_names = catalog.tools().map(|tool| tool.name.clone()).collect::<std::collections::BTreeSet<_>>();
+
+        assert_eq!(catalog_names, source_names);
+        assert!(catalog.contains_tool("tool_gateway"));
+        assert!(catalog.contains_tool("bash"));
+        assert!(catalog.tools().find(|tool| tool.name == "bash").expect("bash descriptor").requires_confirmation);
+    }
+
+    #[test]
+    fn runtime_catalog_tracks_mcp_and_disabled_tool_publication() {
+        let mut settings = crate::config::settings::Settings::default();
+        settings.mcp.servers.insert("filesystem".to_string(), clankers_config::McpServerConfig {
+            enabled: true,
+            transport: clankers_config::McpTransport::Stdio,
+            command: Some("fake-mcp".to_string()),
+            args: Vec::new(),
+            url: None,
+            env_allowlist: Vec::new(),
+            header_env: std::collections::BTreeMap::new(),
+            include_tools: Vec::new(),
+            exclude_tools: Vec::new(),
+            tool_prefix: None,
+            timeout_ms: None,
+        });
+        let env = ToolEnv {
+            settings: Some(settings),
+            mcp_registry: Some(Arc::new(FakeMcpRegistry)),
+            ..Default::default()
+        };
+        let tiered = build_all_tiered_tools(&env, None);
+        assert!(tiered.iter().any(|(_, tool)| tool.definition().name == "mcp_filesystem_read_file"));
+
+        let disabled = std::collections::HashSet::from(["bash".to_string()]);
+        let catalog = runtime_tool_catalog_from_tiered_tools(&tiered, &disabled)
+            .expect("MCP publication should flow through runtime catalog");
+
+        assert!(catalog.contains_tool("mcp_filesystem_read_file"));
+        assert!(!catalog.contains_tool("bash"));
     }
 
     #[test]
