@@ -45,12 +45,36 @@ fn string_field<'a>(value: &'a Value, path: &[&str]) -> &'a str {
     current.as_str().unwrap_or_else(|| panic!("JSON path {path:?} should be a string: {value}"))
 }
 
+fn write_promotion_eligible_corpus(tmp: &tempfile::TempDir) -> PathBuf {
+    let corpus_path = tmp.path().join("corpus.json");
+    std::fs::write(
+        &corpus_path,
+        serde_json::json!({
+            "version": 1,
+            "targets": ["target.txt"],
+            "cases": [{
+                "id": "cli-case-1",
+                "objective": "candidate improves deterministic score",
+                "oracle_command": "cargo test self_evolution",
+                "expected_evidence": ["receipt.json", "session_history"]
+            }],
+            "redaction_policy": "safe metadata only",
+            "min_improvement": 0.05,
+            "regression_budget": 0
+        })
+        .to_string(),
+    )
+    .expect("write corpus manifest");
+    corpus_path
+}
+
 #[test]
 fn self_evolution_cli_runs_approve_preflight_and_live_apply_with_temp_files() {
     let tmp = tempfile::TempDir::new().expect("tempdir should exist");
     let target = tmp.path().join("target.txt");
     let candidate_source = tmp.path().join("candidate-source.txt");
     let candidate_output = tmp.path().join("candidates");
+    let corpus_manifest = write_promotion_eligible_corpus(&tmp);
 
     std::fs::write(&target, "initial target artifact\n").expect("write target");
     std::fs::write(&candidate_source, "initial target artifact\nimproved candidate line\n").expect("write candidate");
@@ -69,6 +93,10 @@ fn self_evolution_cli_runs_approve_preflight_and_live_apply_with_temp_files() {
         candidate_source.display().to_string(),
         "--session".into(),
         "cli-e2e-session".into(),
+        "--profile".into(),
+        "promotion-eligible".into(),
+        "--corpus-manifest".into(),
+        corpus_manifest.display().to_string(),
         "--dry-run".into(),
         "--json".into(),
     ]);
@@ -203,6 +231,7 @@ fn self_evolution_cli_rejects_stale_target_live_apply_before_mutation() {
     let target = tmp.path().join("target.txt");
     let candidate_source = tmp.path().join("candidate-source.txt");
     let candidate_output = tmp.path().join("candidates");
+    let corpus_manifest = write_promotion_eligible_corpus(&tmp);
 
     std::fs::write(&target, "initial target artifact\n").expect("write target");
     std::fs::write(&candidate_source, "initial target artifact\nimproved candidate line\n").expect("write candidate");
@@ -221,6 +250,10 @@ fn self_evolution_cli_rejects_stale_target_live_apply_before_mutation() {
         candidate_source.display().to_string(),
         "--session".into(),
         "cli-stale-session".into(),
+        "--profile".into(),
+        "promotion-eligible".into(),
+        "--corpus-manifest".into(),
+        corpus_manifest.display().to_string(),
         "--dry-run".into(),
         "--json".into(),
     ]);

@@ -444,6 +444,7 @@ Workspace-local crates under `crates/`:
 | `clankers-prompts` | Prompt template system |
 | `clankers-protocol` | Daemon-client wire protocol (frames, events, commands) |
 | `clankers-provider` | LLM provider abstraction and compatibility adapters |
+| `clankers-runtime` | Transport-neutral embeddable runtime facade and host-owned service contracts |
 | `clankers-session` | JSONL session persistence and context rebuilds |
 | `clankers-skills` | Skill discovery and loading |
 | `clankers-tool-host` | Shared tool catalog/executor host traits |
