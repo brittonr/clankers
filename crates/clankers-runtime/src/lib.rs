@@ -1261,6 +1261,10 @@ pub struct ProviderExecutionRequest {
     pub model: Option<String>,
     pub account_label: Option<String>,
     pub route_source: String,
+    pub prompt: Option<String>,
+    pub system_prompt: Option<String>,
+    pub max_tokens: Option<usize>,
+    pub session_id: Option<String>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -1781,6 +1785,10 @@ mod tests {
                 model: Some("gpt-5.3-codex".to_string()),
                 account_label: Some("desktop".to_string()),
                 route_source: "embedded".to_string(),
+                prompt: Some("hello".to_string()),
+                system_prompt: None,
+                max_tokens: Some(8),
+                session_id: Some("session-runtime-test".to_string()),
             })
             .unwrap_err();
         assert_eq!(provider_error, RuntimeError::ExtensionUnavailable("provider router disabled".to_string()));

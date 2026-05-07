@@ -3,6 +3,7 @@
 //! These adapters make the normal Clankers path layout an explicit host-owned choice instead of
 //! letting `clankers-runtime` discover `~/.clankers` or project `.clankers` paths implicitly.
 
+use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::Arc;
 
@@ -49,12 +50,30 @@ impl DesktopRuntimeServiceAdapters {
         project_paths: &crate::config::ProjectPaths,
         plugin_manager: Arc<std::sync::Mutex<crate::plugin::PluginManager>>,
     ) -> RuntimeServices {
-        Self::from_paths_with_optional_plugin_manager(paths, project_paths, Some(plugin_manager))
+        Self::from_paths_with_optional_extensions(paths, project_paths, None, Some(plugin_manager))
+    }
+
+    #[must_use]
+    pub fn from_paths_with_provider_router(
+        paths: &crate::config::ClankersPaths,
+        project_paths: &crate::config::ProjectPaths,
+        provider_router: Arc<dyn clankers_provider::Provider>,
+    ) -> RuntimeServices {
+        Self::from_paths_with_optional_extensions(paths, project_paths, Some(provider_router), None)
     }
 
     fn from_paths_with_optional_plugin_manager(
         paths: &crate::config::ClankersPaths,
         project_paths: &crate::config::ProjectPaths,
+        plugin_manager: Option<Arc<std::sync::Mutex<crate::plugin::PluginManager>>>,
+    ) -> RuntimeServices {
+        Self::from_paths_with_optional_extensions(paths, project_paths, None, plugin_manager)
+    }
+
+    fn from_paths_with_optional_extensions(
+        paths: &crate::config::ClankersPaths,
+        project_paths: &crate::config::ProjectPaths,
+        provider_router: Option<Arc<dyn clankers_provider::Provider>>,
         plugin_manager: Option<Arc<std::sync::Mutex<crate::plugin::PluginManager>>>,
     ) -> RuntimeServices {
         let settings = Arc::new(DesktopSettingsService {
@@ -87,7 +106,7 @@ impl DesktopRuntimeServiceAdapters {
             checkpoints_dir: project_paths.config_dir.join("checkpoints"),
         });
         let extensions = ExtensionServices {
-            provider_router: Arc::new(DesktopProviderRouterService),
+            provider_router: Arc::new(DesktopProviderRouterService { provider_router }),
             auth_store: Arc::new(DesktopExtensionAuthStoreService),
             credential_pool: Arc::new(DesktopCredentialPoolPolicyService),
             runtime: Arc::new(DesktopExtensionRuntimeService { plugin_manager }),
@@ -193,7 +212,9 @@ impl CheckpointStore for DesktopCheckpointStore {
     }
 }
 
-struct DesktopProviderRouterService;
+struct DesktopProviderRouterService {
+    provider_router: Option<Arc<dyn clankers_provider::Provider>>,
+}
 struct DesktopExtensionAuthStoreService;
 struct DesktopCredentialPoolPolicyService;
 struct DesktopExtensionRuntimeService {
@@ -206,11 +227,152 @@ impl ProviderRouterService for DesktopProviderRouterService {
     }
 
     fn execute(&self, request: ProviderExecutionRequest) -> Result<ExtensionReceipt, RuntimeError> {
-        Ok(
-            ExtensionReceipt::new("desktop_provider_router", "execute", clankers_runtime::ExtensionStatus::Succeeded)
-                .with_metadata("provider", request.provider)
-                .with_metadata("route_source", request.route_source),
-        )
+        let Some(provider_router) = &self.provider_router else {
+            return Err(RuntimeError::ExtensionUnavailable("desktop provider router not injected".to_string()));
+        };
+        execute_injected_provider_router(Arc::clone(provider_router), request)
+    }
+}
+
+fn execute_injected_provider_router(
+    provider_router: Arc<dyn clankers_provider::Provider>,
+    request: ProviderExecutionRequest,
+) -> Result<ExtensionReceipt, RuntimeError> {
+    let provider_name = request.provider.clone();
+    let route_source = request.route_source.clone();
+    let model = request.model.clone().unwrap_or_else(|| {
+        provider_router
+            .models()
+            .first()
+            .map(|model| model.id.clone())
+            .unwrap_or_else(|| provider_name.clone())
+    });
+    let session_id = request.session_id.clone();
+    let request_model = model.clone();
+    let provider_request = build_provider_completion_request(request, request_model)?;
+    let stats = block_on_provider_execution(provider_router, provider_request)?;
+
+    let mut receipt =
+        ExtensionReceipt::new("desktop_provider_router", "execute", clankers_runtime::ExtensionStatus::Succeeded)
+            .with_metadata("provider", provider_name)
+            .with_metadata("model", model)
+            .with_metadata("route_source", route_source)
+            .with_metadata("stream_events", stats.stream_events.to_string())
+            .with_metadata("text_delta_bytes", stats.text_delta_bytes.to_string())
+            .with_metadata("thinking_delta_bytes", stats.thinking_delta_bytes.to_string());
+    if let Some(session_id) = session_id {
+        receipt = receipt.with_metadata("session_id", session_id);
+    }
+    Ok(receipt)
+}
+
+fn build_provider_completion_request(
+    request: ProviderExecutionRequest,
+    model: String,
+) -> Result<clankers_provider::CompletionRequest, RuntimeError> {
+    let prompt = request
+        .prompt
+        .filter(|prompt| !prompt.trim().is_empty())
+        .ok_or_else(|| RuntimeError::InvalidPrompt("provider execution request missing prompt".to_string()))?;
+    let mut extra_params = HashMap::new();
+    if let Some(session_id) = request.session_id {
+        extra_params.insert("_session_id".to_string(), serde_json::json!(session_id));
+    }
+    if let Some(account_label) = request.account_label {
+        extra_params.insert("_account_label".to_string(), serde_json::json!(account_label));
+    }
+    Ok(clankers_provider::CompletionRequest {
+        model,
+        messages: vec![clankers_provider::message::AgentMessage::User(
+            clankers_provider::message::UserMessage {
+                id: clankers_provider::message::MessageId::new("runtime-provider-user"),
+                content: vec![clankers_provider::message::Content::Text { text: prompt }],
+                timestamp: chrono::Utc::now(),
+            },
+        )],
+        system_prompt: request.system_prompt,
+        max_tokens: request.max_tokens,
+        temperature: None,
+        tools: Vec::new(),
+        thinking: None,
+        no_cache: false,
+        cache_ttl: None,
+        extra_params,
+    })
+}
+
+#[derive(Default)]
+struct ProviderExecutionStats {
+    stream_events: usize,
+    text_delta_bytes: usize,
+    thinking_delta_bytes: usize,
+}
+
+fn block_on_provider_execution(
+    provider_router: Arc<dyn clankers_provider::Provider>,
+    request: clankers_provider::CompletionRequest,
+) -> Result<ProviderExecutionStats, RuntimeError> {
+    match tokio::runtime::Handle::try_current() {
+        Ok(handle) if matches!(handle.runtime_flavor(), tokio::runtime::RuntimeFlavor::MultiThread) => {
+            tokio::task::block_in_place(|| handle.block_on(run_provider_completion(provider_router, request)))
+        }
+        Ok(_) => std::thread::spawn(move || run_provider_completion_on_new_runtime(provider_router, request))
+            .join()
+            .map_err(|_| RuntimeError::ExtensionUnavailable("provider runtime thread panicked".to_string()))?,
+        Err(_) => run_provider_completion_on_new_runtime(provider_router, request),
+    }
+}
+
+fn run_provider_completion_on_new_runtime(
+    provider_router: Arc<dyn clankers_provider::Provider>,
+    request: clankers_provider::CompletionRequest,
+) -> Result<ProviderExecutionStats, RuntimeError> {
+    tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .map_err(|error| RuntimeError::ExtensionUnavailable(format!("provider runtime unavailable: {error}")))?
+        .block_on(run_provider_completion(provider_router, request))
+}
+
+async fn run_provider_completion(
+    provider_router: Arc<dyn clankers_provider::Provider>,
+    request: clankers_provider::CompletionRequest,
+) -> Result<ProviderExecutionStats, RuntimeError> {
+    let (tx, mut rx) = tokio::sync::mpsc::channel(64);
+    let mut completion = Box::pin(provider_router.complete(request, tx));
+    let mut stats = ProviderExecutionStats::default();
+    loop {
+        tokio::select! {
+            result = &mut completion => {
+                result.map_err(|error| RuntimeError::Model(error.to_string()))?;
+                break;
+            }
+            event = rx.recv() => {
+                if let Some(event) = event {
+                    record_provider_stream_event(&mut stats, &event);
+                }
+            }
+        }
+    }
+    while let Some(event) = rx.recv().await {
+        record_provider_stream_event(&mut stats, &event);
+    }
+    Ok(stats)
+}
+
+fn record_provider_stream_event(stats: &mut ProviderExecutionStats, event: &clankers_provider::streaming::StreamEvent) {
+    stats.stream_events += 1;
+    if let clankers_provider::streaming::StreamEvent::ContentBlockDelta { delta, .. } = event {
+        match delta {
+            clankers_provider::streaming::ContentDelta::TextDelta { text } => {
+                stats.text_delta_bytes += text.len();
+            }
+            clankers_provider::streaming::ContentDelta::ThinkingDelta { thinking } => {
+                stats.thinking_delta_bytes += thinking.len();
+            }
+            clankers_provider::streaming::ContentDelta::InputJsonDelta { .. }
+            | clankers_provider::streaming::ContentDelta::SignatureDelta { .. } => {}
+        }
     }
 }
 
@@ -352,9 +514,123 @@ mod tests {
     use clankers_runtime::ExtensionRuntimeKind;
     use clankers_runtime::ExtensionRuntimeRequest;
     use clankers_runtime::ExtensionStatus;
+    use clankers_runtime::ProviderExecutionRequest;
     use clankers_runtime::RuntimeError;
 
     use super::DesktopRuntimeServiceAdapters;
+
+    #[derive(Default)]
+    struct RecordingProvider {
+        requests: Mutex<Vec<clankers_provider::CompletionRequest>>,
+        models: Vec<clankers_provider::Model>,
+    }
+
+    #[async_trait::async_trait]
+    impl clankers_provider::Provider for RecordingProvider {
+        async fn complete(
+            &self,
+            request: clankers_provider::CompletionRequest,
+            tx: tokio::sync::mpsc::Sender<clankers_provider::streaming::StreamEvent>,
+        ) -> clankers_provider::error::Result<()> {
+            self.requests.lock().unwrap().push(request);
+            tx.send(clankers_provider::streaming::StreamEvent::ContentBlockDelta {
+                index: 0,
+                delta: clankers_provider::streaming::ContentDelta::TextDelta {
+                    text: "model output that must not appear in receipt".to_string(),
+                },
+            })
+            .await
+            .ok();
+            Ok(())
+        }
+
+        fn models(&self) -> &[clankers_provider::Model] {
+            &self.models
+        }
+
+        fn name(&self) -> &str {
+            "recording-provider"
+        }
+    }
+
+    fn test_provider_execution_request() -> ProviderExecutionRequest {
+        ProviderExecutionRequest {
+            provider: "recording-provider".to_string(),
+            model: Some("recording-model".to_string()),
+            account_label: Some("desktop-account".to_string()),
+            route_source: "runtime-test".to_string(),
+            prompt: Some("prompt secret text must not appear in receipt".to_string()),
+            system_prompt: Some("system secret text must not appear in receipt".to_string()),
+            max_tokens: Some(32),
+            session_id: Some("session-provider-runtime".to_string()),
+        }
+    }
+
+    #[test]
+    fn desktop_runtime_provider_router_fails_closed_without_injection() {
+        let paths = crate::config::ClankersPaths::resolve();
+        let temp = tempfile::tempdir().expect("temp project root");
+        let project_paths = crate::config::ProjectPaths::resolve(temp.path());
+        let services = DesktopRuntimeServiceAdapters::from_paths(&paths, &project_paths);
+
+        let error = services.extensions.provider_router.execute(test_provider_execution_request()).unwrap_err();
+
+        assert_eq!(error, RuntimeError::ExtensionUnavailable("desktop provider router not injected".to_string()));
+    }
+
+    #[test]
+    fn desktop_runtime_provider_router_executes_injected_provider_with_safe_receipt() {
+        let paths = crate::config::ClankersPaths::resolve();
+        let temp = tempfile::tempdir().expect("temp project root");
+        let project_paths = crate::config::ProjectPaths::resolve(temp.path());
+        let provider = Arc::new(RecordingProvider::default());
+        let provider_for_assert = Arc::clone(&provider);
+        let services = DesktopRuntimeServiceAdapters::from_paths_with_provider_router(&paths, &project_paths, provider);
+
+        let receipt = services
+            .extensions
+            .provider_router
+            .execute(test_provider_execution_request())
+            .expect("provider receipt");
+
+        assert_eq!(receipt.status, ExtensionStatus::Succeeded);
+        assert_eq!(receipt.source, "desktop_provider_router");
+        assert_eq!(receipt.metadata.fields.get("provider").unwrap(), "recording-provider");
+        assert_eq!(receipt.metadata.fields.get("model").unwrap(), "recording-model");
+        assert_eq!(receipt.metadata.fields.get("route_source").unwrap(), "runtime-test");
+        assert_eq!(receipt.metadata.fields.get("session_id").unwrap(), "session-provider-runtime");
+        assert_eq!(receipt.metadata.fields.get("stream_events").unwrap(), "1");
+        assert!(receipt.metadata.fields.contains_key("text_delta_bytes"));
+        assert!(!receipt.metadata.fields.values().any(|value| value.contains("prompt secret")));
+        assert!(!receipt.metadata.fields.values().any(|value| value.contains("system secret")));
+        assert!(!receipt.metadata.fields.values().any(|value| value.contains("model output")));
+        assert!(!receipt.contains_secret_markers());
+
+        let requests = provider_for_assert.requests.lock().unwrap();
+        assert_eq!(requests.len(), 1);
+        assert_eq!(requests[0].model, "recording-model");
+        assert_eq!(requests[0].max_tokens, Some(32));
+        assert_eq!(requests[0].system_prompt.as_deref(), Some("system secret text must not appear in receipt"));
+        assert_eq!(requests[0].extra_params.get("_session_id"), Some(&serde_json::json!("session-provider-runtime")),);
+        assert_eq!(requests[0].extra_params.get("_account_label"), Some(&serde_json::json!("desktop-account")),);
+    }
+
+    #[test]
+    fn desktop_runtime_provider_router_rejects_missing_prompt_before_provider_call() {
+        let paths = crate::config::ClankersPaths::resolve();
+        let temp = tempfile::tempdir().expect("temp project root");
+        let project_paths = crate::config::ProjectPaths::resolve(temp.path());
+        let provider = Arc::new(RecordingProvider::default());
+        let provider_for_assert = Arc::clone(&provider);
+        let services = DesktopRuntimeServiceAdapters::from_paths_with_provider_router(&paths, &project_paths, provider);
+        let mut request = test_provider_execution_request();
+        request.prompt = Some("   ".to_string());
+
+        let error = services.extensions.provider_router.execute(request).unwrap_err();
+
+        assert_eq!(error, RuntimeError::InvalidPrompt("provider execution request missing prompt".to_string()),);
+        assert!(provider_for_assert.requests.lock().unwrap().is_empty());
+    }
 
     #[test]
     fn desktop_runtime_services_publish_explicit_capabilities() {

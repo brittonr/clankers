@@ -1,0 +1,7 @@
+id: bridge-provider-router-runtime-execution
+status: active
+owners:
+  - hermes
+specs:
+  - tool-host-embedding
+  - embeddable-agent-engine
