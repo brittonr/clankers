@@ -621,6 +621,375 @@ mod tests {
         .await
     }
 
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+    struct MatrixAxisValue {
+        axis: &'static str,
+        value: &'static str,
+    }
+
+    #[derive(Debug, Clone, Copy)]
+    enum MatrixScenario {
+        CompletedStop,
+        StreamedTextWithUsage,
+        ToolSuccessFollowup,
+        RetryThenSuccess,
+        MalformedStream,
+        ProviderStreamError,
+        ZeroBudgetRejected,
+        BudgetExhaustedAfterToolFeedback,
+    }
+
+    #[derive(Debug, Clone)]
+    struct MatrixCase {
+        id: &'static str,
+        axes: &'static [MatrixAxisValue],
+        critical_triples: &'static [&'static str],
+        scenario: MatrixScenario,
+    }
+
+    const fn axis(axis: &'static str, value: &'static str) -> MatrixAxisValue {
+        MatrixAxisValue { axis, value }
+    }
+
+    const MATRIX_AXIS_VALUES: &[(&str, &[&str])] = &[
+        ("model_mode", &["completed", "streamed"]),
+        ("stop_reason", &["stop", "tool_use", "terminal_failure"]),
+        ("tool_behavior", &["none", "success"]),
+        ("retry_behavior", &["none", "retry_then_success", "non_retryable_failure"]),
+        ("cancellation_timing", &["none", "during_retry"]),
+        ("usage_observation", &["none", "final_summary", "stream_delta_and_final"]),
+        ("stream_validity", &["non_stream", "valid_text", "malformed", "provider_error"]),
+        ("request_budget", &[
+            "zero_invalid",
+            "one_no_followup",
+            "two_allows_followup",
+            "exhausted_after_tool_feedback",
+        ]),
+    ];
+
+    const MATRIX_CRITICAL_TRIPLES: &[&str] = &[
+        "streamed_tool_calls_with_usage",
+        "retryable_failures_with_cancellation",
+        "budget_exhaustion_after_tool_feedback",
+    ];
+
+    const MATRIX_CASES: &[MatrixCase] = &[
+        MatrixCase {
+            id: "EHFM-001-completed-stop-final-usage",
+            axes: &[
+                axis("model_mode", "completed"),
+                axis("stop_reason", "stop"),
+                axis("tool_behavior", "none"),
+                axis("retry_behavior", "none"),
+                axis("cancellation_timing", "none"),
+                axis("usage_observation", "final_summary"),
+                axis("stream_validity", "non_stream"),
+                axis("request_budget", "one_no_followup"),
+            ],
+            critical_triples: &[],
+            scenario: MatrixScenario::CompletedStop,
+        },
+        MatrixCase {
+            id: "EHFM-002-streamed-stop-usage",
+            axes: &[
+                axis("model_mode", "streamed"),
+                axis("stop_reason", "stop"),
+                axis("tool_behavior", "none"),
+                axis("retry_behavior", "none"),
+                axis("cancellation_timing", "none"),
+                axis("usage_observation", "stream_delta_and_final"),
+                axis("stream_validity", "valid_text"),
+                axis("request_budget", "one_no_followup"),
+            ],
+            critical_triples: &["streamed_tool_calls_with_usage"],
+            scenario: MatrixScenario::StreamedTextWithUsage,
+        },
+        MatrixCase {
+            id: "EHFM-003-tool-success-followup",
+            axes: &[
+                axis("model_mode", "completed"),
+                axis("stop_reason", "tool_use"),
+                axis("tool_behavior", "success"),
+                axis("retry_behavior", "none"),
+                axis("cancellation_timing", "none"),
+                axis("usage_observation", "none"),
+                axis("stream_validity", "non_stream"),
+                axis("request_budget", "two_allows_followup"),
+            ],
+            critical_triples: &[],
+            scenario: MatrixScenario::ToolSuccessFollowup,
+        },
+        MatrixCase {
+            id: "EHFM-004-retry-then-success",
+            axes: &[
+                axis("model_mode", "completed"),
+                axis("stop_reason", "stop"),
+                axis("tool_behavior", "none"),
+                axis("retry_behavior", "retry_then_success"),
+                axis("cancellation_timing", "during_retry"),
+                axis("usage_observation", "none"),
+                axis("stream_validity", "non_stream"),
+                axis("request_budget", "two_allows_followup"),
+            ],
+            critical_triples: &["retryable_failures_with_cancellation"],
+            scenario: MatrixScenario::RetryThenSuccess,
+        },
+        MatrixCase {
+            id: "EHFM-005-malformed-stream",
+            axes: &[
+                axis("model_mode", "streamed"),
+                axis("stop_reason", "terminal_failure"),
+                axis("tool_behavior", "none"),
+                axis("retry_behavior", "non_retryable_failure"),
+                axis("cancellation_timing", "none"),
+                axis("usage_observation", "none"),
+                axis("stream_validity", "malformed"),
+                axis("request_budget", "one_no_followup"),
+            ],
+            critical_triples: &[],
+            scenario: MatrixScenario::MalformedStream,
+        },
+        MatrixCase {
+            id: "EHFM-006-provider-stream-error",
+            axes: &[
+                axis("model_mode", "streamed"),
+                axis("stop_reason", "terminal_failure"),
+                axis("tool_behavior", "none"),
+                axis("retry_behavior", "non_retryable_failure"),
+                axis("cancellation_timing", "none"),
+                axis("usage_observation", "none"),
+                axis("stream_validity", "provider_error"),
+                axis("request_budget", "one_no_followup"),
+            ],
+            critical_triples: &[],
+            scenario: MatrixScenario::ProviderStreamError,
+        },
+        MatrixCase {
+            id: "EHFM-007-zero-budget-invalid",
+            axes: &[
+                axis("model_mode", "completed"),
+                axis("stop_reason", "terminal_failure"),
+                axis("tool_behavior", "none"),
+                axis("retry_behavior", "none"),
+                axis("cancellation_timing", "none"),
+                axis("usage_observation", "none"),
+                axis("stream_validity", "non_stream"),
+                axis("request_budget", "zero_invalid"),
+            ],
+            critical_triples: &[],
+            scenario: MatrixScenario::ZeroBudgetRejected,
+        },
+        MatrixCase {
+            id: "EHFM-008-budget-exhausted-after-tool-feedback",
+            axes: &[
+                axis("model_mode", "completed"),
+                axis("stop_reason", "tool_use"),
+                axis("tool_behavior", "success"),
+                axis("retry_behavior", "none"),
+                axis("cancellation_timing", "none"),
+                axis("usage_observation", "none"),
+                axis("stream_validity", "non_stream"),
+                axis("request_budget", "exhausted_after_tool_feedback"),
+            ],
+            critical_triples: &["budget_exhaustion_after_tool_feedback"],
+            scenario: MatrixScenario::BudgetExhaustedAfterToolFeedback,
+        },
+    ];
+
+    fn matrix_usage() -> Usage {
+        Usage {
+            input_tokens: TEST_USAGE_INPUT,
+            output_tokens: TEST_USAGE_OUTPUT,
+            cache_creation_input_tokens: 0,
+            cache_read_input_tokens: 0,
+        }
+    }
+
+    fn matrix_text_response(text: &str, stop_reason: StopReason) -> EngineModelResponse {
+        EngineModelResponse {
+            output: vec![Content::Text { text: text.to_string() }],
+            stop_reason,
+        }
+    }
+
+    fn matrix_tool_response() -> EngineModelResponse {
+        EngineModelResponse {
+            output: vec![Content::ToolUse {
+                id: "call-1".to_string(),
+                name: TEST_TOOL.to_string(),
+                input: json!({}),
+            }],
+            stop_reason: StopReason::ToolUse,
+        }
+    }
+
+    fn run_matrix_case(case: &MatrixCase) -> EngineRunReport {
+        let mut model = match case.scenario {
+            MatrixScenario::CompletedStop => FakeModel {
+                outcomes: vec![ModelHostOutcome::Completed {
+                    response: matrix_text_response("ok", StopReason::Stop),
+                    usage: Some(matrix_usage()),
+                }],
+            },
+            MatrixScenario::StreamedTextWithUsage => FakeModel {
+                outcomes: vec![ModelHostOutcome::Streamed {
+                    events: vec![
+                        HostStreamEvent::TextStart { index: 0 },
+                        HostStreamEvent::TextDelta {
+                            index: 0,
+                            text: "hi".to_string(),
+                        },
+                        HostStreamEvent::Usage { usage: matrix_usage() },
+                        HostStreamEvent::MessageStop {
+                            model: Some(TEST_MODEL.to_string()),
+                            stop_reason: StopReason::Stop,
+                        },
+                    ],
+                }],
+            },
+            MatrixScenario::ToolSuccessFollowup | MatrixScenario::BudgetExhaustedAfterToolFeedback => FakeModel {
+                outcomes: vec![
+                    ModelHostOutcome::Completed {
+                        response: matrix_tool_response(),
+                        usage: None,
+                    },
+                    ModelHostOutcome::Completed {
+                        response: matrix_text_response("done", StopReason::Stop),
+                        usage: None,
+                    },
+                ],
+            },
+            MatrixScenario::RetryThenSuccess => FakeModel {
+                outcomes: vec![
+                    ModelHostOutcome::Failed {
+                        failure: EngineTerminalFailure {
+                            message: "temporary".to_string(),
+                            status: Some(TEST_PROVIDER_STATUS),
+                            retryable: true,
+                        },
+                    },
+                    ModelHostOutcome::Completed {
+                        response: matrix_text_response("recovered", StopReason::Stop),
+                        usage: None,
+                    },
+                ],
+            },
+            MatrixScenario::MalformedStream => FakeModel {
+                outcomes: vec![ModelHostOutcome::Streamed {
+                    events: vec![HostStreamEvent::ToolUseJsonDelta {
+                        index: 0,
+                        json: "{".to_string(),
+                    }],
+                }],
+            },
+            MatrixScenario::ProviderStreamError => FakeModel {
+                outcomes: vec![ModelHostOutcome::Streamed {
+                    events: vec![HostStreamEvent::ProviderError {
+                        error: stream::ProviderStreamError {
+                            message: "rate limited".to_string(),
+                            status: Some(TEST_PROVIDER_STATUS),
+                            retryable: false,
+                        },
+                    }],
+                }],
+            },
+            MatrixScenario::ZeroBudgetRejected => FakeModel::default(),
+        };
+        let mut tools = FakeTools {
+            outcomes: vec![ToolHostOutcome::Succeeded {
+                content: vec![Content::Text {
+                    text: "tool ok".to_string(),
+                }],
+                details: json!({}),
+            }],
+        };
+        let mut sleeper = FakeSleeper::default();
+        let mut events = FakeEvents::default();
+        let mut cancel = FakeCancel::default();
+        let mut usage = FakeUsage::default();
+        let budget = match case.scenario {
+            MatrixScenario::ZeroBudgetRejected => 0,
+            MatrixScenario::ToolSuccessFollowup | MatrixScenario::RetryThenSuccess => 2,
+            MatrixScenario::BudgetExhaustedAfterToolFeedback => 1,
+            _ => 1,
+        };
+        block_on(run_engine_turn(seed_with_budget(budget), HostAdapters {
+            model: &mut model,
+            tools: &mut tools,
+            retry_sleeper: &mut sleeper,
+            event_sink: &mut events,
+            cancellation: &mut cancel,
+            usage_observer: &mut usage,
+        }))
+    }
+
+    #[test]
+    fn engine_host_feature_matrix_executes_declared_cases_and_reports_axes() {
+        for case in MATRIX_CASES {
+            let report = run_matrix_case(case);
+            let ok = match case.scenario {
+                MatrixScenario::MalformedStream | MatrixScenario::ProviderStreamError => {
+                    report.last_outcome.terminal_failure.is_some()
+                }
+                MatrixScenario::ZeroBudgetRejected => {
+                    matches!(report.last_outcome.rejection, Some(EngineRejection::InvalidBudget { .. }))
+                }
+                _ => report.last_outcome.rejection.is_none() && report.last_outcome.terminal_failure.is_none(),
+            };
+            assert!(
+                ok,
+                "matrix case {} failed axes={:?}: rejection={:?} terminal_failure={:?} events={:?} usage={:?} diagnostics={:?}",
+                case.id,
+                case.axes,
+                report.last_outcome.rejection,
+                report.last_outcome.terminal_failure,
+                report.observed_events,
+                report.usage_observations,
+                report.adapter_diagnostics
+            );
+        }
+    }
+
+    #[test]
+    fn engine_host_feature_matrix_freshness_covers_axes_and_critical_triples() {
+        for (axis_name, values) in MATRIX_AXIS_VALUES {
+            for value in *values {
+                assert!(
+                    MATRIX_CASES
+                        .iter()
+                        .any(|case| case.axes.iter().any(|axis| axis.axis == *axis_name && axis.value == *value)),
+                    "missing matrix value {axis_name}={value}"
+                );
+            }
+        }
+        for triple in MATRIX_CRITICAL_TRIPLES {
+            assert!(
+                MATRIX_CASES.iter().any(|case| case.critical_triples.contains(triple)),
+                "missing critical triple {triple}"
+            );
+        }
+    }
+
+    #[test]
+    fn engine_host_feature_matrix_pairwise_policy_is_covered() {
+        let required = [
+            ("stream text usage", "model_mode", "streamed", "usage_observation", "stream_delta_and_final"),
+            ("malformed stream terminal", "model_mode", "streamed", "stream_validity", "malformed"),
+            ("provider stream error", "model_mode", "streamed", "stream_validity", "provider_error"),
+            ("tool success budget", "tool_behavior", "success", "request_budget", "two_allows_followup"),
+            ("budget exhaustion", "tool_behavior", "success", "request_budget", "exhausted_after_tool_feedback"),
+        ];
+        for (label, left_axis, left_value, right_axis, right_value) in required {
+            assert!(
+                MATRIX_CASES.iter().any(|case| {
+                    case.axes.iter().any(|axis| axis.axis == left_axis && axis.value == left_value)
+                        && case.axes.iter().any(|axis| axis.axis == right_axis && axis.value == right_value)
+                }),
+                "missing required pairwise interaction {label}"
+            );
+        }
+    }
+
     #[test]
     fn runner_completes_model_success_and_records_usage() {
         let mut model = FakeModel {

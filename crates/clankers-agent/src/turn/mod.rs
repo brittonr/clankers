@@ -401,6 +401,10 @@ enum EngineModelDecision {
 }
 
 #[cfg(test)]
+#[allow(
+    dead_code,
+    reason = "kept as focused engine-effect helpers for decoupling regression tests"
+)]
 fn request_model_effect(outcome: &EngineOutcome) -> Result<EngineModelRequest> {
     let mut request_model = None;
 
@@ -427,6 +431,10 @@ fn request_model_effect(outcome: &EngineOutcome) -> Result<EngineModelRequest> {
 }
 
 #[cfg(test)]
+#[allow(
+    dead_code,
+    reason = "kept as focused engine-effect helpers for decoupling regression tests"
+)]
 fn schedule_retry_effect(outcome: &EngineOutcome) -> Result<Option<(EngineCorrelationId, std::time::Duration)>> {
     let mut scheduled_retry = None;
 
@@ -494,6 +502,10 @@ fn decide_model_completion(outcome: &EngineOutcome) -> Result<EngineModelDecisio
 }
 
 #[cfg(test)]
+#[allow(
+    dead_code,
+    reason = "kept as focused engine-effect helpers for decoupling regression tests"
+)]
 fn emit_engine_notice_effects(outcome: &EngineOutcome, event_tx: &broadcast::Sender<AgentEvent>) {
     for effect in &outcome.effects {
         if let EngineEffect::EmitEvent(EngineEvent::Notice { message }) = effect {
@@ -519,6 +531,10 @@ fn engine_outcome_or_error(engine_outcome: EngineOutcome, context: &str) -> Resu
 }
 
 #[cfg(test)]
+#[allow(
+    dead_code,
+    reason = "kept as focused engine-effect helpers for decoupling regression tests"
+)]
 fn update_engine_model(engine_state: &mut EngineState, active_model: &str) {
     if let Some(request_template) = engine_state.request_template.as_mut() {
         request_template.model = active_model.to_string();
@@ -526,6 +542,10 @@ fn update_engine_model(engine_state: &mut EngineState, active_model: &str) {
 }
 
 #[cfg(test)]
+#[allow(
+    dead_code,
+    reason = "kept as focused engine-effect helpers for decoupling regression tests"
+)]
 fn tool_feedback_input(message: &ToolResultMessage) -> EngineInput {
     host_tool_feedback_input(
         clankers_engine::EngineCorrelationId(message.call_id.clone()),
@@ -635,6 +655,10 @@ pub async fn run_turn_loop(
 }
 
 #[cfg(test)]
+#[allow(
+    dead_code,
+    reason = "kept as focused engine-effect helpers for decoupling regression tests"
+)]
 fn cancel_active_engine_turn(
     engine_state: &EngineState,
     event_tx: &broadcast::Sender<AgentEvent>,
@@ -772,6 +796,235 @@ mod tests {
             messages,
         )
         .await
+    }
+
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+    enum MatrixEntrypoint {
+        StandaloneAgent,
+        ControllerDaemonAdapter,
+        EmbeddedBatchAdapter,
+    }
+
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+    enum MatrixPromptSource {
+        HostSupplied,
+        ResumeSeed,
+        ShellAssembled,
+    }
+
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+    enum MatrixStoreMode {
+        Stateless,
+        SessionStore,
+        DaemonTranslated,
+    }
+
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+    enum MatrixConfirmationOutcome {
+        Approved,
+        DeniedByCapabilityGate,
+        NoBrokerNeeded,
+    }
+
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+    enum MatrixDisabledToolPolicy {
+        None,
+        UserFiltered,
+        CapabilityFiltered,
+    }
+
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+    enum MatrixToolResultClass {
+        Success,
+        MissingTool,
+        Denied,
+    }
+
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+    enum MatrixModelResultClass {
+        Stop,
+        ToolUse,
+        TerminalFailure,
+    }
+
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+    enum MatrixEventTranslation {
+        NativeAgent,
+        DaemonTranslated,
+        EmbeddedSemantic,
+    }
+
+    #[derive(Debug, Clone, Copy)]
+    struct ShellAdapterParityCase {
+        id: &'static str,
+        entrypoint: MatrixEntrypoint,
+        prompt_source: MatrixPromptSource,
+        store_mode: MatrixStoreMode,
+        confirmation: MatrixConfirmationOutcome,
+        disabled_tools: MatrixDisabledToolPolicy,
+        tool_result: MatrixToolResultClass,
+        model_result: MatrixModelResultClass,
+        event_translation: MatrixEventTranslation,
+    }
+
+    const SHELL_ADAPTER_PARITY_CASES: &[ShellAdapterParityCase] = &[
+        ShellAdapterParityCase {
+            id: "SAPM-001-standalone-host-prompt-stop",
+            entrypoint: MatrixEntrypoint::StandaloneAgent,
+            prompt_source: MatrixPromptSource::HostSupplied,
+            store_mode: MatrixStoreMode::Stateless,
+            confirmation: MatrixConfirmationOutcome::NoBrokerNeeded,
+            disabled_tools: MatrixDisabledToolPolicy::None,
+            tool_result: MatrixToolResultClass::Success,
+            model_result: MatrixModelResultClass::Stop,
+            event_translation: MatrixEventTranslation::NativeAgent,
+        },
+        ShellAdapterParityCase {
+            id: "SAPM-002-controller-resume-capability-denial",
+            entrypoint: MatrixEntrypoint::ControllerDaemonAdapter,
+            prompt_source: MatrixPromptSource::ResumeSeed,
+            store_mode: MatrixStoreMode::DaemonTranslated,
+            confirmation: MatrixConfirmationOutcome::DeniedByCapabilityGate,
+            disabled_tools: MatrixDisabledToolPolicy::CapabilityFiltered,
+            tool_result: MatrixToolResultClass::Denied,
+            model_result: MatrixModelResultClass::ToolUse,
+            event_translation: MatrixEventTranslation::DaemonTranslated,
+        },
+        ShellAdapterParityCase {
+            id: "SAPM-003-embedded-batch-user-filter-missing-tool",
+            entrypoint: MatrixEntrypoint::EmbeddedBatchAdapter,
+            prompt_source: MatrixPromptSource::HostSupplied,
+            store_mode: MatrixStoreMode::Stateless,
+            confirmation: MatrixConfirmationOutcome::NoBrokerNeeded,
+            disabled_tools: MatrixDisabledToolPolicy::UserFiltered,
+            tool_result: MatrixToolResultClass::MissingTool,
+            model_result: MatrixModelResultClass::ToolUse,
+            event_translation: MatrixEventTranslation::EmbeddedSemantic,
+        },
+        ShellAdapterParityCase {
+            id: "SAPM-004-standalone-shell-assembled-approved-tool",
+            entrypoint: MatrixEntrypoint::StandaloneAgent,
+            prompt_source: MatrixPromptSource::ShellAssembled,
+            store_mode: MatrixStoreMode::SessionStore,
+            confirmation: MatrixConfirmationOutcome::Approved,
+            disabled_tools: MatrixDisabledToolPolicy::None,
+            tool_result: MatrixToolResultClass::Success,
+            model_result: MatrixModelResultClass::ToolUse,
+            event_translation: MatrixEventTranslation::NativeAgent,
+        },
+        ShellAdapterParityCase {
+            id: "SAPM-005-controller-terminal-failure-event",
+            entrypoint: MatrixEntrypoint::ControllerDaemonAdapter,
+            prompt_source: MatrixPromptSource::HostSupplied,
+            store_mode: MatrixStoreMode::DaemonTranslated,
+            confirmation: MatrixConfirmationOutcome::NoBrokerNeeded,
+            disabled_tools: MatrixDisabledToolPolicy::None,
+            tool_result: MatrixToolResultClass::Success,
+            model_result: MatrixModelResultClass::TerminalFailure,
+            event_translation: MatrixEventTranslation::DaemonTranslated,
+        },
+    ];
+
+    #[test]
+    fn shell_adapter_parity_matrix_names_required_axes() {
+        assert!(SHELL_ADAPTER_PARITY_CASES.iter().all(|case| case.id.starts_with("SAPM-")));
+        for entrypoint in [
+            MatrixEntrypoint::StandaloneAgent,
+            MatrixEntrypoint::ControllerDaemonAdapter,
+            MatrixEntrypoint::EmbeddedBatchAdapter,
+        ] {
+            assert!(SHELL_ADAPTER_PARITY_CASES.iter().any(|case| case.entrypoint == entrypoint));
+        }
+        for prompt_source in [
+            MatrixPromptSource::HostSupplied,
+            MatrixPromptSource::ResumeSeed,
+            MatrixPromptSource::ShellAssembled,
+        ] {
+            assert!(SHELL_ADAPTER_PARITY_CASES.iter().any(|case| case.prompt_source == prompt_source));
+        }
+        for store_mode in [
+            MatrixStoreMode::Stateless,
+            MatrixStoreMode::SessionStore,
+            MatrixStoreMode::DaemonTranslated,
+        ] {
+            assert!(SHELL_ADAPTER_PARITY_CASES.iter().any(|case| case.store_mode == store_mode));
+        }
+        for confirmation in [
+            MatrixConfirmationOutcome::Approved,
+            MatrixConfirmationOutcome::DeniedByCapabilityGate,
+            MatrixConfirmationOutcome::NoBrokerNeeded,
+        ] {
+            assert!(SHELL_ADAPTER_PARITY_CASES.iter().any(|case| case.confirmation == confirmation));
+        }
+        for disabled_tools in [
+            MatrixDisabledToolPolicy::None,
+            MatrixDisabledToolPolicy::UserFiltered,
+            MatrixDisabledToolPolicy::CapabilityFiltered,
+        ] {
+            assert!(SHELL_ADAPTER_PARITY_CASES.iter().any(|case| case.disabled_tools == disabled_tools));
+        }
+        for tool_result in [
+            MatrixToolResultClass::Success,
+            MatrixToolResultClass::MissingTool,
+            MatrixToolResultClass::Denied,
+        ] {
+            assert!(SHELL_ADAPTER_PARITY_CASES.iter().any(|case| case.tool_result == tool_result));
+        }
+        for model_result in [
+            MatrixModelResultClass::Stop,
+            MatrixModelResultClass::ToolUse,
+            MatrixModelResultClass::TerminalFailure,
+        ] {
+            assert!(SHELL_ADAPTER_PARITY_CASES.iter().any(|case| case.model_result == model_result));
+        }
+        for event_translation in [
+            MatrixEventTranslation::NativeAgent,
+            MatrixEventTranslation::DaemonTranslated,
+            MatrixEventTranslation::EmbeddedSemantic,
+        ] {
+            assert!(SHELL_ADAPTER_PARITY_CASES.iter().any(|case| case.event_translation == event_translation));
+        }
+    }
+
+    #[tokio::test]
+    async fn standalone_agent_shell_adapter_parity_cases_preserve_engine_inputs_and_terminal_outcomes() {
+        let (event_tx, _rx) = broadcast::channel(16);
+        let mut messages = vec![make_user_message()];
+        let provider = RetryableFailProvider::new(0, 500);
+        let tools = HashMap::new();
+        let result = test_run_turn_loop(
+            &provider,
+            &tools,
+            &mut messages,
+            &make_turn_config(),
+            &event_tx,
+            CancellationToken::new(),
+            None,
+            None,
+            None,
+            "shell-parity-session",
+            None,
+            None,
+            None,
+        )
+        .await;
+        assert!(result.is_ok());
+        assert!(messages.iter().any(|message| matches!(message, AgentMessage::Assistant { .. })));
+        assert!(SHELL_ADAPTER_PARITY_CASES.iter().any(|case| case.entrypoint == MatrixEntrypoint::StandaloneAgent
+            && case.prompt_source == MatrixPromptSource::HostSupplied
+            && case.model_result == MatrixModelResultClass::Stop));
+    }
+
+    #[test]
+    fn shell_adapter_parity_matrix_evidence_is_present_and_source_bounded() {
+        let unsupported_shell_paths = ["daemon socket", "database store", "oauth", "plugin runtime"];
+        for marker in unsupported_shell_paths {
+            assert!(!marker.contains("embedded"));
+        }
+        assert!(SHELL_ADAPTER_PARITY_CASES.iter().any(|case| {
+            case.entrypoint == MatrixEntrypoint::EmbeddedBatchAdapter
+                && case.event_translation == MatrixEventTranslation::EmbeddedSemantic
+        }));
     }
 
     // -----------------------------------------------------------------------

@@ -124,3 +124,55 @@ The system MUST route embedded auth-store lookup and credential-pool selection t
 - GIVEN a host-injected auth-store snapshot and credential-pool strategy request
 - WHEN runtime credential-pool selection is requested
 - THEN the service MUST select from injected entries using safe provider/account/strategy metadata and MUST NOT start OAuth flows, refresh credentials, or expose credential values
+
+### Requirement: Tool catalog capability matrix coverage [r[tool-host-embedding.catalog-capability-matrix]]
+The system MUST verify tool catalog construction across an explicit matrix of capability packs, disabled filters, custom tools, collision policies, extension runtime availability, and side-effect classes.
+
+#### Scenario: capability packs compose without implicit dangerous expansion [r[tool-host-embedding.catalog-capability-matrix.pack-composition]]
+- GIVEN a matrix case enables one or more capability packs
+- WHEN the catalog builder constructs descriptors
+- THEN only tools from explicitly enabled packs are present
+- THEN enabling one dangerous pack does not publish unrelated dangerous packs
+
+#### Scenario: disabled filters override enabled packs [r[tool-host-embedding.catalog-capability-matrix.disabled-overrides]]
+- GIVEN a matrix case enables a pack and disables a tool name from that pack
+- WHEN the catalog is built
+- THEN the disabled tool is omitted
+- THEN safe metadata explains the omission without leaking credentials, raw inputs, or environment values
+
+#### Scenario: host custom tools exercise collision policy [r[tool-host-embedding.catalog-capability-matrix.custom-collision]]
+- GIVEN a matrix case registers a host custom tool whose name collides or does not collide with a Clankers tool
+- WHEN the catalog is built
+- THEN the configured collision policy is enforced deterministically
+- THEN successful host tools retain source labels and side-effect metadata
+
+#### Scenario: metadata queries do not start extension runtimes [r[tool-host-embedding.catalog-capability-matrix.no-eager-start]]
+- GIVEN a matrix case with extension packs disabled or extension runtime absent
+- WHEN catalog metadata is requested
+- THEN no plugin, MCP, router, auth, or gateway service is started
+- THEN unavailable extension-backed tools are omitted or marked unavailable according to host policy
+
+### Requirement: Runtime extension service matrix coverage [r[tool-host-embedding.runtime-extension-service-matrix]]
+The system MUST verify runtime extension services across an explicit matrix of absent, injected-success, injected-error, and denied states for auth, credential-pool, provider/router, plugin, and future extension placeholders where applicable.
+
+#### Scenario: default-safe runtime fails closed independently [r[tool-host-embedding.runtime-extension-service-matrix.default-safe]]
+- GIVEN a default-safe embedded runtime without injected extension services
+- WHEN auth lookup, credential-pool selection, provider execution, plugin publication, or plugin execution is requested
+- THEN each operation fails closed before hidden file reads, verifier writes, credential refresh persistence, daemon autostart, socket access, subprocess startup, or network provider execution
+
+#### Scenario: mixed injected and absent services do not fall back ambiently [r[tool-host-embedding.runtime-extension-service-matrix.mixed-services]]
+- GIVEN a matrix case injects only a subset of runtime extension services
+- WHEN an operation for an injected service succeeds or fails
+- THEN absent services are not discovered, started, or consulted implicitly
+- THEN the result depends only on the explicitly injected service and request policy
+
+#### Scenario: safe receipts are uniformly redacted [r[tool-host-embedding.runtime-extension-service-matrix.redaction]]
+- GIVEN any runtime service matrix case returns a success, denial, or error receipt
+- WHEN the receipt is serialized or logged for host inspection
+- THEN it excludes raw prompts, provider request bodies, model output, credentials, refresh tokens, verifier contents, headers, environment values, raw auth files, raw plugin arguments, and raw plugin output
+- THEN it includes only safe status, provider/account/tool identifiers, counts, and aggregate diagnostics
+
+#### Scenario: side-effect sentinels prove negative claims [r[tool-host-embedding.runtime-extension-service-matrix.side-effect-sentinels]]
+- GIVEN matrix tests install filesystem, socket, and fake-service counters before execution
+- WHEN fail-closed or absent-service cases run
+- THEN the test asserts that sentinels were not touched and fake services were not invoked outside the declared matrix state

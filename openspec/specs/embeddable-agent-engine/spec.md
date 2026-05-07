@@ -958,3 +958,69 @@ The embeddable runtime SHALL represent model/provider execution as host-owned ru
 #### Scenario: Neutral provider request remains adapter-free
 - **WHEN** a host constructs a runtime provider execution request
 - **THEN** the request uses neutral serializable fields rather than daemon protocol, TUI, CLI, ACP, MCP, or provider-adapter types
+
+### Requirement: Embedded SDK verification hygiene [r[embeddable-agent-engine.verification-hygiene]]
+The system MUST keep embedded SDK acceptance commands reproducible from ordinary shell environments and keep verification bookkeeping accurate enough for future drain automation.
+
+#### Scenario: acceptance script ignores caller CDPATH [r[embeddable-agent-engine.verification-hygiene.cdpath]]
+- GIVEN a caller shell has `CDPATH` set to a directory that causes `cd` to print paths
+- WHEN the embedded SDK acceptance script computes its script directory and repository root
+- THEN the computed paths remain valid repository paths
+- THEN the script does not require callers to prefix the command with `CDPATH=`
+
+#### Scenario: focused verification remains warning-clean for touched adapter helpers [r[embeddable-agent-engine.verification-hygiene.warning-clean]]
+- GIVEN a change touches agent turn adapter helpers as part of decoupling cleanup
+- WHEN focused agent turn tests are run
+- THEN obsolete helpers are removed or locally justified
+- THEN the verification output does not introduce new dead-code warnings for the touched helpers
+
+#### Scenario: drain-state reflects idle queue state [r[embeddable-agent-engine.verification-hygiene.drain-state]]
+- GIVEN `openspec list` reports no active changes after a queue drain
+- WHEN drain-state bookkeeping is inspected
+- THEN it reports no current active change and does not claim a pending last commit
+- THEN future drain reviews can treat the file as advisory idle state rather than stale implementation state
+
+### Requirement: Engine/host feature matrix coverage [r[embeddable-agent-engine.engine-host-feature-matrix]]
+The system MUST verify the reusable engine and host runner with an explicit bounded matrix of interacting model, tool, retry, cancellation, usage, streaming, and budget features.
+
+#### Scenario: matrix covers pairwise feature interactions [r[embeddable-agent-engine.engine-host-feature-matrix.pairwise]]
+- GIVEN declared matrix axes for model mode, stop reason, tool behavior, retry behavior, cancellation timing, usage observation, stream validity, and request budget
+- WHEN the matrix coverage checker runs
+- THEN every axis value appears in at least one executed case
+- THEN every pairwise interaction required by the matrix policy is covered by an executed case or an explicit documented exclusion
+
+#### Scenario: critical triples protect known orchestration seams [r[embeddable-agent-engine.engine-host-feature-matrix.critical-triples]]
+- GIVEN known-risk interactions such as streamed tool calls with usage, retryable failures with cancellation, and budget exhaustion after tool feedback
+- WHEN the matrix runner executes critical cases
+- THEN each critical interaction has a stable case ID and assertions over engine effects, correlated feedback, terminal outcome, and emitted events
+
+#### Scenario: matrix remains provider-neutral [r[embeddable-agent-engine.engine-host-feature-matrix.provider-neutral]]
+- GIVEN the matrix test suite runs in an environment with no provider credentials, router daemon, plugin runtime, or OAuth store
+- WHEN engine/host matrix cases execute
+- THEN they use fake host adapters only
+- THEN no network, daemon autostart, credential lookup, or provider discovery occurs
+
+#### Scenario: matrix failures identify axis values [r[embeddable-agent-engine.engine-host-feature-matrix.diagnostics]]
+- GIVEN a matrix case fails
+- WHEN the test report is inspected
+- THEN it names the case ID, axis values, expected engine effects or terminal outcome, and observed divergence
+
+### Requirement: Shell adapter parity matrix coverage [r[embeddable-agent-engine.shell-adapter-parity-matrix]]
+The system MUST verify Clankers shell adapters with a bounded matrix of prompt, store, confirmation, tool, model, and event-translation features while preserving engine-owned reusable turn policy.
+
+#### Scenario: shared fixtures run across supported shell seams [r[embeddable-agent-engine.shell-adapter-parity-matrix.shared-fixtures]]
+- GIVEN a matrix case with a recorded prompt, tool response, model response, and expected engine-adapter outcome
+- WHEN the case runs through supported standalone agent, controller/daemon adapter, and bounded embedded or batch seams
+- THEN each shell produces equivalent engine inputs, interpreted effects, terminal outcomes, and user-visible semantic events after shell-specific translation
+
+#### Scenario: host-owned services stay outside engine policy [r[embeddable-agent-engine.shell-adapter-parity-matrix.host-owned-services]]
+- GIVEN a matrix case varies prompt source, store mode, confirmation response, disabled-tool policy, tool result class, and model result class
+- WHEN shell adapters execute the case
+- THEN prompt assembly, store lookup, confirmation decisions, and shell event translation remain adapter-owned
+- THEN model/tool continuation policy remains engine-owned and is not duplicated by the shell
+
+#### Scenario: source-boundary rails require behavioral evidence [r[embeddable-agent-engine.shell-adapter-parity-matrix.fcis-evidence]]
+- GIVEN FCIS/source-boundary checks pass syntactically
+- WHEN decoupling acceptance claims shell adapter parity
+- THEN at least one matrix evidence report names the shell seams and feature axes exercised
+- THEN failure to execute required shell matrix cases blocks acceptance

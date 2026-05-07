@@ -855,6 +855,46 @@ mod tests {
     }
 
     #[test]
+    fn desktop_runtime_mixed_injected_services_do_not_fall_back_to_ambient() {
+        let paths = crate::config::ClankersPaths::resolve();
+        let temp = tempfile::tempdir().expect("temp project root");
+        let project_paths = crate::config::ProjectPaths::resolve(temp.path());
+        let provider = Arc::new(RecordingProvider::default());
+        let provider_for_assert = Arc::clone(&provider);
+        let services = DesktopRuntimeServiceAdapters::from_paths_with_provider_router(&paths, &project_paths, provider);
+
+        let receipt = services
+            .extensions
+            .provider_router
+            .execute(test_provider_execution_request())
+            .expect("injected provider receipt");
+        let auth_error = services.extensions.auth_store.access(lookup_request(Some("primary"))).unwrap_err();
+        let pool_error = services.extensions.credential_pool.select(pool_request(Some("primary"))).unwrap_err();
+        let runtime_error = services
+            .extensions
+            .runtime
+            .execute(ExtensionRuntimeRequest {
+                kind: ExtensionRuntimeKind::Plugin,
+                action: "call".to_string(),
+                extension_name: Some("clankers-test-plugin".to_string()),
+                visible_tool_name: Some("test_echo".to_string()),
+                original_tool_name: Some("test_echo".to_string()),
+                runtime_entrypoint: Some("handle_tool_call".to_string()),
+                arguments: serde_json::json!({"text": "ambient fallback forbidden"}),
+            })
+            .unwrap_err();
+
+        assert_eq!(receipt.status, ExtensionStatus::Succeeded);
+        assert_eq!(provider_for_assert.requests.lock().unwrap().len(), 1);
+        assert_eq!(auth_error, RuntimeError::ExtensionUnavailable("desktop auth store not injected".to_string()));
+        assert_eq!(pool_error, RuntimeError::ExtensionUnavailable("desktop credential pool not injected".to_string()));
+        assert_eq!(
+            runtime_error,
+            RuntimeError::ExtensionUnavailable("desktop plugin runtime not injected".to_string())
+        );
+    }
+
+    #[test]
     fn desktop_runtime_services_publish_explicit_capabilities() {
         let paths = crate::config::ClankersPaths::resolve();
         let temp = tempfile::tempdir().expect("temp project root");

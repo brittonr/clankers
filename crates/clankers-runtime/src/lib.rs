@@ -848,6 +848,7 @@ pub struct UnsupportedContextReference {
 pub struct ToolCatalog {
     tools: BTreeMap<String, ToolDescriptor>,
     packs: BTreeSet<CapabilityPack>,
+    omissions: Vec<ToolCatalogOmission>,
 }
 
 impl ToolCatalog {
@@ -885,34 +886,86 @@ impl ToolCatalog {
     pub fn packs(&self) -> &BTreeSet<CapabilityPack> {
         &self.packs
     }
+
+    #[must_use]
+    pub fn omissions(&self) -> &[ToolCatalogOmission] {
+        &self.omissions
+    }
 }
 
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone)]
 pub struct ToolCatalogBuilder {
     tools: BTreeMap<String, ToolDescriptor>,
     packs: BTreeSet<CapabilityPack>,
     disabled_tools: BTreeSet<String>,
+    omissions: Vec<ToolCatalogOmission>,
+    collision_policy: ToolCollisionPolicy,
+}
+
+impl Default for ToolCatalogBuilder {
+    fn default() -> Self {
+        Self {
+            tools: BTreeMap::new(),
+            packs: BTreeSet::new(),
+            disabled_tools: BTreeSet::new(),
+            omissions: Vec::new(),
+            collision_policy: ToolCollisionPolicy::Reject,
+        }
+    }
 }
 
 impl ToolCatalogBuilder {
     #[must_use]
     pub fn pack(mut self, pack: CapabilityPack) -> Self {
         for descriptor in pack.descriptors() {
-            self.tools.entry(descriptor.name.clone()).or_insert(descriptor);
+            if !self.disabled_tools.contains(&descriptor.name) {
+                self.tools.entry(descriptor.name.clone()).or_insert(descriptor);
+            }
         }
         self.packs.insert(pack);
         self
     }
 
-    pub fn custom_tool(mut self, descriptor: ToolDescriptor) -> Result<Self, RuntimeError> {
+    #[must_use]
+    pub fn collision_policy(mut self, policy: ToolCollisionPolicy) -> Self {
+        self.collision_policy = policy;
+        self
+    }
+
+    pub fn custom_tool(self, descriptor: ToolDescriptor) -> Result<Self, RuntimeError> {
+        self.insert_descriptor(descriptor)
+    }
+
+    pub fn extension_runtime_tools(
+        mut self,
+        kind: ExtensionRuntimeKind,
+        runtime: &dyn ExtensionRuntimeService,
+    ) -> Result<Self, RuntimeError> {
+        for descriptor in runtime.publishable_tools(kind)? {
+            let tool = ToolDescriptor::new(descriptor.visible_tool_name, "Host extension tool", descriptor.side_effect)
+                .with_source(format!("extension:{}", extension_kind_label(kind)));
+            self = self.insert_descriptor(tool)?;
+        }
+        Ok(self)
+    }
+
+    fn insert_descriptor(mut self, descriptor: ToolDescriptor) -> Result<Self, RuntimeError> {
         if descriptor.name.trim().is_empty() {
             return Err(RuntimeError::InvalidTool("tool name cannot be blank".to_string()));
         }
         if self.disabled_tools.contains(&descriptor.name) {
+            self.omissions.push(ToolCatalogOmission::new(descriptor.name, "disabled_by_host_filter"));
             return Ok(self);
         }
         if self.tools.contains_key(&descriptor.name) {
-            return Err(RuntimeError::ToolNameCollision(descriptor.name));
+            match self.collision_policy {
+                ToolCollisionPolicy::Reject => return Err(RuntimeError::ToolNameCollision(descriptor.name)),
+                ToolCollisionPolicy::KeepExisting => {
+                    self.omissions.push(ToolCatalogOmission::new(descriptor.name, "name_collision_existing_kept"));
+                    return Ok(self);
+                }
+                ToolCollisionPolicy::HostOverrides => {}
+            }
         }
         self.tools.insert(descriptor.name.clone(), descriptor);
         Ok(self)
@@ -923,7 +976,8 @@ impl ToolCatalogBuilder {
         let name = name.into();
         if !name.trim().is_empty() {
             self.tools.remove(&name);
-            self.disabled_tools.insert(name);
+            self.disabled_tools.insert(name.clone());
+            self.omissions.push(ToolCatalogOmission::new(name, "disabled_by_host_filter"));
         }
         self
     }
@@ -945,6 +999,7 @@ impl ToolCatalogBuilder {
         Ok(ToolCatalog {
             tools,
             packs: self.packs,
+            omissions: self.omissions,
         })
     }
 }
@@ -955,6 +1010,32 @@ pub struct ToolDescriptor {
     pub description: String,
     pub side_effect: SideEffectLevel,
     pub requires_confirmation: bool,
+    pub source: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ToolCatalogOmission {
+    pub name: String,
+    pub reason: String,
+}
+
+impl ToolCatalogOmission {
+    #[must_use]
+    pub fn new(name: impl Into<String>, reason: impl Into<String>) -> Self {
+        Self {
+            name: sanitize_metadata_value(name.into()),
+            reason: sanitize_metadata_value(reason.into()),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ToolCollisionPolicy {
+    #[default]
+    Reject,
+    KeepExisting,
+    HostOverrides,
 }
 
 impl ToolDescriptor {
@@ -966,7 +1047,14 @@ impl ToolDescriptor {
             description: description.into(),
             requires_confirmation: side_effect.requires_confirmation(),
             side_effect,
+            source: "clankers".to_string(),
         }
+    }
+
+    #[must_use]
+    pub fn with_source(mut self, source: impl Into<String>) -> Self {
+        self.source = sanitize_metadata_value(source.into());
+        self
     }
 }
 
@@ -1295,6 +1383,14 @@ pub enum ExtensionRuntimeKind {
     Plugin,
     Mcp,
     Gateway,
+}
+
+fn extension_kind_label(kind: ExtensionRuntimeKind) -> &'static str {
+    match kind {
+        ExtensionRuntimeKind::Plugin => "plugin",
+        ExtensionRuntimeKind::Mcp => "mcp",
+        ExtensionRuntimeKind::Gateway => "gateway",
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -1988,6 +2084,298 @@ mod tests {
         assert!(!catalog.contains_tool("bash"));
         assert!(!catalog.contains_tool("host_search"));
         assert!(catalog.tools().all(|tool| !matches!(tool.name.as_str(), "search" | "bash" | "host_search")));
+    }
+
+    #[derive(Default)]
+    struct CountingExtensionRuntimeService {
+        publish_calls: std::sync::atomic::AtomicUsize,
+        execute_calls: std::sync::atomic::AtomicUsize,
+    }
+
+    impl ExtensionRuntimeService for CountingExtensionRuntimeService {
+        fn capability(&self) -> &'static str {
+            "counting_extension_runtime"
+        }
+
+        fn publishable_tools(&self, kind: ExtensionRuntimeKind) -> Result<Vec<ExtensionToolDescriptor>, RuntimeError> {
+            self.publish_calls.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+            Ok(vec![ExtensionToolDescriptor::new(
+                kind,
+                "plugin_echo",
+                Some("echo".to_string()),
+                SideEffectLevel::ExternalIo,
+            )])
+        }
+
+        fn execute(&self, _request: ExtensionRuntimeRequest) -> Result<ExtensionReceipt, RuntimeError> {
+            self.execute_calls.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+            Ok(ExtensionReceipt::new("counting_extension_runtime", "execute", ExtensionStatus::Succeeded))
+        }
+    }
+
+    #[test]
+    fn tool_catalog_capability_pack_matrix_does_not_expand_dangerous_packs() {
+        let cases = [
+            (vec![CapabilityPack::ReadOnly], vec!["read", "search"], vec!["write", "bash", "web", "process"]),
+            (
+                vec![CapabilityPack::ReadOnly, CapabilityPack::WorkspaceMutation],
+                vec!["read", "write", "patch"],
+                vec!["bash", "web", "process"],
+            ),
+            (vec![CapabilityPack::ShellCommands], vec!["bash"], vec!["web", "process"]),
+            (vec![CapabilityPack::Network], vec!["web"], vec!["bash", "process"]),
+            (vec![CapabilityPack::ExternalProcesses], vec!["process"], vec!["bash", "web"]),
+        ];
+        for (packs, included, excluded) in cases {
+            let mut builder = ToolCatalog::builder();
+            for pack in packs {
+                builder = builder.pack(pack);
+            }
+            let catalog = builder.build().unwrap();
+            for name in included {
+                assert!(catalog.contains_tool(name), "expected tool {name}");
+            }
+            for name in excluded {
+                assert!(!catalog.contains_tool(name), "unexpected tool {name}");
+            }
+            for descriptor in catalog.tools() {
+                assert_eq!(descriptor.requires_confirmation, descriptor.side_effect.requires_confirmation());
+            }
+        }
+    }
+
+    #[test]
+    fn tool_catalog_disabled_filter_overrides_packs_with_safe_omissions() {
+        let catalog = ToolCatalog::builder()
+            .pack(CapabilityPack::ReadOnly)
+            .pack(CapabilityPack::ShellCommands)
+            .disabled_tools(["search", "bash"])
+            .build()
+            .unwrap();
+        assert!(catalog.contains_tool("read"));
+        assert!(!catalog.contains_tool("search"));
+        assert!(!catalog.contains_tool("bash"));
+        assert!(
+            catalog
+                .omissions()
+                .iter()
+                .any(|item| item.name == "search" && item.reason == "disabled_by_host_filter")
+        );
+        assert!(
+            catalog
+                .omissions()
+                .iter()
+                .any(|item| item.name == "bash" && item.reason == "disabled_by_host_filter")
+        );
+        let serialized = serde_json::to_string(catalog.omissions()).unwrap();
+        assert!(!serialized.contains("TOKEN"));
+        assert!(!serialized.contains("api_key"));
+    }
+
+    #[test]
+    fn tool_catalog_custom_tools_apply_collision_policy_matrix() {
+        let host_search =
+            ToolDescriptor::new("host_search", "host search", SideEffectLevel::ReadOnly).with_source("host");
+        let catalog = ToolCatalog::builder()
+            .pack(CapabilityPack::ReadOnly)
+            .custom_tool(host_search)
+            .unwrap()
+            .build()
+            .unwrap();
+        assert_eq!(catalog.tools().find(|tool| tool.name == "host_search").unwrap().source, "host");
+
+        let collision =
+            ToolDescriptor::new("read", "host read", SideEffectLevel::WorkspaceMutation).with_source("host");
+        let err = ToolCatalog::builder()
+            .pack(CapabilityPack::ReadOnly)
+            .collision_policy(ToolCollisionPolicy::Reject)
+            .custom_tool(collision.clone())
+            .unwrap_err();
+        assert_eq!(err, RuntimeError::ToolNameCollision("read".to_string()));
+
+        let keep = ToolCatalog::builder()
+            .pack(CapabilityPack::ReadOnly)
+            .collision_policy(ToolCollisionPolicy::KeepExisting)
+            .custom_tool(collision.clone())
+            .unwrap()
+            .build()
+            .unwrap();
+        assert_eq!(keep.tools().find(|tool| tool.name == "read").unwrap().source, "clankers");
+        assert!(keep.omissions().iter().any(|item| item.reason == "name_collision_existing_kept"));
+
+        let override_catalog = ToolCatalog::builder()
+            .pack(CapabilityPack::ReadOnly)
+            .collision_policy(ToolCollisionPolicy::HostOverrides)
+            .custom_tool(collision)
+            .unwrap()
+            .build()
+            .unwrap();
+        let read = override_catalog.tools().find(|tool| tool.name == "read").unwrap();
+        assert_eq!(read.source, "host");
+        assert_eq!(read.side_effect, SideEffectLevel::WorkspaceMutation);
+    }
+
+    #[test]
+    fn tool_catalog_extension_descriptors_require_runtime_availability_without_execute() {
+        let disabled = ExtensionServices::disabled();
+        let disabled_catalog = ToolCatalog::builder()
+            .extension_runtime_tools(ExtensionRuntimeKind::Plugin, disabled.runtime.as_ref())
+            .unwrap()
+            .build()
+            .unwrap();
+        assert!(!disabled_catalog.contains_tool("plugin_echo"));
+
+        let runtime = CountingExtensionRuntimeService::default();
+        let catalog = ToolCatalog::builder()
+            .extension_runtime_tools(ExtensionRuntimeKind::Plugin, &runtime)
+            .unwrap()
+            .build()
+            .unwrap();
+        let tool = catalog.tools().find(|tool| tool.name == "plugin_echo").unwrap();
+        assert_eq!(tool.source, "extension:plugin");
+        assert_eq!(tool.side_effect, SideEffectLevel::ExternalIo);
+        assert_eq!(runtime.publish_calls.load(std::sync::atomic::Ordering::SeqCst), 1);
+        assert_eq!(runtime.execute_calls.load(std::sync::atomic::Ordering::SeqCst), 0);
+    }
+
+    #[test]
+    fn tool_catalog_metadata_query_does_not_start_extension_runtimes() {
+        let runtime = CountingExtensionRuntimeService::default();
+        let catalog = ToolCatalog::builder()
+            .extension_runtime_tools(ExtensionRuntimeKind::Plugin, &runtime)
+            .unwrap()
+            .build()
+            .unwrap();
+        let _ = catalog.tools().collect::<Vec<_>>();
+        assert!(catalog.contains_tool("plugin_echo"));
+        assert!(catalog.omissions().is_empty());
+        assert_eq!(runtime.publish_calls.load(std::sync::atomic::Ordering::SeqCst), 1);
+        assert_eq!(runtime.execute_calls.load(std::sync::atomic::Ordering::SeqCst), 0);
+    }
+
+    #[test]
+    fn runtime_extension_service_matrix_default_safe_fails_closed_independently() {
+        let extensions = ExtensionServices::disabled();
+        assert!(matches!(
+            extensions.provider_router.execute(provider_request()),
+            Err(RuntimeError::ExtensionUnavailable(_))
+        ));
+        assert!(matches!(extensions.auth_store.access(auth_request()), Err(RuntimeError::ExtensionUnavailable(_))));
+        assert!(matches!(
+            extensions.credential_pool.select(pool_request()),
+            Err(RuntimeError::ExtensionUnavailable(_))
+        ));
+        assert!(extensions.runtime.publishable_tools(ExtensionRuntimeKind::Plugin).unwrap().is_empty());
+        assert!(extensions.runtime.publishable_tools(ExtensionRuntimeKind::Mcp).unwrap().is_empty());
+        assert!(extensions.runtime.publishable_tools(ExtensionRuntimeKind::Gateway).unwrap().is_empty());
+        assert!(matches!(extensions.runtime.execute(runtime_request()), Err(RuntimeError::ExtensionUnavailable(_))));
+    }
+
+    fn provider_request() -> ProviderExecutionRequest {
+        ProviderExecutionRequest {
+            provider: "anthropic".to_string(),
+            model: Some("test".to_string()),
+            account_label: Some("primary".to_string()),
+            route_source: "embedded".to_string(),
+            prompt: Some("hello".to_string()),
+            system_prompt: None,
+            max_tokens: Some(8),
+            session_id: Some("session".to_string()),
+        }
+    }
+
+    fn auth_request() -> AuthStoreAccessRequest {
+        AuthStoreAccessRequest {
+            provider: "anthropic".to_string(),
+            account_label: Some("primary".to_string()),
+            operation: AuthStoreOperation::Lookup,
+        }
+    }
+
+    fn pool_request() -> CredentialPoolRequest {
+        CredentialPoolRequest {
+            provider: "anthropic".to_string(),
+            strategy: "fill_first".to_string(),
+            account_label: Some("primary".to_string()),
+        }
+    }
+
+    fn runtime_request() -> ExtensionRuntimeRequest {
+        ExtensionRuntimeRequest {
+            kind: ExtensionRuntimeKind::Plugin,
+            action: "execute".to_string(),
+            extension_name: Some("plugin".to_string()),
+            visible_tool_name: Some("tool".to_string()),
+            original_tool_name: Some("tool".to_string()),
+            runtime_entrypoint: Some("main".to_string()),
+            arguments: json!({}),
+        }
+    }
+
+    #[derive(Default)]
+    struct CountingProviderRouterService(std::sync::atomic::AtomicUsize);
+
+    impl ProviderRouterService for CountingProviderRouterService {
+        fn capability(&self) -> &'static str {
+            "injected_provider_router"
+        }
+        fn execute(&self, request: ProviderExecutionRequest) -> Result<ExtensionReceipt, RuntimeError> {
+            self.0.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+            Ok(ExtensionReceipt::new("injected_provider_router", "execute", ExtensionStatus::Succeeded)
+                .with_metadata("provider", request.provider)
+                .with_metadata("route_source", request.route_source))
+        }
+    }
+
+    #[test]
+    fn runtime_extension_service_matrix_mixed_injected_absent_no_ambient_fallback() {
+        let provider = Arc::new(CountingProviderRouterService::default());
+        let extensions = ExtensionServices {
+            provider_router: provider.clone(),
+            auth_store: Arc::new(DisabledExtensionService),
+            credential_pool: Arc::new(DisabledExtensionService),
+            runtime: Arc::new(DisabledExtensionService),
+        };
+        let receipt = extensions.provider_router.execute(provider_request()).unwrap();
+        assert_eq!(receipt.status, ExtensionStatus::Succeeded);
+        assert!(matches!(extensions.auth_store.access(auth_request()), Err(RuntimeError::ExtensionUnavailable(_))));
+        assert!(matches!(
+            extensions.credential_pool.select(pool_request()),
+            Err(RuntimeError::ExtensionUnavailable(_))
+        ));
+        assert!(extensions.runtime.publishable_tools(ExtensionRuntimeKind::Plugin).unwrap().is_empty());
+        assert_eq!(provider.0.load(std::sync::atomic::Ordering::SeqCst), 1);
+    }
+
+    #[test]
+    fn runtime_extension_service_matrix_injected_error_receipts_are_redacted() {
+        let receipt = ExtensionReceipt::new("provider_router", "execute", ExtensionStatus::Failed)
+            .with_metadata("api_key", "secret-token")
+            .with_metadata("prompt_bytes", "123")
+            .with_error_class(ErrorClass::Extension);
+        let serialized = serde_json::to_string(&receipt).unwrap();
+        assert!(!receipt.contains_secret_markers());
+        assert!(!serialized.contains("secret-token"));
+        assert!(serialized.contains("prompt_bytes"));
+    }
+
+    #[test]
+    fn runtime_extension_service_matrix_safe_receipts_redact_success_denial_and_error() {
+        for status in [
+            ExtensionStatus::Succeeded,
+            ExtensionStatus::Unavailable,
+            ExtensionStatus::Failed,
+        ] {
+            let receipt = ExtensionReceipt::new("provider", "execute", status)
+                .with_metadata("provider", "anthropic")
+                .with_metadata("output_bytes", "42")
+                .with_metadata("bearer_token", "secret");
+            let serialized = serde_json::to_string(&receipt).unwrap();
+            assert!(!receipt.contains_secret_markers());
+            assert!(serialized.contains("anthropic"));
+            assert!(serialized.contains("42"));
+            assert!(!serialized.contains("secret"));
+        }
     }
 
     #[test]
