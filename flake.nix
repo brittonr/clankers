@@ -93,8 +93,14 @@
         # ── clanker-router standalone CLI binary ────────────────────────
         routerBuild = unit2nix.lib.${system}.buildFromUnitGraphAuto {
           inherit pkgs rustToolchain;
-          src = ./crates/clanker-router;
+          src = ./.;
+          package = "clanker-router";
           features = "cli";
+          noLocked = true;
+          externalSources = {
+            "../subwayrat" = subwayrat-src;
+            "../ratcore" = ratcore-src;
+          };
           buildRustCrateForPkgs = pkgs: pkgs.buildRustCrate.override {
             rustc = rustToolchain;
           };
