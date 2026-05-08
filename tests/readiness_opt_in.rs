@@ -46,11 +46,12 @@ fn readiness_vm_required_nixos_checks_nextest_opt_in() {
     let system = current_system().expect("nix should report current system for VM readiness");
     for check in selected_vm_checks() {
         let attr = format!(".#checks.{system}.{check}");
+        println!("running VM readiness check {attr}");
         let mut command = ReadinessCommand::new("nix");
         let output = command
             .current_dir(repo_root())
             .args(["build", &attr, "--no-link", "-L"])
-            .timeout(Duration::from_secs(1_800))
+            .timeout(vm_check_timeout())
             .run();
         output.assert_success();
     }
@@ -80,6 +81,15 @@ fn selected_vm_checks() -> Vec<&'static str> {
             vec![VM_CHECKS.iter().copied().find(|candidate| *candidate == check).unwrap()]
         }
         other => panic!("unknown CLANKERS_VM_READINESS_SELECTOR {other}"),
+    }
+}
+
+fn vm_check_timeout() -> Duration {
+    let selector = std::env::var("CLANKERS_VM_READINESS_SELECTOR").unwrap_or_else(|_| "all".to_owned());
+    if selector == "all" {
+        Duration::from_secs(3_600)
+    } else {
+        Duration::from_secs(1_800)
     }
 }
 

@@ -4,8 +4,12 @@
 )]
 
 use std::ffi::OsStr;
+use std::io::Read;
+#[cfg(unix)]
+use std::os::unix::process::CommandExt;
 use std::path::Path;
 use std::path::PathBuf;
+use std::process::Child;
 use std::process::Command;
 use std::process::Stdio;
 use std::thread;
@@ -61,6 +65,16 @@ impl ReadinessCommand {
     pub fn new(program: impl AsRef<OsStr>) -> Self {
         let mut command = Command::new(program);
         command.stdin(Stdio::null()).stdout(Stdio::piped()).stderr(Stdio::piped());
+        #[cfg(unix)]
+        unsafe {
+            command.pre_exec(|| {
+                if libc::setpgid(0, 0) == 0 {
+                    Ok(())
+                } else {
+                    Err(std::io::Error::last_os_error())
+                }
+            });
+        }
         Self {
             command,
             timeout: Duration::from_secs(90),
@@ -98,29 +112,58 @@ impl ReadinessCommand {
 
     pub fn run(&mut self) -> CapturedOutput {
         let mut child = self.command.spawn().expect("readiness child should spawn");
+        let stdout = child.stdout.take().expect("stdout should be piped");
+        let stderr = child.stderr.take().expect("stderr should be piped");
+        let stdout_reader = thread::spawn(move || read_pipe(stdout));
+        let stderr_reader = thread::spawn(move || read_pipe(stderr));
         let started = Instant::now();
         loop {
-            if child.try_wait().expect("readiness child should poll").is_some() {
-                let output = child.wait_with_output().expect("readiness child output should collect");
+            if let Some(status) = child.try_wait().expect("readiness child should poll") {
                 return CapturedOutput {
-                    status: output.status.code().unwrap_or(-1),
+                    status: status.code().unwrap_or(-1),
                     timed_out: false,
-                    stdout: redact(&String::from_utf8_lossy(&output.stdout)),
-                    stderr: redact(&String::from_utf8_lossy(&output.stderr)),
+                    stdout: redact(&stdout_reader.join().expect("stdout reader should finish")),
+                    stderr: redact(&stderr_reader.join().expect("stderr reader should finish")),
                 };
             }
             if started.elapsed() > self.timeout {
-                let _ = child.kill();
-                let output = child.wait_with_output().expect("timed out child output should collect");
+                terminate_child_tree(&mut child);
+                let _ = child.wait();
                 return CapturedOutput {
                     status: -1,
                     timed_out: true,
-                    stdout: redact(&String::from_utf8_lossy(&output.stdout)),
-                    stderr: redact(&String::from_utf8_lossy(&output.stderr)),
+                    stdout: redact(&stdout_reader.join().expect("stdout reader should finish")),
+                    stderr: redact(&stderr_reader.join().expect("stderr reader should finish")),
                 };
             }
             thread::sleep(Duration::from_millis(50));
         }
+    }
+}
+
+fn read_pipe(mut pipe: impl Read) -> String {
+    let mut output = String::new();
+    let _ = pipe.read_to_string(&mut output);
+    output
+}
+
+fn terminate_child_tree(child: &mut Child) {
+    #[cfg(unix)]
+    {
+        let pgid = -(child.id() as i32);
+        unsafe {
+            let _ = libc::kill(pgid, libc::SIGTERM);
+        }
+        thread::sleep(Duration::from_secs(2));
+        if matches!(child.try_wait(), Ok(None)) {
+            unsafe {
+                let _ = libc::kill(pgid, libc::SIGKILL);
+            }
+        }
+    }
+    #[cfg(not(unix))]
+    {
+        let _ = child.kill();
     }
 }
 
