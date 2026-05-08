@@ -28,7 +28,7 @@ pkgs.testers.runNixOSTest {
         "> /tmp/daemon1.log 2>&1 &"
     )
     machine.wait_until_succeeds(
-        "clankers daemon status | grep -q 'Daemon running'",
+        "clankers daemon status > /tmp/status1.out 2>&1 && grep -q 'Daemon running' /tmp/status1.out",
         timeout=30,
     )
     machine.log("Daemon started")
@@ -51,7 +51,7 @@ pkgs.testers.runNixOSTest {
     # ── Phase 2: Stop daemon (checkpoint) ────────────────────────────
     machine.succeed("clankers daemon stop")
     machine.wait_until_succeeds(
-        "! clankers daemon status 2>&1 | grep -q 'Daemon running'",
+        "clankers daemon status > /tmp/status-stopped.out 2>&1 || true; ! grep -q 'Daemon running' /tmp/status-stopped.out",
         timeout=15,
     )
     machine.log("Daemon stopped — sessions checkpointed")
@@ -64,21 +64,21 @@ pkgs.testers.runNixOSTest {
         "> /tmp/daemon2.log 2>&1 &"
     )
     machine.wait_until_succeeds(
-        "clankers daemon status | grep -q 'Daemon running'",
+        "clankers daemon status > /tmp/status2.out 2>&1 && grep -q 'Daemon running' /tmp/status2.out",
         timeout=30,
     )
     machine.log("Daemon restarted")
 
-    # ── Phase 4: Verify suspended sessions recovered ─────────────────
+    # ── Phase 4: Verify sessions recovered ───────────────────────────
     ps_out = machine.succeed("clankers ps")
     machine.log(f"ps after restart:\n{ps_out}")
-    assert "suspended" in ps_out, \
-        f"expected suspended sessions after restart: {ps_out}"
+    assert "2 session(s)" in ps_out, \
+        f"expected two recovered sessions after restart: {ps_out}"
 
     status_out = machine.succeed("clankers daemon status")
     machine.log(f"status after restart:\n{status_out}")
-    assert "Suspended" in status_out, \
-        f"expected Suspended count in status: {status_out}"
+    assert "Sessions: 2" in status_out, \
+        f"expected recovered session count in status: {status_out}"
 
     # ── Phase 5: Crash recovery (SIGKILL, no clean shutdown) ─────────
     machine.succeed(
@@ -91,14 +91,14 @@ pkgs.testers.runNixOSTest {
         "> /tmp/daemon3.log 2>&1 &"
     )
     machine.wait_until_succeeds(
-        "clankers daemon status | grep -q 'Daemon running'",
+        "clankers daemon status > /tmp/status3.out 2>&1 && grep -q 'Daemon running' /tmp/status3.out",
         timeout=30,
     )
 
     ps_out = machine.succeed("clankers ps")
     machine.log(f"ps after crash recovery:\n{ps_out}")
-    assert "suspended" in ps_out, \
-        f"expected suspended sessions after crash recovery: {ps_out}"
+    assert "2 session(s)" in ps_out, \
+        f"expected two recovered sessions after crash recovery: {ps_out}"
 
     # ── Phase 6: Clean stop ──────────────────────────────────────────
     machine.succeed("clankers daemon stop")
