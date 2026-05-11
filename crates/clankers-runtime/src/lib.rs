@@ -17,11 +17,22 @@ use chrono::Utc;
 use serde::Deserialize;
 use serde::Serialize;
 use serde_json::Value;
+#[cfg(test)]
 use serde_json::json;
 use thiserror::Error;
 use tokio::sync::Mutex;
 use tokio::sync::mpsc;
 use uuid::Uuid;
+
+mod boundary;
+mod event_summary;
+
+pub use event_summary::headless_prompt_parity_fixture;
+pub use event_summary::safe_event_summary;
+
+use boundary::validate_public_runtime_boundary;
+#[cfg(test)]
+use boundary::public_type_names;
 
 /// Stable identifier for a host-facing runtime session.
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
@@ -1724,75 +1735,6 @@ pub enum ErrorClass {
     Extension,
     Boundary,
     Model,
-}
-
-fn validate_public_runtime_boundary() -> Result<(), RuntimeError> {
-    // Runtime check complements compile-level tests and documents the stable deny list.
-    let denied = ["DaemonEvent", "SessionCommand", "Tui", "Acp", "Mcp", "Cli"];
-    for item in denied {
-        if public_type_names().iter().any(|name| name.contains(item)) {
-            return Err(RuntimeError::PublicBoundaryLeak(item.to_string()));
-        }
-    }
-    Ok(())
-}
-
-fn public_type_names() -> Vec<&'static str> {
-    vec![
-        "RuntimeBuilder",
-        "Runtime",
-        "SessionHandle",
-        "SessionEvent",
-        "PromptInput",
-        "PromptReceipt",
-        "EventMetadata",
-        "RuntimeServices",
-        "PromptAssembler",
-        "PromptAssemblyPolicy",
-        "ToolCatalog",
-        "ToolDescriptor",
-        "ConfirmationBroker",
-        "ConfirmationRequest",
-        "ConfirmationDecision",
-    ]
-}
-
-/// Deterministic fixture adapter that mirrors the event order used by headless prompt tests.
-#[must_use]
-pub fn headless_prompt_parity_fixture(prompt: &str) -> Vec<&'static str> {
-    let _ = prompt;
-    vec!["prompt_accepted", "assistant_delta", "cost_updated", "completed"]
-}
-
-/// Serialize a safe event summary for host parity tests and docs examples.
-#[must_use]
-pub fn safe_event_summary(event: &SessionEvent) -> Value {
-    match event {
-        SessionEvent::PromptAccepted { metadata, .. } => {
-            json!({"type":"prompt_accepted", "metadata_fields": metadata.fields.len()})
-        }
-        SessionEvent::AssistantDelta { text, metadata, .. } => {
-            json!({"type":"assistant_delta", "text_chars": text.chars().count(), "metadata_fields": metadata.fields.len()})
-        }
-        SessionEvent::ThinkingDelta { text, metadata, .. } => {
-            json!({"type":"thinking_delta", "text_chars": text.chars().count(), "metadata_fields": metadata.fields.len()})
-        }
-        SessionEvent::CostUpdated {
-            input_tokens,
-            output_tokens,
-            ..
-        } => json!({"type":"cost_updated", "input_tokens": input_tokens, "output_tokens": output_tokens}),
-        SessionEvent::Completed { stop_reason, .. } => {
-            json!({"type":"completed", "stop_reason": format!("{stop_reason:?}")})
-        }
-        SessionEvent::ToolStarted { tool_name, .. } => json!({"type":"tool_started", "tool_name": tool_name}),
-        SessionEvent::ToolFinished { status, .. } => json!({"type":"tool_finished", "status": format!("{status:?}")}),
-        SessionEvent::ConfirmationRequested { request, .. } => {
-            json!({"type":"confirmation_requested", "action": format!("{:?}", request.action)})
-        }
-        SessionEvent::Error { error_class, .. } => json!({"type":"error", "class": format!("{error_class:?}")}),
-        SessionEvent::Shutdown { .. } => json!({"type":"shutdown"}),
-    }
 }
 
 #[cfg(test)]
