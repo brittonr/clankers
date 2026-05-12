@@ -1,10 +1,10 @@
 ## ADDED Requirements
 
-    ### Requirement: Self-Evolution Module Decomposition [r[self-evolution.decomposition]]
+### Requirement: Self-Evolution Module Decomposition [r[self-evolution.decomposition]]
 
-    The self-evolution implementation MUST be split into safety-gate-oriented modules that preserve receipt-chain validation, dry-run/live-apply boundaries, and rollback guards.
+The self-evolution implementation MUST be split into safety-gate-oriented modules that preserve receipt-chain validation, dry-run/live-apply boundaries, and rollback guards.
 
-    #### Scenario: Receipt chain guards preserved [r[self-evolution.decomposition.scenario.1]]
+#### Scenario: Receipt chain guards preserved [r[self-evolution.decomposition.scenario.1]]
 
 - GIVEN a receipt, approval, target hash, candidate path, or application record is stale or mismatched
 - WHEN a decomposed apply or rollback command runs

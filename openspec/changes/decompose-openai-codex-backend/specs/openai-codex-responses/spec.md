@@ -1,10 +1,10 @@
 ## ADDED Requirements
 
-    ### Requirement: OpenAI Codex Backend Decomposition [r[openai-codex.decomposition]]
+### Requirement: OpenAI Codex Backend Decomposition [r[openai-codex.decomposition]]
 
-    The OpenAI Codex backend MUST be decomposed into focused provider modules that preserve fail-closed entitlement/auth behavior and streaming normalization.
+The OpenAI Codex backend MUST be decomposed into focused provider modules that preserve fail-closed entitlement/auth behavior and streaming normalization.
 
-    #### Scenario: Entitlement/auth fail closed [r[openai-codex.decomposition.scenario.1]]
+#### Scenario: Entitlement/auth fail closed [r[openai-codex.decomposition.scenario.1]]
 
 - GIVEN a Codex account is not entitled or auth probing fails
 - WHEN the decomposed backend handles a request

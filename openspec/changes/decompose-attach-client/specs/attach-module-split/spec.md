@@ -1,10 +1,10 @@
 ## ADDED Requirements
 
-    ### Requirement: Attach Client Module Decomposition [r[attach-client.decomposition]]
+### Requirement: Attach Client Module Decomposition [r[attach-client.decomposition]]
 
-    Attach mode MUST be split into focused modules while preserving daemon/session command parity, local TUI behavior, and MCP/attach equivalence evidence.
+Attach mode MUST be split into focused modules while preserving daemon/session command parity, local TUI behavior, and MCP/attach equivalence evidence.
 
-    #### Scenario: Command parity preserved [r[attach-client.decomposition.scenario.1]]
+#### Scenario: Command parity preserved [r[attach-client.decomposition.scenario.1]]
 
 - GIVEN attach local commands and MCP session-control commands share existing parity fixtures
 - WHEN attach mode is decomposed

@@ -1,10 +1,10 @@
 ## ADDED Requirements
 
-    ### Requirement: Turn Loop Decomposition [r[turn-loop.decomposition]]
+### Requirement: Turn Loop Decomposition [r[turn-loop.decomposition]]
 
-    The agent turn loop MUST be decomposed into explicit functional-core state/policy modules and thin imperative host adapters without changing observed turn behavior.
+The agent turn loop MUST be decomposed into explicit functional-core state/policy modules and thin imperative host adapters without changing observed turn behavior.
 
-    #### Scenario: Behavior parity [r[turn-loop.decomposition.scenario.1]]
+#### Scenario: Behavior parity [r[turn-loop.decomposition.scenario.1]]
 
 - GIVEN an existing prompt/tool/model-switch regression fixture
 - WHEN the decomposed turn loop runs the fixture
