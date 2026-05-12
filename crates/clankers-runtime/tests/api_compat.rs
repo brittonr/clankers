@@ -13,6 +13,7 @@ use clankers_runtime::PromptInput;
 use clankers_runtime::PromptSources;
 use clankers_runtime::SessionEvent;
 use clankers_runtime::SessionId;
+use clankers_runtime::SessionOptions;
 use clankers_runtime::SideEffectLevel;
 use clankers_runtime::StopReason;
 use clankers_runtime::ToolCatalog;
@@ -21,6 +22,7 @@ use clankers_runtime::ToolStatus;
 use clankers_runtime::confirmation;
 use clankers_runtime::events;
 use clankers_runtime::prompt;
+use clankers_runtime::session;
 use clankers_runtime::tools;
 
 fn assert_same_type<T>(_left: T, _right: T) {}
@@ -85,6 +87,21 @@ fn confirmation_module_and_root_reexports_are_source_compatible() {
     assert_same_type::<ConfirmationDecision>(
         ConfirmationDecision::approve("root ok"),
         confirmation::ConfirmationDecision::deny("module no"),
+    );
+}
+
+#[test]
+fn session_module_and_root_reexports_are_source_compatible() {
+    assert_same_type::<SessionId>(SessionId::from_host("root"), session::SessionId::from_host("module"));
+    assert_same_type::<SessionOptions>(
+        SessionOptions {
+            session_id: Some(SessionId::from_host("root-session")),
+            model: Some("root-model".to_string()),
+        },
+        session::SessionOptions {
+            session_id: Some(session::SessionId::from_host("module-session")),
+            model: Some("module-model".to_string()),
+        },
     );
 }
 
