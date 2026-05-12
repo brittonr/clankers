@@ -1,7 +1,7 @@
 ## Phase 1: Baseline and Extraction
 
-- [ ] [serial] Inventory self_evolution.rs responsibilities across run, approve, apply, rollback, receipt validation, candidate IO, hashes, and verification.
-- [ ] [depends:baseline] Extract receipt models/validators and hash/path guards with negative tests.
+- [x] [serial] Inventory self_evolution.rs responsibilities across run, approve, apply, rollback, receipt validation, candidate IO, hashes, and verification. ✅ Identified receipt/options models, fake executor seam, run/approval/apply/rollback shells, application receipt-chain guards, hash/path helpers, and existing stale-target/rollback CLI regressions (completed: 2026-05-13T00:02:14Z).
+- [~] [depends:baseline] Extract receipt models/validators and hash/path guards with negative tests. ⏱ started: 2026-05-13T00:02:14Z; receipt/option/data models extracted into `src/self_evolution/receipts.rs` with root re-exports; existing self-evolution and CLI negative tests still cover stale targets, mismatched approvals, dry-run boundaries, rollback guards, and non-promotable receipts; `nix develop -c 'CARGO_TARGET_DIR=target cargo fmt --check -p clankers && CARGO_TARGET_DIR=target cargo nextest run -p clankers self_evolution --no-fail-fast && CARGO_TARGET_DIR=target cargo check --tests -p clankers'` passed 26/26 (2026-05-13T00:02:14Z). Remaining in this task: move receipt-chain validators and hash/path guards into focused modules.
 - [ ] [depends:baseline] Extract run/approval/apply/rollback orchestration shells around pure validators.
 - [ ] [depends:baseline] Preserve CLI dogfood and stale-target/rollback regression coverage.
 - [ ] [serial] Run cargo fmt, self_evolution lib and CLI/integration tests, cargo check --tests -p clankers, openspec validate, and git diff --check.
