@@ -1,3 +1,4 @@
+use clankers_runtime::CapabilityPack;
 use clankers_runtime::ContextReferenceKind;
 use clankers_runtime::ContextReferenceRequest;
 use clankers_runtime::ErrorClass;
@@ -9,10 +10,14 @@ use clankers_runtime::PromptInput;
 use clankers_runtime::PromptSources;
 use clankers_runtime::SessionEvent;
 use clankers_runtime::SessionId;
+use clankers_runtime::SideEffectLevel;
 use clankers_runtime::StopReason;
+use clankers_runtime::ToolCatalog;
+use clankers_runtime::ToolDescriptor;
 use clankers_runtime::ToolStatus;
 use clankers_runtime::events;
 use clankers_runtime::prompt;
+use clankers_runtime::tools;
 
 fn assert_same_type<T>(_left: T, _right: T) {}
 
@@ -65,4 +70,14 @@ fn prompt_module_and_root_reexports_are_source_compatible() {
             )],
         },
     );
+}
+
+#[test]
+fn tools_module_and_root_reexports_are_source_compatible() {
+    assert_same_type::<ToolCatalog>(ToolCatalog::embedding_safe(), tools::ToolCatalog::embedding_safe());
+    assert_same_type::<ToolDescriptor>(
+        ToolDescriptor::new("root_tool", "root descriptor", SideEffectLevel::ReadOnly),
+        tools::ToolDescriptor::new("module_tool", "module descriptor", tools::SideEffectLevel::WorkspaceMutation),
+    );
+    assert_same_type::<CapabilityPack>(CapabilityPack::ReadOnly, tools::CapabilityPack::ShellCommands);
 }
