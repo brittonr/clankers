@@ -19,10 +19,10 @@ use crate::PromptInput;
 use crate::PromptReceipt;
 use crate::PromptReplayEntry;
 use crate::RuntimeError;
-use crate::RuntimeInner;
 use crate::SessionEvent;
 use crate::SessionRecord;
 use crate::StopReason;
+use crate::runtime::RuntimeInner;
 
 /// Stable identifier for a host-facing runtime session.
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]

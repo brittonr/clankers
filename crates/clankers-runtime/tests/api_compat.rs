@@ -11,6 +11,8 @@ use clankers_runtime::PromptAssemblyPolicy;
 use clankers_runtime::PromptId;
 use clankers_runtime::PromptInput;
 use clankers_runtime::PromptSources;
+use clankers_runtime::Runtime;
+use clankers_runtime::RuntimeBuilder;
 use clankers_runtime::SessionEvent;
 use clankers_runtime::SessionId;
 use clankers_runtime::SessionOptions;
@@ -22,6 +24,7 @@ use clankers_runtime::ToolStatus;
 use clankers_runtime::confirmation;
 use clankers_runtime::events;
 use clankers_runtime::prompt;
+use clankers_runtime::runtime;
 use clankers_runtime::session;
 use clankers_runtime::tools;
 
@@ -88,6 +91,13 @@ fn confirmation_module_and_root_reexports_are_source_compatible() {
         ConfirmationDecision::approve("root ok"),
         confirmation::ConfirmationDecision::deny("module no"),
     );
+}
+
+#[test]
+fn runtime_module_and_root_reexports_are_source_compatible() {
+    let root_runtime: Runtime = RuntimeBuilder::new().build().unwrap();
+    let module_runtime: runtime::Runtime = runtime::RuntimeBuilder::new().build().unwrap();
+    assert_eq!(root_runtime.tool_catalog().tools().count(), module_runtime.tool_catalog().tools().count());
 }
 
 #[test]
