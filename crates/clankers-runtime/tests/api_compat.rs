@@ -1,4 +1,7 @@
 use clankers_runtime::CapabilityPack;
+use clankers_runtime::ConfirmationAction;
+use clankers_runtime::ConfirmationDecision;
+use clankers_runtime::ConfirmationRequest;
 use clankers_runtime::ContextReferenceKind;
 use clankers_runtime::ContextReferenceRequest;
 use clankers_runtime::ErrorClass;
@@ -15,6 +18,7 @@ use clankers_runtime::StopReason;
 use clankers_runtime::ToolCatalog;
 use clankers_runtime::ToolDescriptor;
 use clankers_runtime::ToolStatus;
+use clankers_runtime::confirmation;
 use clankers_runtime::events;
 use clankers_runtime::prompt;
 use clankers_runtime::tools;
@@ -69,6 +73,18 @@ fn prompt_module_and_root_reexports_are_source_compatible() {
                 prompt::ContextReferenceKind::Url,
             )],
         },
+    );
+}
+
+#[test]
+fn confirmation_module_and_root_reexports_are_source_compatible() {
+    assert_same_type::<ConfirmationRequest>(
+        ConfirmationRequest::new(ConfirmationAction::RunCommand, "root"),
+        confirmation::ConfirmationRequest::new(confirmation::ConfirmationAction::MutateWorkspace, "module"),
+    );
+    assert_same_type::<ConfirmationDecision>(
+        ConfirmationDecision::approve("root ok"),
+        confirmation::ConfirmationDecision::deny("module no"),
     );
 }
 
