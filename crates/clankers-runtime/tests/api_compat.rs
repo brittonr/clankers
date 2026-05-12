@@ -6,6 +6,11 @@ use clankers_runtime::ContextReferenceKind;
 use clankers_runtime::ContextReferenceRequest;
 use clankers_runtime::ErrorClass;
 use clankers_runtime::EventMetadata;
+use clankers_runtime::ExtensionReceipt;
+use clankers_runtime::ExtensionRuntimeKind;
+use clankers_runtime::ExtensionRuntimeRequest;
+use clankers_runtime::ExtensionServices;
+use clankers_runtime::ExtensionStatus;
 use clankers_runtime::HostContext;
 use clankers_runtime::PromptAssemblyPolicy;
 use clankers_runtime::PromptId;
@@ -13,6 +18,7 @@ use clankers_runtime::PromptInput;
 use clankers_runtime::PromptSources;
 use clankers_runtime::Runtime;
 use clankers_runtime::RuntimeBuilder;
+use clankers_runtime::RuntimeServices;
 use clankers_runtime::SessionEvent;
 use clankers_runtime::SessionId;
 use clankers_runtime::SessionOptions;
@@ -25,6 +31,7 @@ use clankers_runtime::confirmation;
 use clankers_runtime::events;
 use clankers_runtime::prompt;
 use clankers_runtime::runtime;
+use clankers_runtime::services;
 use clankers_runtime::session;
 use clankers_runtime::tools;
 
@@ -111,6 +118,36 @@ fn session_module_and_root_reexports_are_source_compatible() {
         session::SessionOptions {
             session_id: Some(session::SessionId::from_host("module-session")),
             model: Some("module-model".to_string()),
+        },
+    );
+}
+
+#[test]
+fn services_module_and_root_reexports_are_source_compatible() {
+    assert_same_type::<RuntimeServices>(RuntimeServices::in_memory(), services::RuntimeServices::in_memory());
+    assert_same_type::<ExtensionServices>(ExtensionServices::disabled(), services::ExtensionServices::disabled());
+    assert_same_type::<ExtensionReceipt>(
+        ExtensionReceipt::new("root", "action", ExtensionStatus::Disabled),
+        services::ExtensionReceipt::new("module", "action", services::ExtensionStatus::Unavailable),
+    );
+    assert_same_type::<ExtensionRuntimeRequest>(
+        ExtensionRuntimeRequest {
+            kind: ExtensionRuntimeKind::Plugin,
+            action: "call".to_string(),
+            extension_name: None,
+            visible_tool_name: None,
+            original_tool_name: None,
+            runtime_entrypoint: None,
+            arguments: serde_json::json!({}),
+        },
+        services::ExtensionRuntimeRequest {
+            kind: services::ExtensionRuntimeKind::Mcp,
+            action: "call".to_string(),
+            extension_name: None,
+            visible_tool_name: None,
+            original_tool_name: None,
+            runtime_entrypoint: None,
+            arguments: serde_json::json!({}),
         },
     );
 }

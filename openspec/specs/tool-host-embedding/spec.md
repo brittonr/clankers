@@ -1,7 +1,9 @@
 # tool-host-embedding Specification
 
 ## Purpose
-TBD - created by archiving change extract-tool-catalog-capability-packs. Update Purpose after archive.
+
+Defines the host-facing embeddable runtime boundary for safe tool catalog construction, explicit extension service injection, and compatibility-preserving runtime facade modules.
+
 ## Requirements
 ### Requirement: Reusable tool catalog builder [r[tool-host-embedding.catalog-builder]]
 
@@ -176,3 +178,19 @@ The system MUST verify runtime extension services across an explicit matrix of a
 - GIVEN matrix tests install filesystem, socket, and fake-service counters before execution
 - WHEN fail-closed or absent-service cases run
 - THEN the test asserts that sentinels were not touched and fake services were not invoked outside the declared matrix state
+
+### Requirement: Runtime Facade Module Decomposition [r[runtime-facade.decomposition]]
+
+The embeddable runtime facade MUST be split into stable public modules with root-level re-exports that preserve the existing host-facing API and default-safe behavior.
+
+#### Scenario: Public API preserved [r[runtime-facade.decomposition.scenario.1]]
+
+- GIVEN an embedding host imports existing clankers-runtime root symbols
+- WHEN the facade is split into modules
+- THEN the imports continue to compile through root re-exports or documented compatibility aliases
+
+#### Scenario: Default-safe services preserved [r[runtime-facade.decomposition.scenario.2]]
+
+- GIVEN an embedding host builds a runtime without extension services
+- WHEN the decomposed runtime constructs default services
+- THEN router, auth, plugin, MCP, gateway, and external side effects remain disabled unless explicitly injected

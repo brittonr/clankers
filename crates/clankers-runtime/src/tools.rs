@@ -10,7 +10,7 @@ use crate::ExtensionRuntimeKind;
 use crate::ExtensionRuntimeService;
 use crate::RuntimeError;
 use crate::events::sanitize_metadata_value;
-use crate::extension_kind_label;
+use crate::services::extension_kind_label;
 
 /// Host-facing tool catalog.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
