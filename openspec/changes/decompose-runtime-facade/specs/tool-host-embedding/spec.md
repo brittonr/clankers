@@ -1,10 +1,10 @@
 ## ADDED Requirements
 
-    ### Requirement: Runtime Facade Module Decomposition [r[runtime-facade.decomposition]]
+### Requirement: Runtime Facade Module Decomposition [r[runtime-facade.decomposition]]
 
-    The embeddable runtime facade MUST be split into stable public modules with root-level re-exports that preserve the existing host-facing API and default-safe behavior.
+The embeddable runtime facade MUST be split into stable public modules with root-level re-exports that preserve the existing host-facing API and default-safe behavior.
 
-    #### Scenario: Public API preserved [r[runtime-facade.decomposition.scenario.1]]
+#### Scenario: Public API preserved [r[runtime-facade.decomposition.scenario.1]]
 
 - GIVEN an embedding host imports existing clankers-runtime root symbols
 - WHEN the facade is split into modules
