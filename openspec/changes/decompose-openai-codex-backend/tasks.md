@@ -1,7 +1,7 @@
 ## Phase 1: Baseline and Extraction
 
-- [ ] [serial] Inventory openai_codex.rs responsibilities and capture current auth/entitlement/streaming tests as baseline.
-- [ ] [depends:baseline] Extract entitlement cache/probing and auth/account helpers with focused negative tests.
+- [x] [serial] Inventory openai_codex.rs responsibilities and capture current auth/entitlement/streaming tests as baseline. Evidence: `openai_codex` nextest filter covers 32 OpenAI Codex tests including entitlement fail-closed and streaming normalization parity (2026-05-13T01:39:45Z).
+- [x] [depends:baseline] Extract entitlement cache/probing and auth/account helpers with focused negative tests. Evidence: extracted `crates/clanker-router/src/backends/openai_codex/entitlement.rs`; existing negative tests still pass for not-entitled, probe failure, 403/usage_not_included classification, and fail-closed provider behavior (2026-05-13T01:39:45Z).
 - [ ] [depends:baseline] Extract Responses API request construction, retry/error classification, and streaming normalization modules.
-- [ ] [depends:baseline] Update router/provider imports and run OpenAI Codex/auth/router targeted tests.
-- [ ] [serial] Run cargo fmt, clanker-router nextest filters for openai_codex/openai_compat/auth, cargo check --tests for router/provider, openspec validate, and git diff --check.
+- [x] [depends:baseline] Update router/provider imports and run OpenAI Codex/auth/router targeted tests. Evidence: `cargo nextest run -p clanker-router openai_codex --no-fail-fast` passed 32/32; `auth` passed 47/47; `openai_compat` passed 15/15 (2026-05-13T01:39:45Z).
+- [x] [serial] Run cargo fmt, clanker-router nextest filters for openai_codex/openai_compat/auth, cargo check --tests for router/provider, openspec validate, and git diff --check. Evidence: `cargo fmt --check -p clanker-router`; nextest `openai_codex` 32/32, `auth` 47/47, `openai_compat` 15/15; `cargo check --tests -p clanker-router`; `openspec validate decompose-openai-codex-backend --strict --json`; `git diff --check` all passed (2026-05-13T01:40:23Z).
