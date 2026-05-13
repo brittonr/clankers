@@ -1,4 +1,5 @@
 const ATTACH: &str = include_str!("../src/modes/attach.rs");
+const ATTACH_COMMANDS: &str = include_str!("../src/modes/attach/commands.rs");
 const ATTACH_REMOTE: &str = include_str!("../src/modes/attach_remote.rs");
 const REQUEST_LIFECYCLE: &str = include_str!("../docs/src/reference/request-lifecycle.md");
 
@@ -13,8 +14,10 @@ fn local_and_remote_attach_thread_the_same_parity_tracker() {
         "expect_thinking_ack_message",
         "expect_disabled_tools_message",
     ] {
-        assert!(ATTACH.contains(anchor), "attach.rs missing parity anchor `{anchor}`");
+        assert!(ATTACH_COMMANDS.contains(anchor), "attach command module missing parity anchor `{anchor}`");
     }
+
+    assert!(ATTACH.contains("pub(crate) use commands::AttachParityTracker;"));
 
     for anchor in [
         "use super::attach::AttachParityTracker;",
@@ -37,7 +40,7 @@ fn thinking_slash_bridges_explicit_and_cycle_paths_before_suppressing_daemon_ack
         "apply_standalone_thinking_level(app, level)",
         "parity_tracker.expect_thinking_ack_message();",
     ] {
-        assert!(ATTACH.contains(anchor), "attach thinking parity anchor missing `{anchor}`");
+        assert!(ATTACH_COMMANDS.contains(anchor), "attach thinking parity anchor missing `{anchor}`");
     }
 }
 
