@@ -91,6 +91,34 @@
           };
         };
 
+        # Clippy uses unit2nix's clippy wrapper. Build it with the default
+        # nixpkgs Rust toolchain so dependency rlibs and clippy-driver come
+        # from the same compiler; rustToolchain is still supplied for the
+        # unit-graph IFD step, which requires nightly cargo.
+        clippyWs = unit2nix.lib.${system}.buildFromUnitGraphAuto {
+          inherit pkgs rustToolchain;
+          src = ./.;
+          workspace = true;
+          noLocked = true;
+          clippyArgs = [ "-D" "warnings" ];
+          externalSources = {
+            "../subwayrat" = subwayrat-src;
+            "../ratcore" = ratcore-src;
+          };
+          extraCrateOverrides = {
+            aws-lc-rs = attrs: {
+              nativeBuildInputs = [ pkgs.cmake pkgs.go ];
+            };
+            libmimalloc-sys = attrs: {};
+            ort-sys = attrs: {
+              nativeBuildInputs = [ pkgs.pkg-config ];
+              buildInputs = [ pkgs.onnxruntime pkgs.onnxruntime.dev ];
+              ORT_STRATEGY = "system";
+              ORT_LIB_LOCATION = "${pkgs.onnxruntime}";
+            };
+          };
+        };
+
         # ── clanker-router standalone CLI binary ────────────────────────
         routerBuild = unit2nix.lib.${system}.buildFromUnitGraphAuto {
           inherit pkgs rustToolchain;
@@ -201,10 +229,7 @@
             clankers-zellij
             ;
 
-          clippy = pkgs.runCommand "clippy-skipped" { } ''
-            echo "unit2nix auto-mode clippy does not propagate rustToolchain; skipping until unit2nix exposes a matching clippy driver"
-            touch $out
-          '';
+          clippy = clippyWs.clippy.allWorkspaceMembers;
 
           fmt = pkgs.runCommand "cargo-fmt-check" {
             nativeBuildInputs = [ rustToolchain ];
