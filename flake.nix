@@ -222,6 +222,7 @@
               pkgs.bash
               pkgs.coreutils
               pkgs.gnugrep
+              pkgs.python3
             ];
           } ''
             export HOME="$TMPDIR/home"
@@ -231,18 +232,59 @@
             export XDG_RUNTIME_DIR="$TMPDIR/run"
             export CLANKERS_NO_DAEMON=1
             export CLANKERS_FAKE_PROVIDER=1
+            export NO_COLOR=1
+            export RUST_LOG=off
 
             mkdir -p \
               "$HOME" \
               "$XDG_CONFIG_HOME" \
               "$XDG_CACHE_HOME" \
               "$XDG_DATA_HOME" \
-              "$XDG_RUNTIME_DIR"
+              "$XDG_RUNTIME_DIR" \
+              "$TMPDIR/work/src/nested"
 
-            ${clankersPkg}/bin/clankers --version | grep clankers
-            ${clankersPkg}/bin/clankers --help | grep -E 'Usage:|Commands:'
-            ${clankersPkg}/bin/clankers config --help | grep -E 'Usage:|Commands:'
-            ${clankersPkg}/bin/clankers auth --help | grep -E 'Usage:|Commands:'
+            cd "$TMPDIR/work"
+            cat > Cargo.toml <<'EOF'
+            [package]
+            name = "clankers-readiness-fixture"
+            EOF
+            printf 'fn main() {}\n' > src/main.rs
+            printf 'pub fn marker() {}\n' > src/nested/mod.rs
+
+            run_clankers() {
+              ${clankersPkg}/bin/clankers "$@"
+            }
+
+            run_clankers version | grep 'clankers 0.1.0'
+            run_clankers --help | grep -E 'Usage:|Commands:'
+            run_clankers config paths | grep 'Global config'
+            run_clankers auth status 2>&1 | grep -E 'No authentication|Accounts:|API key|not authenticated'
+
+            run_clankers -p 'Reply with exactly one word: yes' \
+              | grep -i 'yes'
+            run_clankers -p 'Use the bash tool to run: echo CLANKERS_TOOL_TEST_OK' \
+              | grep 'CLANKERS_TOOL_TEST_OK'
+            run_clankers -p 'Use the read tool to read the file Cargo.toml and tell me the package name' \
+              | grep 'clankers'
+            run_clankers -p "Use the find tool to find files named 'mod.rs' under src/" \
+              | grep 'mod.rs'
+
+            run_clankers --mode json -p 'Say hello' > json.out
+            python3 - <<'PY'
+            import json
+            lines = [line for line in open('json.out', encoding='utf-8') if line.strip()]
+            assert lines, 'json mode should emit at least one JSON line'
+            for line in lines:
+                json.loads(line)
+            PY
+
+            round_trip="$TMPDIR/clankers-e2e-write-test-nix"
+            run_clankers -p "Use the write tool to create the file $round_trip with content 'hello world'."
+            test -f "$round_trip"
+            run_clankers -p "Use the edit tool to replace 'world' with 'clankers' in $round_trip."
+            grep 'hello clankers' "$round_trip"
+            run_clankers -p "Use the read tool to read $round_trip and show me the final content." \
+              | grep 'clankers'
 
             touch "$out"
           '';
