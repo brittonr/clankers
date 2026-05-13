@@ -1,5 +1,9 @@
-## ADDED Requirements
+# Thin Agent Shell Specification
 
+## Purpose
+
+Specify the clankers-agent turn-loop shell boundary: host-trait adapters should remain thin delegation wrappers over pure request/message/policy modules, while transcript and usage side effects stay isolated behind narrow state shells.
+## Requirements
 ### Requirement: Agent turn adapters MUST be pure delegation wrappers
 
 Each `clankers-agent` host-trait adapter (`ModelHost`, `ToolExecutor`, `RetrySleeper`, `EngineEventSink`, `CancellationSource`, `UsageObserver`) MUST delegate to purpose-built modules and MUST NOT contain inline provider streaming, `CompletionRequest` construction, tool execution orchestration, or shared mutable turn state.
@@ -70,3 +74,19 @@ r[thin-agent-shell.fcis-rejects-inline-tool-execution-in-adapters]
 - **WHEN** the boundary test parses adapter struct `impl` blocks in `crates/clankers-agent/src/turn/mod.rs`
 - **THEN** no adapter `impl` block calls `execute_tools_parallel` directly
 - **THEN** no adapter `impl` block performs inline capability gate checks or hook pipeline dispatch
+
+### Requirement: Turn Loop Decomposition [r[turn-loop.decomposition]]
+
+The agent turn loop MUST be decomposed into explicit functional-core state/policy modules and thin imperative host adapters without changing observed turn behavior.
+
+#### Scenario: Behavior parity [r[turn-loop.decomposition.scenario.1]]
+
+- GIVEN an existing prompt/tool/model-switch regression fixture
+- WHEN the decomposed turn loop runs the fixture
+- THEN the transcript, emitted events, tool outcomes, cancellation behavior, and usage observations match the pre-decomposition baseline
+
+#### Scenario: Boundary review [r[turn-loop.decomposition.scenario.2]]
+
+- GIVEN a future change touches model streaming or tool execution
+- WHEN the changed code is reviewed
+- THEN the code path is isolated behind a named module or trait with focused tests rather than requiring edits to the monolithic turn loop

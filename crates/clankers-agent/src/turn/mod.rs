@@ -1,52 +1,54 @@
 //! Turn loop: prompt -> LLM -> tool calls -> repeat
 
+mod adapters;
 mod execution;
+mod message;
 mod model_switch;
+mod policy;
 mod transcript;
 mod usage;
 
 use std::collections::HashMap;
 use std::sync::Arc;
 
+use adapters::AgentCancellationSource;
+use adapters::AgentEngineEventSink;
+use adapters::AgentModelHost;
+use adapters::AgentRetrySleeper;
+use adapters::AgentToolHost;
+use adapters::AgentUsageObserver;
+#[cfg(test)]
 use chrono::Utc;
+#[cfg(test)]
 use clankers_engine::EngineCorrelationId;
 #[cfg(test)]
 use clankers_engine::EngineEffect;
+#[cfg(test)]
 use clankers_engine::EngineEvent;
 use clankers_engine::EngineInput;
-use clankers_engine::EngineModelRequest;
+#[cfg(test)]
 use clankers_engine::EngineModelResponse;
+#[cfg(test)]
 use clankers_engine::EngineOutcome;
 use clankers_engine::EngineState;
+#[cfg(test)]
 use clankers_engine::EngineTerminalFailure;
 #[cfg(test)]
 use clankers_engine::EngineTurnPhase;
 use clankers_engine::reduce;
-use clankers_engine_host::CancellationSource;
-use clankers_engine_host::EngineEventSink;
-use clankers_engine_host::EngineRunReport;
 use clankers_engine_host::EngineRunSeed;
-use clankers_engine_host::HostAdapterError;
 use clankers_engine_host::HostAdapters;
-use clankers_engine_host::ModelHost;
-use clankers_engine_host::ModelHostOutcome;
-use clankers_engine_host::RetrySleeper;
-use clankers_engine_host::UsageObservation;
-use clankers_engine_host::UsageObservationKind;
-use clankers_engine_host::UsageObserver;
 use clankers_engine_host::run_engine_turn;
 #[cfg(test)]
 use clankers_engine_host::runtime::cancel_turn_input;
-#[cfg(test)]
-use clankers_engine_host::runtime::tool_feedback_input as host_tool_feedback_input;
 use clankers_model_selection::cost_tracker::CostTracker;
 use clankers_provider::Provider;
 use clankers_provider::ThinkingConfig;
+#[cfg(test)]
 use clankers_provider::Usage;
 use clankers_provider::message::*;
+#[cfg(test)]
 use clankers_provider::streaming::*;
-use clankers_tool_host::ToolExecutor;
-use clankers_tool_host::ToolHostOutcome;
 use execution::completion_request_from_engine_request;
 use execution::create_error_result;
 use execution::engine_messages_from_agent_messages;
@@ -54,7 +56,24 @@ use execution::execute_tools_parallel;
 use execution::stream_model_request;
 use execution::tool_definitions_from_tool_catalog;
 use execution::tool_result_message_to_host_outcome;
+use message::CollectedResponse;
+pub(crate) use message::ContentBlockBuilder;
+use message::apply_output_truncation;
+use message::build_assistant_message;
+pub(crate) use message::parse_stop_reason;
+pub(crate) use message::tool_result_content_to_message_content;
+use message::tool_use_count;
 use model_switch::check_model_switch;
+#[cfg(test)]
+pub(crate) use policy::EngineModelDecision;
+use policy::agent_error_from_report;
+#[cfg(test)]
+pub(crate) use policy::decide_model_completion;
+#[cfg(test)]
+pub(crate) use policy::emit_engine_notice_effects;
+use policy::engine_failure_from_agent_error;
+use policy::engine_outcome_or_error;
+#[cfg(test)]
 use serde_json::Value;
 use tokio::sync::broadcast;
 use tokio_util::sync::CancellationToken;
@@ -80,478 +99,6 @@ pub struct TurnConfig {
     pub output_truncation: clanker_loop::OutputTruncationConfig,
     pub no_cache: bool,
     pub cache_ttl: Option<String>,
-}
-
-/// Result of collecting a streamed response
-pub(crate) struct CollectedResponse {
-    content: Vec<Content>,
-    model: String,
-    usage: Usage,
-    stop_reason: StopReason,
-}
-
-const TURN_CANCELLED_REASON: &str = "turn cancelled";
-
-struct AgentModelHost<'a> {
-    provider: &'a dyn Provider,
-    event_tx: &'a broadcast::Sender<AgentEvent>,
-    cancel: CancellationToken,
-    model_switch_slot: Option<&'a ModelSwitchSlot>,
-    transcript: TurnTranscriptWriter,
-}
-
-impl ModelHost for AgentModelHost<'_> {
-    async fn execute_model(&mut self, mut engine_request: EngineModelRequest) -> ModelHostOutcome {
-        let mut active_model = self.transcript.active_model();
-        if self.transcript.mark_turn_start(self.event_tx) {
-            if let Err(error) = check_model_switch(&mut active_model, self.model_switch_slot, self.event_tx) {
-                return ModelHostOutcome::Failed {
-                    failure: engine_failure_from_agent_error(&error),
-                };
-            }
-            self.transcript.set_active_model(active_model.clone());
-        }
-        engine_request.model = active_model;
-
-        let request = match completion_request_from_engine_request(&engine_request) {
-            Ok(r) => r,
-            Err(error) => {
-                return ModelHostOutcome::Failed {
-                    failure: engine_failure_from_agent_error(&error),
-                };
-            }
-        };
-
-        match stream_model_request(self.provider, request, self.event_tx, &self.cancel).await {
-            Ok(collected) => {
-                let response = EngineModelResponse {
-                    output: collected.content.clone(),
-                    stop_reason: collected.stop_reason.clone(),
-                };
-                let usage = collected.usage.clone();
-                let assistant = build_assistant_message(&collected);
-                let tool_count = tool_use_count(&collected.content);
-                self.transcript.append_assistant(assistant, tool_count);
-                ModelHostOutcome::Completed {
-                    response,
-                    usage: Some(usage),
-                }
-            }
-            Err(error) => ModelHostOutcome::Failed {
-                failure: engine_failure_from_agent_error(&error),
-            },
-        }
-    }
-}
-
-struct AgentToolHost<'a> {
-    controller_tools: &'a HashMap<String, Arc<dyn Tool>>,
-    event_tx: &'a broadcast::Sender<AgentEvent>,
-    cancel: CancellationToken,
-    hook_pipeline: Option<Arc<clankers_hooks::HookPipeline>>,
-    session_id: &'a str,
-    db: Option<clankers_db::Db>,
-    capability_gate: Option<Arc<dyn crate::tool::CapabilityGate>>,
-    user_tool_filter: Option<Vec<String>>,
-    output_truncation: clanker_loop::OutputTruncationConfig,
-    transcript: TurnTranscriptWriter,
-}
-
-impl ToolExecutor for AgentToolHost<'_> {
-    async fn execute_tool(&mut self, call: clankers_engine::EngineToolCall) -> ToolHostOutcome {
-        let call_id = call.call_id.0.clone();
-        let tool_name = call.tool_name.clone();
-        let tool_calls = vec![(call_id, tool_name, call.input)];
-        let mut messages = execute_tools_parallel(
-            self.controller_tools,
-            &tool_calls,
-            self.event_tx,
-            self.cancel.clone(),
-            self.hook_pipeline.clone(),
-            self.session_id,
-            self.db.clone(),
-            self.capability_gate.clone(),
-            self.user_tool_filter.clone(),
-        )
-        .await;
-        let message = messages.pop().unwrap_or_else(|| {
-            create_error_result(
-                tool_calls[0].0.clone(),
-                tool_calls[0].1.clone(),
-                "tool host produced no result".to_string(),
-                self.event_tx,
-            )
-        });
-        let mut truncated = apply_output_truncation(vec![message], &self.output_truncation);
-        let message = truncated.remove(0);
-        let outcome = tool_result_message_to_host_outcome(&message);
-        self.transcript.append_tool_result(message, self.event_tx);
-        outcome
-    }
-}
-
-struct AgentRetrySleeper {
-    cancel: CancellationToken,
-}
-
-impl RetrySleeper for AgentRetrySleeper {
-    async fn sleep_for_retry(
-        &mut self,
-        _request_id: EngineCorrelationId,
-        delay: std::time::Duration,
-    ) -> std::result::Result<(), HostAdapterError> {
-        tokio::select! {
-            () = self.cancel.cancelled() => Ok(()),
-            () = tokio::time::sleep(delay) => Ok(()),
-        }
-    }
-}
-
-struct AgentEngineEventSink<'a> {
-    event_tx: &'a broadcast::Sender<AgentEvent>,
-    transcript: TurnTranscriptWriter,
-}
-
-impl EngineEventSink for AgentEngineEventSink<'_> {
-    fn emit_engine_event(&mut self, event: &EngineEvent) -> std::result::Result<(), HostAdapterError> {
-        if event.turn_finished_stop_reason().is_some() {
-            self.transcript.finish_turn(self.event_tx);
-            return Ok(());
-        }
-
-        match event {
-            EngineEvent::Notice { message } => {
-                self.event_tx
-                    .send(AgentEvent::SystemMessage {
-                        message: message.clone(),
-                    })
-                    .ok();
-            }
-            EngineEvent::BusyChanged { .. } => {}
-            _ => {}
-        }
-        Ok(())
-    }
-}
-
-struct AgentCancellationSource {
-    cancel: CancellationToken,
-}
-
-impl CancellationSource for AgentCancellationSource {
-    fn is_cancelled(&mut self) -> bool {
-        self.cancel.is_cancelled()
-    }
-
-    fn cancellation_reason(&mut self) -> String {
-        TURN_CANCELLED_REASON.to_string()
-    }
-}
-
-struct AgentUsageObserver<'a> {
-    cost_tracker: Option<&'a Arc<CostTracker>>,
-    event_tx: &'a broadcast::Sender<AgentEvent>,
-    transcript: TurnTranscriptWriter,
-}
-
-impl UsageObserver for AgentUsageObserver<'_> {
-    fn observe_usage(&mut self, observation: &UsageObservation) -> std::result::Result<(), HostAdapterError> {
-        if observation.kind != UsageObservationKind::FinalSummary {
-            return Ok(());
-        }
-        let active_model = self.transcript.active_model();
-        self.transcript.update_cumulative_usage(|cumulative| {
-            update_usage_tracking(cumulative, &observation.usage, &active_model, self.cost_tracker, self.event_tx);
-        });
-        Ok(())
-    }
-}
-
-fn tool_use_count(content: &[Content]) -> usize {
-    content.iter().filter(|block| matches!(block, Content::ToolUse { .. })).count()
-}
-
-fn agent_error_from_report(report: &EngineRunReport) -> Option<AgentError> {
-    if let Some(failure) = &report.last_outcome.terminal_failure {
-        return Some(AgentError::ProviderStreaming {
-            message: failure.message.clone(),
-            status: failure.status,
-            retryable: failure.retryable,
-        });
-    }
-    report.last_outcome.rejection.as_ref().map(|rejection| AgentError::ProviderStreaming {
-        message: format!("engine rejected turn: {rejection:?}"),
-        status: None,
-        retryable: false,
-    })
-}
-
-fn parse_stop_reason(s: &str) -> StopReason {
-    match s {
-        "end_turn" | "stop" => StopReason::Stop,
-        "tool_use" => StopReason::ToolUse,
-        "max_tokens" => StopReason::MaxTokens,
-        _ => StopReason::Stop,
-    }
-}
-
-/// Builder for accumulating streaming content blocks
-#[derive(Clone)]
-pub(crate) struct ContentBlockBuilder {
-    content: Content,
-    /// For ToolUse blocks, accumulate the raw JSON string
-    raw_json: Option<String>,
-}
-
-impl ContentBlockBuilder {
-    pub(crate) fn new(content: Content) -> Self {
-        Self {
-            content,
-            raw_json: None,
-        }
-    }
-
-    pub(crate) fn apply_delta(&mut self, delta: &ContentDelta) {
-        match (&mut self.content, delta) {
-            (Content::Text { text }, ContentDelta::TextDelta { text: delta_text }) => {
-                text.push_str(delta_text);
-            }
-            (
-                Content::Thinking { thinking, .. },
-                ContentDelta::ThinkingDelta {
-                    thinking: delta_thinking,
-                },
-            ) => {
-                thinking.push_str(delta_thinking);
-            }
-            (Content::Thinking { signature, .. }, ContentDelta::SignatureDelta { signature: sig_delta }) => {
-                signature.push_str(sig_delta);
-            }
-            (Content::ToolUse { .. }, ContentDelta::InputJsonDelta { partial_json }) => {
-                self.raw_json.get_or_insert_with(String::new).push_str(partial_json);
-            }
-            _ => {}
-        }
-    }
-
-    pub(crate) fn finalize(mut self) -> Content {
-        // Parse accumulated JSON for ToolUse
-        if let Content::ToolUse {
-            ref mut input,
-            ref name,
-            ..
-        } = self.content
-        {
-            match self.raw_json {
-                Some(ref json_str) if !json_str.is_empty() => {
-                    match serde_json::from_str::<Value>(json_str) {
-                        Ok(parsed) if parsed.is_object() => {
-                            *input = parsed;
-                        }
-                        Ok(parsed) => {
-                            // Valid JSON but not an object — wrap it so the tool
-                            // still sees something rather than empty {}.
-                            tracing::warn!(
-                                tool = name,
-                                json_type = parsed
-                                    .as_str()
-                                    .map(|_| "string")
-                                    .or(parsed.as_array().map(|_| "array"))
-                                    .unwrap_or("other"),
-                                "tool input JSON is not an object, wrapping in {{\"_raw\": ...}}",
-                            );
-                            let mut map = serde_json::Map::new();
-                            map.insert("_raw".to_string(), parsed);
-                            *input = Value::Object(map);
-                        }
-                        Err(e) => {
-                            tracing::warn!(
-                                tool = name,
-                                json_len = json_str.len(),
-                                error = %e,
-                                "failed to parse accumulated tool input JSON",
-                            );
-                            // Keep the initial empty {} — tool will see missing params
-                        }
-                    }
-                }
-                Some(_) => {
-                    // raw_json was set but empty (initial empty arguments chunk)
-                    tracing::debug!(tool = name, "tool input JSON is empty string");
-                }
-                None => {
-                    // No InputJsonDelta events received at all
-                    tracing::debug!(tool = name, "no InputJsonDelta events for tool_use block");
-                }
-            }
-            // Ensure input is always an object
-            if !input.is_object() {
-                *input = Value::Object(serde_json::Map::new());
-            }
-        }
-        self.content
-    }
-}
-
-#[derive(Debug)]
-#[cfg(test)]
-enum EngineModelDecision {
-    ExecuteTools(Vec<(String, String, Value)>),
-    Finish(StopReason),
-}
-
-#[cfg(test)]
-#[allow(
-    dead_code,
-    reason = "kept as focused engine-effect helpers for decoupling regression tests"
-)]
-fn request_model_effect(outcome: &EngineOutcome) -> Result<EngineModelRequest> {
-    let mut request_model = None;
-
-    for effect in &outcome.effects {
-        match effect {
-            EngineEffect::RequestModel(model_request) => {
-                if request_model.replace(model_request.clone()).is_some() {
-                    return Err(AgentError::ProviderStreaming {
-                        message: "engine emitted multiple model-request effects".to_string(),
-                        status: None,
-                        retryable: false,
-                    });
-                }
-            }
-            EngineEffect::ExecuteTool(_) | EngineEffect::ScheduleRetry { .. } | EngineEffect::EmitEvent(_) => {}
-        }
-    }
-
-    request_model.ok_or_else(|| AgentError::ProviderStreaming {
-        message: "engine omitted a required model-request effect".to_string(),
-        status: None,
-        retryable: false,
-    })
-}
-
-#[cfg(test)]
-#[allow(
-    dead_code,
-    reason = "kept as focused engine-effect helpers for decoupling regression tests"
-)]
-fn schedule_retry_effect(outcome: &EngineOutcome) -> Result<Option<(EngineCorrelationId, std::time::Duration)>> {
-    let mut scheduled_retry = None;
-
-    for effect in &outcome.effects {
-        if let EngineEffect::ScheduleRetry { request_id, delay } = effect
-            && scheduled_retry.replace((request_id.clone(), *delay)).is_some()
-        {
-            return Err(AgentError::ProviderStreaming {
-                message: "engine emitted multiple retry-schedule effects".to_string(),
-                status: None,
-                retryable: false,
-            });
-        }
-    }
-
-    Ok(scheduled_retry)
-}
-
-fn engine_failure_from_agent_error(error: &AgentError) -> EngineTerminalFailure {
-    EngineTerminalFailure {
-        message: error.to_string(),
-        status: error.status_code(),
-        retryable: error.is_retryable(),
-    }
-}
-
-#[cfg(test)]
-fn decide_model_completion(outcome: &EngineOutcome) -> Result<EngineModelDecision> {
-    let mut tool_calls = Vec::new();
-    let mut turn_finished = None;
-
-    for effect in &outcome.effects {
-        match effect {
-            EngineEffect::ExecuteTool(call) => {
-                tool_calls.push((call.call_id.0.clone(), call.tool_name.clone(), call.input.clone()));
-            }
-            EngineEffect::RequestModel(_) | EngineEffect::ScheduleRetry { .. } | EngineEffect::EmitEvent(_) => {
-                if let Some(stop_reason) = effect.turn_finished_stop_reason()
-                    && turn_finished.replace(stop_reason.clone()).is_some()
-                {
-                    return Err(AgentError::ProviderStreaming {
-                        message: "engine emitted multiple turn-finished effects".to_string(),
-                        status: None,
-                        retryable: false,
-                    });
-                }
-            }
-        }
-    }
-
-    let has_tool_calls = !tool_calls.is_empty();
-    let has_turn_finish = turn_finished.is_some();
-    if has_tool_calls == has_turn_finish {
-        return Err(AgentError::ProviderStreaming {
-            message: "engine emitted ambiguous model-completion effects".to_string(),
-            status: None,
-            retryable: false,
-        });
-    }
-
-    match turn_finished {
-        Some(stop_reason) => Ok(EngineModelDecision::Finish(stop_reason)),
-        None => Ok(EngineModelDecision::ExecuteTools(tool_calls)),
-    }
-}
-
-#[cfg(test)]
-#[allow(
-    dead_code,
-    reason = "kept as focused engine-effect helpers for decoupling regression tests"
-)]
-fn emit_engine_notice_effects(outcome: &EngineOutcome, event_tx: &broadcast::Sender<AgentEvent>) {
-    for effect in &outcome.effects {
-        if let EngineEffect::EmitEvent(EngineEvent::Notice { message }) = effect {
-            event_tx
-                .send(AgentEvent::SystemMessage {
-                    message: message.clone(),
-                })
-                .ok();
-        }
-    }
-}
-
-fn engine_outcome_or_error(engine_outcome: EngineOutcome, context: &str) -> Result<EngineOutcome> {
-    if let Some(rejection) = &engine_outcome.rejection {
-        return Err(AgentError::ProviderStreaming {
-            message: format!("engine rejected {context}: {rejection:?}"),
-            status: None,
-            retryable: false,
-        });
-    }
-
-    Ok(engine_outcome)
-}
-
-#[cfg(test)]
-#[allow(
-    dead_code,
-    reason = "kept as focused engine-effect helpers for decoupling regression tests"
-)]
-fn update_engine_model(engine_state: &mut EngineState, active_model: &str) {
-    if let Some(request_template) = engine_state.request_template.as_mut() {
-        request_template.model = active_model.to_string();
-    }
-}
-
-#[cfg(test)]
-#[allow(
-    dead_code,
-    reason = "kept as focused engine-effect helpers for decoupling regression tests"
-)]
-fn tool_feedback_input(message: &ToolResultMessage) -> EngineInput {
-    host_tool_feedback_input(
-        clankers_engine::EngineCorrelationId(message.call_id.clone()),
-        message.is_error,
-        message.content.clone(),
-    )
 }
 
 pub struct TurnLoopContext<'a> {
@@ -668,81 +215,6 @@ fn cancel_active_engine_turn(
         engine_outcome_or_error(reduce(engine_state, &cancel_turn_input(reason.to_string())), "turn cancellation")?;
     emit_engine_notice_effects(&cancel_outcome, event_tx);
     Ok(())
-}
-
-/// Build assistant message from collected response
-fn build_assistant_message(collected: &CollectedResponse) -> AssistantMessage {
-    AssistantMessage {
-        id: MessageId::generate(),
-        content: collected.content.clone(),
-        model: collected.model.clone(),
-        usage: collected.usage.clone(),
-        stop_reason: collected.stop_reason.clone(),
-        timestamp: Utc::now(),
-    }
-}
-
-/// Apply output truncation to tool result messages.
-///
-/// For each tool result, extracts text content, runs it through the truncation
-/// layer, and rebuilds the message with truncated text and a temp file path
-/// if truncation was applied.
-fn apply_output_truncation(
-    messages: Vec<ToolResultMessage>,
-    config: &clanker_loop::OutputTruncationConfig,
-) -> Vec<ToolResultMessage> {
-    if !config.enabled {
-        return messages;
-    }
-
-    messages
-        .into_iter()
-        .map(|mut msg| {
-            // Extract text content blocks, truncate, and rebuild
-            let mut truncated_content = Vec::new();
-            let mut was_any_truncated = false;
-
-            for block in &msg.content {
-                match block {
-                    Content::Text { text } => {
-                        let result = clanker_loop::truncate_tool_output(text, config);
-                        if result.truncated {
-                            was_any_truncated = true;
-                            tracing::info!(
-                                tool = msg.tool_name,
-                                original_lines = result.original_lines,
-                                original_bytes = result.original_bytes,
-                                "Tool output truncated"
-                            );
-                        }
-                        truncated_content.push(Content::Text { text: result.content });
-                    }
-                    other => truncated_content.push(other.clone()),
-                }
-            }
-
-            if was_any_truncated {
-                msg.content = truncated_content;
-            }
-            msg
-        })
-        .collect()
-}
-
-/// Convert ToolResultContent to Content
-pub(crate) fn tool_result_content_to_message_content(tool_content: &[crate::tool::ToolResultContent]) -> Vec<Content> {
-    tool_content
-        .iter()
-        .map(|tc| match tc {
-            crate::tool::ToolResultContent::Text { text } => Content::Text { text: text.clone() },
-            crate::tool::ToolResultContent::Image { media_type, data } => Content::Image {
-                source: ImageSource::Base64 {
-                    media_type: media_type.clone(),
-                    data: data.clone(),
-                },
-            },
-        })
-        .collect()
 }
 
 #[cfg(test)]
