@@ -1,7 +1,7 @@
 ## Phase 1: Baseline and Extraction
 
-- [ ] [serial] Inventory attach.rs responsibilities and identify test seams for session resolution, local commands, event projection, and client loop.
-- [ ] [depends:baseline] Move session resolution/socket connection code into an attach session module with existing and negative tests.
+- [x] [serial] Inventory attach.rs responsibilities and identify test seams for session resolution, local commands, event projection, and client loop. ✅ Identified session/socket/control/recovery helpers, slash/semantic command routing, daemon-event projection, and reconnect/client-loop seams; existing attach/MCP parity and recovery tests cover prompt, abort, capabilities, confirmations, compaction, history, socket retry, local command parity, daemon roundtrip, plugin events, and remote parity tracker behavior (completed: 2026-05-13T01:01:24Z).
+- [x] [depends:baseline] Move session resolution/socket connection code into an attach session module with existing and negative tests. ✅ Extracted session socket retry, control socket commands, session resolution/picker, recovery mode, reconnect, and auto-daemon recovery helpers into `src/modes/attach/session.rs`; preserved `super::attach::{RecoveryMode, connect_session_socket, send_control}` compatibility for auto-daemon and daemon command callers; `cargo nextest run -p clankers attach --no-fail-fast`, `cargo nextest run -p clankers mcp_ --no-fail-fast`, and `cargo check --tests -p clankers` passed under `nix develop` (completed: 2026-05-13T01:01:24Z).
 - [ ] [depends:baseline] Move local slash/semantic command handling into an attach command module shared by parity tests.
 - [ ] [depends:baseline] Move daemon-event projection/client loop helpers into focused modules and preserve TUI snapshot/recovery tests.
 - [ ] [serial] Run cargo fmt, attach/MCP parity nextest filters, cargo check --tests -p clankers, openspec validate, and git diff --check.
