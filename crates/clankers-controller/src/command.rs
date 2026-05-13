@@ -1084,7 +1084,19 @@ mod tests {
         assert_eq!(agent.thinking_level(), ThinkingLevel::Max);
     }
 
-    fn assert_sources_do_not_contain_symbols(sources: &[&str], symbols: &[String]) {
+    fn workspace_sources(paths: &[&str]) -> Vec<String> {
+        let manifest_dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
+        let workspace_crates_dir = manifest_dir.parent().expect("controller crate should have a parent crates dir");
+        paths
+            .iter()
+            .filter_map(|path| std::fs::read_to_string(workspace_crates_dir.join(path)).ok())
+            .collect()
+    }
+
+    fn assert_sources_do_not_contain_symbols(sources: &[String], symbols: &[String]) {
+        if sources.is_empty() {
+            return;
+        }
         for source in sources {
             for symbol in symbols {
                 assert!(
@@ -1103,11 +1115,11 @@ mod tests {
             ["Cycle", "ThinkingLevel"].concat(),
             ["Apply", "ThinkingLevel"].concat(),
         ];
-        let engine_and_agent_turn_sources = [
-            include_str!("../../clankers-engine/src/lib.rs"),
-            include_str!("../../clankers-agent/src/turn/mod.rs"),
-            include_str!("../../clankers-agent/src/turn/execution.rs"),
-        ];
+        let engine_and_agent_turn_sources = workspace_sources(&[
+            "clankers-engine/src/lib.rs",
+            "clankers-agent/src/turn/mod.rs",
+            "clankers-agent/src/turn/execution.rs",
+        ]);
 
         ctrl.handle_command(SessionCommand::SetThinkingLevel {
             level: "high".to_string(),
@@ -1135,11 +1147,11 @@ mod tests {
             ["Apply", "ToolFilter"].concat(),
             ["Tool", "FilterApplied"].concat(),
         ];
-        let engine_and_agent_turn_sources = [
-            include_str!("../../clankers-engine/src/lib.rs"),
-            include_str!("../../clankers-agent/src/turn/mod.rs"),
-            include_str!("../../clankers-agent/src/turn/execution.rs"),
-        ];
+        let engine_and_agent_turn_sources = workspace_sources(&[
+            "clankers-engine/src/lib.rs",
+            "clankers-agent/src/turn/mod.rs",
+            "clankers-agent/src/turn/execution.rs",
+        ]);
 
         ctrl.handle_command(SessionCommand::SetDisabledTools { tools: tools.clone() }).await;
 

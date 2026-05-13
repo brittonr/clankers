@@ -1631,8 +1631,7 @@ mod tests {
 
     #[test]
     fn engine_state_fields_are_active() {
-        let source = std::fs::read_to_string(concat!(env!("CARGO_MANIFEST_DIR"), "/src/lib.rs"))
-            .expect("engine source must be readable");
+        let source = include_str!("lib.rs").to_string();
         let source_fields = engine_state_field_names_from_source(&source);
         let inventory_fields = ENGINE_STATE_FIELD_INVENTORY
             .iter()

@@ -1199,6 +1199,10 @@ mod tests {
 
     #[test]
     fn build_codex_request_preserves_deterministic_body_fixture_on_initial_transient_and_refresh_retry_paths() {
+        let _guard = codex_test_lock().lock().unwrap_or_else(|poison| poison.into_inner());
+        let _cleanup = HttpHookGuard;
+        reset_entitlement(OPENAI_CODEX_PROVIDER, None);
+
         let client = common::build_http_client(Duration::from_secs(30)).expect("client should build");
         let request = codex_request_with_history(Some("session-1"));
         let expected_body = codex_request_body_fixture(Some("session-1"));
@@ -1541,6 +1545,10 @@ mod tests {
 
     #[test]
     fn build_probe_request_preserves_contract_on_initial_transient_and_refresh_retry_paths() {
+        let _guard = codex_test_lock().lock().unwrap_or_else(|poison| poison.into_inner());
+        let _cleanup = HttpHookGuard;
+        reset_entitlement(OPENAI_CODEX_PROVIDER, None);
+
         let client = common::build_http_client(Duration::from_secs(30)).expect("client should build");
         let expected_body = build_probe_request_body();
         let initial =

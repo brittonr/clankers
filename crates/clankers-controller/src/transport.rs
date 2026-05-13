@@ -562,6 +562,8 @@ mod tests {
 
     use super::*;
 
+    static TEST_ENV_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
     #[test]
     fn test_socket_paths() {
         let dir = socket_dir();
@@ -579,6 +581,7 @@ mod tests {
 
     #[test]
     fn socket_dir_no_double_clankers() {
+        let _env_guard = TEST_ENV_LOCK.lock().unwrap_or_else(|poison| poison.into_inner());
         // When XDG_RUNTIME_DIR already ends with "clankers" (e.g.
         // systemd RuntimeDirectory=clankers → /run/clankers), socket_dir()
         // should not append another clankers/ component.
@@ -712,8 +715,9 @@ mod tests {
         }
     }
 
-    #[tokio::test]
+    #[tokio::test(flavor = "current_thread")]
     async fn test_session_socket_handshake_and_events() {
+        let _env_guard = TEST_ENV_LOCK.lock().unwrap_or_else(|poison| poison.into_inner());
         let temp_dir = tempfile::tempdir().unwrap();
         unsafe {
             std::env::set_var("XDG_RUNTIME_DIR", temp_dir.path());
@@ -767,8 +771,9 @@ mod tests {
         }
     }
 
-    #[tokio::test]
+    #[tokio::test(flavor = "current_thread")]
     async fn test_multiple_clients_receive_broadcast_events() {
+        let _env_guard = TEST_ENV_LOCK.lock().unwrap_or_else(|poison| poison.into_inner());
         let temp_dir = tempfile::tempdir().unwrap();
         unsafe {
             std::env::set_var("XDG_RUNTIME_DIR", temp_dir.path());
@@ -879,6 +884,7 @@ mod tests {
 
     #[test]
     fn test_stale_socket_cleanup() {
+        let _env_guard = TEST_ENV_LOCK.lock().unwrap_or_else(|poison| poison.into_inner());
         let temp_dir = tempfile::tempdir().unwrap();
 
         // Set custom socket dir by setting environment
@@ -914,8 +920,9 @@ mod tests {
         }
     }
 
-    #[tokio::test]
+    #[tokio::test(flavor = "current_thread")]
     async fn test_session_client_command_processing() {
+        let _env_guard = TEST_ENV_LOCK.lock().unwrap_or_else(|poison| poison.into_inner());
         let temp_dir = tempfile::tempdir().unwrap();
         unsafe {
             std::env::set_var("XDG_RUNTIME_DIR", temp_dir.path());

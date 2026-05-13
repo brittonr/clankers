@@ -41,11 +41,11 @@
     },
     "nixpkgs": {
       "locked": {
-        "lastModified": 1776329215,
-        "narHash": "sha256-a8BYi3mzoJ/AcJP8UldOx8emoPRLeWqALZWu4ZvjPXw=",
+        "lastModified": 1778580735,
+        "narHash": "sha256-t+8AVV8ExvOmslz2sLIgw/hJBKlyl65rJvxjvvjHgpE=",
         "owner": "NixOS",
         "repo": "nixpkgs",
-        "rev": "b86751bc4085f48661017fa226dee99fab6c651b",
+        "rev": "48d91f2c0ce7b9e589f967d4f685153dd765dcdd",
         "type": "github"
       },
       "original": {
@@ -88,11 +88,11 @@
         ]
       },
       "locked": {
-        "lastModified": 1776914043,
-        "narHash": "sha256-qug5r56yW1qOsjSI99l3Jm15JNT9CvS2otkXNRNtrPI=",
+        "lastModified": 1778555852,
+        "narHash": "sha256-55EmwooVAS4UpA0oWd5wilKPRqCiHD5BAej9QiNwheY=",
         "owner": "oxalica",
         "repo": "rust-overlay",
-        "rev": "2d35c4358d7de3a0e606a6e8b27925d981c01cc3",
+        "rev": "f29b0f7a9f367e0056b716f8aa137cb41e784444",
         "type": "github"
       },
       "original": {
@@ -104,11 +104,11 @@
     "subwayrat-src": {
       "flake": false,
       "locked": {
-        "lastModified": 1776988441,
-        "narHash": "sha256-Gae7dFvxUoFe1jSzAtrQX0fnVPEfE/Z/20XGO6EaAak=",
+        "lastModified": 1777144370,
+        "narHash": "sha256-WHMtm38pQirmjZ/5Ua0unGhj4pIDaEixXG1pBUYWmTQ=",
         "ref": "refs/heads/main",
-        "rev": "d930e8ce693bc3761eff5a4ed4a8bd109b2cd7fc",
-        "revCount": 44,
+        "rev": "9d68c69f13ad5c4385e8c96ff727bd6a7a1f8dd2",
+        "revCount": 46,
         "type": "git",
         "url": "ssh://git@github.com/brittonr/subwayrat.git"
       },
