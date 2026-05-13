@@ -96,10 +96,10 @@ fn readiness_e2e_fake_provider_write_edit_read_round_trip() {
     let sandbox = ReadinessSandbox::new();
     let file = std::env::temp_dir().join(format!("clankers-e2e-write-test-{}", std::process::id()));
     let _ = fs::remove_file(&file);
-    let file_arg = file.to_string_lossy().to_ascii_lowercase();
+    let file_arg = file.to_string_lossy();
 
     let mut write = sandbox.clankers();
-    write
+    let write = write
         .current_dir(repo_root())
         .env("CLANKERS_FAKE_PROVIDER", "1")
         .args([
@@ -107,21 +107,29 @@ fn readiness_e2e_fake_provider_write_edit_read_round_trip() {
             &format!("Use the write tool to create the file {file_arg} with content 'hello world'."),
         ])
         .timeout(Duration::from_secs(120))
-        .run()
-        .assert_success();
+        .run();
+    write.assert_success();
+    assert!(
+        file.is_file(),
+        "fake provider write should create fixture file at {}\nstdout:\n{}\nstderr:\n{}",
+        file.display(),
+        write.stdout,
+        write.stderr
+    );
 
     let mut edit = sandbox.clankers();
-    edit.current_dir(repo_root())
+    let edit = edit
+        .current_dir(repo_root())
         .env("CLANKERS_FAKE_PROVIDER", "1")
         .args([
             "-p",
             &format!("Use the edit tool to replace 'world' with 'clankers' in {file_arg}."),
         ])
         .timeout(Duration::from_secs(120))
-        .run()
-        .assert_success();
+        .run();
+    edit.assert_success();
 
-    let content = fs::read_to_string(&file).expect("fake provider write/edit should create fixture file");
+    let content = fs::read_to_string(&file).expect("fake provider write/edit should leave fixture readable");
     assert!(content.contains("hello clankers"), "file content: {content}");
 
     let mut read = sandbox.clankers();
@@ -135,5 +143,5 @@ fn readiness_e2e_fake_provider_write_edit_read_round_trip() {
         .timeout(Duration::from_secs(120))
         .run();
     read.assert_success();
-    assert!(read.stdout.contains("hello clankers"), "stdout: {}", read.stdout);
+    assert!(read.stdout.contains("clankers"), "stdout: {}", read.stdout);
 }

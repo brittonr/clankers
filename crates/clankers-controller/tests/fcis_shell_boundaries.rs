@@ -380,6 +380,16 @@ const AGENT_ENGINE_FEEDBACK_FILES: [&str; 2] = [
     "crates/clankers-agent/src/turn/execution.rs",
 ];
 const AGENT_TURN_ENGINE_MODEL_COMPLETION_FILE: &str = "crates/clankers-agent/src/turn/mod.rs";
+const AGENT_TURN_ENGINE_MODEL_COMPLETION_FILES: [&str; 3] = [
+    "crates/clankers-agent/src/turn/mod.rs",
+    "crates/clankers-agent/src/turn/adapters.rs",
+    "crates/clankers-agent/src/turn/execution.rs",
+];
+const AGENT_TURN_ENGINE_RETRY_FILES: [&str; 3] = [
+    "crates/clankers-agent/src/turn/mod.rs",
+    "crates/clankers-agent/src/turn/adapters.rs",
+    "crates/clankers-agent/src/turn/policy.rs",
+];
 const AGENT_TURN_ENGINE_MODEL_COMPLETION_REQUIRED_PATHS: [&str; 4] = [
     "run_engine_turn",
     "HostAdapters",
@@ -1160,6 +1170,10 @@ fn assert_source_text_absent(relative_path: &str, forbidden_text: &[&str]) {
     }
 }
 
+fn collect_non_test_paths_from_files(relative_paths: &[&str]) -> BTreeSet<String> {
+    relative_paths.iter().flat_map(|relative_path| collect_non_test_paths(relative_path)).collect()
+}
+
 fn assert_required_paths_present(relative_path: &str, paths: &BTreeSet<String>, required_paths: &[&str]) {
     let missing_paths: Vec<&str> =
         required_paths.iter().copied().filter(|required_path| !paths.contains(*required_path)).collect();
@@ -1655,9 +1669,9 @@ fn agent_turn_delegates_runner_policy_to_host_runner() {
 
 #[test]
 fn agent_turn_runtime_reuses_engine_model_completion_contract() {
-    let paths = collect_non_test_paths(AGENT_TURN_ENGINE_MODEL_COMPLETION_FILE);
+    let paths = collect_non_test_paths_from_files(&AGENT_TURN_ENGINE_MODEL_COMPLETION_FILES);
     assert_required_paths_present(
-        AGENT_TURN_ENGINE_MODEL_COMPLETION_FILE,
+        "crates/clankers-agent/src/turn/{mod,adapters,execution}.rs",
         &paths,
         &AGENT_TURN_ENGINE_MODEL_COMPLETION_REQUIRED_PATHS,
     );
@@ -1665,15 +1679,18 @@ fn agent_turn_runtime_reuses_engine_model_completion_contract() {
 
 #[test]
 fn agent_turn_runtime_defers_retry_and_budget_policy_to_engine() {
-    let turn_paths = collect_non_test_paths(AGENT_TURN_ENGINE_MODEL_COMPLETION_FILE);
+    let turn_paths = collect_non_test_paths_from_files(&AGENT_TURN_ENGINE_RETRY_FILES);
     assert_required_paths_present(
-        AGENT_TURN_ENGINE_MODEL_COMPLETION_FILE,
+        "crates/clankers-agent/src/turn/{mod,adapters,policy}.rs",
         &turn_paths,
         &AGENT_TURN_ENGINE_RETRY_REQUIRED_PATHS,
     );
     assert_required_paths_present(
-        AGENT_TURN_ENGINE_MODEL_COMPLETION_FILE,
-        &turn_paths,
+        "crates/clankers-agent/src/turn/{mod,adapters}.rs",
+        &collect_non_test_paths_from_files(&[
+            AGENT_TURN_ENGINE_MODEL_COMPLETION_FILE,
+            "crates/clankers-agent/src/turn/adapters.rs",
+        ]),
         &AGENT_TURN_SHELL_CONCERN_REQUIRED_PATHS,
     );
     let transcript_paths = collect_non_test_paths(AGENT_TURN_TRANSCRIPT_FILE);

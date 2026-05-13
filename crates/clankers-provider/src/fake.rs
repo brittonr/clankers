@@ -96,42 +96,43 @@ enum FakeAction {
 }
 
 fn choose_action(request: &CompletionRequest) -> FakeAction {
-    let prompt = latest_user_text(&request.messages).to_ascii_lowercase();
+    let prompt = latest_user_text(&request.messages);
+    let prompt_lower = prompt.to_ascii_lowercase();
     let tool_results = tool_results(&request.messages);
 
-    if prompt.contains("write tool") && prompt.contains("edit tool") {
+    if prompt_lower.contains("write tool") && prompt_lower.contains("edit tool") {
         return choose_write_edit_action(&prompt, &tool_results);
     }
 
     if let Some((_, tool_name)) = tool_results.last() {
-        return FakeAction::Text(final_text_for_tool(&prompt, tool_name).to_string());
+        return FakeAction::Text(final_text_for_tool(&prompt_lower, tool_name).to_string());
     }
 
-    if prompt.contains("bash tool") {
+    if prompt_lower.contains("bash tool") {
         return tool_call("fake_bash_1", "bash", json!({"command": "echo CLANKERS_TOOL_TEST_OK"}));
     }
-    if prompt.contains("write tool") {
+    if prompt_lower.contains("write tool") {
         let path = extract_tmp_path(&prompt).unwrap_or_else(|| "/tmp/clankers-e2e-write-test-fake".to_string());
         return tool_call("fake_write_1", "write", json!({"path": path, "content": "hello world"}));
     }
-    if prompt.contains("edit tool") {
+    if prompt_lower.contains("edit tool") {
         let path = extract_tmp_path(&prompt).unwrap_or_else(|| "/tmp/clankers-e2e-write-test-fake".to_string());
         return tool_call("fake_edit_1", "edit", json!({"path": path, "old_text": "world", "new_text": "clankers"}));
     }
-    if prompt.contains("read tool") {
+    if prompt_lower.contains("read tool") {
         let path = extract_tmp_path(&prompt).unwrap_or_else(|| "Cargo.toml".to_string());
         return tool_call("fake_read_1", "read", json!({"path": path}));
     }
-    if prompt.contains("ls tool") {
+    if prompt_lower.contains("ls tool") {
         return tool_call("fake_ls_1", "ls", json!({"path": "."}));
     }
-    if prompt.contains("grep tool") {
+    if prompt_lower.contains("grep tool") {
         return tool_call("fake_grep_1", "grep", json!({"pattern": "fn main", "path": "src/"}));
     }
-    if prompt.contains("find tool") {
+    if prompt_lower.contains("find tool") {
         return tool_call("fake_find_1", "find", json!({"pattern": "mod.rs", "path": "src/"}));
     }
-    if prompt.contains("exactly one word") && prompt.contains("yes") {
+    if prompt_lower.contains("exactly one word") && prompt_lower.contains("yes") {
         return FakeAction::Text("yes".to_string());
     }
 
@@ -213,12 +214,15 @@ fn final_text_for_tool(prompt: &str, tool_name: &str) -> &'static str {
 }
 
 fn extract_tmp_path(prompt: &str) -> Option<String> {
-    let start = prompt.find("/tmp/clankers-e2e-write-test-")?;
-    let tail = &prompt[start..];
-    let end = tail
-        .find(|ch: char| ch.is_whitespace() || matches!(ch, '\'' | '"' | '.' | ','))
-        .unwrap_or(tail.len());
-    Some(tail[..end].to_string())
+    let marker_start = prompt.find("clankers-e2e-write-test-")?;
+    let path_start = prompt[..marker_start]
+        .rfind(|ch: char| ch.is_whitespace() || matches!(ch, '\'' | '"'))
+        .map(|index| index + 1)
+        .unwrap_or(0);
+    let tail = &prompt[path_start..];
+    let end = tail.find(|ch: char| ch.is_whitespace() || matches!(ch, '\'' | '"' | ',')).unwrap_or(tail.len());
+    let path = tail[..end].trim_end_matches('.');
+    (!path.is_empty()).then(|| path.to_string())
 }
 
 async fn send_text_response(tx: &mpsc::Sender<StreamEvent>, model: &str, text: &str) {
@@ -356,6 +360,12 @@ mod tests {
             FakeAction::Text(text) => assert_eq!(text, "CLANKERS_TOOL_TEST_OK"),
             FakeAction::Tool { .. } => panic!("expected final text"),
         }
+    }
+
+    #[test]
+    fn extracts_e2e_paths_under_nested_tmp_dirs() {
+        let prompt = "Use the write tool to create the file /tmp/nix-shell.abc123/clankers-e2e-write-test-123 with content 'hello world'.";
+        assert_eq!(extract_tmp_path(prompt).as_deref(), Some("/tmp/nix-shell.abc123/clankers-e2e-write-test-123"));
     }
 
     #[test]
