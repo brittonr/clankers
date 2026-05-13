@@ -1,5 +1,8 @@
-## ADDED Requirements
+## Purpose
 
+Specify how Clankers exposes OpenAI Codex subscription models as a distinct provider family, preserves provider-specific session metadata, probes entitlement fail-closed, sends Codex Responses requests, normalizes Codex streams, and applies bounded retry/auth-refresh behavior without changing API-key OpenAI semantics.
+
+## Requirements
 ### Requirement: OpenAI Codex is discovered as a separate provider family
 
 The system SHALL expose Codex subscription models under provider `openai-codex` when entitled `openai-codex` OAuth credentials are available. API-key OpenAI models SHALL remain under provider `openai`.
@@ -235,3 +238,19 @@ The `openai-codex` provider SHALL retry only HTTP 429, 500, 502, 503, and 504 as
 - GIVEN the Codex backend returns a non-retryable 4xx error other than 401
 - WHEN the provider handles the response
 - THEN it returns a structured error without retrying
+
+### Requirement: OpenAI Codex Backend Decomposition [r[openai-codex.decomposition]]
+
+The OpenAI Codex backend MUST be decomposed into focused provider modules that preserve fail-closed entitlement/auth behavior and streaming normalization.
+
+#### Scenario: Entitlement/auth fail closed [r[openai-codex.decomposition.scenario.1]]
+
+- GIVEN a Codex account is not entitled or auth probing fails
+- WHEN the decomposed backend handles a request
+- THEN the provider returns the same explicit unavailable/fail-closed outcome without falling back to API-key OpenAI
+
+#### Scenario: Streaming normalization parity [r[openai-codex.decomposition.scenario.2]]
+
+- GIVEN a Responses API stream includes text, reasoning, errors, or provider metadata
+- WHEN the decomposed backend consumes the stream
+- THEN the emitted StreamEvent sequence and safe metadata match existing router/provider tests
