@@ -43,7 +43,7 @@ impl AttachParityTracker {
         self.manual_compactions_to_suppress += 1;
     }
 
-    pub(super) fn should_suppress(&mut self, event: &DaemonEvent) -> bool {
+    pub(crate) fn should_suppress(&mut self, event: &DaemonEvent) -> bool {
         if self.should_suppress_thinking_ack_message(event) {
             return true;
         }
