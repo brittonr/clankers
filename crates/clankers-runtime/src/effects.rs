@@ -223,6 +223,163 @@ pub enum RemoteExecutionTarget {
     RemoteDaemon,
 }
 
+/// Supported schema version for safe remote artifact envelopes.
+pub const REMOTE_EXECUTION_ARTIFACT_SCHEMA_VERSION: u32 = 1;
+
+/// Safe artifact envelope advertised or transferred during remote dependency sync.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct RemoteArtifactEnvelope {
+    /// Requested dependency identity.
+    pub dependency: RemoteExecutionDependency,
+    /// Envelope schema version understood by this runtime.
+    pub schema_version: u32,
+    /// Hash recomputed from the canonical envelope body by the receiver.
+    pub computed_hash: ArtifactHash,
+    /// Redaction class of the envelope body. Secret envelopes are never syncable.
+    pub redaction_class: RedactionClass,
+}
+
+impl RemoteArtifactEnvelope {
+    /// Build an envelope receipt for remote sync preflight.
+    #[must_use]
+    pub fn new(
+        dependency: RemoteExecutionDependency,
+        schema_version: u32,
+        computed_hash: ArtifactHash,
+        redaction_class: RedactionClass,
+    ) -> Self {
+        Self {
+            dependency,
+            schema_version,
+            computed_hash,
+            redaction_class,
+        }
+    }
+}
+
+/// Fail-closed remote dependency sync failure kind.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum RemoteDependencyFailureKind {
+    /// A safe requested artifact is absent and should be requested by hash.
+    MissingSafeArtifact,
+    /// The peer returned an envelope version this runtime does not support.
+    UnsupportedVersion,
+    /// The returned envelope canonical hash did not match the requested hash.
+    HashMismatch,
+    /// The dependency would require secret material that must not be synced.
+    SecretDependencyDenied,
+}
+
+/// Redacted remote dependency failure receipt.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct RemoteDependencyFailure {
+    /// Dependency involved in the failure.
+    pub dependency: RemoteExecutionDependency,
+    /// Failure kind.
+    pub kind: RemoteDependencyFailureKind,
+    /// Safe redacted summary.
+    pub safe_summary: String,
+}
+
+impl RemoteDependencyFailure {
+    fn new(
+        dependency: RemoteExecutionDependency,
+        kind: RemoteDependencyFailureKind,
+        safe_summary: impl Into<String>,
+    ) -> Self {
+        Self {
+            dependency,
+            kind,
+            safe_summary: sanitize_metadata_value(safe_summary.into()),
+        }
+    }
+}
+
+/// Fail-closed remote dependency sync preflight report.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct RemoteDependencySyncReport {
+    /// Safe artifacts the peer should request by hash before execution.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub missing_safe_artifacts: Vec<RemoteExecutionDependency>,
+    /// Failures that abort execution before side effects.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub failures: Vec<RemoteDependencyFailure>,
+}
+
+impl RemoteDependencySyncReport {
+    /// True only when every declared dependency is present, supported, non-secret, and
+    /// hash-matched.
+    #[must_use]
+    pub fn ready(&self) -> bool {
+        self.missing_safe_artifacts.is_empty() && self.failures.is_empty()
+    }
+
+    /// Convert the preflight outcome into an effect result for fail-closed dispatch.
+    #[must_use]
+    pub fn to_effect_result(&self, request: &EffectRequest) -> EffectResult {
+        if self.ready() {
+            EffectResult::new(request, EffectResultStatus::Allowed, "remote dependencies ready")
+        } else {
+            EffectResult::new(request, EffectResultStatus::Unavailable, "remote dependencies unavailable")
+        }
+    }
+}
+
+/// Evaluate safe remote dependency sync without touching model/tool/provider resources.
+#[must_use]
+pub fn evaluate_remote_dependency_sync(
+    request: &RemoteExecutionRequest,
+    provided: &[RemoteArtifactEnvelope],
+) -> RemoteDependencySyncReport {
+    let provided_by_dependency = provided
+        .iter()
+        .map(|envelope| (remote_dependency_key(&envelope.dependency), envelope))
+        .collect::<BTreeMap<_, _>>();
+    let mut missing_safe_artifacts = Vec::new();
+    let mut failures = Vec::new();
+
+    for dependency in &request.required_artifacts {
+        let Some(envelope) = provided_by_dependency.get(&remote_dependency_key(dependency)) else {
+            missing_safe_artifacts.push(dependency.clone());
+            failures.push(RemoteDependencyFailure::new(
+                dependency.clone(),
+                RemoteDependencyFailureKind::MissingSafeArtifact,
+                "safe artifact missing",
+            ));
+            continue;
+        };
+        if envelope.redaction_class == RedactionClass::Secret {
+            failures.push(RemoteDependencyFailure::new(
+                dependency.clone(),
+                RemoteDependencyFailureKind::SecretDependencyDenied,
+                "secret dependency denied",
+            ));
+        } else if envelope.schema_version != REMOTE_EXECUTION_ARTIFACT_SCHEMA_VERSION {
+            failures.push(RemoteDependencyFailure::new(
+                dependency.clone(),
+                RemoteDependencyFailureKind::UnsupportedVersion,
+                "unsupported artifact schema version",
+            ));
+        } else if envelope.computed_hash != dependency.hash {
+            failures.push(RemoteDependencyFailure::new(
+                dependency.clone(),
+                RemoteDependencyFailureKind::HashMismatch,
+                "artifact hash mismatch",
+            ));
+        }
+    }
+
+    RemoteDependencySyncReport {
+        missing_safe_artifacts,
+        failures,
+    }
+}
+
+fn remote_dependency_key(dependency: &RemoteExecutionDependency) -> (RemoteExecutionArtifactKind, String) {
+    (dependency.kind, dependency.hash.hex())
+}
+
 /// Minimal request reference copied into results/receipts.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct EffectRequestRef {
@@ -529,6 +686,95 @@ mod tests {
         let mut expected = vec![prompt, policy];
         expected.sort_by_key(|hash| hash.hex());
         assert_eq!(request.required_hashes(), expected);
+    }
+
+    #[test]
+    fn remote_dependency_sync_reports_missing_safe_artifacts_by_hash() {
+        let prompt =
+            RemoteExecutionDependency::new(RemoteExecutionArtifactKind::Prompt, ArtifactHash::digest(b"prompt"));
+        let request = RemoteExecutionRequest::new(
+            RemoteExecutionTarget::RemoteDaemon,
+            EffectCorrelationId::from_static("missing-remote"),
+        )
+        .with_required_artifacts([prompt.clone()]);
+        let report = evaluate_remote_dependency_sync(&request, &[]);
+
+        assert!(!report.ready());
+        assert_eq!(report.missing_safe_artifacts, vec![prompt.clone()]);
+        assert_eq!(report.failures[0].kind, RemoteDependencyFailureKind::MissingSafeArtifact);
+        assert_eq!(report.failures[0].dependency, prompt);
+    }
+
+    #[test]
+    fn remote_dependency_sync_fails_on_hash_mismatch_unsupported_version_and_secret_dependencies() {
+        let prompt =
+            RemoteExecutionDependency::new(RemoteExecutionArtifactKind::Prompt, ArtifactHash::digest(b"prompt"));
+        let manifest =
+            RemoteExecutionDependency::new(RemoteExecutionArtifactKind::Manifest, ArtifactHash::digest(b"manifest"));
+        let policy =
+            RemoteExecutionDependency::new(RemoteExecutionArtifactKind::Policy, ArtifactHash::digest(b"policy"));
+        let request = RemoteExecutionRequest::new(
+            RemoteExecutionTarget::RemoteDaemon,
+            EffectCorrelationId::from_static("bad-sync"),
+        )
+        .with_required_artifacts([prompt.clone(), manifest.clone(), policy.clone()]);
+        let report = evaluate_remote_dependency_sync(&request, &[
+            RemoteArtifactEnvelope::new(
+                prompt.clone(),
+                REMOTE_EXECUTION_ARTIFACT_SCHEMA_VERSION,
+                ArtifactHash::digest(b"different prompt"),
+                RedactionClass::Public,
+            ),
+            RemoteArtifactEnvelope::new(
+                manifest.clone(),
+                REMOTE_EXECUTION_ARTIFACT_SCHEMA_VERSION + 1,
+                manifest.hash,
+                RedactionClass::Public,
+            ),
+            RemoteArtifactEnvelope::new(
+                policy.clone(),
+                REMOTE_EXECUTION_ARTIFACT_SCHEMA_VERSION,
+                policy.hash,
+                RedactionClass::Secret,
+            ),
+        ]);
+
+        assert!(!report.ready());
+        let kinds = report.failures.iter().map(|failure| failure.kind).collect::<Vec<_>>();
+        assert_eq!(kinds, vec![
+            RemoteDependencyFailureKind::HashMismatch,
+            RemoteDependencyFailureKind::UnsupportedVersion,
+            RemoteDependencyFailureKind::SecretDependencyDenied,
+        ]);
+        let serialized = serde_json::to_string(&report).expect("sync report json");
+        assert!(!serialized.contains("Bearer"));
+        assert!(!serialized.contains("secret-token"));
+    }
+
+    #[test]
+    fn remote_dependency_sync_ready_report_converts_to_allowed_effect_result() {
+        let prompt =
+            RemoteExecutionDependency::new(RemoteExecutionArtifactKind::Prompt, ArtifactHash::digest(b"prompt"));
+        let remote = RemoteExecutionRequest::new(
+            RemoteExecutionTarget::Subagent,
+            EffectCorrelationId::from_static("ready-sync"),
+        )
+        .with_required_artifacts([prompt.clone()]);
+        let report = evaluate_remote_dependency_sync(&remote, &[RemoteArtifactEnvelope::new(
+            prompt.clone(),
+            REMOTE_EXECUTION_ARTIFACT_SCHEMA_VERSION,
+            prompt.hash,
+            RedactionClass::Public,
+        )]);
+        let effect_request = EffectRequest::new(
+            EffectAbilityClass::Provider,
+            EffectCorrelationId::from_static("model-after-sync"),
+            RedactionClass::MetadataOnly,
+        )
+        .with_artifact_dependencies(remote.required_hashes());
+
+        assert!(report.ready());
+        assert_eq!(report.to_effect_result(&effect_request).status, EffectResultStatus::Allowed);
     }
 
     #[test]
