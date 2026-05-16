@@ -1068,6 +1068,35 @@ mod tests {
         assert_eq!(receipt.denied_effects, eligibility.denied_effects);
     }
 
+    #[test]
+    fn pure_cache_rails_deny_shell_time_and_file_mutation_effects() {
+        let declaration = test_declaration([ArtifactHash::digest(b"input")], ["PATH"]);
+        let eligibility = CacheEligibility::evaluate(declaration, [
+            EffectClass::Process,
+            EffectClass::Time,
+            EffectClass::FileMutation,
+            EffectClass::Process,
+        ])
+        .expect("denied cache");
+
+        assert_eq!(eligibility.key, None);
+        assert_eq!(eligibility.denied_effects, vec![
+            EffectClass::Time,
+            EffectClass::Process,
+            EffectClass::FileMutation
+        ]);
+    }
+
+    #[test]
+    fn pure_cache_rails_invalidate_on_file_input_changes() {
+        let mut first = test_declaration([ArtifactHash::digest(b"artifact")], ["PATH"]);
+        first.file_input_hashes = vec![ArtifactHash::digest(b"file-v1")];
+        let mut changed = test_declaration([ArtifactHash::digest(b"artifact")], ["PATH"]);
+        changed.file_input_hashes = vec![ArtifactHash::digest(b"file-v2")];
+
+        assert_ne!(first.cache_key().expect("first key"), changed.cache_key().expect("changed key"));
+    }
+
     fn test_declaration<const N: usize, const M: usize>(
         artifacts: [ArtifactHash; N],
         env: [&str; M],
