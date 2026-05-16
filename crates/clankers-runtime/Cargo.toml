@@ -6,6 +6,7 @@ license.workspace = true
 
 [dependencies]
 chrono = { workspace = true }
+clankers-artifacts = { version = "0.1.0", path = "../clankers-artifacts" }
 serde = { workspace = true }
 serde_json = { workspace = true }
 thiserror = { workspace = true }

@@ -1,6 +1,6 @@
 ## Phase 1: Effect model
 
-- [ ] [serial] Define effect classes, request/result envelopes, correlation IDs, redaction rules, and handler trait boundaries. [covers=effect-ability-runtime.effect-classes]
+- [x] [serial] Define effect classes, request/result envelopes, correlation IDs, redaction rules, and handler trait boundaries. [covers=effect-ability-runtime.effect-classes] ✅ 3m 48s (started: 2026-05-16T23:33:08Z → completed: 2026-05-16T23:36:56Z; evidence: `cargo test -p clankers-runtime effects`)
 - [ ] [depends:effect-model] Map existing tool catalog capability packs and dangerous side-effect classes onto effect classes. [covers=effect-ability-runtime.catalog-mapping]
 
 ## Phase 2: Handler execution
