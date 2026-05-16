@@ -212,6 +212,87 @@ impl EffectResult {
     }
 }
 
+/// Host handler behavior mode.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum EffectHandlerMode {
+    /// Permit the host shell to execute the real operation.
+    Allow,
+    /// Deny before side effects occur.
+    Deny { reason: String },
+    /// Return a simulation receipt without touching the resource.
+    Simulate { summary: String },
+    /// Return a previously recorded result by correlation ID.
+    Replay {
+        receipts: BTreeMap<EffectCorrelationId, EffectResult>,
+    },
+}
+
+/// Host-owned policy handler for one effect class.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct StaticEffectHandler {
+    class: EffectAbilityClass,
+    mode: EffectHandlerMode,
+}
+
+impl StaticEffectHandler {
+    /// Create a host-owned handler for an effect class.
+    #[must_use]
+    pub fn new(class: EffectAbilityClass, mode: EffectHandlerMode) -> Self {
+        Self { class, mode }
+    }
+
+    /// Create deny-by-default handlers for the initial file/shell/network/secret/tool subset.
+    #[must_use]
+    pub fn initial_subset_deny_by_default(reason: impl Into<String>) -> Vec<Self> {
+        let reason = reason.into();
+        initial_effect_handler_subset()
+            .into_iter()
+            .map(|class| Self::new(class, EffectHandlerMode::Deny { reason: reason.clone() }))
+            .collect()
+    }
+}
+
+impl EffectHandler for StaticEffectHandler {
+    fn class(&self) -> EffectAbilityClass {
+        self.class
+    }
+
+    fn handle(&self, request: &EffectRequest) -> EffectResult {
+        if request.class != self.class {
+            return EffectResult::new(request, EffectResultStatus::Unavailable, "handler class mismatch");
+        }
+        match &self.mode {
+            EffectHandlerMode::Allow => {
+                EffectResult::new(request, EffectResultStatus::Allowed, "allowed by host handler")
+            }
+            EffectHandlerMode::Deny { reason } => {
+                EffectResult::new(request, EffectResultStatus::Denied, reason.clone())
+            }
+            EffectHandlerMode::Simulate { summary } => {
+                EffectResult::new(request, EffectResultStatus::Simulated, summary.clone())
+            }
+            EffectHandlerMode::Replay { receipts } => {
+                receipts.get(&request.correlation_id).cloned().unwrap_or_else(|| {
+                    EffectResult::new(request, EffectResultStatus::Unavailable, "missing replay receipt")
+                })
+            }
+        }
+    }
+}
+
+/// Initial classes supported by the first host-owned handler matrix.
+#[must_use]
+pub fn initial_effect_handler_subset() -> Vec<EffectAbilityClass> {
+    vec![
+        EffectAbilityClass::Filesystem,
+        EffectAbilityClass::Shell,
+        EffectAbilityClass::Network,
+        EffectAbilityClass::Secret,
+        EffectAbilityClass::Tool,
+    ]
+}
+
 /// Host-owned handler boundary for typed effects.
 pub trait EffectHandler: Send + Sync {
     /// Effect class this handler accepts.
@@ -293,5 +374,46 @@ mod tests {
         assert_eq!(handler.class(), EffectAbilityClass::Shell);
         assert_eq!(result.status, EffectResultStatus::Denied);
         assert_eq!(result.request.correlation_id, request.correlation_id);
+    }
+
+    #[test]
+    fn static_effect_handlers_cover_allow_deny_simulate_and_replay_modes() {
+        let request = EffectRequest::new(
+            EffectAbilityClass::Filesystem,
+            EffectCorrelationId::from_static("fs-1"),
+            RedactionClass::MetadataOnly,
+        );
+        let allow = StaticEffectHandler::new(EffectAbilityClass::Filesystem, EffectHandlerMode::Allow);
+        let deny = StaticEffectHandler::new(EffectAbilityClass::Filesystem, EffectHandlerMode::Deny {
+            reason: "disabled".to_owned(),
+        });
+        let simulate = StaticEffectHandler::new(EffectAbilityClass::Filesystem, EffectHandlerMode::Simulate {
+            summary: "simulated".to_owned(),
+        });
+        let replayed = EffectResult::new(&request, EffectResultStatus::Replayed, "from receipt");
+        let replay = StaticEffectHandler::new(EffectAbilityClass::Filesystem, EffectHandlerMode::Replay {
+            receipts: BTreeMap::from([(request.correlation_id.clone(), replayed.clone())]),
+        });
+
+        assert_eq!(allow.handle(&request).status, EffectResultStatus::Allowed);
+        assert_eq!(deny.handle(&request).status, EffectResultStatus::Denied);
+        assert_eq!(simulate.handle(&request).status, EffectResultStatus::Simulated);
+        assert_eq!(replay.handle(&request), replayed);
+    }
+
+    #[test]
+    fn initial_handler_subset_is_deny_by_default_for_effectful_core_classes() {
+        let handlers = StaticEffectHandler::initial_subset_deny_by_default("not enabled");
+        let classes = handlers.iter().map(EffectHandler::class).collect::<Vec<_>>();
+        assert_eq!(classes, initial_effect_handler_subset());
+
+        for handler in handlers {
+            let request = EffectRequest::new(
+                handler.class(),
+                EffectCorrelationId::from_static("deny-default"),
+                RedactionClass::MetadataOnly,
+            );
+            assert_eq!(handler.handle(&request).status, EffectResultStatus::Denied);
+        }
     }
 }
