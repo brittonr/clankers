@@ -212,6 +212,61 @@ impl EffectResult {
     }
 }
 
+/// Result of fail-closed effect gating around a host side effect.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub enum EffectGate<T> {
+    /// The handler explicitly allowed the effect and the host operation ran.
+    Executed { value: T, receipt: EffectResult },
+    /// The effect was denied, unavailable, simulated, or replayed before the operation ran.
+    Blocked { receipt: EffectResult },
+}
+
+impl<T> EffectGate<T> {
+    /// Borrow the safe handler receipt regardless of whether the operation ran.
+    #[must_use]
+    pub fn receipt(&self) -> &EffectResult {
+        match self {
+            Self::Executed { receipt, .. } | Self::Blocked { receipt } => receipt,
+        }
+    }
+
+    /// Return true only when the real operation executed.
+    #[must_use]
+    pub fn executed(&self) -> bool {
+        matches!(self, Self::Executed { .. })
+    }
+}
+
+/// Gate a host side-effect behind an explicit effect handler.
+///
+/// Missing handlers, class mismatches, denied requests, simulated results, and replay-only receipts
+/// all fail closed without invoking `operation`. Only an explicit `Allowed` result executes the
+/// closure.
+pub fn run_effect_fail_closed<T>(
+    request: &EffectRequest,
+    handler: Option<&dyn EffectHandler>,
+    operation: impl FnOnce() -> T,
+) -> EffectGate<T> {
+    let Some(handler) = handler else {
+        return EffectGate::Blocked {
+            receipt: EffectResult::new(request, EffectResultStatus::Unavailable, "missing effect handler"),
+        };
+    };
+    let receipt = if handler.class() == request.class {
+        handler.handle(request)
+    } else {
+        EffectResult::new(request, EffectResultStatus::Unavailable, "handler class mismatch")
+    };
+    if receipt.status == EffectResultStatus::Allowed {
+        EffectGate::Executed {
+            value: operation(),
+            receipt,
+        }
+    } else {
+        EffectGate::Blocked { receipt }
+    }
+}
+
 /// Host handler behavior mode.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
@@ -414,6 +469,106 @@ mod tests {
                 RedactionClass::MetadataOnly,
             );
             assert_eq!(handler.handle(&request).status, EffectResultStatus::Denied);
+        }
+    }
+
+    #[test]
+    fn fail_closed_sentinel_blocks_absent_handlers_before_side_effects() {
+        for class in [
+            EffectAbilityClass::Filesystem,
+            EffectAbilityClass::Shell,
+            EffectAbilityClass::Network,
+            EffectAbilityClass::Browser,
+            EffectAbilityClass::Provider,
+            EffectAbilityClass::Secret,
+        ] {
+            let request = EffectRequest::new(
+                class,
+                EffectCorrelationId::from_static("absent-handler"),
+                RedactionClass::MetadataOnly,
+            );
+            let mut invoked = false;
+            let gate = run_effect_fail_closed(&request, None, || {
+                invoked = true;
+                "side effect ran"
+            });
+
+            assert!(!invoked, "{class:?} operation must not run without a handler");
+            assert!(!gate.executed());
+            assert_eq!(gate.receipt().status, EffectResultStatus::Unavailable);
+        }
+    }
+
+    #[test]
+    fn fail_closed_sentinel_blocks_denied_handlers_before_side_effects() {
+        let handler = StaticEffectHandler::new(EffectAbilityClass::Shell, EffectHandlerMode::Deny {
+            reason: "process execution disabled".to_owned(),
+        });
+        let request = EffectRequest::new(
+            EffectAbilityClass::Shell,
+            EffectCorrelationId::from_static("denied-process"),
+            RedactionClass::MetadataOnly,
+        );
+        let mut invoked = false;
+        let gate = run_effect_fail_closed(&request, Some(&handler), || {
+            invoked = true;
+            7
+        });
+
+        assert!(!invoked);
+        assert!(!gate.executed());
+        assert_eq!(gate.receipt().status, EffectResultStatus::Denied);
+        assert_eq!(gate.receipt().safe_summary, "process execution disabled");
+    }
+
+    #[test]
+    fn fail_closed_sentinel_only_executes_after_explicit_allow() {
+        let handler = StaticEffectHandler::new(EffectAbilityClass::Network, EffectHandlerMode::Allow);
+        let request = EffectRequest::new(
+            EffectAbilityClass::Network,
+            EffectCorrelationId::from_static("allowed-socket"),
+            RedactionClass::MetadataOnly,
+        );
+        let mut invoked = false;
+        let gate = run_effect_fail_closed(&request, Some(&handler), || {
+            invoked = true;
+            "connected"
+        });
+
+        assert!(invoked);
+        match gate {
+            EffectGate::Executed { value, receipt } => {
+                assert_eq!(value, "connected");
+                assert_eq!(receipt.status, EffectResultStatus::Allowed);
+            }
+            EffectGate::Blocked { .. } => panic!("allowed effect should execute"),
+        }
+    }
+
+    #[test]
+    fn fail_closed_sentinel_treats_simulate_replay_and_mismatch_as_non_executing_receipts() {
+        let request = EffectRequest::new(
+            EffectAbilityClass::Provider,
+            EffectCorrelationId::from_static("provider-call"),
+            RedactionClass::MetadataOnly,
+        );
+        let simulate = StaticEffectHandler::new(EffectAbilityClass::Provider, EffectHandlerMode::Simulate {
+            summary: "model response simulated".to_owned(),
+        });
+        let mismatch = StaticEffectHandler::new(EffectAbilityClass::Browser, EffectHandlerMode::Allow);
+
+        for (handler, expected_status) in [
+            (&simulate as &dyn EffectHandler, EffectResultStatus::Simulated),
+            (&mismatch as &dyn EffectHandler, EffectResultStatus::Unavailable),
+        ] {
+            let mut invoked = false;
+            let gate = run_effect_fail_closed(&request, Some(handler), || {
+                invoked = true;
+                "side effect ran"
+            });
+            assert!(!invoked);
+            assert!(!gate.executed());
+            assert_eq!(gate.receipt().status, expected_status);
         }
     }
 }
