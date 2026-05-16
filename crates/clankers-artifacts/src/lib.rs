@@ -1,19 +1,43 @@
-//! Content-addressed artifact identity types.
+//! Content-addressed artifact identity and canonicalization types.
 //!
 //! This crate intentionally starts with the small pure core needed by
 //! provenance/replay code: stable artifact kinds, canonical envelope versions,
-//! redaction classes, and validated hash identifiers. Canonicalization and
-//! storage are layered on top of these types by later OpenSpec tasks.
+//! redaction classes, validated hash identifiers, and deterministic canonical
+//! envelopes. Immutable storage and receipt plumbing are layered on top of these
+//! types by later OpenSpec tasks.
 
 use std::fmt;
 use std::str::FromStr;
 
 use serde::Deserialize;
 use serde::Serialize;
+use serde_json::Map;
+use serde_json::Value;
 use thiserror::Error;
 
 const BLAKE3_HEX_LEN: usize = 64;
 const ARTIFACT_HASH_PREFIX: &str = "b3";
+const VOLATILE_FIELD_NAMES: &[&str] = &[
+    "timestamp",
+    "created_at",
+    "updated_at",
+    "started_at",
+    "completed_at",
+    "duration_ms",
+    "display_name",
+    "label",
+];
+const SECRET_FIELD_NAMES: &[&str] = &[
+    "authorization",
+    "api_key",
+    "api-key",
+    "access_token",
+    "refresh_token",
+    "password",
+    "secret",
+    "token",
+];
+const HOST_LOCAL_FIELD_NAMES: &[&str] = &["path", "cwd", "workdir", "home", "socket_path"];
 
 /// Semantic class for a content-addressed Clankers runtime artifact.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
@@ -33,6 +57,22 @@ pub enum ArtifactKind {
     SkillReference,
     /// Durable conversation/session block.
     SessionBlock,
+}
+
+impl ArtifactKind {
+    /// Stable kind string used by golden fixtures and external receipts.
+    #[must_use]
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Prompt => "prompt",
+            Self::ToolDescriptor => "tool-descriptor",
+            Self::ModelRequest => "model-request",
+            Self::McpManifest => "mcp-manifest",
+            Self::PluginManifest => "plugin-manifest",
+            Self::SkillReference => "skill-reference",
+            Self::SessionBlock => "session-block",
+        }
+    }
 }
 
 /// Version of the canonical envelope used to compute artifact identity.
@@ -201,8 +241,103 @@ impl ArtifactEnvelopeHeader {
     }
 }
 
+/// Canonical V1 artifact envelope used as the stable hash preimage.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct CanonicalArtifactEnvelope {
+    /// Header fields that define artifact interpretation.
+    pub header: ArtifactEnvelopeHeader,
+    /// Normalized semantic payload.
+    pub payload: Value,
+    /// Content hashes this artifact depends on, sorted and deduplicated.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub dependencies: Vec<ArtifactHash>,
+}
+
+impl CanonicalArtifactEnvelope {
+    /// Build a canonical envelope from an arbitrary JSON payload.
+    pub fn new(
+        kind: ArtifactKind,
+        redaction: RedactionClass,
+        payload: Value,
+        dependencies: impl IntoIterator<Item = ArtifactHash>,
+    ) -> Result<Self, CanonicalizationError> {
+        let normalized_payload = normalize_payload(payload)?;
+        let mut dependencies = dependencies.into_iter().collect::<Vec<_>>();
+        dependencies.sort_by_key(|hash| hash.hex());
+        dependencies.dedup();
+        Ok(Self {
+            header: ArtifactEnvelopeHeader::v1(kind, redaction),
+            payload: normalized_payload,
+            dependencies,
+        })
+    }
+
+    /// Return deterministic JSON bytes for this envelope.
+    pub fn canonical_bytes(&self) -> Result<Vec<u8>, CanonicalizationError> {
+        serde_json::to_vec(self).map_err(CanonicalizationError::Serialize)
+    }
+
+    /// Hash the canonical envelope bytes.
+    pub fn hash(&self) -> Result<ArtifactHash, CanonicalizationError> {
+        Ok(ArtifactHash::digest(&self.canonical_bytes()?))
+    }
+}
+
+/// Canonicalize and hash one supported artifact payload.
+pub fn canonicalize_artifact(
+    kind: ArtifactKind,
+    redaction: RedactionClass,
+    payload: Value,
+    dependencies: impl IntoIterator<Item = ArtifactHash>,
+) -> Result<(CanonicalArtifactEnvelope, ArtifactHash), CanonicalizationError> {
+    let envelope = CanonicalArtifactEnvelope::new(kind, redaction, payload, dependencies)?;
+    let hash = envelope.hash()?;
+    Ok((envelope, hash))
+}
+
+/// Canonicalization failures for unsupported or unsafe payloads.
+#[derive(Debug, Error)]
+pub enum CanonicalizationError {
+    /// A payload field contains secret material that must not enter a canonical inspectable
+    /// preimage.
+    #[error("secret-bearing field `{field}` must be redacted before artifact canonicalization")]
+    SecretField { field: String },
+    /// JSON serialization failed.
+    #[error("failed to serialize canonical artifact envelope: {0}")]
+    Serialize(serde_json::Error),
+}
+
+fn normalize_payload(value: Value) -> Result<Value, CanonicalizationError> {
+    match value {
+        Value::Object(object) => normalize_object(object),
+        Value::Array(items) => {
+            items.into_iter().map(normalize_payload).collect::<Result<Vec<_>, _>>().map(Value::Array)
+        }
+        scalar => Ok(scalar),
+    }
+}
+
+fn normalize_object(object: Map<String, Value>) -> Result<Value, CanonicalizationError> {
+    let mut normalized = Map::new();
+    for (key, value) in object {
+        let normalized_key = key.to_ascii_lowercase();
+        if VOLATILE_FIELD_NAMES.contains(&normalized_key.as_str())
+            || HOST_LOCAL_FIELD_NAMES.contains(&normalized_key.as_str())
+        {
+            continue;
+        }
+        if SECRET_FIELD_NAMES.contains(&normalized_key.as_str()) {
+            return Err(CanonicalizationError::SecretField { field: key });
+        }
+        normalized.insert(key, normalize_payload(value)?);
+    }
+    Ok(Value::Object(normalized))
+}
+
 #[cfg(test)]
 mod tests {
+    use serde_json::json;
+
     use super::*;
 
     #[test]
@@ -251,5 +386,121 @@ mod tests {
         assert!(!RedactionClass::MetadataOnly.permits_payload_display());
         assert!(!RedactionClass::RedactedPayload.permits_payload_display());
         assert!(!RedactionClass::Secret.permits_payload_display());
+    }
+
+    #[test]
+    fn canonicalization_ignores_map_ordering_and_volatile_display_fields() {
+        let left = json!({"name":"answer","display_name":"Pretty","schema":{"b":2,"a":1},"timestamp":"now"});
+        let right = json!({"timestamp":"later","schema":{"a":1,"b":2},"name":"answer","display_name":"Other"});
+        let (_, left_hash) = canonicalize_artifact(ArtifactKind::ToolDescriptor, RedactionClass::Public, left, [])
+            .expect("canonicalize left payload");
+        let (_, right_hash) = canonicalize_artifact(ArtifactKind::ToolDescriptor, RedactionClass::Public, right, [])
+            .expect("canonicalize right payload");
+        assert_eq!(left_hash, right_hash);
+    }
+
+    #[test]
+    fn canonicalization_changes_hash_for_semantic_payload_changes() {
+        let (_, first_hash) = canonicalize_artifact(
+            ArtifactKind::Prompt,
+            RedactionClass::Public,
+            json!({"messages":[{"role":"system","content":"be concise"}]}),
+            [],
+        )
+        .expect("canonicalize prompt");
+        let (_, second_hash) = canonicalize_artifact(
+            ArtifactKind::Prompt,
+            RedactionClass::Public,
+            json!({"messages":[{"role":"system","content":"be thorough"}]}),
+            [],
+        )
+        .expect("canonicalize changed prompt");
+        assert_ne!(first_hash, second_hash);
+    }
+
+    #[test]
+    fn canonicalization_rejects_secret_fields_and_excludes_host_local_paths() {
+        let error = canonicalize_artifact(
+            ArtifactKind::ModelRequest,
+            RedactionClass::RedactedPayload,
+            json!({"model":"gpt","authorization":"Bearer secret"}),
+            [],
+        )
+        .expect_err("authorization must be rejected");
+        assert!(matches!(error, CanonicalizationError::SecretField { .. }));
+
+        let (envelope, _) = canonicalize_artifact(
+            ArtifactKind::PluginManifest,
+            RedactionClass::MetadataOnly,
+            json!({"name":"local-plugin","path":"/tmp/plugin.wasm","commands":["run"]}),
+            [],
+        )
+        .expect("host-local path is excluded");
+        assert_eq!(envelope.payload, json!({"commands":["run"],"name":"local-plugin"}));
+    }
+
+    #[test]
+    fn dependencies_are_sorted_and_deduplicated_in_canonical_envelope() {
+        let low = ArtifactHash::digest(b"aaa");
+        let high = ArtifactHash::digest(b"zzz");
+        let (envelope, _) =
+            canonicalize_artifact(ArtifactKind::SessionBlock, RedactionClass::Public, json!({"messages":[]}), [
+                high, low, high,
+            ])
+            .expect("canonicalize session block");
+        assert_eq!(envelope.dependencies, vec![low, high]);
+    }
+
+    #[test]
+    fn golden_hash_fixtures_cover_supported_artifact_kinds() {
+        let fixtures = [
+            (
+                ArtifactKind::Prompt,
+                RedactionClass::Public,
+                json!({"messages":[{"content":"answer briefly","role":"system"}],"timestamp":"ignored"}),
+                "b3:2e62319389a7864be995bc7b278f95fac28214bde8df79a8ffe2a3ea2a6203a1",
+            ),
+            (
+                ArtifactKind::ToolDescriptor,
+                RedactionClass::Public,
+                json!({"name":"read_file","schema":{"properties":{"path":{"type":"string"}},"type":"object"}}),
+                "b3:94e78f42d79ea47be7c1f9d153177ce251244d0daf445e673c61eb21616da791",
+            ),
+            (
+                ArtifactKind::ModelRequest,
+                RedactionClass::RedactedPayload,
+                json!({"messages":[{"content":"hello","role":"user"}],"model":"gpt-5.5"}),
+                "b3:9b65d4b7f600aa85ca8e1594200fde2760f0c4708d2a9d9fb10bb5723c83500f",
+            ),
+            (
+                ArtifactKind::McpManifest,
+                RedactionClass::Public,
+                json!({"server":"ssg-onix","tools":["site_build","site_audit"]}),
+                "b3:2d0a8e73d1c5837a14d3ebd6229878f6cf23041026d19562a9a71606bbbe3cd5",
+            ),
+            (
+                ArtifactKind::PluginManifest,
+                RedactionClass::MetadataOnly,
+                json!({"kind":"extism","name":"review-gate","path":"/ignored/plugin.wasm"}),
+                "b3:2a55953817f9892575b8449ff0eecd86f0a125a94cb173e39607e2b54aebc742",
+            ),
+            (
+                ArtifactKind::SkillReference,
+                RedactionClass::MetadataOnly,
+                json!({"name":"openspec","version":"1","updated_at":"ignored"}),
+                "b3:788a07609fb4d550e1309c211bf4af2a79c438127acc5b7fa0e7f2bf05a82ad7",
+            ),
+            (
+                ArtifactKind::SessionBlock,
+                RedactionClass::Public,
+                json!({"messages":[{"content":"hi","role":"user"}],"started_at":"ignored"}),
+                "b3:63f105f560fbda3cc07233439cd22377cbdfe3cf58cdf0ecadf1d2b0ebfe1a80",
+            ),
+        ];
+
+        for (kind, redaction, payload, expected_hash) in fixtures {
+            let (_, hash) = canonicalize_artifact(kind, redaction, payload, []).expect(kind.as_str());
+            assert_eq!(hash.to_string(), expected_hash, "golden fixture for {}", kind.as_str());
+        }
     }
 }

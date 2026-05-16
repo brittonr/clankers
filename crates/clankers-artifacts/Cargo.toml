@@ -8,10 +8,8 @@ description = "Content-addressed artifact identity types for Clankers runtime pr
 [dependencies]
 blake3 = { workspace = true }
 serde = { workspace = true }
-thiserror = { workspace = true }
-
-[dev-dependencies]
 serde_json = { workspace = true }
+thiserror = { workspace = true }
 
 [lints]
 workspace = true
