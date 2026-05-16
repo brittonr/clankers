@@ -349,6 +349,12 @@ impl ArtifactStore {
         Ok(record.envelope)
     }
 
+    /// Inspect an artifact without exposing redacted payload bodies.
+    pub fn inspect(&self, hash: ArtifactHash) -> Result<ArtifactInspectSummary, ArtifactStoreError> {
+        let envelope = self.get(hash)?;
+        Ok(ArtifactInspectSummary::from_envelope(hash, &envelope))
+    }
+
     /// Update a mutable human-readable pointer to an immutable artifact hash.
     pub fn link_name(&self, kind: ArtifactKind, name: &str, hash: ArtifactHash) -> Result<(), ArtifactStoreError> {
         validate_name(name)?;
@@ -417,6 +423,109 @@ pub struct NamePointer {
     pub name: String,
     /// Current immutable artifact target.
     pub hash: ArtifactHash,
+}
+
+/// Role an artifact hash plays in an execution or review receipt.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum ReceiptArtifactRole {
+    /// Provider-ready model request artifact.
+    ModelRequest,
+    /// Tool descriptor or invocation descriptor artifact.
+    ToolDescriptor,
+    /// Durable session/conversation block artifact.
+    SessionBlock,
+    /// Review evidence, prompt, or policy artifact.
+    ReviewArtifact,
+}
+
+/// Hash reference embedded in model, tool, session, or review receipts.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ReceiptArtifactRef {
+    /// Receipt role for this artifact.
+    pub role: ReceiptArtifactRole,
+    /// Artifact kind stored at `hash`.
+    pub kind: ArtifactKind,
+    /// Immutable content hash.
+    pub hash: ArtifactHash,
+    /// Inspect redaction policy copied from the canonical envelope.
+    pub redaction: RedactionClass,
+}
+
+impl ReceiptArtifactRef {
+    /// Create a receipt reference from a stored envelope and role.
+    #[must_use]
+    pub fn from_envelope(role: ReceiptArtifactRole, hash: ArtifactHash, envelope: &CanonicalArtifactEnvelope) -> Self {
+        Self {
+            role,
+            kind: envelope.header.kind,
+            hash,
+            redaction: envelope.header.redaction,
+        }
+    }
+}
+
+/// Collection of artifact hashes that influenced an execution receipt.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ReceiptArtifacts {
+    /// Model/tool/session/review artifact references.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub artifacts: Vec<ReceiptArtifactRef>,
+}
+
+impl ReceiptArtifacts {
+    /// Add a receipt artifact reference.
+    pub fn push(&mut self, reference: ReceiptArtifactRef) {
+        self.artifacts.push(reference);
+    }
+
+    /// Return all hashes in deterministic role/kind/hash order.
+    #[must_use]
+    pub fn sorted(mut self) -> Self {
+        self.artifacts.sort_by_key(|reference| (reference.role, reference.kind, reference.hash.hex()));
+        self
+    }
+}
+
+/// Safe inspect output for CLI/TUI/review display.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ArtifactInspectSummary {
+    /// Inspected hash.
+    pub hash: ArtifactHash,
+    /// Artifact kind.
+    pub kind: ArtifactKind,
+    /// Canonical envelope version.
+    pub version: CanonicalEnvelopeVersion,
+    /// Redaction policy applied to inspect output.
+    pub redaction: RedactionClass,
+    /// Dependency hashes referenced by this artifact.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub dependencies: Vec<ArtifactHash>,
+    /// Payload only when redaction policy permits safe display.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub payload: Option<Value>,
+    /// Human-readable omission reason for redacted payloads.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub redacted_reason: Option<String>,
+}
+
+impl ArtifactInspectSummary {
+    /// Build safe inspect output from an envelope.
+    #[must_use]
+    pub fn from_envelope(hash: ArtifactHash, envelope: &CanonicalArtifactEnvelope) -> Self {
+        let payload = envelope.header.redaction.permits_payload_display().then(|| envelope.payload.clone());
+        let redacted_reason = (!envelope.header.redaction.permits_payload_display())
+            .then(|| format!("payload hidden by {:?} redaction policy", envelope.header.redaction));
+        Self {
+            hash,
+            kind: envelope.header.kind,
+            version: envelope.header.version,
+            redaction: envelope.header.redaction,
+            dependencies: envelope.dependencies.clone(),
+            payload,
+            redacted_reason,
+        }
+    }
 }
 
 /// Artifact store failures.
@@ -669,6 +778,60 @@ mod tests {
             Err(ArtifactStoreError::UnsafeName { .. })
         ));
         assert!(!tempdir.path().join("session.jsonl").exists());
+    }
+
+    #[test]
+    fn receipt_references_cover_model_tool_session_and_review_roles() {
+        let artifacts = [
+            (ReceiptArtifactRole::ModelRequest, ArtifactKind::ModelRequest),
+            (ReceiptArtifactRole::ToolDescriptor, ArtifactKind::ToolDescriptor),
+            (ReceiptArtifactRole::SessionBlock, ArtifactKind::SessionBlock),
+            (ReceiptArtifactRole::ReviewArtifact, ArtifactKind::Prompt),
+        ]
+        .into_iter()
+        .map(|(role, kind)| {
+            let (envelope, hash) = canonicalize_artifact(
+                kind,
+                RedactionClass::Public,
+                json!({"kind": kind.as_str(), "role": format!("{role:?}")}),
+                [],
+            )
+            .expect("canonicalize receipt artifact");
+            ReceiptArtifactRef::from_envelope(role, hash, &envelope)
+        })
+        .collect::<Vec<_>>();
+
+        let receipt = ReceiptArtifacts { artifacts }.sorted();
+        let json = serde_json::to_value(&receipt).expect("receipt artifacts serialize");
+        assert_eq!(json["artifacts"].as_array().expect("artifact refs").len(), 4);
+        assert!(json.to_string().contains("model-request"));
+        assert!(json.to_string().contains("review-artifact"));
+    }
+
+    #[test]
+    fn inspect_summary_redacts_payload_unless_public() {
+        let tempdir = tempfile::tempdir().expect("temp artifact store");
+        let store = ArtifactStore::new(tempdir.path());
+        let (public, public_hash) =
+            canonicalize_artifact(ArtifactKind::Prompt, RedactionClass::Public, json!({"content":"safe"}), [])
+                .expect("public artifact");
+        let (redacted, redacted_hash) = canonicalize_artifact(
+            ArtifactKind::ModelRequest,
+            RedactionClass::RedactedPayload,
+            json!({"body":"provider payload"}),
+            [],
+        )
+        .expect("redacted artifact");
+        store.put(&public).expect("store public");
+        store.put(&redacted).expect("store redacted");
+
+        let public_summary = store.inspect(public_hash).expect("inspect public");
+        assert_eq!(public_summary.payload, Some(json!({"content":"safe"})));
+        assert_eq!(public_summary.redacted_reason, None);
+
+        let redacted_summary = store.inspect(redacted_hash).expect("inspect redacted");
+        assert_eq!(redacted_summary.payload, None);
+        assert!(redacted_summary.redacted_reason.expect("redacted reason").contains("RedactedPayload"));
     }
 
     #[test]

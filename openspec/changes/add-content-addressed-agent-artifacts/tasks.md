@@ -6,7 +6,7 @@
 ## Phase 2: Storage and receipts
 
 - [x] [depends:identity-core] Implement immutable artifact storage and name-pointer metadata without changing existing JSONL export compatibility. [covers=content-addressed-agent-artifacts.store] ✅ 2m 33s (started: 2026-05-16T23:09:43Z → completed: 2026-05-16T23:12:16Z; evidence: `cargo test -p clankers-artifacts`)
-- [ ] [depends:artifact-store] Thread artifact hashes into model/tool/session/review receipts with redacted inspect output. [covers=content-addressed-agent-artifacts.receipts]
+- [x] [depends:artifact-store] Thread artifact hashes into model/tool/session/review receipts with redacted inspect output. [covers=content-addressed-agent-artifacts.receipts] ✅ 1m 33s (started: 2026-05-16T23:12:41Z → completed: 2026-05-16T23:14:14Z; evidence: `cargo test -p clankers-artifacts`)
 - [ ] [depends:artifact-store] Add `clankers inspect-hash <hash>` for present, missing, wrong-kind, and redacted artifacts. [covers=content-addressed-agent-artifacts.inspect]
 
 ## Phase 3: Deterministic cache foundation
