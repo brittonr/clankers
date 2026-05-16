@@ -11,6 +11,6 @@
 
 ## Phase 3: Remote dependency sync
 
-- [ ] [depends:effect-model] Extend subagent/remote daemon execution requests to declare required skills, prompts, tool schemas, manifests, and policies by artifact hash. [covers=effect-ability-runtime.remote-deps]
+- [x] [depends:effect-model] Extend subagent/remote daemon execution requests to declare required skills, prompts, tool schemas, manifests, and policies by artifact hash. [covers=effect-ability-runtime.remote-deps] ✅ 1m 54s (started: 2026-05-16T23:54:15Z → completed: 2026-05-16T23:56:09Z; evidence: `cargo test -p clankers-runtime remote_execution -- --nocapture`; `cargo test -p clankers-runtime`)
 - [ ] [depends:remote-deps] Implement safe missing-artifact sync and unsupported/missing/secret dependency failures. [covers=effect-ability-runtime.remote-sync]
 - [ ] [serial] Run effect handler matrix tests, remote dependency sync tests, and catalog parity subset. [covers=effect-ability-runtime.validation]

@@ -136,6 +136,93 @@ impl EffectRequest {
     }
 }
 
+/// Safe content-addressed artifact kinds that remote/subagent execution can declare.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum RemoteExecutionArtifactKind {
+    /// System/developer/user prompt material safe to sync by hash.
+    Prompt,
+    /// Skill instructions or support files safe to sync by hash.
+    Skill,
+    /// Tool schema or descriptor material safe to sync by hash.
+    ToolSchema,
+    /// Plugin/tool/extension manifest material safe to sync by hash.
+    Manifest,
+    /// Non-secret policy metadata safe to sync by hash.
+    Policy,
+}
+
+/// One declared remote/subagent dependency bound to a content hash.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct RemoteExecutionDependency {
+    /// Safe artifact kind.
+    pub kind: RemoteExecutionArtifactKind,
+    /// Content-addressed artifact identity.
+    pub hash: ArtifactHash,
+}
+
+impl RemoteExecutionDependency {
+    /// Build a safe dependency declaration.
+    #[must_use]
+    pub fn new(kind: RemoteExecutionArtifactKind, hash: ArtifactHash) -> Self {
+        Self { kind, hash }
+    }
+}
+
+/// Typed remote/subagent execution request preflight declaration.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct RemoteExecutionRequest {
+    /// Stable correlation ID for remote preflight, sync, and execution receipts.
+    pub correlation_id: EffectCorrelationId,
+    /// Whether this is local subagent execution or a remote daemon peer.
+    pub target: RemoteExecutionTarget,
+    /// Required safe artifacts, normalized by kind/hash.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub required_artifacts: Vec<RemoteExecutionDependency>,
+}
+
+impl RemoteExecutionRequest {
+    /// Create a remote/subagent dependency declaration.
+    #[must_use]
+    pub fn new(target: RemoteExecutionTarget, correlation_id: EffectCorrelationId) -> Self {
+        Self {
+            correlation_id,
+            target,
+            required_artifacts: Vec::new(),
+        }
+    }
+
+    /// Attach safe artifact dependencies in deterministic order.
+    #[must_use]
+    pub fn with_required_artifacts<I>(mut self, artifacts: I) -> Self
+    where I: IntoIterator<Item = RemoteExecutionDependency> {
+        self.required_artifacts = artifacts.into_iter().collect();
+        self.required_artifacts
+            .sort_by(|left, right| left.kind.cmp(&right.kind).then_with(|| left.hash.hex().cmp(&right.hash.hex())));
+        self.required_artifacts.dedup();
+        self
+    }
+
+    /// Return a plain hash set projection for effect request dependencies.
+    #[must_use]
+    pub fn required_hashes(&self) -> Vec<ArtifactHash> {
+        let mut hashes = self.required_artifacts.iter().map(|dependency| dependency.hash).collect::<Vec<_>>();
+        hashes.sort_by_key(|hash| hash.hex());
+        hashes.dedup();
+        hashes
+    }
+}
+
+/// Remote execution target shape.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum RemoteExecutionTarget {
+    /// In-process or subprocess subagent.
+    Subagent,
+    /// Remote daemon peer.
+    RemoteDaemon,
+}
+
 /// Minimal request reference copied into results/receipts.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct EffectRequestRef {
@@ -387,6 +474,61 @@ mod tests {
         assert!(!metadata_json.contains("Bearer"));
         assert!(!metadata_json.contains("secret-token"));
         assert!(metadata_json.contains("redacted"));
+    }
+
+    #[test]
+    fn remote_execution_request_declares_safe_dependencies_by_artifact_hash() {
+        let prompt = ArtifactHash::digest(b"prompt");
+        let skill = ArtifactHash::digest(b"skill");
+        let tool_schema = ArtifactHash::digest(b"schema");
+        let manifest = ArtifactHash::digest(b"manifest");
+        let policy = ArtifactHash::digest(b"policy");
+        let request = RemoteExecutionRequest::new(
+            RemoteExecutionTarget::RemoteDaemon,
+            EffectCorrelationId::from_static("remote-1"),
+        )
+        .with_required_artifacts([
+            RemoteExecutionDependency::new(RemoteExecutionArtifactKind::Policy, policy),
+            RemoteExecutionDependency::new(RemoteExecutionArtifactKind::Prompt, prompt),
+            RemoteExecutionDependency::new(RemoteExecutionArtifactKind::Skill, skill),
+            RemoteExecutionDependency::new(RemoteExecutionArtifactKind::ToolSchema, tool_schema),
+            RemoteExecutionDependency::new(RemoteExecutionArtifactKind::Manifest, manifest),
+            RemoteExecutionDependency::new(RemoteExecutionArtifactKind::Policy, policy),
+        ]);
+
+        assert_eq!(request.target, RemoteExecutionTarget::RemoteDaemon);
+        assert_eq!(request.required_artifacts.len(), 5);
+        assert_eq!(request.required_artifacts, vec![
+            RemoteExecutionDependency::new(RemoteExecutionArtifactKind::Prompt, prompt),
+            RemoteExecutionDependency::new(RemoteExecutionArtifactKind::Skill, skill),
+            RemoteExecutionDependency::new(RemoteExecutionArtifactKind::ToolSchema, tool_schema),
+            RemoteExecutionDependency::new(RemoteExecutionArtifactKind::Manifest, manifest),
+            RemoteExecutionDependency::new(RemoteExecutionArtifactKind::Policy, policy),
+        ]);
+        let serialized = serde_json::to_string(&request).expect("remote request json");
+        assert!(serialized.contains("remote-daemon"));
+        assert!(serialized.contains("tool-schema"));
+        assert!(!serialized.contains("Bearer"));
+        assert!(!serialized.contains("token"));
+    }
+
+    #[test]
+    fn remote_execution_required_hashes_project_for_effect_dependencies() {
+        let prompt = ArtifactHash::digest(b"prompt");
+        let policy = ArtifactHash::digest(b"policy");
+        let request = RemoteExecutionRequest::new(
+            RemoteExecutionTarget::Subagent,
+            EffectCorrelationId::from_static("subagent-1"),
+        )
+        .with_required_artifacts([
+            RemoteExecutionDependency::new(RemoteExecutionArtifactKind::Prompt, prompt),
+            RemoteExecutionDependency::new(RemoteExecutionArtifactKind::Policy, policy),
+            RemoteExecutionDependency::new(RemoteExecutionArtifactKind::Manifest, prompt),
+        ]);
+
+        let mut expected = vec![prompt, policy];
+        expected.sort_by_key(|hash| hash.hex());
+        assert_eq!(request.required_hashes(), expected);
     }
 
     #[test]
