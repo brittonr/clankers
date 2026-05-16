@@ -7,6 +7,10 @@
 //! types by later OpenSpec tasks.
 
 use std::fmt;
+use std::fs;
+use std::io;
+use std::path::Path;
+use std::path::PathBuf;
 use std::str::FromStr;
 
 use serde::Deserialize;
@@ -295,6 +299,179 @@ pub fn canonicalize_artifact(
     Ok((envelope, hash))
 }
 
+/// On-disk immutable artifact store rooted under a Clankers state directory.
+#[derive(Debug, Clone)]
+pub struct ArtifactStore {
+    root: PathBuf,
+}
+
+impl ArtifactStore {
+    /// Create a store handle rooted at `root`.
+    #[must_use]
+    pub fn new(root: impl Into<PathBuf>) -> Self {
+        Self { root: root.into() }
+    }
+
+    /// Store an envelope by its content hash and return that hash.
+    pub fn put(&self, envelope: &CanonicalArtifactEnvelope) -> Result<ArtifactHash, ArtifactStoreError> {
+        let hash = envelope.hash()?;
+        let record = StoredArtifactRecord::new(hash, envelope.clone());
+        let bytes = serde_json::to_vec_pretty(&record).map_err(CanonicalizationError::Serialize)?;
+        let path = self.artifact_path(hash);
+        if let Some(parent) = path.parent() {
+            fs::create_dir_all(parent).map_err(ArtifactStoreError::Io)?;
+        }
+        match fs::read(&path) {
+            Ok(existing) if existing == bytes => Ok(hash),
+            Ok(_) => Err(ArtifactStoreError::ImmutableCollision { hash }),
+            Err(error) if error.kind() == io::ErrorKind::NotFound => {
+                fs::write(path, bytes).map_err(ArtifactStoreError::Io)?;
+                Ok(hash)
+            }
+            Err(error) => Err(ArtifactStoreError::Io(error)),
+        }
+    }
+
+    /// Load an immutable artifact by hash.
+    pub fn get(&self, hash: ArtifactHash) -> Result<CanonicalArtifactEnvelope, ArtifactStoreError> {
+        let path = self.artifact_path(hash);
+        let bytes = fs::read(path).map_err(|error| map_not_found(error, hash))?;
+        let record: StoredArtifactRecord = serde_json::from_slice(&bytes).map_err(ArtifactStoreError::Decode)?;
+        if record.hash != hash {
+            return Err(ArtifactStoreError::HashMismatch {
+                requested: hash,
+                found: record.hash,
+            });
+        }
+        if record.envelope.hash()? != hash {
+            return Err(ArtifactStoreError::PayloadHashMismatch { hash });
+        }
+        Ok(record.envelope)
+    }
+
+    /// Update a mutable human-readable pointer to an immutable artifact hash.
+    pub fn link_name(&self, kind: ArtifactKind, name: &str, hash: ArtifactHash) -> Result<(), ArtifactStoreError> {
+        validate_name(name)?;
+        self.get(hash)?;
+        let pointer = NamePointer {
+            kind,
+            name: name.to_owned(),
+            hash,
+        };
+        let path = self.name_path(kind, name);
+        if let Some(parent) = path.parent() {
+            fs::create_dir_all(parent).map_err(ArtifactStoreError::Io)?;
+        }
+        let bytes = serde_json::to_vec_pretty(&pointer).map_err(ArtifactStoreError::Encode)?;
+        fs::write(path, bytes).map_err(ArtifactStoreError::Io)
+    }
+
+    /// Resolve a mutable human-readable pointer to the current artifact hash.
+    pub fn resolve_name(&self, kind: ArtifactKind, name: &str) -> Result<ArtifactHash, ArtifactStoreError> {
+        validate_name(name)?;
+        let path = self.name_path(kind, name);
+        let bytes = fs::read(path).map_err(ArtifactStoreError::Io)?;
+        let pointer: NamePointer = serde_json::from_slice(&bytes).map_err(ArtifactStoreError::Decode)?;
+        if pointer.kind != kind || pointer.name != name {
+            return Err(ArtifactStoreError::NamePointerMismatch {
+                kind,
+                name: name.to_owned(),
+            });
+        }
+        Ok(pointer.hash)
+    }
+
+    fn artifact_path(&self, hash: ArtifactHash) -> PathBuf {
+        let hex = hash.hex();
+        self.root.join("artifacts").join("b3").join(&hex[..2]).join(format!("{hex}.json"))
+    }
+
+    fn name_path(&self, kind: ArtifactKind, name: &str) -> PathBuf {
+        self.root.join("names").join(kind.as_str()).join(format!("{name}.json"))
+    }
+}
+
+/// Stored immutable artifact record.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct StoredArtifactRecord {
+    /// Hash key under which this record is stored.
+    pub hash: ArtifactHash,
+    /// Canonical envelope whose bytes produce `hash`.
+    pub envelope: CanonicalArtifactEnvelope,
+}
+
+impl StoredArtifactRecord {
+    /// Build a stored artifact record.
+    #[must_use]
+    pub const fn new(hash: ArtifactHash, envelope: CanonicalArtifactEnvelope) -> Self {
+        Self { hash, envelope }
+    }
+}
+
+/// Mutable metadata pointer from a human-readable name to an immutable hash.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct NamePointer {
+    /// Artifact kind namespace for this name.
+    pub kind: ArtifactKind,
+    /// Human-readable pointer name.
+    pub name: String,
+    /// Current immutable artifact target.
+    pub hash: ArtifactHash,
+}
+
+/// Artifact store failures.
+#[derive(Debug, Error)]
+pub enum ArtifactStoreError {
+    /// Canonicalization failed while hashing or serializing an envelope.
+    #[error(transparent)]
+    Canonicalization(#[from] CanonicalizationError),
+    /// Filesystem operation failed.
+    #[error("artifact store I/O failed: {0}")]
+    Io(io::Error),
+    /// Stored JSON could not be decoded.
+    #[error("artifact store record could not be decoded: {0}")]
+    Decode(serde_json::Error),
+    /// Name pointer JSON could not be encoded.
+    #[error("artifact name pointer could not be encoded: {0}")]
+    Encode(serde_json::Error),
+    /// The requested artifact is absent from the immutable store.
+    #[error("artifact {hash} is missing")]
+    Missing { hash: ArtifactHash },
+    /// An existing immutable artifact path contains bytes for different content.
+    #[error("artifact store collision for immutable hash {hash}")]
+    ImmutableCollision { hash: ArtifactHash },
+    /// Stored record hash does not match the requested path hash.
+    #[error("stored artifact hash mismatch: requested {requested}, found {found}")]
+    HashMismatch {
+        requested: ArtifactHash,
+        found: ArtifactHash,
+    },
+    /// Stored envelope no longer hashes to its record hash.
+    #[error("stored artifact payload does not hash to {hash}")]
+    PayloadHashMismatch { hash: ArtifactHash },
+    /// Name contains path separators or is empty.
+    #[error("artifact name `{name}` is not safe metadata pointer name")]
+    UnsafeName { name: String },
+    /// Pointer file did not match the requested namespace/name.
+    #[error("artifact name pointer did not match requested {kind:?}/{name}")]
+    NamePointerMismatch { kind: ArtifactKind, name: String },
+}
+
+fn map_not_found(error: io::Error, hash: ArtifactHash) -> ArtifactStoreError {
+    if error.kind() == io::ErrorKind::NotFound {
+        ArtifactStoreError::Missing { hash }
+    } else {
+        ArtifactStoreError::Io(error)
+    }
+}
+
+fn validate_name(name: &str) -> Result<(), ArtifactStoreError> {
+    if name.is_empty() || name.contains('/') || name.contains('\\') || Path::new(name).components().count() != 1 {
+        return Err(ArtifactStoreError::UnsafeName { name: name.to_owned() });
+    }
+    Ok(())
+}
+
 /// Canonicalization failures for unsupported or unsafe payloads.
 #[derive(Debug, Error)]
 pub enum CanonicalizationError {
@@ -449,6 +626,49 @@ mod tests {
             ])
             .expect("canonicalize session block");
         assert_eq!(envelope.dependencies, vec![low, high]);
+    }
+
+    #[test]
+    fn artifact_store_preserves_immutable_artifacts_when_name_pointer_moves() {
+        let tempdir = tempfile::tempdir().expect("temp artifact store");
+        let store = ArtifactStore::new(tempdir.path());
+        let (first, first_hash) = canonicalize_artifact(
+            ArtifactKind::Prompt,
+            RedactionClass::Public,
+            json!({"messages":[{"role":"system","content":"first"}]}),
+            [],
+        )
+        .expect("first prompt");
+        let (second, second_hash) = canonicalize_artifact(
+            ArtifactKind::Prompt,
+            RedactionClass::Public,
+            json!({"messages":[{"role":"system","content":"second"}]}),
+            [],
+        )
+        .expect("second prompt");
+
+        assert_eq!(store.put(&first).expect("store first"), first_hash);
+        assert_eq!(store.put(&second).expect("store second"), second_hash);
+        store.link_name(ArtifactKind::Prompt, "system", first_hash).expect("link first");
+        assert_eq!(store.resolve_name(ArtifactKind::Prompt, "system").expect("resolve first"), first_hash);
+        store.link_name(ArtifactKind::Prompt, "system", second_hash).expect("move pointer");
+
+        assert_eq!(store.resolve_name(ArtifactKind::Prompt, "system").expect("resolve second"), second_hash);
+        assert_eq!(store.get(first_hash).expect("old artifact remains"), first);
+        assert_eq!(store.get(second_hash).expect("new artifact remains"), second);
+    }
+
+    #[test]
+    fn artifact_store_reports_missing_and_unsafe_name_without_jsonl_side_effects() {
+        let tempdir = tempfile::tempdir().expect("temp artifact store");
+        let store = ArtifactStore::new(tempdir.path());
+        let missing = ArtifactHash::digest(b"missing");
+        assert!(matches!(store.get(missing), Err(ArtifactStoreError::Missing { .. })));
+        assert!(matches!(
+            store.link_name(ArtifactKind::Prompt, "../session.jsonl", missing),
+            Err(ArtifactStoreError::UnsafeName { .. })
+        ));
+        assert!(!tempdir.path().join("session.jsonl").exists());
     }
 
     #[test]
