@@ -3,6 +3,7 @@
 use std::collections::BTreeMap;
 use std::collections::BTreeSet;
 
+use clankers_artifacts::RedactionClass;
 use serde::Deserialize;
 use serde::Serialize;
 
@@ -10,6 +11,10 @@ use crate::ExtensionRuntimeKind;
 use crate::ExtensionRuntimeService;
 use crate::RuntimeError;
 use crate::effects::EffectAbilityClass;
+use crate::effects::EffectCorrelationId;
+use crate::effects::EffectHandler;
+use crate::effects::EffectRequest;
+use crate::effects::EffectResultStatus;
 use crate::events::sanitize_metadata_value;
 use crate::services::extension_kind_label;
 
@@ -230,6 +235,43 @@ impl ToolDescriptor {
     #[must_use]
     pub fn effect_class(&self) -> EffectAbilityClass {
         effect_class_for_tool(self.name.as_str(), self.side_effect)
+    }
+
+    #[must_use]
+    pub fn effect_request(&self, correlation_id: EffectCorrelationId) -> EffectRequest {
+        EffectRequest::new(self.effect_class(), correlation_id, RedactionClass::MetadataOnly)
+            .with_safe_metadata("tool_name", self.name.clone())
+            .with_safe_metadata("tool_source", self.source.clone())
+    }
+
+    #[must_use]
+    pub fn route_through_effect_handler(
+        &self,
+        correlation_id: EffectCorrelationId,
+        handler: &dyn EffectHandler,
+    ) -> ToolEffectReceipt {
+        let request = self.effect_request(correlation_id);
+        ToolEffectReceipt::from_effect_result(self, handler.handle(&request))
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ToolEffectReceipt {
+    pub tool_name: String,
+    pub effect_class: EffectAbilityClass,
+    pub handler_status: EffectResultStatus,
+    pub safe_summary: String,
+}
+
+impl ToolEffectReceipt {
+    #[must_use]
+    pub fn from_effect_result(descriptor: &ToolDescriptor, result: crate::EffectResult) -> Self {
+        Self {
+            tool_name: descriptor.name.clone(),
+            effect_class: result.request.class,
+            handler_status: result.status,
+            safe_summary: result.safe_summary,
+        }
     }
 }
 

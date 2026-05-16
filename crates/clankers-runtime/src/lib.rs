@@ -113,6 +113,7 @@ pub use tools::ToolCatalogBuilder;
 pub use tools::ToolCatalogOmission;
 pub use tools::ToolCollisionPolicy;
 pub use tools::ToolDescriptor;
+pub use tools::ToolEffectReceipt;
 
 #[derive(Debug, Error, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum RuntimeError {
@@ -548,6 +549,21 @@ mod tests {
         assert_eq!(bash.effect_class(), EffectAbilityClass::Shell);
         assert_eq!(process.effect_class(), EffectAbilityClass::Shell);
         assert_eq!(custom.effect_class(), EffectAbilityClass::Tool);
+    }
+
+    #[test]
+    fn tool_dispatch_route_preserves_public_name_and_records_handler_status() {
+        let bash = ToolDescriptor::new("bash", "shell", SideEffectLevel::Dangerous);
+        let handler = StaticEffectHandler::new(EffectAbilityClass::Shell, EffectHandlerMode::Simulate {
+            summary: "dry-run shell".to_owned(),
+        });
+
+        let receipt = bash.route_through_effect_handler(EffectCorrelationId::from_static("tool-call-1"), &handler);
+
+        assert_eq!(receipt.tool_name, "bash");
+        assert_eq!(receipt.effect_class, EffectAbilityClass::Shell);
+        assert_eq!(receipt.handler_status, EffectResultStatus::Simulated);
+        assert_eq!(receipt.safe_summary, "dry-run shell");
     }
 
     #[test]

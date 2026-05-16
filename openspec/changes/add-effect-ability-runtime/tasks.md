@@ -6,7 +6,7 @@
 ## Phase 2: Handler execution
 
 - [x] [depends:effect-model] Add host-owned handlers for allow, deny, simulate, and replay modes for an initial file/shell/network/secret/tool subset. [covers=effect-ability-runtime.handlers] ✅ 1m 23s (started: 2026-05-16T23:40:06Z → completed: 2026-05-16T23:41:29Z; evidence: `cargo test -p clankers-runtime effects`)
-- [ ] [depends:handlers] Route selected existing tool dispatch paths through effect handlers while preserving user-visible tool names and receipts. [covers=effect-ability-runtime.tool-dispatch]
+- [x] [depends:handlers] Route selected existing tool dispatch paths through effect handlers while preserving user-visible tool names and receipts. [covers=effect-ability-runtime.tool-dispatch] ✅ 1m 24s (started: 2026-05-16T23:41:57Z → completed: 2026-05-16T23:43:21Z; evidence: `cargo test -p clankers-runtime`)
 - [ ] [depends:handlers] Add fail-closed sentinels for absent/denied handlers before filesystem, process, socket, browser, provider, or secret side effects. [covers=effect-ability-runtime.fail-closed]
 
 ## Phase 3: Remote dependency sync
