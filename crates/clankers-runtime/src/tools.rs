@@ -9,6 +9,7 @@ use serde::Serialize;
 use crate::ExtensionRuntimeKind;
 use crate::ExtensionRuntimeService;
 use crate::RuntimeError;
+use crate::effects::EffectAbilityClass;
 use crate::events::sanitize_metadata_value;
 use crate::services::extension_kind_label;
 
@@ -225,6 +226,11 @@ impl ToolDescriptor {
         self.source = sanitize_metadata_value(source.into());
         self
     }
+
+    #[must_use]
+    pub fn effect_class(&self) -> EffectAbilityClass {
+        effect_class_for_tool(self.name.as_str(), self.side_effect)
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
@@ -274,6 +280,11 @@ impl CapabilityPack {
             )],
         }
     }
+
+    #[must_use]
+    pub fn effect_classes(self) -> BTreeSet<EffectAbilityClass> {
+        self.descriptors().into_iter().map(|descriptor| descriptor.effect_class()).collect()
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -289,5 +300,27 @@ impl SideEffectLevel {
     #[must_use]
     pub fn requires_confirmation(self) -> bool {
         !matches!(self, Self::ReadOnly)
+    }
+
+    #[must_use]
+    pub fn default_effect_class(self) -> EffectAbilityClass {
+        match self {
+            Self::ReadOnly | Self::WorkspaceMutation => EffectAbilityClass::Filesystem,
+            Self::ExternalIo => EffectAbilityClass::Network,
+            Self::Dangerous => EffectAbilityClass::Tool,
+        }
+    }
+}
+
+fn effect_class_for_tool(name: &str, side_effect: SideEffectLevel) -> EffectAbilityClass {
+    match name {
+        "read" | "search" | "write" | "patch" => EffectAbilityClass::Filesystem,
+        "bash" | "process" => EffectAbilityClass::Shell,
+        "web" => EffectAbilityClass::Network,
+        "tool_gateway" => EffectAbilityClass::Tool,
+        "mcp" => EffectAbilityClass::Plugin,
+        "browser" => EffectAbilityClass::Browser,
+        "voice_mode" => EffectAbilityClass::Delivery,
+        _ => side_effect.default_effect_class(),
     }
 }

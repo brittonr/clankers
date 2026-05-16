@@ -521,6 +521,33 @@ mod tests {
     }
 
     #[test]
+    fn capability_packs_map_to_only_their_effect_classes() {
+        let cases = [
+            (CapabilityPack::ReadOnly, vec![EffectAbilityClass::Filesystem]),
+            (CapabilityPack::WorkspaceMutation, vec![EffectAbilityClass::Filesystem]),
+            (CapabilityPack::ShellCommands, vec![EffectAbilityClass::Shell]),
+            (CapabilityPack::Network, vec![EffectAbilityClass::Network]),
+            (CapabilityPack::ExternalProcesses, vec![EffectAbilityClass::Shell]),
+        ];
+
+        for (pack, expected) in cases {
+            let actual = pack.effect_classes().into_iter().collect::<Vec<_>>();
+            assert_eq!(actual, expected, "pack {pack:?} expanded effect classes");
+        }
+    }
+
+    #[test]
+    fn tool_descriptor_maps_known_dangerous_tools_to_specific_effect_classes() {
+        let bash = ToolDescriptor::new("bash", "shell", SideEffectLevel::Dangerous);
+        let process = ToolDescriptor::new("process", "process", SideEffectLevel::Dangerous);
+        let custom = ToolDescriptor::new("custom-danger", "custom", SideEffectLevel::Dangerous);
+
+        assert_eq!(bash.effect_class(), EffectAbilityClass::Shell);
+        assert_eq!(process.effect_class(), EffectAbilityClass::Shell);
+        assert_eq!(custom.effect_class(), EffectAbilityClass::Tool);
+    }
+
+    #[test]
     fn tool_catalog_disabled_filter_overrides_packs_with_safe_omissions() {
         let catalog = ToolCatalog::builder()
             .pack(CapabilityPack::ReadOnly)
