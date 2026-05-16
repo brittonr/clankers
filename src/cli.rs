@@ -408,12 +408,26 @@ pub enum Commands {
         #[command(subcommand)]
         action: AcpAction,
     },
+    /// Inspect a content-addressed artifact by hash
+    InspectHash(InspectHashArgs),
     /// List daemon sessions (shorthand for `daemon sessions`)
     Ps {
         /// Show all details including socket paths
         #[arg(short, long)]
         all: bool,
     },
+}
+
+#[derive(clap::Args, Debug, Clone, PartialEq, Eq)]
+pub struct InspectHashArgs {
+    /// Artifact hash to inspect (`b3:<64-hex>` or raw 64-hex)
+    pub hash: String,
+    /// Override artifact store directory (default: ~/.clankers/agent/artifacts)
+    #[arg(long, value_name = "DIR")]
+    pub store_dir: Option<std::path::PathBuf>,
+    /// Require the artifact to have this kind
+    #[arg(long, value_name = "KIND")]
+    pub kind: Option<String>,
 }
 
 #[derive(Subcommand, Debug)]
@@ -1391,6 +1405,27 @@ mod tests {
         let help = Cli::command().render_help().to_string();
         assert!(help.contains("acp"));
         assert!(help.contains("Agent Client Protocol"));
+    }
+
+    #[test]
+    fn inspect_hash_cli_parses_hash_store_and_kind() {
+        let cli = Cli::parse_from([
+            "clankers",
+            "inspect-hash",
+            "b3:2e62319389a7864be995bc7b278f95fac28214bde8df79a8ffe2a3ea2a6203a1",
+            "--store-dir",
+            "/tmp/artifacts",
+            "--kind",
+            "prompt",
+        ]);
+
+        match cli.command.expect("command should parse") {
+            Commands::InspectHash(args) => {
+                assert_eq!(args.kind.as_deref(), Some("prompt"));
+                assert_eq!(args.store_dir.as_deref(), Some(std::path::Path::new("/tmp/artifacts")));
+            }
+            other => panic!("unexpected command: {other:?}"),
+        }
     }
 
     #[test]

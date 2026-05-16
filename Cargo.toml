@@ -90,6 +90,7 @@ path = "src/main.rs"
 
 [dependencies]
 clankers-agent = { version = "0.1.0", path = "crates/clankers-agent" }
+clankers-artifacts = { version = "0.1.0", path = "crates/clankers-artifacts" }
 clankers-autoresearch = { version = "0.1.0", path = "crates/clankers-autoresearch" }
 clankers-nix = { version = "0.1.0", path = "crates/clankers-nix", features = ["eval"] }
 clankers-agent-defs = { version = "0.1.0", path = "crates/clankers-agent-defs" }

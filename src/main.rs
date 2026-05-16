@@ -262,6 +262,9 @@ async fn dispatch(
         Some(Commands::Acp { action }) => {
             clankers::commands::acp::run(&ctx, action).await?;
         }
+        Some(Commands::InspectHash(args)) => {
+            clankers::commands::inspect_hash::run(&ctx, args)?;
+        }
         Some(Commands::Attach {
             session_id,
             new,

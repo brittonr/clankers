@@ -1479,6 +1479,7 @@ dependencies = [
  "clanker-tui-types",
  "clankers-agent",
  "clankers-agent-defs",
+ "clankers-artifacts",
  "clankers-autoresearch",
  "clankers-config",
  "clankers-controller",

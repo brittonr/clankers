@@ -7,7 +7,7 @@
 
 - [x] [depends:identity-core] Implement immutable artifact storage and name-pointer metadata without changing existing JSONL export compatibility. [covers=content-addressed-agent-artifacts.store] ✅ 2m 33s (started: 2026-05-16T23:09:43Z → completed: 2026-05-16T23:12:16Z; evidence: `cargo test -p clankers-artifacts`)
 - [x] [depends:artifact-store] Thread artifact hashes into model/tool/session/review receipts with redacted inspect output. [covers=content-addressed-agent-artifacts.receipts] ✅ 1m 33s (started: 2026-05-16T23:12:41Z → completed: 2026-05-16T23:14:14Z; evidence: `cargo test -p clankers-artifacts`)
-- [ ] [depends:artifact-store] Add `clankers inspect-hash <hash>` for present, missing, wrong-kind, and redacted artifacts. [covers=content-addressed-agent-artifacts.inspect]
+- [x] [depends:artifact-store] Add `clankers inspect-hash <hash>` for present, missing, wrong-kind, and redacted artifacts. [covers=content-addressed-agent-artifacts.inspect] ✅ 8m 18s (started: 2026-05-16T23:14:14Z → completed: 2026-05-16T23:22:32Z; evidence: `cargo test -p clankers-artifacts`; `cargo test -p clankers --lib inspect_hash`; `cargo test -p clankers --lib inspect_hash_cli_parses_hash_store_and_kind`)
 
 ## Phase 3: Deterministic cache foundation
 

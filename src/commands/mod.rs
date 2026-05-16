@@ -11,6 +11,7 @@ pub mod checkpoint;
 pub mod config;
 pub mod daemon;
 pub mod gateway;
+pub mod inspect_hash;
 pub mod mcp;
 pub mod self_evolution;
 pub mod soul;
