@@ -1,6 +1,6 @@
 ## Phase 1: Artifact identity core
 
-- [ ] [serial] Define `ArtifactHash`, artifact kinds, canonical envelope versions, and redaction classes. [covers=content-addressed-agent-artifacts.identity]
+- [x] [serial] Define `ArtifactHash`, artifact kinds, canonical envelope versions, and redaction classes. [covers=content-addressed-agent-artifacts.identity] ✅ 4m 26s (started: 2026-05-16T23:01:54Z → completed: 2026-05-16T23:06:20Z; evidence: `cargo test -p clankers-artifacts`)
 - [ ] [depends:identity-core] Add pure canonicalization and golden hash fixtures for prompts, tool descriptors, model requests, manifests, skills references, and session blocks. [covers=content-addressed-agent-artifacts.canonicalization]
 
 ## Phase 2: Storage and receipts

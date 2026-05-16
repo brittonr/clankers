@@ -7,6 +7,7 @@ members = [
     "crates/clanker-router",
     "crates/clanker-tui-types",
     "crates/clankers-agent",
+    "crates/clankers-artifacts",
     "crates/clankers-autoresearch",
     "crates/clankers-agent-defs",
     "crates/clankers-ucan",
