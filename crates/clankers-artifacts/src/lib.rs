@@ -528,6 +528,188 @@ impl ArtifactInspectSummary {
     }
 }
 
+/// Cache key for an opt-in deterministic pure result.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub struct PureCacheKey(ArtifactHash);
+
+impl PureCacheKey {
+    /// Return the display/receipt hash for this cache key.
+    #[must_use]
+    pub fn hash(self) -> ArtifactHash {
+        self.0
+    }
+}
+
+/// Explicit declaration of all deterministic inputs that influence a pure result.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct DeterministicInputDeclaration {
+    /// Artifact inputs consumed by the operation.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub artifact_hashes: Vec<ArtifactHash>,
+    /// File content hashes consumed by the operation.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub file_input_hashes: Vec<ArtifactHash>,
+    /// Environment variable names explicitly admitted as deterministic inputs.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub env_allowlist: Vec<String>,
+    /// Tool or operation version string.
+    pub tool_version: String,
+    /// Declared no-hidden-effect profile.
+    pub effect_profile: EffectProfile,
+}
+
+impl DeterministicInputDeclaration {
+    /// Normalize order-insensitive fields before cache-key hashing.
+    #[must_use]
+    pub fn normalized(mut self) -> Self {
+        self.artifact_hashes.sort_by_key(|hash| hash.hex());
+        self.artifact_hashes.dedup();
+        self.file_input_hashes.sort_by_key(|hash| hash.hex());
+        self.file_input_hashes.dedup();
+        self.env_allowlist.sort();
+        self.env_allowlist.dedup();
+        self
+    }
+
+    /// Compute the deterministic pure-result cache key.
+    pub fn cache_key(self) -> Result<PureCacheKey, CanonicalizationError> {
+        let bytes = serde_json::to_vec(&self.normalized()).map_err(CanonicalizationError::Serialize)?;
+        Ok(PureCacheKey(ArtifactHash::digest(&bytes)))
+    }
+}
+
+/// Declared side-effect profile for cache eligibility.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum EffectProfile {
+    /// No hidden reads, writes, network, process, clock, or undeclared env access.
+    NoHiddenEffects,
+}
+
+/// Side-effect class that can deny pure cache eligibility.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum EffectClass {
+    /// Reads an environment variable outside the declaration allowlist.
+    UndeclaredEnvironment,
+    /// Uses wall-clock time or timers as semantic input.
+    Time,
+    /// Uses network access.
+    Network,
+    /// Starts a shell or process.
+    Process,
+    /// Mutates filesystem state.
+    FileMutation,
+}
+
+/// Cache eligibility decision for a pure-result operation.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct CacheEligibility {
+    /// Computed key when eligible.
+    pub key: Option<PureCacheKey>,
+    /// Denied effect classes, empty when eligible.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub denied_effects: Vec<EffectClass>,
+}
+
+impl CacheEligibility {
+    /// Evaluate cache eligibility from explicit declaration and observed effects.
+    pub fn evaluate(
+        declaration: DeterministicInputDeclaration,
+        observed_effects: impl IntoIterator<Item = EffectClass>,
+    ) -> Result<Self, CanonicalizationError> {
+        let mut denied_effects = observed_effects.into_iter().collect::<Vec<_>>();
+        denied_effects.sort();
+        denied_effects.dedup();
+        if denied_effects.is_empty() {
+            Ok(Self {
+                key: Some(declaration.cache_key()?),
+                denied_effects,
+            })
+        } else {
+            Ok(Self {
+                key: None,
+                denied_effects,
+            })
+        }
+    }
+
+    /// Whether this operation may use the pure-result cache.
+    #[must_use]
+    pub fn is_allowed(&self) -> bool {
+        self.key.is_some() && self.denied_effects.is_empty()
+    }
+}
+
+/// Receipt emitted for a pure-result cache lookup.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PureCacheReceipt {
+    /// Cache key when eligible.
+    pub key: Option<PureCacheKey>,
+    /// Whether an existing result was reused.
+    pub hit: bool,
+    /// Denied effects when cache use was blocked.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub denied_effects: Vec<EffectClass>,
+}
+
+/// File-backed pure-result cache storing JSON values by deterministic key.
+#[derive(Debug, Clone)]
+pub struct PureResultCache {
+    root: PathBuf,
+}
+
+impl PureResultCache {
+    /// Create a pure-result cache under `root`.
+    #[must_use]
+    pub fn new(root: impl Into<PathBuf>) -> Self {
+        Self { root: root.into() }
+    }
+
+    /// Load a cached result if eligible and present.
+    pub fn get(&self, eligibility: &CacheEligibility) -> Result<(Option<Value>, PureCacheReceipt), ArtifactStoreError> {
+        let Some(key) = eligibility.key else {
+            return Ok((None, PureCacheReceipt {
+                key: None,
+                hit: false,
+                denied_effects: eligibility.denied_effects.clone(),
+            }));
+        };
+        let path = self.cache_path(key);
+        match fs::read(path) {
+            Ok(bytes) => {
+                let value = serde_json::from_slice(&bytes).map_err(ArtifactStoreError::Decode)?;
+                Ok((Some(value), PureCacheReceipt {
+                    key: Some(key),
+                    hit: true,
+                    denied_effects: Vec::new(),
+                }))
+            }
+            Err(error) if error.kind() == io::ErrorKind::NotFound => Ok((None, PureCacheReceipt {
+                key: Some(key),
+                hit: false,
+                denied_effects: Vec::new(),
+            })),
+            Err(error) => Err(ArtifactStoreError::Io(error)),
+        }
+    }
+
+    /// Store an eligible pure result by cache key.
+    pub fn put(&self, key: PureCacheKey, value: &Value) -> Result<(), ArtifactStoreError> {
+        let path = self.cache_path(key);
+        if let Some(parent) = path.parent() {
+            fs::create_dir_all(parent).map_err(ArtifactStoreError::Io)?;
+        }
+        let bytes = serde_json::to_vec_pretty(value).map_err(ArtifactStoreError::Encode)?;
+        fs::write(path, bytes).map_err(ArtifactStoreError::Io)
+    }
+
+    fn cache_path(&self, key: PureCacheKey) -> PathBuf {
+        let hex = key.hash().hex();
+        self.root.join("pure-results").join("b3").join(&hex[..2]).join(format!("{hex}.json"))
+    }
+}
+
 /// Artifact store failures.
 #[derive(Debug, Error)]
 pub enum ArtifactStoreError {
@@ -832,6 +1014,71 @@ mod tests {
         let redacted_summary = store.inspect(redacted_hash).expect("inspect redacted");
         assert_eq!(redacted_summary.payload, None);
         assert!(redacted_summary.redacted_reason.expect("redacted reason").contains("RedactedPayload"));
+    }
+
+    #[test]
+    fn pure_cache_key_ignores_declaration_ordering_and_changes_on_inputs() {
+        let first = test_declaration([ArtifactHash::digest(b"b"), ArtifactHash::digest(b"a")], ["PATH", "HOME"]);
+        let reordered = test_declaration([ArtifactHash::digest(b"a"), ArtifactHash::digest(b"b")], ["HOME", "PATH"]);
+        let changed = test_declaration([ArtifactHash::digest(b"changed")], ["HOME", "PATH"]);
+
+        let first_key = first.cache_key().expect("first key");
+        assert_eq!(first_key, reordered.cache_key().expect("reordered key"));
+        assert_ne!(first_key, changed.cache_key().expect("changed key"));
+    }
+
+    #[test]
+    fn pure_result_cache_is_opt_in_and_records_hit_receipts() {
+        let tempdir = tempfile::tempdir().expect("temp pure cache");
+        let cache = PureResultCache::new(tempdir.path());
+        let declaration = test_declaration([ArtifactHash::digest(b"input")], ["PATH"]);
+        let eligibility = CacheEligibility::evaluate(declaration, []).expect("eligible cache");
+        assert!(eligibility.is_allowed());
+        let key = eligibility.key.expect("cache key");
+
+        let (miss, miss_receipt) = cache.get(&eligibility).expect("cache miss");
+        assert_eq!(miss, None);
+        assert!(!miss_receipt.hit);
+        assert_eq!(miss_receipt.key, Some(key));
+
+        cache.put(key, &json!({"answer": 42})).expect("store pure result");
+        let (hit, hit_receipt) = cache.get(&eligibility).expect("cache hit");
+        assert_eq!(hit, Some(json!({"answer": 42})));
+        assert!(hit_receipt.hit);
+        assert_eq!(hit_receipt.denied_effects, Vec::new());
+    }
+
+    #[test]
+    fn pure_result_cache_denies_hidden_effects_without_secret_values() {
+        let declaration = test_declaration([ArtifactHash::digest(b"input")], ["PATH"]);
+        let eligibility = CacheEligibility::evaluate(declaration, [
+            EffectClass::Network,
+            EffectClass::UndeclaredEnvironment,
+            EffectClass::Network,
+        ])
+        .expect("denied cache");
+        assert!(!eligibility.is_allowed());
+        assert_eq!(eligibility.key, None);
+        assert_eq!(eligibility.denied_effects, vec![EffectClass::UndeclaredEnvironment, EffectClass::Network]);
+
+        let cache = PureResultCache::new(tempfile::tempdir().expect("temp pure cache").path());
+        let (value, receipt) = cache.get(&eligibility).expect("denied lookup");
+        assert_eq!(value, None);
+        assert!(!receipt.hit);
+        assert_eq!(receipt.denied_effects, eligibility.denied_effects);
+    }
+
+    fn test_declaration<const N: usize, const M: usize>(
+        artifacts: [ArtifactHash; N],
+        env: [&str; M],
+    ) -> DeterministicInputDeclaration {
+        DeterministicInputDeclaration {
+            artifact_hashes: artifacts.into_iter().collect(),
+            file_input_hashes: vec![ArtifactHash::digest(b"file")],
+            env_allowlist: env.into_iter().map(str::to_owned).collect(),
+            tool_version: "test-tool@1".to_owned(),
+            effect_profile: EffectProfile::NoHiddenEffects,
+        }
     }
 
     #[test]
