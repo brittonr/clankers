@@ -11,7 +11,7 @@
 
 ## Phase 2: Native durable backend
 
-- [ ] [serial] [depends:phase-1] Extract a backend-neutral process/job service and backend trait boundary while keeping the current native backend behavior as the default path.
+- [x] [serial] [depends:phase-1] Extract a backend-neutral process/job service and backend trait boundary while keeping the current native backend behavior as the default path. ✅ completed: 2026-05-17T06:06:26Z; evidence: `NativeProcessJobService` implements backend-neutral `ProcessJobService` over the existing native process registry/spawn/wait/kill/stdin behavior; current `ProcessTool` native path still passes compatibility tests; test `native_process_job_service_preserves_default_start_list_wait_flow`; `cargo test -p clankers --lib tools::process::tests::native_process_job_service_preserves_default_start_list_wait_flow -- --nocapture`, `cargo test -p clankers --lib process:: -- --nocapture`, `cargo check -p clankers --tests`, `cargo fmt --check`, `openspec validate add-durable-process-jobs --strict --json`, `git diff --check`.
 - [ ] [serial] [covers=durable-process-jobs.registry.finished-history] Persist native process start/status/completion metadata and log references; make `process list/log/poll` use durable state where available.
 - [ ] [serial] [covers=durable-process-jobs.registry.restart-reattach] Implement daemon-start reconciliation for native process records, including running/reattached, `reattached-log-incomplete`, exited, and `lost-after-restart` outcomes.
 - [ ] [parallel] [covers=durable-process-jobs.admission.native-limit] Enforce native concurrency/admission limits before spawn, returning typed reject/queue receipts without silently exceeding policy.

@@ -11,6 +11,22 @@ use std::time::Duration;
 use std::time::Instant;
 
 use async_trait::async_trait;
+use chrono::DateTime;
+use chrono::Utc;
+use clankers_runtime::RuntimeError;
+use clankers_runtime::process_jobs::BackendRef;
+use clankers_runtime::process_jobs::ProcessJobBackendKind;
+use clankers_runtime::process_jobs::ProcessJobFilter;
+use clankers_runtime::process_jobs::ProcessJobId;
+use clankers_runtime::process_jobs::ProcessJobLogChunk;
+use clankers_runtime::process_jobs::ProcessJobLogCursor;
+use clankers_runtime::process_jobs::ProcessJobLogRange;
+use clankers_runtime::process_jobs::ProcessJobOperation;
+use clankers_runtime::process_jobs::ProcessJobReceipt;
+use clankers_runtime::process_jobs::ProcessJobService;
+use clankers_runtime::process_jobs::ProcessJobStatus;
+use clankers_runtime::process_jobs::ProcessJobSummary;
+use clankers_runtime::process_jobs::StartProcessJobRequest;
 use serde_json::Value;
 use serde_json::json;
 use tokio::io::AsyncBufReadExt;
@@ -71,6 +87,8 @@ struct ProcessEntry {
     id: String,
     command: String,
     started_at: Instant,
+    started_at_wall: DateTime<Utc>,
+    backend_ref: Option<BackendRef>,
     output: std::sync::Mutex<Vec<String>>,
     poll_cursor: std::sync::Mutex<usize>,
     status: std::sync::Mutex<ProcessStatus>,
@@ -79,11 +97,19 @@ struct ProcessEntry {
 }
 
 impl ProcessEntry {
-    fn new(id: String, command: String, stdin: Option<ChildStdin>, kill_tx: oneshot::Sender<()>) -> Self {
+    fn new(
+        id: String,
+        command: String,
+        stdin: Option<ChildStdin>,
+        kill_tx: oneshot::Sender<()>,
+        pid: Option<u32>,
+    ) -> Self {
         Self {
             id,
             command,
             started_at: Instant::now(),
+            started_at_wall: Utc::now(),
+            backend_ref: pid.map(|pid| BackendRef(format!("pid:{pid}"))),
             output: std::sync::Mutex::new(Vec::new()),
             poll_cursor: std::sync::Mutex::new(0),
             status: std::sync::Mutex::new(ProcessStatus::Running),
@@ -122,6 +148,319 @@ impl ProcessEntry {
     fn elapsed(&self) -> Duration {
         self.started_at.elapsed()
     }
+
+    fn summary(&self) -> ProcessJobSummary {
+        ProcessJobSummary {
+            id: ProcessJobId(self.id.clone()),
+            backend: ProcessJobBackendKind::Native,
+            backend_ref: self.backend_ref.clone(),
+            owner: clankers_runtime::process_jobs::ProcessJobOwnerScope::DaemonGlobal,
+            status: status_to_job_status(&self.status()),
+            command_preview: self.command.chars().take(MAX_COMMAND_PREVIEW_LEN).collect(),
+            cwd: clankers_runtime::process_jobs::ProcessJobCwd::Inherited,
+            started_at: Some(self.started_at_wall),
+            updated_at: Utc::now(),
+            completed_at: self.status().is_done().then(Utc::now),
+            log_refs: Vec::new(),
+        }
+    }
+}
+
+#[derive(Debug, Default, Clone, Copy)]
+pub struct NativeProcessJobService;
+
+#[async_trait]
+impl ProcessJobService for NativeProcessJobService {
+    async fn start(&self, request: StartProcessJobRequest) -> Result<ProcessJobReceipt, RuntimeError> {
+        if request.backend != ProcessJobBackendKind::Native {
+            return Ok(ProcessJobReceipt::unsupported(
+                ProcessJobOperation::Start,
+                None,
+                request.backend,
+                "start",
+                "current process tool default service supports only native backend",
+            ));
+        }
+
+        let (display_command, mut child) = spawn_from_start_request(&request)?;
+        let pid = child.id();
+        let stdin = child.stdin.take();
+        let stdout = child.stdout.take().ok_or_else(|| {
+            RuntimeError::InvalidTool("failed to capture stdout from native background process".to_string())
+        })?;
+        let stderr = child.stderr.take().ok_or_else(|| {
+            RuntimeError::InvalidTool("failed to capture stderr from native background process".to_string())
+        })?;
+        let (kill_tx, kill_rx) = oneshot::channel();
+        let id = ProcessTool::next_id();
+        let entry = Arc::new(ProcessEntry::new(id.clone(), display_command, stdin, kill_tx, pid));
+        let backend_ref = entry.backend_ref.clone();
+        ProcessTool::insert(entry.clone());
+        spawn_reader(entry.clone(), "stdout", stdout);
+        spawn_reader(entry, "stderr", stderr);
+        spawn_waiter(ProcessTool::get(&id).expect("inserted native process entry"), child, pid, kill_rx);
+
+        Ok(ProcessJobReceipt {
+            operation: ProcessJobOperation::Start,
+            id: Some(ProcessJobId(id.clone())),
+            backend: Some(ProcessJobBackendKind::Native),
+            status: Some(ProcessJobStatus::Running),
+            backend_ref,
+            log_refs: Vec::new(),
+            summary: format!(
+                "Started background process {id} (pid: {})",
+                pid.map(|p| p.to_string()).unwrap_or_else(|| "unknown".to_string())
+            ),
+            error: None,
+        })
+    }
+
+    async fn list(&self, filter: ProcessJobFilter) -> Result<Vec<ProcessJobSummary>, RuntimeError> {
+        let mut entries = ProcessTool::all_entries();
+        entries.sort_by_key(|entry| entry.id.clone());
+        let summaries = entries
+            .into_iter()
+            .map(|entry| entry.summary())
+            .filter(|summary| filter.backend.is_none_or(|backend| backend == summary.backend))
+            .filter(|summary| filter.include_terminal || !summary.status.is_terminal())
+            .collect();
+        Ok(summaries)
+    }
+
+    async fn poll(
+        &self,
+        id: ProcessJobId,
+        _cursor: Option<ProcessJobLogCursor>,
+    ) -> Result<ProcessJobReceipt, RuntimeError> {
+        let entry = native_entry(&id)?;
+        let output = entry.drain_new_output();
+        Ok(ProcessJobReceipt {
+            operation: ProcessJobOperation::Poll,
+            id: Some(id),
+            backend: Some(ProcessJobBackendKind::Native),
+            status: Some(status_to_job_status(&entry.status())),
+            backend_ref: entry.backend_ref.clone(),
+            log_refs: Vec::new(),
+            summary: if output.is_empty() {
+                "No new output.".to_string()
+            } else {
+                output.join("\n")
+            },
+            error: None,
+        })
+    }
+
+    async fn log(&self, id: ProcessJobId, range: ProcessJobLogRange) -> Result<ProcessJobLogChunk, RuntimeError> {
+        let entry = native_entry(&id)?;
+        let output = entry.snapshot_output();
+        let start = range
+            .offset
+            .and_then(|offset| usize::try_from(offset).ok())
+            .unwrap_or_else(|| output.len().saturating_sub(DEFAULT_LOG_LIMIT));
+        let limit = usize::try_from(range.limit_bytes).unwrap_or(DEFAULT_LOG_LIMIT).min(DEFAULT_LOG_LIMIT);
+        let end = output.len().min(start.saturating_add(limit));
+        let text = output.get(start..end).unwrap_or(&[]).join("\n");
+        Ok(ProcessJobLogChunk {
+            id,
+            backend: ProcessJobBackendKind::Native,
+            stream: range.stream,
+            cursor: ProcessJobLogCursor {
+                stream: range.stream,
+                offset: u64::try_from(start).unwrap_or(u64::MAX),
+            },
+            next_cursor: Some(ProcessJobLogCursor {
+                stream: range.stream,
+                offset: u64::try_from(end).unwrap_or(u64::MAX),
+            }),
+            text,
+            truncated: end < output.len(),
+        })
+    }
+
+    async fn wait(&self, id: ProcessJobId, timeout: Option<Duration>) -> Result<ProcessJobReceipt, RuntimeError> {
+        let entry = native_entry(&id)?;
+        let timeout = timeout.unwrap_or(Duration::from_secs(30));
+        let deadline = Instant::now() + timeout;
+        while !entry.status().is_done() {
+            if !timeout.is_zero() && Instant::now() >= deadline {
+                return Ok(native_receipt(ProcessJobOperation::Wait, &entry, format!("{} still running", entry.id)));
+            }
+            tokio::time::sleep(Duration::from_millis(50)).await;
+        }
+        let output = entry.drain_new_output();
+        let mut summary = format!("{} finished with status: {}", entry.id, entry.status().label());
+        if !output.is_empty() {
+            summary.push('\n');
+            summary.push_str(&output.join("\n"));
+        }
+        Ok(native_receipt(ProcessJobOperation::Wait, &entry, summary))
+    }
+
+    async fn kill(&self, id: ProcessJobId) -> Result<ProcessJobReceipt, RuntimeError> {
+        let entry = native_entry(&id)?;
+        if entry.status().is_done() {
+            return Ok(native_receipt(
+                ProcessJobOperation::Kill,
+                &entry,
+                format!("{} is already {}", entry.id, entry.status().label()),
+            ));
+        }
+        let tx = entry.kill_tx.lock().expect("process kill lock poisoned").take();
+        let summary = if let Some(tx) = tx {
+            tx.send(()).ok();
+            format!("Kill requested for {}", entry.id)
+        } else {
+            format!("Kill already requested for {}", entry.id)
+        };
+        Ok(native_receipt(ProcessJobOperation::Kill, &entry, summary))
+    }
+
+    async fn restart(&self, id: ProcessJobId) -> Result<ProcessJobReceipt, RuntimeError> {
+        Ok(ProcessJobReceipt::unsupported(
+            ProcessJobOperation::Restart,
+            Some(id),
+            ProcessJobBackendKind::Native,
+            "restart",
+            "native process restart is not implemented yet",
+        ))
+    }
+
+    async fn write_stdin(
+        &self,
+        id: ProcessJobId,
+        data: Vec<u8>,
+        newline: bool,
+    ) -> Result<ProcessJobReceipt, RuntimeError> {
+        let entry = native_entry(&id)?;
+        if entry.status().is_done() {
+            return Err(RuntimeError::InvalidTool(format!("{} is not running ({})", entry.id, entry.status().label())));
+        }
+        let mut stdin = entry.stdin.lock().await;
+        let Some(stdin) = stdin.as_mut() else {
+            return Err(RuntimeError::InvalidTool(format!("{} has no open stdin", entry.id)));
+        };
+        stdin.write_all(&data).await.map_err(|e| RuntimeError::InvalidTool(e.to_string()))?;
+        if newline {
+            stdin.write_all(b"\n").await.map_err(|e| RuntimeError::InvalidTool(e.to_string()))?;
+        }
+        stdin.flush().await.map_err(|e| RuntimeError::InvalidTool(e.to_string()))?;
+        Ok(native_receipt(
+            ProcessJobOperation::WriteStdin,
+            &entry,
+            format!("Wrote {} bytes to {}", data.len() + usize::from(newline), entry.id),
+        ))
+    }
+
+    async fn close_stdin(&self, id: ProcessJobId) -> Result<ProcessJobReceipt, RuntimeError> {
+        let entry = native_entry(&id)?;
+        let mut stdin = entry.stdin.lock().await;
+        let summary = if stdin.take().is_some() {
+            format!("Closed stdin for {}", entry.id)
+        } else {
+            format!("Stdin already closed for {}", entry.id)
+        };
+        Ok(native_receipt(ProcessJobOperation::CloseStdin, &entry, summary))
+    }
+
+    async fn adopt(
+        &self,
+        _backend: ProcessJobBackendKind,
+        backend_ref: BackendRef,
+    ) -> Result<ProcessJobReceipt, RuntimeError> {
+        Ok(ProcessJobReceipt::unsupported(
+            ProcessJobOperation::Adopt,
+            None,
+            ProcessJobBackendKind::Native,
+            "adopt",
+            format!("native adoption is not implemented for {}", backend_ref.0),
+        ))
+    }
+
+    async fn garbage_collect(&self, _filter: ProcessJobFilter) -> Result<ProcessJobReceipt, RuntimeError> {
+        Ok(ProcessJobReceipt::unsupported(
+            ProcessJobOperation::GarbageCollect,
+            None,
+            ProcessJobBackendKind::Native,
+            "garbage_collect",
+            "native process garbage collection is not implemented yet",
+        ))
+    }
+}
+
+fn native_entry(id: &ProcessJobId) -> Result<Arc<ProcessEntry>, RuntimeError> {
+    ProcessTool::get(&id.0).ok_or_else(|| RuntimeError::InvalidTool(format!("Unknown process session_id: {}", id.0)))
+}
+
+fn native_receipt(
+    operation: ProcessJobOperation,
+    entry: &ProcessEntry,
+    summary: impl Into<String>,
+) -> ProcessJobReceipt {
+    ProcessJobReceipt {
+        operation,
+        id: Some(ProcessJobId(entry.id.clone())),
+        backend: Some(ProcessJobBackendKind::Native),
+        status: Some(status_to_job_status(&entry.status())),
+        backend_ref: entry.backend_ref.clone(),
+        log_refs: Vec::new(),
+        summary: summary.into(),
+        error: None,
+    }
+}
+
+fn status_to_job_status(status: &ProcessStatus) -> ProcessJobStatus {
+    match status {
+        ProcessStatus::Running => ProcessJobStatus::Running,
+        ProcessStatus::Exited { code, .. } => {
+            if code.unwrap_or_default() == 0 {
+                ProcessJobStatus::Succeeded { exit_code: *code }
+            } else {
+                ProcessJobStatus::Failed {
+                    exit_code: *code,
+                    reason: "process exited non-zero".to_string(),
+                }
+            }
+        }
+        ProcessStatus::Killed { .. } => ProcessJobStatus::Killed,
+        ProcessStatus::Failed { message, .. } => ProcessJobStatus::Failed {
+            exit_code: None,
+            reason: message.clone(),
+        },
+    }
+}
+
+fn spawn_from_start_request(request: &StartProcessJobRequest) -> Result<(String, tokio::process::Child), RuntimeError> {
+    match (request.shell_command.as_deref(), request.program.as_deref()) {
+        (Some(_), Some(_)) => {
+            Err(RuntimeError::InvalidTool("provide either shell_command or program, not both".to_string()))
+        }
+        (Some(command), None) => {
+            if let Some(reason) = crate::tools::bash::check_dangerous(command) {
+                return Err(RuntimeError::InvalidTool(format!("dangerous command blocked ({reason}): {command}")));
+            }
+            ProcessTool::spawn_shell_command(command)
+                .map(|child| (command.to_string(), child))
+                .map_err(tool_error_to_runtime)
+        }
+        (None, Some(program)) => ProcessTool::spawn_direct(program, &request.args)
+            .map(|child| (format_direct_command(program, &request.args), child))
+            .map_err(tool_error_to_runtime),
+        (None, None) => Err(RuntimeError::InvalidTool("missing command or program".to_string())),
+    }
+}
+
+fn tool_error_to_runtime(error: ToolResult) -> RuntimeError {
+    RuntimeError::InvalidTool(
+        error
+            .content
+            .iter()
+            .filter_map(|content| match content {
+                super::ToolResultContent::Text { text } => Some(text.as_str()),
+                _ => None,
+            })
+            .collect::<Vec<_>>()
+            .join("\n"),
+    )
 }
 
 pub struct ProcessTool {
@@ -325,7 +664,7 @@ impl ProcessTool {
         };
         let (kill_tx, kill_rx) = oneshot::channel();
         let id = Self::next_id();
-        let entry = Arc::new(ProcessEntry::new(id.clone(), display_command.clone(), stdin, kill_tx));
+        let entry = Arc::new(ProcessEntry::new(id.clone(), display_command.clone(), stdin, kill_tx, pid));
         Self::insert(entry.clone());
 
         if let Some(ref monitor) = self.process_monitor
@@ -661,6 +1000,41 @@ mod tests {
             .find(|word| word.starts_with("proc_"))
             .expect("result contains process id")
             .to_string()
+    }
+
+    fn native_start_request(command: &str) -> StartProcessJobRequest {
+        StartProcessJobRequest {
+            backend: ProcessJobBackendKind::Native,
+            command_preview: command.to_string(),
+            program: None,
+            args: Vec::new(),
+            shell_command: Some(command.to_string()),
+            cwd: clankers_runtime::process_jobs::ProcessJobCwd::Inherited,
+            owner: clankers_runtime::process_jobs::ProcessJobOwnerScope::DaemonGlobal,
+            resource_policy: clankers_runtime::process_jobs::ProcessJobResourcePolicy::default(),
+            notification_policy: clankers_runtime::process_jobs::ProcessJobNotificationPolicy::default(),
+            metadata: Default::default(),
+        }
+    }
+
+    #[tokio::test]
+    async fn native_process_job_service_preserves_default_start_list_wait_flow() {
+        let service = NativeProcessJobService;
+        let started = service.start(native_start_request("printf service-ok")).await.expect("start succeeds");
+        assert_eq!(started.backend, Some(ProcessJobBackendKind::Native));
+        let id = started.id.clone().expect("receipt has stable process id");
+
+        let listed = service
+            .list(ProcessJobFilter {
+                include_terminal: true,
+                ..ProcessJobFilter::default()
+            })
+            .await
+            .expect("list succeeds");
+        assert!(listed.iter().any(|summary| summary.id == id && summary.backend == ProcessJobBackendKind::Native));
+
+        let waited = service.wait(id, Some(Duration::from_secs(2))).await.expect("wait succeeds");
+        assert!(waited.summary.contains("service-ok"), "{}", waited.summary);
     }
 
     #[tokio::test]
