@@ -28,6 +28,6 @@
 
 ## Phase 5: Verification and Closeout
 
-- [ ] [serial] Add positive and negative fixture coverage for vocabulary, admission allow/deny, caveats, revocation, replay, delegation attenuation, confirmation ordering, receipt redaction, ledger facts, and remote proof sync. [covers=ucan-effect-permissions.*] [evidence=cargo-nextest-focused]
-- [ ] [serial] Run targeted Clankers checks plus the agreed `../ucan/` compatibility check. [covers=ucan-effect-permissions.ucan-adapter] [evidence=cargo-nextest-focused,ucan-compat-check,git-diff-check]
+- [x] [serial] Add positive and negative fixture coverage for vocabulary, admission allow/deny, caveats, revocation, replay, delegation attenuation, confirmation ordering, receipt redaction, ledger facts, and remote proof sync. [covers=ucan-effect-permissions.*] [evidence=cargo-nextest-focused] ✅ 1m (completed: 2026-05-17T05:06:18Z)
+- [x] [serial] Run targeted Clankers checks plus the agreed `../ucan/` compatibility check. [covers=ucan-effect-permissions.ucan-adapter] [evidence=cargo-nextest-focused,ucan-compat-check,git-diff-check] ✅ 1m (completed: 2026-05-17T05:06:18Z)
 - [ ] [serial] Sync specs, archive the change, and commit with validation receipts. [covers=ucan-effect-permissions.*] [evidence=openspec-validate-all,archive-commit]
