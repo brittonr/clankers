@@ -9,6 +9,7 @@
 
 mod capability;
 pub mod constants;
+pub mod effect_vocabulary;
 #[cfg(feature = "external-ucan")]
 pub mod external_adapter;
 pub mod revocation;
