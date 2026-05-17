@@ -17,7 +17,7 @@
 
 - [x] [serial] Route one low-risk built-in effect through UCAN admission before handler execution. [covers=ucan-effect-permissions.handler-admission.allow,ucan-effect-permissions.handler-admission.deny,effect-ability-runtime.handlers.ucan-denial] [evidence=runtime_admission-tests] ✅ completed: 2026-05-17T04:38:24Z
 - [x] [serial] Preserve existing human confirmation/admission ordering after UCAN allow decisions. [covers=ucan-effect-permissions.handler-admission.confirmation-order,effect-ability-runtime.handlers.confirmation-order] [evidence=confirmation-order-tests] ✅ 4m (started: 2026-05-17T04:43:12Z → completed: 2026-05-17T04:46:58Z)
-- [ ] [parallel] Add subagent/session delegation helpers that attenuate parent authority. [covers=ucan-effect-permissions.delegation.no-widening,ucan-effect-permissions.delegation.child-denied] [evidence=delegation-tests]
+- [x] [parallel] Add subagent/session delegation helpers that attenuate parent authority. [covers=ucan-effect-permissions.delegation.no-widening,ucan-effect-permissions.delegation.child-denied] [evidence=delegation-tests] ✅ 6m (started: 2026-05-17T04:48:31Z → completed: 2026-05-17T04:54:11Z)
 - [ ] [parallel] Add replay/revocation admission integration using caller-owned UCAN hooks. [covers=ucan-effect-permissions.replay-revocation.duplicate,ucan-effect-permissions.replay-revocation.revoked] [evidence=replay-revocation-tests]
 
 ## Phase 4: Receipts, Ledger, and Remote Sync
