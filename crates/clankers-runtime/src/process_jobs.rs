@@ -498,6 +498,7 @@ pub struct ProcessJobNotificationEvent {
     pub event_id: ProcessJobEventId,
     pub id: ProcessJobId,
     pub backend: ProcessJobBackendKind,
+    pub owner: ProcessJobOwnerScope,
     pub status: ProcessJobStatus,
     pub created_at: DateTime<Utc>,
     pub summary: String,
@@ -562,6 +563,11 @@ pub trait ProcessJobStore: Send + Sync {
     async fn get(&self, id: ProcessJobId) -> Result<Option<ProcessJobSummary>, RuntimeError>;
     async fn list(&self, filter: ProcessJobFilter) -> Result<Vec<ProcessJobSummary>, RuntimeError>;
     async fn record_notification(&self, event: ProcessJobNotificationEvent) -> Result<(), RuntimeError>;
+    async fn list_notifications(
+        &self,
+        caller: ProcessJobCallerScope,
+        after: Option<ProcessJobEventId>,
+    ) -> Result<Vec<ProcessJobNotificationEvent>, RuntimeError>;
 }
 
 /// Log storage boundary. Native implementations can append files; pueue/systemd can store
@@ -582,6 +588,23 @@ pub trait ProcessJobLogStore: Send + Sync {
 #[async_trait]
 pub trait ProcessJobNotificationSink: Send + Sync {
     async fn deliver(&self, event: ProcessJobNotificationEvent) -> Result<(), RuntimeError>;
+}
+
+pub async fn persist_and_deliver_notification(
+    store: &dyn ProcessJobStore,
+    sink: &dyn ProcessJobNotificationSink,
+    event: ProcessJobNotificationEvent,
+) -> Result<(), RuntimeError> {
+    store.record_notification(event.clone()).await?;
+    sink.deliver(event).await
+}
+
+pub async fn replay_authorized_notifications(
+    store: &dyn ProcessJobStore,
+    caller: ProcessJobCallerScope,
+    after: Option<ProcessJobEventId>,
+) -> Result<Vec<ProcessJobNotificationEvent>, RuntimeError> {
+    store.list_notifications(caller, after).await
 }
 
 /// Projection boundary for agent/TUI/daemon surfaces.
@@ -762,6 +785,25 @@ mod tests {
             self.notifications.lock().expect("fake notification lock poisoned").push(event);
             Ok(())
         }
+
+        async fn list_notifications(
+            &self,
+            caller: ProcessJobCallerScope,
+            after: Option<ProcessJobEventId>,
+        ) -> Result<Vec<ProcessJobNotificationEvent>, RuntimeError> {
+            let notifications = self.notifications.lock().expect("fake notification lock poisoned");
+            let mut past_cursor = after.is_none();
+            Ok(notifications
+                .iter()
+                .filter_map(|event| {
+                    if !past_cursor {
+                        past_cursor = after.as_ref() == Some(&event.event_id);
+                        return None;
+                    }
+                    caller.can_access(&event.owner, ProcessJobOperation::Poll, event.backend).then_some(event.clone())
+                })
+                .collect())
+        }
     }
 
     #[derive(Default)]
@@ -883,6 +925,7 @@ mod tests {
             event_id: ProcessJobEventId("evt_1".to_string()),
             id: id.clone(),
             backend: ProcessJobBackendKind::Native,
+            owner: ProcessJobOwnerScope::Session("sess".to_string()),
             status: ProcessJobStatus::Running,
             created_at: Utc::now(),
             summary: "ready".to_string(),
@@ -897,6 +940,105 @@ mod tests {
         assert_eq!(store.get(id).await.expect("store get works"), Some(summary.clone()));
         assert!(projection.project_summary(&summary).contains("proc_1"));
         assert_eq!(projection.project_receipt(&receipt), "Kill:killed");
+    }
+
+    #[derive(Default)]
+    struct FailingSink;
+
+    #[async_trait]
+    impl ProcessJobNotificationSink for FailingSink {
+        async fn deliver(&self, _event: ProcessJobNotificationEvent) -> Result<(), RuntimeError> {
+            Err(RuntimeError::InvalidTool("delivery unavailable".to_string()))
+        }
+    }
+
+    fn notification_event(event_id: &str, owner: ProcessJobOwnerScope) -> ProcessJobNotificationEvent {
+        ProcessJobNotificationEvent {
+            event_id: ProcessJobEventId(event_id.to_string()),
+            id: ProcessJobId("proc_notify".to_string()),
+            backend: ProcessJobBackendKind::Native,
+            owner,
+            status: ProcessJobStatus::Succeeded { exit_code: Some(0) },
+            created_at: Utc::now(),
+            summary: "process completed".to_string(),
+            log_excerpt: Some("done".to_string()),
+            log_refs: vec![ProcessJobLogRef {
+                stream: ProcessJobStream::Combined,
+                reference: "native:proc_notify/combined.log".to_string(),
+                retained_until: None,
+                max_bytes: Some(1024),
+            }],
+        }
+    }
+
+    #[tokio::test]
+    async fn notification_events_persist_before_delivery_and_replay_on_authorized_reattach() {
+        let store = FakeStore::default();
+        let sink = FakeSink::default();
+        let owner = ProcessJobOwnerScope::Session("sess".to_string());
+        let event = notification_event("evt_notify_1", owner.clone());
+
+        persist_and_deliver_notification(&store, &sink, event.clone())
+            .await
+            .expect("persist and deliver succeeds");
+        assert_eq!(sink.delivered.lock().expect("sink lock").as_slice(), &[event.event_id.clone()]);
+
+        let authorized = ProcessJobCallerScope {
+            session_id: Some("sess".to_string()),
+            capabilities: ProcessJobCapabilitySet::observe_only(),
+            ..ProcessJobCallerScope::default()
+        };
+        let replayed =
+            replay_authorized_notifications(&store, authorized, None).await.expect("authorized replay succeeds");
+        assert_eq!(replayed, vec![event.clone()]);
+
+        let unauthorized = ProcessJobCallerScope {
+            session_id: Some("other".to_string()),
+            capabilities: ProcessJobCapabilitySet::observe_only(),
+            ..ProcessJobCallerScope::default()
+        };
+        assert!(
+            replay_authorized_notifications(&store, unauthorized, None)
+                .await
+                .expect("unauthorized replay is empty")
+                .is_empty()
+        );
+
+        let after = replay_authorized_notifications(
+            &store,
+            ProcessJobCallerScope {
+                session_id: Some("sess".to_string()),
+                capabilities: ProcessJobCapabilitySet::observe_only(),
+                ..ProcessJobCallerScope::default()
+            },
+            Some(ProcessJobEventId("evt_notify_1".to_string())),
+        )
+        .await
+        .expect("cursor replay succeeds");
+        assert!(after.is_empty());
+    }
+
+    #[tokio::test]
+    async fn notification_persistence_survives_transient_delivery_failure() {
+        let store = FakeStore::default();
+        let event = notification_event("evt_notify_fail", ProcessJobOwnerScope::DaemonGlobal);
+        let error = persist_and_deliver_notification(&store, &FailingSink, event.clone())
+            .await
+            .expect_err("delivery failure is returned");
+        assert!(error.to_string().contains("delivery unavailable"));
+
+        let replayed = replay_authorized_notifications(
+            &store,
+            ProcessJobCallerScope {
+                daemon_global: true,
+                capabilities: ProcessJobCapabilitySet::observe_only(),
+                ..ProcessJobCallerScope::default()
+            },
+            None,
+        )
+        .await
+        .expect("persisted event replays after failure");
+        assert_eq!(replayed, vec![event]);
     }
 
     #[tokio::test]
