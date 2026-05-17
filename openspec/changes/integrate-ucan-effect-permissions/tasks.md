@@ -5,7 +5,7 @@
 
 ## Phase 2: Dependency and Adapter Seam
 
-- [ ] [serial] Add a Clankers UCAN authorization adapter that consumes only public `../ucan/` APIs. [covers=ucan-effect-permissions.ucan-adapter.public-api] [evidence=cargo-check-adapter,cargo-test-adapter]
+- [x] [serial] Add a Clankers UCAN authorization adapter that consumes only public `../ucan/` APIs. [covers=ucan-effect-permissions.ucan-adapter.public-api] [evidence=cargo-check-adapter,cargo-test-adapter] ✅ 6m (started: 2026-05-17T03:52:28Z → completed: 2026-05-17T03:58:42Z)
 - [ ] [serial] Record the UCAN source/pinning strategy and unsupported-sibling-checkout release behavior. [covers=ucan-effect-permissions.ucan-adapter.reproducible-source] [evidence=docs-or-cargo-nix-source-plan]
 - [ ] [serial] Define stable Clankers ability strings and URI normalization fixtures for file, shell, network, secret, browser, scheduler, remote, provider, delivery, artifact, plugin, and MCP effects. [covers=ucan-effect-permissions.effect-vocabulary.known-effect,ucan-effect-permissions.effect-vocabulary.unknown-effect] [evidence=vocabulary-fixture-tests]
 - [ ] [serial] Define deterministic path, command, timeout, and max-bytes caveat hooks. [covers=ucan-effect-permissions.caveat-policy.path-command] [evidence=caveat-policy-tests]

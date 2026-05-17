@@ -12,6 +12,11 @@ serde = { workspace = true }
 redb = "2.6"
 tracing = { workspace = true }
 rand = { workspace = true }
+ucan = { path = "../../../ucan", optional = true }
+
+[features]
+default = []
+external-ucan = ["dep:ucan"]
 
 [dev-dependencies]
 tokio = { workspace = true }

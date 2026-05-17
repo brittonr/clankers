@@ -9,6 +9,8 @@
 
 mod capability;
 pub mod constants;
+#[cfg(feature = "external-ucan")]
+pub mod external_adapter;
 pub mod revocation;
 pub mod utils;
 
