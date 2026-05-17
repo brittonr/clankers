@@ -572,6 +572,106 @@ fn stored_record_line(record: &StoredProcessJobRecord) -> String {
     )
 }
 
+fn native_reconciliation_status(status: &StoredProcessJobStatus) -> bool {
+    matches!(
+        status,
+        StoredProcessJobStatus::Pending | StoredProcessJobStatus::Running | StoredProcessJobStatus::Waiting
+    )
+}
+
+fn native_terminal_status(status: &StoredProcessJobStatus) -> bool {
+    matches!(
+        status,
+        StoredProcessJobStatus::Succeeded { .. }
+            | StoredProcessJobStatus::Failed { .. }
+            | StoredProcessJobStatus::Killed
+            | StoredProcessJobStatus::Cancelled
+            | StoredProcessJobStatus::LostAfterRestart
+            | StoredProcessJobStatus::BackendUnavailable { .. }
+    )
+}
+
+#[cfg(unix)]
+fn native_pid_is_alive(pid: u32) -> bool {
+    let pid = match libc::pid_t::try_from(pid) {
+        Ok(pid) if pid > 0 => pid,
+        _ => return false,
+    };
+    // SAFETY: kill(pid, 0) does not send a signal; it only asks the kernel whether
+    // the process exists and is signalable from this daemon's credentials.
+    unsafe { libc::kill(pid, 0) == 0 || std::io::Error::last_os_error().raw_os_error() == Some(libc::EPERM) }
+}
+
+#[cfg(not(unix))]
+fn native_pid_is_alive(_pid: u32) -> bool {
+    false
+}
+
+fn reconciled_native_record(mut record: StoredProcessJobRecord) -> StoredProcessJobRecord {
+    if record.backend != StoredProcessJobBackendKind::Native {
+        return record;
+    }
+
+    let now = Utc::now();
+    if native_terminal_status(&record.status) {
+        record.safe_metadata.insert("reconciliation".to_string(), "exited".to_string());
+        record.completed_at.get_or_insert(now);
+        record.updated_at = now;
+        return record;
+    }
+
+    if !native_reconciliation_status(&record.status) {
+        return record;
+    }
+
+    match record.os_pid {
+        Some(pid) if native_pid_is_alive(pid) => {
+            if record.log_refs.is_empty() {
+                record.status = StoredProcessJobStatus::ReattachedLogIncomplete;
+                record.safe_metadata.insert("reconciliation".to_string(), "reattached-log-incomplete".to_string());
+            } else {
+                record.status = StoredProcessJobStatus::Running;
+                record.safe_metadata.insert("reconciliation".to_string(), "reattached".to_string());
+            }
+            record.completed_at = None;
+        }
+        _ => {
+            record.status = StoredProcessJobStatus::LostAfterRestart;
+            record.completed_at = Some(now);
+            record.safe_metadata.insert("reconciliation".to_string(), "lost-after-restart".to_string());
+        }
+    }
+    record.updated_at = now;
+    record
+}
+
+async fn reconcile_native_record(db: &clankers_db::Db, record: StoredProcessJobRecord) -> StoredProcessJobRecord {
+    let reconciled = reconciled_native_record(record.clone());
+    if reconciled != record {
+        if let Err(error) = db.async_process_jobs().upsert(reconciled.clone()).await {
+            tracing::warn!("failed to persist reconciled process job metadata: {error}");
+            return record;
+        }
+    }
+    reconciled
+}
+
+pub(crate) async fn reconcile_durable_native_process_jobs(db: &clankers_db::Db) -> Vec<StoredProcessJobRecord> {
+    match db.async_process_jobs().list().await {
+        Ok(records) => {
+            let mut reconciled = Vec::with_capacity(records.len());
+            for record in records {
+                reconciled.push(reconcile_native_record(db, record).await);
+            }
+            reconciled
+        }
+        Err(error) => {
+            tracing::warn!("failed to reconcile durable process job metadata: {error}");
+            Vec::new()
+        }
+    }
+}
+
 async fn persist_entry(db: Option<&clankers_db::Db>, entry: &ProcessEntry) {
     let Some(db) = db else {
         return;
@@ -584,7 +684,8 @@ async fn persist_entry(db: Option<&clankers_db::Db>, entry: &ProcessEntry) {
 async fn durable_record(db: Option<&clankers_db::Db>, id: &str) -> Option<StoredProcessJobRecord> {
     let db = db?;
     match db.async_process_jobs().get(id.to_string()).await {
-        Ok(record) => record,
+        Ok(Some(record)) => Some(reconcile_native_record(db, record).await),
+        Ok(None) => None,
         Err(error) => {
             tracing::warn!("failed to read durable process job metadata: {error}");
             None
@@ -830,15 +931,13 @@ impl ProcessTool {
         entries.sort_by_key(|entry| entry.id.clone());
         let mut durable = Vec::new();
         if let Some(db) = ctx.db() {
-            match db.async_process_jobs().list().await {
-                Ok(records) => {
-                    let live_ids =
-                        entries.iter().map(|entry| entry.id.as_str()).collect::<std::collections::BTreeSet<_>>();
-                    durable = records.into_iter().filter(|record| !live_ids.contains(record.id.as_str())).collect();
-                    durable.sort_by(|left, right| left.id.cmp(&right.id));
-                }
-                Err(error) => tracing::warn!("failed to read durable process job metadata: {error}"),
-            }
+            let live_ids = entries.iter().map(|entry| entry.id.as_str()).collect::<std::collections::BTreeSet<_>>();
+            durable = reconcile_durable_native_process_jobs(db)
+                .await
+                .into_iter()
+                .filter(|record| !live_ids.contains(record.id.as_str()))
+                .collect();
+            durable.sort_by(|left, right| left.id.cmp(&right.id));
         }
         if entries.is_empty() && durable.is_empty() {
             return ToolResult::text("No background processes.");
@@ -1261,6 +1360,85 @@ mod tests {
         assert!(text(&listed).contains("proc_durable_only"), "{}", text(&listed));
         let logged = tool.execute(&ctx, json!({"action": "log", "session_id": "proc_durable_only"})).await;
         assert!(text(&logged).contains("durable status"), "{}", text(&logged));
+    }
+
+    #[tokio::test]
+    async fn process_list_reconciles_durable_native_restart_states() {
+        let db = clankers_db::Db::in_memory().expect("db opens");
+        let ctx = make_ctx_with_db(db.clone());
+        let tool = ProcessTool::new();
+        let current_pid = std::process::id();
+
+        let mut reattached = StoredProcessJobRecord::new_native(
+            "proc_reattached",
+            "sleep still-running",
+            StoredProcessJobOwnerScope::DaemonGlobal,
+        );
+        reattached.status = StoredProcessJobStatus::Running;
+        reattached.os_pid = Some(current_pid);
+        reattached.log_refs = vec![StoredProcessJobLogRef {
+            stream: StoredProcessJobStream::Combined,
+            reference: "native:proc_reattached/combined.log".to_string(),
+            retained_until: None,
+            max_bytes: Some(1),
+        }];
+
+        let mut log_incomplete = StoredProcessJobRecord::new_native(
+            "proc_log_incomplete",
+            "sleep no-log",
+            StoredProcessJobOwnerScope::DaemonGlobal,
+        );
+        log_incomplete.status = StoredProcessJobStatus::Running;
+        log_incomplete.os_pid = Some(current_pid);
+
+        let mut lost =
+            StoredProcessJobRecord::new_native("proc_lost", "sleep gone", StoredProcessJobOwnerScope::DaemonGlobal);
+        lost.status = StoredProcessJobStatus::Running;
+        lost.os_pid = None;
+
+        let mut exited =
+            StoredProcessJobRecord::new_native("proc_exited", "printf done", StoredProcessJobOwnerScope::DaemonGlobal);
+        exited.status = StoredProcessJobStatus::Succeeded { exit_code: Some(0) };
+
+        for record in [reattached, log_incomplete, lost, exited] {
+            db.async_process_jobs().upsert(record).await.expect("insert restart record");
+        }
+
+        let listed = tool.execute(&ctx, json!({"action": "list"})).await;
+        assert!(!listed.is_error, "{listed:?}");
+        let listed_text = text(&listed);
+        assert!(listed_text.contains("proc_reattached"), "{listed_text}");
+        assert!(listed_text.contains("reattached-log-incomplete"), "{listed_text}");
+        assert!(listed_text.contains("lost-after-restart"), "{listed_text}");
+
+        let reattached = db
+            .async_process_jobs()
+            .get("proc_reattached".to_string())
+            .await
+            .expect("db read")
+            .expect("reattached record");
+        assert_eq!(reattached.status, StoredProcessJobStatus::Running);
+        assert_eq!(reattached.safe_metadata.get("reconciliation").map(String::as_str), Some("reattached"));
+
+        let log_incomplete = db
+            .async_process_jobs()
+            .get("proc_log_incomplete".to_string())
+            .await
+            .expect("db read")
+            .expect("log incomplete record");
+        assert_eq!(log_incomplete.status, StoredProcessJobStatus::ReattachedLogIncomplete);
+
+        let lost = db.async_process_jobs().get("proc_lost".to_string()).await.expect("db read").expect("lost record");
+        assert_eq!(lost.status, StoredProcessJobStatus::LostAfterRestart);
+        assert!(lost.completed_at.is_some());
+
+        let exited = db
+            .async_process_jobs()
+            .get("proc_exited".to_string())
+            .await
+            .expect("db read")
+            .expect("exited record");
+        assert_eq!(exited.safe_metadata.get("reconciliation").map(String::as_str), Some("exited"));
     }
 
     #[tokio::test]

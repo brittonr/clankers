@@ -88,6 +88,10 @@ pub(crate) fn build_agent_with_tools(
     // Attach the global database so the agent can read memories and record usage
     if let Some(db) = db {
         agent_builder = agent_builder.with_db(db.clone());
+        let db = db.clone();
+        tokio::spawn(async move {
+            crate::tools::process::reconcile_durable_native_process_jobs(&db).await;
+        });
     }
 
     // Build the agent (automatically wires routing and cost tracking from settings)
