@@ -613,6 +613,37 @@ mod tests {
     }
 
     #[test]
+    fn test_follow_up_dispatch_ack_does_not_satisfy_real_prompt_completion() {
+        let mut ctrl = make_test_controller();
+        ctrl.auto_test_enabled = true;
+        ctrl.auto_test_command = Some("cargo test".to_string());
+
+        let (effect_id, prompt) = match ctrl.check_post_prompt(false) {
+            PostPromptAction::RunAutoTest {
+                pending_work_id,
+                prompt,
+            } => (pending_work_id, prompt),
+            other => panic!("expected RunAutoTest, got {other:?}"),
+        };
+
+        assert!(ctrl.start_embedded_prompt_with_follow_up(&prompt, 0, Some(effect_id)));
+        ctrl.ack_follow_up_dispatch(effect_id, ShellFollowUpDispatch::Accepted);
+
+        assert!(ctrl.busy);
+        assert!(ctrl.core_state.busy);
+        assert!(ctrl.core_state.pending_prompt.is_some());
+        assert_eq!(ctrl.pending_dispatched_follow_up_id(), Some(effect_id));
+        assert!(ctrl.core_state.pending_follow_up_state.is_some());
+
+        ctrl.complete_dispatched_follow_up(effect_id, ShellPromptCompletion::Succeeded);
+
+        assert!(!ctrl.busy);
+        assert!(!ctrl.core_state.busy);
+        assert!(ctrl.core_state.pending_prompt.is_none());
+        assert!(ctrl.core_state.pending_follow_up_state.is_none());
+    }
+
+    #[test]
     fn test_follow_up_dispatch_rejection_finishes_loop_and_emits_message() {
         const LOOP_ITERATION_LIMIT: u32 = 2;
 

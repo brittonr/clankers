@@ -1308,6 +1308,30 @@ mod tests {
     }
 
     #[test]
+    fn repeated_prompt_correlation_rejects_prior_completion_for_later_request() {
+        let mut state = EngineState::new();
+        state.next_model_request_sequence = 2;
+        let submitted = reduce(&state, &EngineInput::SubmitUserPrompt {
+            submission: submission_with_session("session-123"),
+        });
+        let current_request_id = request_model_effect(&submitted).request_id.clone();
+        assert_eq!(current_request_id, expected_model_request_id(2));
+        assert_eq!(submitted.next_state.pending_model_request, Some(current_request_id.clone()));
+
+        let stale_completion = reduce(&submitted.next_state, &EngineInput::ModelCompleted {
+            request_id: expected_model_request_id(1),
+            response: text_model_response("stale answer", StopReason::Stop),
+        });
+
+        assert_rejected_without_state_change(
+            &submitted.next_state,
+            &stale_completion,
+            EngineRejection::CorrelationMismatch,
+        );
+        assert_eq!(submitted.next_state.pending_model_request, Some(current_request_id));
+    }
+
+    #[test]
     fn submit_user_prompt_rejects_busy_state() {
         let mut state = EngineState::new();
         state.phase = EngineTurnPhase::WaitingForModel;

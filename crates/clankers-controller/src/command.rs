@@ -689,6 +689,8 @@ mod tests {
     use clankers_provider::ThinkingLevel;
 
     use super::*;
+    use crate::PostPromptAction;
+    use crate::ShellFollowUpDispatch;
     use crate::ToolRebuilder;
     use crate::config::ControllerConfig;
     use crate::test_helpers::make_test_controller;
@@ -1088,6 +1090,50 @@ mod tests {
                 session_id: Some("test-session".to_string()),
             },
         ]);
+    }
+
+    #[tokio::test]
+    async fn rejected_follow_up_does_not_block_later_prompt_streaming() {
+        let recorded_requests = Arc::new(Mutex::new(Vec::new()));
+        let provider = Arc::new(StreamingPromptProvider {
+            requests: Arc::clone(&recorded_requests),
+        });
+        let mut ctrl = make_test_controller_with_provider(provider);
+        ctrl.auto_test_enabled = true;
+        ctrl.auto_test_command = Some("cargo test".to_string());
+
+        let pending_work_id = match ctrl.check_post_prompt(false) {
+            PostPromptAction::RunAutoTest { pending_work_id, .. } => pending_work_id,
+            other => panic!("expected RunAutoTest, got {other:?}"),
+        };
+        ctrl.ack_follow_up_dispatch(pending_work_id, ShellFollowUpDispatch::rejected("channel closed"));
+        let rejection_events = ctrl.drain_events();
+        assert!(
+            rejection_events
+                .iter()
+                .any(|event| matches!(event, DaemonEvent::SystemMessage { is_error: true, .. }))
+        );
+        assert!(!ctrl.busy);
+        assert!(!ctrl.core_state.busy);
+        assert!(ctrl.core_state.pending_prompt.is_none());
+        assert!(ctrl.core_state.pending_follow_up_state.is_none());
+
+        ctrl.handle_command(SessionCommand::Prompt {
+            text: "after rejection".to_string(),
+            images: vec![],
+        })
+        .await;
+        let prompt_events = ctrl.drain_events();
+
+        assert_prompt_stream_completed_after_delta(&prompt_events, "stream:after rejection");
+        assert_eq!(
+            recorded_requests
+                .lock()
+                .unwrap_or_else(|poisoned| poisoned.into_inner())
+                .last()
+                .map(|request| request.prompt_text.as_str()),
+            Some("after rejection")
+        );
     }
 
     fn assert_prompt_stream_completed_after_delta(events: &[DaemonEvent], expected_delta: &str) {
