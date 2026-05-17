@@ -49,13 +49,13 @@ impl UcanCapabilityGate {
         let Some(requirement) = process_action_requirement(action) else {
             return Err(format!("Process action not authorized: {action}"));
         };
-        if requirement.allows(self) {
+        if requirement.allows_for_input(self, input) {
             return Ok(());
         }
         Err(format!(
             "Process action '{}' not authorized by capability token; requires {}",
             action,
-            requirement.description()
+            requirement.description(input)
         ))
     }
 }
@@ -71,9 +71,21 @@ impl ProcessActionRequirement {
         self.required_tools.iter().all(|tool| gate.authorizes_tool(tool))
     }
 
-    fn description(&self) -> String {
-        format!("{} capability ({})", process_operation_label(self.operation), self.required_tools.join(" + "))
+    fn allows_for_input(&self, gate: &UcanCapabilityGate, input: &Value) -> bool {
+        self.allows(gate) && (!requires_backend_selection(input) || gate.authorizes_tool("process:backend"))
     }
+
+    fn description(&self, input: &Value) -> String {
+        let mut tools = self.required_tools.to_vec();
+        if requires_backend_selection(input) {
+            tools.push("process:backend");
+        }
+        format!("{} capability ({})", process_operation_label(self.operation), tools.join(" + "))
+    }
+}
+
+fn requires_backend_selection(input: &Value) -> bool {
+    input.get("backend").and_then(|backend| backend.as_str()).is_some_and(|backend| backend != "native")
 }
 
 fn process_action_requirement(action: &str) -> Option<ProcessActionRequirement> {
@@ -256,6 +268,43 @@ mod tests {
         assert!(observe_only.check_tool_call("process", &json!({"action": "list"})).is_ok());
         assert!(observe_only.check_tool_call("process", &json!({"action": "log"})).is_err());
         assert!(logs_only.check_tool_call("process", &json!({"action": "log"})).is_err());
+    }
+
+    #[test]
+    fn process_stdin_requires_mutate_and_stdin_caps() {
+        let mutate_only = UcanCapabilityGate::new(vec![Capability::ToolUse {
+            tool_pattern: "process:mutate".into(),
+        }]);
+        let stdin_only = UcanCapabilityGate::new(vec![Capability::ToolUse {
+            tool_pattern: "process:stdin".into(),
+        }]);
+        let both = UcanCapabilityGate::new(vec![Capability::ToolUse {
+            tool_pattern: "process:mutate,process:stdin".into(),
+        }]);
+
+        for action in ["write", "submit", "close"] {
+            assert!(mutate_only.check_tool_call("process", &json!({"action": action})).is_err());
+            assert!(stdin_only.check_tool_call("process", &json!({"action": action})).is_err());
+            assert!(both.check_tool_call("process", &json!({"action": action})).is_ok());
+        }
+    }
+
+    #[test]
+    fn non_native_backend_selection_requires_backend_cap() {
+        let start_only = UcanCapabilityGate::new(vec![Capability::ToolUse {
+            tool_pattern: "process:start".into(),
+        }]);
+        let start_with_backend = UcanCapabilityGate::new(vec![Capability::ToolUse {
+            tool_pattern: "process:start,process:backend".into(),
+        }]);
+
+        assert!(start_only.check_tool_call("process", &json!({"action": "start", "backend": "native"})).is_ok());
+        assert!(start_only.check_tool_call("process", &json!({"action": "start", "backend": "pueue"})).is_err());
+        assert!(
+            start_with_backend
+                .check_tool_call("process", &json!({"action": "start", "backend": "pueue"}))
+                .is_ok()
+        );
     }
 
     #[test]
