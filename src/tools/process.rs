@@ -56,6 +56,7 @@ use crate::util::ansi::strip_ansi;
 const DEFAULT_LOG_LIMIT: usize = 200;
 const MAX_COMMAND_PREVIEW_LEN: usize = 200;
 const MAX_NATIVE_ACTIVE_PROCESS_JOBS: usize = 32;
+const NATIVE_KILL_GRACE: Duration = Duration::from_secs(2);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 struct NativeAdmissionDecision {
@@ -138,9 +139,35 @@ impl Drop for NativeAdmissionReservation {
 #[derive(Clone, Debug)]
 enum ProcessStatus {
     Running,
-    Exited { code: Option<i32>, elapsed: Duration },
-    Killed { elapsed: Duration },
-    Failed { message: String, elapsed: Duration },
+    Exited {
+        code: Option<i32>,
+        elapsed: Duration,
+    },
+    Killed {
+        elapsed: Duration,
+        outcome: NativeTerminationOutcome,
+    },
+    Failed {
+        message: String,
+        elapsed: Duration,
+    },
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum NativeTerminationOutcome {
+    GracefulTerm,
+    EscalatedKill,
+    DirectKill,
+}
+
+impl NativeTerminationOutcome {
+    fn label(self) -> &'static str {
+        match self {
+            Self::GracefulTerm => "graceful-term",
+            Self::EscalatedKill => "escalated-sigkill",
+            Self::DirectKill => "direct-kill",
+        }
+    }
 }
 
 impl ProcessStatus {
@@ -158,7 +185,7 @@ impl ProcessStatus {
                     format_duration(*elapsed)
                 )
             }
-            Self::Killed { elapsed } => format!("killed@{}", format_duration(*elapsed)),
+            Self::Killed { elapsed, outcome } => format!("killed({})@{}", outcome.label(), format_duration(*elapsed)),
             Self::Failed { message, elapsed } => format!("failed@{}({message})", format_duration(*elapsed)),
         }
     }
@@ -1325,33 +1352,37 @@ fn spawn_waiter(
                 }
             }
             _ = &mut kill_rx => {
-                terminate_process_group(pid, &mut child).await;
-                entry.set_status(ProcessStatus::Killed { elapsed: started_at.elapsed() });
+                let outcome = terminate_process_group(pid, &mut child).await;
+                entry.set_status(ProcessStatus::Killed {
+                    elapsed: started_at.elapsed(),
+                    outcome,
+                });
             }
         }
         persist_entry(db.as_ref(), &entry).await;
     });
 }
 
-async fn terminate_process_group(pid: Option<u32>, child: &mut tokio::process::Child) {
+async fn terminate_process_group(pid: Option<u32>, child: &mut tokio::process::Child) -> NativeTerminationOutcome {
     #[cfg(unix)]
     if let Some(pid) = pid.and_then(|pid| i32::try_from(pid).ok()) {
         // Negative PID targets the process group whose ID is `pid`.
         unsafe {
             libc::kill(-pid, libc::SIGTERM);
         }
-        if tokio::time::timeout(Duration::from_secs(2), child.wait()).await.is_ok() {
-            return;
+        if tokio::time::timeout(NATIVE_KILL_GRACE, child.wait()).await.is_ok() {
+            return NativeTerminationOutcome::GracefulTerm;
         }
         unsafe {
             libc::kill(-pid, libc::SIGKILL);
         }
         let _ = child.wait().await;
-        return;
+        return NativeTerminationOutcome::EscalatedKill;
     }
 
     child.start_kill().ok();
     let _ = child.wait().await;
+    NativeTerminationOutcome::DirectKill
 }
 
 fn format_direct_command(program: &str, args: &[String]) -> String {
@@ -1708,7 +1739,18 @@ mod tests {
         let killed = tool.execute(&make_ctx(), json!({"action": "kill", "session_id": id})).await;
         assert!(!killed.is_error, "{killed:?}");
         let waited = tool.execute(&make_ctx(), json!({"action": "wait", "session_id": id, "timeout": 2})).await;
-        assert!(text(&waited).contains("killed"), "{}", text(&waited));
+        assert!(text(&waited).contains("killed(graceful-term)"), "{}", text(&waited));
+    }
+
+    #[tokio::test]
+    async fn kill_escalates_process_group_after_grace_period() {
+        let tool = ProcessTool::new();
+        let started = tool.execute(&make_ctx(), json!({"action": "start", "command": "trap '' TERM; sleep 10"})).await;
+        let id = extract_process_id(&started);
+        let killed = tool.execute(&make_ctx(), json!({"action": "kill", "session_id": id})).await;
+        assert!(!killed.is_error, "{killed:?}");
+        let waited = tool.execute(&make_ctx(), json!({"action": "wait", "session_id": id, "timeout": 4})).await;
+        assert!(text(&waited).contains("killed(escalated-sigkill)"), "{}", text(&waited));
     }
 
     #[tokio::test]
