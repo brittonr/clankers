@@ -5,7 +5,7 @@
 
 ## Phase 2: Persistence and migration
 
-- [ ] [depends:ledger-records] Write typed ledger facts alongside existing session JSONL without breaking legacy replay. [covers=typed-durable-session-ledger.compat]
+- [x] [depends:ledger-records] Write typed ledger facts alongside existing session JSONL without breaking legacy replay. [covers=typed-durable-session-ledger.compat] ✅ 1m 57s (started: 2026-05-17T00:08:35Z → completed: 2026-05-17T00:10:32Z; evidence: `cargo test -p clankers-session typed_ledger_sidecar -- --nocapture`; `cargo test -p clankers-session test_list_sessions_filters_non_jsonl -- --nocapture`; `cargo test -p clankers-session`)
 - [ ] [depends:ledger-write] Add schema migration fixtures and old-session compatibility tests. [covers=typed-durable-session-ledger.migration]
 - [ ] [depends:ledger-write] Add structured pending-change/todo ledger records for non-destructive refactor and OpenSpec work sessions. [covers=typed-durable-session-ledger.structured-work]
 

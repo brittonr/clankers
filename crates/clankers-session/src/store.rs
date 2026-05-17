@@ -12,6 +12,9 @@ use clanker_message::Content;
 use super::entry::SessionEntry;
 use crate::error::Result;
 use crate::error::session_err;
+use crate::ledger::LedgerRecord;
+use crate::ledger::append_ledger_record;
+use crate::ledger::read_ledger_records;
 
 /// Read all entries from a session JSONL file
 pub fn read_entries(path: &Path) -> Result<Vec<SessionEntry>> {
@@ -40,6 +43,29 @@ pub fn append_entry(path: &Path, entry: &SessionEntry) -> Result<()> {
     Ok(())
 }
 
+/// Return the sidecar JSONL ledger path for a legacy session JSONL path.
+#[must_use]
+pub fn typed_ledger_file_path(session_path: &Path) -> PathBuf {
+    let file_name = session_path
+        .file_name()
+        .and_then(|name| name.to_str())
+        .map(|name| format!("{name}.ledger.jsonl"))
+        .unwrap_or_else(|| "session.ledger.jsonl".to_owned());
+    session_path.with_file_name(file_name)
+}
+
+/// Append a typed ledger fact beside, not inside, the legacy session JSONL.
+pub fn append_typed_ledger_fact(session_path: &Path, record: &LedgerRecord) -> Result<PathBuf> {
+    let ledger_path = typed_ledger_file_path(session_path);
+    append_ledger_record(&ledger_path, record)?;
+    Ok(ledger_path)
+}
+
+/// Read typed ledger facts stored beside a legacy session JSONL file.
+pub fn read_typed_ledger_facts(session_path: &Path) -> Result<Vec<LedgerRecord>> {
+    read_ledger_records(&typed_ledger_file_path(session_path))
+}
+
 /// Generate session file path (JSONL format — legacy).
 pub fn session_file_path(sessions_dir: &Path, cwd: &str, session_id: &str) -> PathBuf {
     let encoded_cwd = encode_cwd(cwd);
@@ -61,7 +87,9 @@ fn encode_cwd(cwd: &str) -> String {
 
 /// Returns true if the path has a recognized session file extension.
 fn is_session_file(path: &Path) -> bool {
-    path.extension().is_some_and(|ext| ext == "jsonl" || ext == "automerge")
+    let is_typed_ledger_sidecar =
+        path.file_name().and_then(|name| name.to_str()).is_some_and(|name| name.ends_with(".ledger.jsonl"));
+    !is_typed_ledger_sidecar && path.extension().is_some_and(|ext| ext == "jsonl" || ext == "automerge")
 }
 
 /// List session files for a given cwd
@@ -332,6 +360,7 @@ mod tests {
     use chrono::Utc;
     use clanker_message::MessageId;
     use clanker_message::UserMessage;
+    use clankers_artifacts::ArtifactHash;
     use tempfile::TempDir;
 
     use super::*;
@@ -400,6 +429,34 @@ mod tests {
     }
 
     #[test]
+    fn typed_ledger_sidecar_does_not_break_legacy_replay() -> Result<()> {
+        let temp = TempDir::new().expect("test: failed to create temp dir");
+        let session_file = temp.path().join("test_session.jsonl");
+        let header = make_header("sess-ledger");
+        append_entry(&session_file, &header)?;
+
+        let record = crate::ledger::LedgerRecord::typed(
+            "artifact",
+            crate::ledger::LedgerPayload::ArtifactReference(crate::ledger::ArtifactReferenceLedgerFact {
+                artifact_hash: ArtifactHash::digest(b"sidecar-artifact"),
+                artifact_kind: "result".to_owned(),
+                query: crate::ledger::LedgerQueryFields::default(),
+            }),
+        );
+        let ledger_path = append_typed_ledger_fact(&session_file, &record)?;
+
+        assert_eq!(typed_ledger_file_path(&session_file), ledger_path);
+        let entries = read_entries(&session_file)?;
+        assert_eq!(entries.len(), 1);
+        let SessionEntry::Header(header_entry) = &entries[0] else {
+            panic!("expected header entry");
+        };
+        assert_eq!(header_entry.session_id, "sess-ledger");
+        assert_eq!(read_typed_ledger_facts(&session_file)?, vec![record]);
+        Ok(())
+    }
+
+    #[test]
     fn test_read_nonexistent_file() {
         let temp = TempDir::new().expect("test: failed to create temp dir");
         let result = read_entries(&temp.path().join("nonexistent.jsonl"));
@@ -462,6 +519,7 @@ mod tests {
         std::fs::create_dir_all(&cwd_dir).expect("test: failed to create cwd dir");
 
         std::fs::write(cwd_dir.join("session1.jsonl"), "{}").expect("test: failed to write jsonl file");
+        std::fs::write(cwd_dir.join("session1.jsonl.ledger.jsonl"), "{}").expect("test: failed to write ledger file");
         std::fs::write(cwd_dir.join("session2.txt"), "{}").expect("test: failed to write txt file");
         std::fs::write(cwd_dir.join("session3.json"), "{}").expect("test: failed to write json file");
 
