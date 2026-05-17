@@ -1,0 +1,18 @@
+## Phase 1: Reproduction and lifecycle inventory
+
+- [ ] [serial] [covers=embeddable-agent-engine.host-driven-contracts.subsequent-user-prompt-streams] Reproduce the failure with a deterministic fake-provider/session-path test: first prompt streams/completes, second prompt in the same session must also stream/complete.
+- [ ] [parallel] [covers=embeddable-agent-engine.host-driven-contracts.follow-up-completion-correlation] Inventory prompt/follow-up lifecycle ownership across `event_loop_runner`, `agent_task`, controller pending prompt state, and engine request correlation; record the stale-state root cause in code comments or test names.
+- [ ] [parallel] [covers=prompt-assembly.service.repeated-prompt-no-suppression] Verify prompt assembly for repeated prompts is pure/repeatable and does not mutate or short-circuit lifecycle state.
+
+## Phase 2: Lifecycle and correlation repair
+
+- [ ] [serial] [depends:embeddable-agent-engine.host-driven-contracts.subsequent-user-prompt-streams] Fix ordinary subsequent prompt dispatch so each accepted prompt reaches the model/tool turn path with fresh request correlation and visible streaming output.
+- [ ] [serial] [depends:embeddable-agent-engine.host-driven-contracts.follow-up-completion-correlation] Fix controller-dispatched follow-up handling so dispatch acknowledgement is separate from real prompt completion and cannot prematurely clear or satisfy pending work.
+- [ ] [serial] [depends:embeddable-agent-engine.host-driven-contracts.follow-up-dispatch-failure-visible] Add rejected-dispatch recovery behavior and coverage: rejected follow-up does not leave the session permanently busy and a later ordinary prompt still streams.
+
+## Phase 3: Runtime parity and verification
+
+- [ ] [serial] [depends:phase-2] Add/refresh a TUI or daemon-session runtime regression that exercises the product path with two prompts in one session and asserts both streaming events and terminal completion are surfaced to the user/session state.
+- [ ] [parallel] [covers=embeddable-agent-engine.turn-orchestration-owned-after-acceptance.repeated-prompt-correlation] Add focused correlation assertions proving repeated prompts allocate fresh model request IDs and prior completion cannot satisfy the later prompt.
+- [ ] [serial] [depends:phase-3] Run focused checks: lifecycle/controller tests, runtime repeated-prompt regression, and affected engine prompt tests.
+- [ ] [serial] [depends:phase-3] Run final gates: `cargo fmt --check`, `CARGO_TARGET_DIR=target cargo check --tests -p clankers-core -p clankers-controller -p clankers-engine -p clankers`, `openspec validate fix-follow-up-prompt-streaming --strict --json`, and `git diff --check`.
