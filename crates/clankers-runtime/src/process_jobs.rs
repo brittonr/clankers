@@ -542,6 +542,23 @@ pub struct ProcessJobError {
     pub message: String,
 }
 
+/// Import/adoption request for externally-created process jobs.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct AdoptProcessJobRequest {
+    pub backend: ProcessJobBackendKind,
+    pub backend_ref: BackendRef,
+    pub owner: ProcessJobOwnerScope,
+    pub caller: ProcessJobCallerScope,
+}
+
+impl AdoptProcessJobRequest {
+    #[must_use]
+    pub fn is_authorized(&self) -> bool {
+        self.caller.can_access(&self.owner, ProcessJobOperation::Adopt, self.backend)
+            && (self.backend == ProcessJobBackendKind::Native || self.caller.capabilities.select_backend)
+    }
+}
+
 /// Shared receipt for mutations and state transitions.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ProcessJobReceipt {
@@ -556,6 +573,33 @@ pub struct ProcessJobReceipt {
 }
 
 impl ProcessJobReceipt {
+    #[must_use]
+    pub fn permission_denied(
+        operation: ProcessJobOperation,
+        backend: ProcessJobBackendKind,
+        action: impl Into<String>,
+        message: impl Into<String>,
+    ) -> Self {
+        let message = message.into();
+        Self {
+            operation,
+            id: None,
+            backend: Some(backend),
+            status: None,
+            backend_ref: None,
+            log_refs: Vec::new(),
+            summary: message.clone(),
+            error: Some(ProcessJobError {
+                code: ProcessJobErrorCode::PermissionDenied,
+                operation,
+                id: None,
+                backend: Some(backend),
+                action: Some(action.into()),
+                message,
+            }),
+        }
+    }
+
     #[must_use]
     pub fn unsupported(
         operation: ProcessJobOperation,
@@ -655,11 +699,7 @@ pub trait ProcessJobService: Send + Sync {
         newline: bool,
     ) -> Result<ProcessJobReceipt, RuntimeError>;
     async fn close_stdin(&self, id: ProcessJobId) -> Result<ProcessJobReceipt, RuntimeError>;
-    async fn adopt(
-        &self,
-        backend: ProcessJobBackendKind,
-        backend_ref: BackendRef,
-    ) -> Result<ProcessJobReceipt, RuntimeError>;
+    async fn adopt(&self, request: AdoptProcessJobRequest) -> Result<ProcessJobReceipt, RuntimeError>;
     async fn garbage_collect(&self, filter: ProcessJobFilter) -> Result<ProcessJobReceipt, RuntimeError>;
 }
 

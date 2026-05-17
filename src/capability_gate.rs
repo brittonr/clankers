@@ -126,6 +126,10 @@ fn process_action_requirement(action: &str) -> Option<ProcessActionRequirement> 
             operation: ProcessJobOperation::CloseStdin,
             required_tools: &["process:mutate", "process:stdin"],
         },
+        "adopt" => ProcessActionRequirement {
+            operation: ProcessJobOperation::Adopt,
+            required_tools: &["process:mutate"],
+        },
         _ => return None,
     })
 }

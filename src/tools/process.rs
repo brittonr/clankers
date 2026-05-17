@@ -25,6 +25,7 @@ use clankers_db::process_jobs::StoredProcessJobResourcePolicy;
 use clankers_db::process_jobs::StoredProcessJobStatus;
 use clankers_db::process_jobs::StoredProcessJobStream;
 use clankers_runtime::RuntimeError;
+use clankers_runtime::process_jobs::AdoptProcessJobRequest;
 use clankers_runtime::process_jobs::BackendRef;
 use clankers_runtime::process_jobs::DefaultProcessJobNotificationPolicyEngine;
 use clankers_runtime::process_jobs::ProcessJobBackendKind;
@@ -72,6 +73,7 @@ const DEFAULT_LOG_LIMIT: usize = 200;
 const MAX_COMMAND_PREVIEW_LEN: usize = 200;
 const MAX_NATIVE_ACTIVE_PROCESS_JOBS: usize = 32;
 const NATIVE_KILL_GRACE: Duration = Duration::from_secs(2);
+const ADOPTED_NATIVE_ID_PREFIX: &str = "native_pid_";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 struct NativeAdmissionDecision {
@@ -570,18 +572,57 @@ impl ProcessJobService for NativeProcessJobService {
         Ok(native_receipt(ProcessJobOperation::CloseStdin, &entry, summary))
     }
 
-    async fn adopt(
-        &self,
-        _backend: ProcessJobBackendKind,
-        backend_ref: BackendRef,
-    ) -> Result<ProcessJobReceipt, RuntimeError> {
-        Ok(ProcessJobReceipt::unsupported(
-            ProcessJobOperation::Adopt,
-            None,
-            ProcessJobBackendKind::Native,
-            "adopt",
-            format!("native adoption is not implemented for {}", backend_ref.0),
-        ))
+    async fn adopt(&self, request: AdoptProcessJobRequest) -> Result<ProcessJobReceipt, RuntimeError> {
+        if request.backend != ProcessJobBackendKind::Native {
+            return Ok(ProcessJobReceipt::unsupported(
+                ProcessJobOperation::Adopt,
+                None,
+                request.backend,
+                "adopt",
+                "native process service only supports native adoption requests",
+            ));
+        }
+        if !request.is_authorized() {
+            return Ok(ProcessJobReceipt::permission_denied(
+                ProcessJobOperation::Adopt,
+                ProcessJobBackendKind::Native,
+                "adopt",
+                "native pid adoption denied by caller identity or capability scope",
+            ));
+        }
+        let pid = native_pid_from_backend_ref(&request.backend_ref)?;
+        if !native_pid_is_alive(pid) {
+            return Ok(ProcessJobReceipt {
+                operation: ProcessJobOperation::Adopt,
+                id: None,
+                backend: Some(ProcessJobBackendKind::Native),
+                status: Some(ProcessJobStatus::LostAfterRestart),
+                backend_ref: Some(request.backend_ref),
+                log_refs: Vec::new(),
+                summary: format!("native pid {pid} is not signalable; refusing adoption"),
+                error: Some(ProcessJobError {
+                    code: ProcessJobErrorCode::NotFound,
+                    operation: ProcessJobOperation::Adopt,
+                    id: None,
+                    backend: Some(ProcessJobBackendKind::Native),
+                    action: Some("adopt".to_string()),
+                    message: format!("native pid {pid} is not signalable"),
+                }),
+            });
+        }
+        let id = ProcessJobId(format!("{ADOPTED_NATIVE_ID_PREFIX}{pid}"));
+        Ok(ProcessJobReceipt {
+            operation: ProcessJobOperation::Adopt,
+            id: Some(id),
+            backend: Some(ProcessJobBackendKind::Native),
+            status: Some(ProcessJobStatus::ReattachedLogIncomplete),
+            backend_ref: Some(BackendRef(format!("pid:{pid}"))),
+            log_refs: Vec::new(),
+            summary: format!(
+                "Adopted native pid {pid} as metadata-only process job; live stdout/stderr streams are unavailable"
+            ),
+            error: None,
+        })
     }
 
     async fn garbage_collect(&self, _filter: ProcessJobFilter) -> Result<ProcessJobReceipt, RuntimeError> {
@@ -859,18 +900,40 @@ impl<R: PueueRunner> ProcessJobService for PueueProcessJobService<R> {
         ))
     }
 
-    async fn adopt(
-        &self,
-        _backend: ProcessJobBackendKind,
-        backend_ref: BackendRef,
-    ) -> Result<ProcessJobReceipt, RuntimeError> {
-        Ok(ProcessJobReceipt::unsupported(
-            ProcessJobOperation::Adopt,
-            None,
-            ProcessJobBackendKind::Pueue,
-            "adopt",
-            format!("pueue adoption is not implemented for {}", backend_ref.0),
-        ))
+    async fn adopt(&self, request: AdoptProcessJobRequest) -> Result<ProcessJobReceipt, RuntimeError> {
+        if request.backend != ProcessJobBackendKind::Pueue {
+            return Ok(ProcessJobReceipt::unsupported(
+                ProcessJobOperation::Adopt,
+                None,
+                request.backend,
+                "adopt",
+                "pueue process service only supports pueue adoption requests",
+            ));
+        }
+        if !request.is_authorized() {
+            return Ok(ProcessJobReceipt::permission_denied(
+                ProcessJobOperation::Adopt,
+                ProcessJobBackendKind::Pueue,
+                "adopt",
+                "pueue task adoption denied by caller identity, capability scope, or backend-selection grant",
+            ));
+        }
+        if let Some(receipt) = self.ensure_available(ProcessJobOperation::Adopt).await? {
+            return Ok(receipt);
+        }
+        let task_id = pueue_task_id_from_backend_ref(&request.backend_ref)?;
+        let task = self
+            .pueue_tasks()
+            .await?
+            .into_iter()
+            .find(|task| task.task_id == task_id)
+            .ok_or_else(|| RuntimeError::InvalidTool(format!("Unknown pueue task id for adoption: {task_id}")))?;
+        Ok(
+            task.receipt(
+                ProcessJobOperation::Adopt,
+                format!("Adopted pueue task {task_id} as {}", task.process_id().0),
+            ),
+        )
     }
 
     async fn garbage_collect(&self, _filter: ProcessJobFilter) -> Result<ProcessJobReceipt, RuntimeError> {
@@ -1399,17 +1462,32 @@ impl<R: SystemdRunner> ProcessJobService for SystemdProcessJobService<R> {
         ))
     }
 
-    async fn adopt(
-        &self,
-        _backend: ProcessJobBackendKind,
-        backend_ref: BackendRef,
-    ) -> Result<ProcessJobReceipt, RuntimeError> {
-        Ok(ProcessJobReceipt::unsupported(
+    async fn adopt(&self, request: AdoptProcessJobRequest) -> Result<ProcessJobReceipt, RuntimeError> {
+        if request.backend != ProcessJobBackendKind::Systemd {
+            return Ok(ProcessJobReceipt::unsupported(
+                ProcessJobOperation::Adopt,
+                None,
+                request.backend,
+                "adopt",
+                "systemd process service only supports systemd adoption requests",
+            ));
+        }
+        if !request.is_authorized() {
+            return Ok(ProcessJobReceipt::permission_denied(
+                ProcessJobOperation::Adopt,
+                ProcessJobBackendKind::Systemd,
+                "adopt",
+                "systemd unit adoption denied by caller identity, capability scope, or backend-selection grant",
+            ));
+        }
+        if let Some(receipt) = self.ensure_available(ProcessJobOperation::Adopt).await? {
+            return Ok(receipt);
+        }
+        let unit_name = systemd_unit_name_from_backend_ref(&request.backend_ref)?;
+        let unit = self.systemd_unit(&systemd_process_id(&unit_name)).await?;
+        Ok(unit.receipt(
             ProcessJobOperation::Adopt,
-            None,
-            ProcessJobBackendKind::Systemd,
-            "adopt",
-            format!("systemd adoption is not implemented for {}", backend_ref.0),
+            format!("Adopted systemd unit {} as {}", unit.unit, unit.process_id().0),
         ))
     }
 
@@ -1646,6 +1724,37 @@ fn systemd_status_from_parts(
         _ => ProcessJobStatus::Unknown { raw: label.clone() },
     };
     (status, label)
+}
+
+fn native_pid_from_backend_ref(backend_ref: &BackendRef) -> Result<u32, RuntimeError> {
+    let raw = backend_ref.0.strip_prefix("pid:").unwrap_or(backend_ref.0.as_str());
+    let pid = raw
+        .parse::<u32>()
+        .map_err(|_| RuntimeError::InvalidTool(format!("invalid native pid backend_ref: {}", backend_ref.0)))?;
+    if pid == 0 {
+        return Err(RuntimeError::InvalidTool("native pid adoption requires a non-zero pid".to_string()));
+    }
+    Ok(pid)
+}
+
+fn pueue_task_id_from_backend_ref(backend_ref: &BackendRef) -> Result<u64, RuntimeError> {
+    let raw = backend_ref.0.strip_prefix("pueue:").unwrap_or(backend_ref.0.as_str());
+    raw.parse::<u64>()
+        .map_err(|_| RuntimeError::InvalidTool(format!("invalid pueue task backend_ref: {}", backend_ref.0)))
+}
+
+fn systemd_unit_name_from_backend_ref(backend_ref: &BackendRef) -> Result<String, RuntimeError> {
+    let unit = backend_ref.0.strip_prefix("systemd:").unwrap_or(backend_ref.0.as_str()).trim();
+    if unit.is_empty() || unit.contains('/') || unit.contains("..") {
+        return Err(RuntimeError::InvalidTool(format!("invalid systemd unit backend_ref: {}", backend_ref.0)));
+    }
+    if !(unit.ends_with(".service") || unit.ends_with(".scope")) {
+        return Err(RuntimeError::InvalidTool(format!(
+            "systemd adoption requires a .service or .scope unit name: {}",
+            backend_ref.0
+        )));
+    }
+    Ok(unit.to_string())
 }
 
 fn native_entry(id: &ProcessJobId) -> Result<Arc<ProcessEntry>, RuntimeError> {
@@ -1975,13 +2084,13 @@ impl ProcessTool {
                     "properties": {
                         "action": {
                             "type": "string",
-                            "enum": ["start", "list", "poll", "log", "wait", "kill", "restart", "write", "submit", "close"],
+                            "enum": ["start", "list", "poll", "log", "wait", "kill", "restart", "write", "submit", "close", "adopt"],
                             "description": "Action to perform"
                         },
                         "backend": {
                             "type": "string",
                             "enum": ["native", "pueue", "systemd"],
-                            "description": "Durable backend for start/list/poll/log/wait/kill/restart (default: native)"
+                            "description": "Durable backend for start/list/poll/log/wait/kill/restart/adopt (default: native)"
                         },
                         "group": {
                             "type": "string",
@@ -1990,6 +2099,22 @@ impl ProcessTool {
                         "label": {
                             "type": "string",
                             "description": "Backend label/unit label for durable backend starts"
+                        },
+                        "backend_ref": {
+                            "type": "string",
+                            "description": "Backend-owned reference for adopt/import, e.g. pid:1234, pueue:42, or systemd:unit.service"
+                        },
+                        "pid": {
+                            "type": ["string", "number"],
+                            "description": "Native PID to adopt/import"
+                        },
+                        "pueue_task_id": {
+                            "type": ["string", "number"],
+                            "description": "Pueue task id to adopt/import"
+                        },
+                        "systemd_unit": {
+                            "type": "string",
+                            "description": "Systemd .service or .scope unit to adopt/import"
                         },
                         "command": {
                             "type": "string",
@@ -2217,6 +2342,49 @@ impl ProcessTool {
             "systemd" => Ok(ProcessJobBackendKind::Systemd),
             other => Err(ToolResult::error(format!("Unsupported process backend: {other}"))),
         }
+    }
+
+    fn caller_scope_for_owner(
+        owner: &ProcessJobOwnerScope,
+        capabilities: clankers_runtime::process_jobs::ProcessJobCapabilitySet,
+    ) -> clankers_runtime::process_jobs::ProcessJobCallerScope {
+        let mut caller = clankers_runtime::process_jobs::ProcessJobCallerScope {
+            capabilities,
+            ..clankers_runtime::process_jobs::ProcessJobCallerScope::default()
+        };
+        match owner {
+            ProcessJobOwnerScope::Session(session) => caller.session_id = Some(session.clone()),
+            ProcessJobOwnerScope::Workspace(workspace) => caller.workspace_id = Some(workspace.clone()),
+            ProcessJobOwnerScope::User(user) => caller.user_id = Some(user.clone()),
+            ProcessJobOwnerScope::DaemonGlobal => caller.daemon_global = true,
+        }
+        caller
+    }
+
+    fn adopt_request(params: &Value, backend: ProcessJobBackendKind) -> Result<AdoptProcessJobRequest, ToolResult> {
+        let backend_ref = params
+            .get("backend_ref")
+            .or_else(|| params.get("pid"))
+            .or_else(|| params.get("pueue_task_id"))
+            .or_else(|| params.get("systemd_unit"))
+            .and_then(|value| value.as_str().map(str::to_string).or_else(|| value.as_u64().map(|id| id.to_string())))
+            .filter(|value| !value.trim().is_empty())
+            .ok_or_else(|| {
+                ToolResult::error(
+                    "Missing required parameter for adopt: backend_ref, pid, pueue_task_id, or systemd_unit",
+                )
+            })?;
+        let owner = ProcessJobOwnerScope::DaemonGlobal;
+        let caller = Self::caller_scope_for_owner(
+            &owner,
+            clankers_runtime::process_jobs::ProcessJobCapabilitySet::full_control(),
+        );
+        Ok(AdoptProcessJobRequest {
+            backend,
+            backend_ref: BackendRef(backend_ref),
+            owner,
+            caller,
+        })
     }
 
     fn pueue_service() -> PueueProcessJobService {
@@ -2727,6 +2895,33 @@ impl ProcessTool {
         }
     }
 
+    async fn handle_adopt(params: &Value) -> ToolResult {
+        let backend = match Self::requested_backend(params) {
+            Ok(backend) => backend,
+            Err(result) => return result,
+        };
+        let request = match Self::adopt_request(params, backend) {
+            Ok(request) => request,
+            Err(result) => return result,
+        };
+        match backend {
+            ProcessJobBackendKind::Native => match NativeProcessJobService.adopt(request).await {
+                Ok(receipt) if receipt.error.is_some() => {
+                    ToolResult::error(serde_json::to_string(&receipt).unwrap_or(receipt.summary))
+                }
+                Ok(receipt) => ToolResult::text(serde_json::to_string(&receipt).unwrap_or(receipt.summary)),
+                Err(error) => ToolResult::error(error.to_string()),
+            },
+            ProcessJobBackendKind::Pueue => {
+                Self::pueue_receipt_result(Self::pueue_service().adopt(request).await).await
+            }
+            ProcessJobBackendKind::Systemd => {
+                Self::systemd_receipt_result(Self::systemd_service().adopt(request).await).await
+            }
+            ProcessJobBackendKind::Unknown => ToolResult::error("Unsupported process backend: unknown"),
+        }
+    }
+
     async fn handle_restart(params: &Value) -> ToolResult {
         let session_id = match Self::required_session(params) {
             Ok(id) => id,
@@ -2771,6 +2966,7 @@ impl Tool for ProcessTool {
             "write" => Self::handle_write(&params, false).await,
             "submit" => Self::handle_write(&params, true).await,
             "close" => Self::handle_close(&params).await,
+            "adopt" => Self::handle_adopt(&params).await,
             other => ToolResult::error(format!("Unknown process action: {other}")),
         }
     }
@@ -2908,6 +3104,29 @@ mod tests {
             resource_policy: clankers_runtime::process_jobs::ProcessJobResourcePolicy::default(),
             notification_policy: ProcessJobNotificationPolicy::default(),
             metadata: Default::default(),
+        }
+    }
+
+    fn adopt_request_for(backend: ProcessJobBackendKind, backend_ref: &str) -> AdoptProcessJobRequest {
+        let owner = ProcessJobOwnerScope::DaemonGlobal;
+        let caller = ProcessTool::caller_scope_for_owner(
+            &owner,
+            clankers_runtime::process_jobs::ProcessJobCapabilitySet::full_control(),
+        );
+        AdoptProcessJobRequest {
+            backend,
+            backend_ref: BackendRef(backend_ref.to_string()),
+            owner,
+            caller,
+        }
+    }
+
+    fn denied_adopt_request_for(backend: ProcessJobBackendKind, backend_ref: &str) -> AdoptProcessJobRequest {
+        AdoptProcessJobRequest {
+            backend,
+            backend_ref: BackendRef(backend_ref.to_string()),
+            owner: ProcessJobOwnerScope::DaemonGlobal,
+            caller: clankers_runtime::process_jobs::ProcessJobCallerScope::default(),
         }
     }
 
@@ -3060,6 +3279,31 @@ mod tests {
         assert!(calls.iter().any(|call| call == &["log", "--json", "--lines", "10", "42"]));
         assert!(calls.iter().any(|call| call == &["kill", "42"]));
         assert!(calls.iter().any(|call| call == &["restart", "--in-place", "42"]));
+    }
+
+    #[tokio::test]
+    async fn pueue_adoption_imports_task_through_runner_seam_and_fails_closed() {
+        let runner = FakePueueRunner::new(pueue_status_fixture(), "{}".to_string());
+        let service = PueueProcessJobService::new(runner.clone());
+
+        let denied = service
+            .adopt(denied_adopt_request_for(ProcessJobBackendKind::Pueue, "pueue:42"))
+            .await
+            .expect("denied receipt");
+        assert_eq!(denied.error.expect("permission error").code, ProcessJobErrorCode::PermissionDenied);
+        assert!(runner.calls().is_empty(), "authorization must fail before pueue CLI seam");
+
+        let adopted = service
+            .adopt(adopt_request_for(ProcessJobBackendKind::Pueue, "pueue:42"))
+            .await
+            .expect("adopt succeeds");
+        assert_eq!(adopted.operation, ProcessJobOperation::Adopt);
+        assert_eq!(adopted.id, Some(ProcessJobId("pueue_42".to_string())));
+        assert_eq!(adopted.backend_ref, Some(BackendRef("pueue:42".to_string())));
+        assert!(adopted.summary.contains("Adopted pueue task 42"));
+        let calls = runner.calls();
+        assert!(calls.iter().any(|call| call == &["--version"]));
+        assert!(calls.iter().any(|call| call == &["status", "--json"]));
     }
 
     #[tokio::test]
@@ -3254,6 +3498,31 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn systemd_adoption_imports_unit_through_runner_seam_and_fails_closed() {
+        let runner = FakeSystemdRunner::new(systemd_show_fixture(), systemd_list_fixture(), String::new());
+        let service = SystemdProcessJobService::new(runner.clone());
+
+        let denied = service
+            .adopt(denied_adopt_request_for(ProcessJobBackendKind::Systemd, "systemd:clankers-build.service"))
+            .await
+            .expect("denied receipt");
+        assert_eq!(denied.error.expect("permission error").code, ProcessJobErrorCode::PermissionDenied);
+        assert!(runner.calls().is_empty(), "authorization must fail before systemd CLI seam");
+
+        let adopted = service
+            .adopt(adopt_request_for(ProcessJobBackendKind::Systemd, "systemd:clankers-build.service"))
+            .await
+            .expect("adopt succeeds");
+        assert_eq!(adopted.operation, ProcessJobOperation::Adopt);
+        assert_eq!(adopted.id, Some(ProcessJobId("systemd_clankers-build.service".to_string())));
+        assert_eq!(adopted.backend_ref, Some(BackendRef("systemd:clankers-build.service".to_string())));
+        assert!(adopted.summary.contains("Adopted systemd unit clankers-build.service"));
+        let calls = runner.calls();
+        assert!(calls.iter().any(|(program, args)| program == "systemctl" && args == &["--version"]));
+        assert!(calls.iter().any(|(program, args)| program == "systemctl" && args.contains(&"show".to_string())));
+    }
+
+    #[tokio::test]
     async fn systemd_backend_unavailable_returns_typed_receipt_before_mutation() {
         let runner = FakeSystemdRunner::unavailable();
         let service = SystemdProcessJobService::new(runner.clone());
@@ -3282,6 +3551,38 @@ mod tests {
         let receipt = service.start(request).await.expect("disabled is typed receipt");
         assert_eq!(receipt.error.expect("error receipt").code, ProcessJobErrorCode::BackendUnavailable);
         assert!(runner.calls().is_empty(), "disabled config must avoid systemd CLI mutation seam");
+    }
+
+    #[tokio::test]
+    async fn native_pid_adoption_uses_metadata_only_receipt_and_fails_closed() {
+        let service = NativeProcessJobService;
+        let current_pid = std::process::id();
+
+        let denied = service
+            .adopt(denied_adopt_request_for(ProcessJobBackendKind::Native, &format!("pid:{current_pid}")))
+            .await
+            .expect("denied receipt");
+        assert_eq!(denied.error.expect("permission error").code, ProcessJobErrorCode::PermissionDenied);
+
+        let adopted = service
+            .adopt(adopt_request_for(ProcessJobBackendKind::Native, &format!("pid:{current_pid}")))
+            .await
+            .expect("adopt succeeds");
+        assert_eq!(adopted.operation, ProcessJobOperation::Adopt);
+        assert_eq!(adopted.id, Some(ProcessJobId(format!("native_pid_{current_pid}"))));
+        assert_eq!(adopted.backend_ref, Some(BackendRef(format!("pid:{current_pid}"))));
+        assert_eq!(adopted.status, Some(ProcessJobStatus::ReattachedLogIncomplete));
+        assert!(adopted.summary.contains("metadata-only"));
+    }
+
+    #[tokio::test]
+    async fn process_tool_adopt_routes_to_backend_service_seams() {
+        let tool = ProcessTool::new();
+        let adopted = tool
+            .execute(&make_ctx(), json!({"action": "adopt", "backend": "native", "pid": std::process::id()}))
+            .await;
+        assert!(!adopted.is_error, "{adopted:?}");
+        assert!(text(&adopted).contains("native_pid_"), "{}", text(&adopted));
     }
 
     #[tokio::test]
