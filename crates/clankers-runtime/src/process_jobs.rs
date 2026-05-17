@@ -210,6 +210,75 @@ pub struct ProcessJobLogRef {
     pub max_bytes: Option<u64>,
 }
 
+/// Native append-only log file naming/layout policy.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct NativeProcessJobLogLayout {
+    pub job_id: ProcessJobId,
+    pub stream: ProcessJobStream,
+    pub relative_path: PathBuf,
+    pub reference: String,
+}
+
+impl NativeProcessJobLogLayout {
+    #[must_use]
+    pub fn for_stream(job_id: ProcessJobId, stream: ProcessJobStream) -> Self {
+        let suffix = match stream {
+            ProcessJobStream::Stdout => "stdout.log",
+            ProcessJobStream::Stderr => "stderr.log",
+            ProcessJobStream::Combined => "combined.log",
+        };
+        let safe_id = sanitize_log_path_component(&job_id.0);
+        let relative_path = PathBuf::from(&safe_id).join(suffix);
+        let reference = format!("native:{safe_id}/{suffix}");
+        Self {
+            job_id,
+            stream,
+            relative_path,
+            reference,
+        }
+    }
+}
+
+/// Log retention policy applied by native append-only log stores.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ProcessJobLogRetentionPolicy {
+    pub max_bytes_per_job: u64,
+    pub max_age: Option<Duration>,
+    pub keep_terminal_logs: bool,
+}
+
+impl ProcessJobLogRetentionPolicy {
+    #[must_use]
+    pub fn reference_for(
+        &self,
+        job_id: ProcessJobId,
+        stream: ProcessJobStream,
+        now: DateTime<Utc>,
+    ) -> ProcessJobLogRef {
+        let layout = NativeProcessJobLogLayout::for_stream(job_id, stream);
+        let retained_until = self.max_age.and_then(|age| chrono::Duration::from_std(age).ok()).map(|age| now + age);
+        ProcessJobLogRef {
+            stream,
+            reference: layout.reference,
+            retained_until,
+            max_bytes: Some(self.max_bytes_per_job),
+        }
+    }
+}
+
+fn sanitize_log_path_component(input: &str) -> String {
+    input
+        .chars()
+        .map(|ch| {
+            if ch.is_ascii_alphanumeric() || matches!(ch, '-' | '_' | '.') {
+                ch
+            } else {
+                '_'
+            }
+        })
+        .collect()
+}
+
 /// Cursor for incremental log reads.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ProcessJobLogCursor {
@@ -531,6 +600,45 @@ mod tests {
         assert!(!ProcessJobStatus::Running.is_terminal());
         assert!(ProcessJobStatus::Succeeded { exit_code: Some(0) }.is_terminal());
         assert!(ProcessJobStatus::LostAfterRestart.is_terminal());
+    }
+
+    #[test]
+    fn native_log_layout_is_append_only_bounded_and_safe() {
+        let policy = ProcessJobLogRetentionPolicy {
+            max_bytes_per_job: 1024,
+            max_age: Some(Duration::from_secs(60)),
+            keep_terminal_logs: true,
+        };
+        let now = DateTime::parse_from_rfc3339("2026-05-17T05:52:12Z").expect("timestamp parses").with_timezone(&Utc);
+        let log_ref =
+            policy.reference_for(ProcessJobId("../job with spaces".to_string()), ProcessJobStream::Combined, now);
+
+        assert_eq!(log_ref.reference, "native:.._job_with_spaces/combined.log");
+        assert_eq!(log_ref.max_bytes, Some(1024));
+        assert_eq!(log_ref.retained_until, Some(now + chrono::Duration::seconds(60)));
+    }
+
+    #[test]
+    fn log_chunks_carry_cursor_and_truncation_explicitly() {
+        let chunk = ProcessJobLogChunk {
+            id: ProcessJobId("proc_1".to_string()),
+            backend: ProcessJobBackendKind::Native,
+            stream: ProcessJobStream::Stdout,
+            cursor: ProcessJobLogCursor {
+                stream: ProcessJobStream::Stdout,
+                offset: 4096,
+            },
+            next_cursor: Some(ProcessJobLogCursor {
+                stream: ProcessJobStream::Stdout,
+                offset: 8192,
+            }),
+            text: "bounded".to_string(),
+            truncated: true,
+        };
+        let json = serde_json::to_value(chunk).expect("chunk serializes");
+        assert_eq!(json["cursor"]["offset"], 4096);
+        assert_eq!(json["next_cursor"]["offset"], 8192);
+        assert_eq!(json["truncated"], true);
     }
 
     #[test]
