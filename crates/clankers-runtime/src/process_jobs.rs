@@ -101,6 +101,89 @@ pub enum ProcessJobOwnerScope {
     DaemonGlobal,
 }
 
+/// Caller identity used by capability policy checks.
+#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
+pub struct ProcessJobCallerScope {
+    pub session_id: Option<String>,
+    pub workspace_id: Option<String>,
+    pub user_id: Option<String>,
+    pub daemon_global: bool,
+    pub capabilities: ProcessJobCapabilitySet,
+}
+
+/// Capability classes for read-only observation, log access, execution, mutation, and backend use.
+#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
+pub struct ProcessJobCapabilitySet {
+    pub observe: bool,
+    pub read_logs: bool,
+    pub start: bool,
+    pub mutate: bool,
+    pub stdin: bool,
+    pub select_backend: bool,
+}
+
+impl ProcessJobCapabilitySet {
+    #[must_use]
+    pub fn observe_only() -> Self {
+        Self {
+            observe: true,
+            read_logs: true,
+            ..Self::default()
+        }
+    }
+
+    #[must_use]
+    pub fn full_control() -> Self {
+        Self {
+            observe: true,
+            read_logs: true,
+            start: true,
+            mutate: true,
+            stdin: true,
+            select_backend: true,
+        }
+    }
+
+    #[must_use]
+    pub fn allows_operation(&self, operation: ProcessJobOperation, backend: ProcessJobBackendKind) -> bool {
+        match operation {
+            ProcessJobOperation::List | ProcessJobOperation::Poll => self.observe,
+            ProcessJobOperation::Log => self.observe && self.read_logs,
+            ProcessJobOperation::Start => {
+                self.start && (backend == ProcessJobBackendKind::Native || self.select_backend)
+            }
+            ProcessJobOperation::Kill
+            | ProcessJobOperation::Restart
+            | ProcessJobOperation::Adopt
+            | ProcessJobOperation::GarbageCollect => self.mutate,
+            ProcessJobOperation::WriteStdin | ProcessJobOperation::CloseStdin => self.mutate && self.stdin,
+            ProcessJobOperation::Wait => self.observe,
+        }
+    }
+}
+
+impl ProcessJobCallerScope {
+    #[must_use]
+    pub fn matches_owner(&self, owner: &ProcessJobOwnerScope) -> bool {
+        match owner {
+            ProcessJobOwnerScope::Session(session) => self.session_id.as_deref() == Some(session.as_str()),
+            ProcessJobOwnerScope::Workspace(workspace) => self.workspace_id.as_deref() == Some(workspace.as_str()),
+            ProcessJobOwnerScope::User(user) => self.user_id.as_deref() == Some(user.as_str()),
+            ProcessJobOwnerScope::DaemonGlobal => self.daemon_global,
+        }
+    }
+
+    #[must_use]
+    pub fn can_access(
+        &self,
+        owner: &ProcessJobOwnerScope,
+        operation: ProcessJobOperation,
+        backend: ProcessJobBackendKind,
+    ) -> bool {
+        self.matches_owner(owner) && self.capabilities.allows_operation(operation, backend)
+    }
+}
+
 /// Command working-directory policy recorded safely in metadata.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case", tag = "kind", content = "path")]
@@ -457,6 +540,45 @@ mod tests {
         assert_eq!(capabilities.unavailable_reason.as_deref(), Some("not systemd"));
         assert!(!capabilities.supports_kill);
         assert!(!capabilities.durable_across_daemon_restart);
+    }
+
+    #[test]
+    fn observe_only_scope_denies_cross_session_mutation() {
+        let owner = ProcessJobOwnerScope::Session("sess-a".to_string());
+        let observer = ProcessJobCallerScope {
+            session_id: Some("sess-a".to_string()),
+            capabilities: ProcessJobCapabilitySet::observe_only(),
+            ..ProcessJobCallerScope::default()
+        };
+        let other_session = ProcessJobCallerScope {
+            session_id: Some("sess-b".to_string()),
+            capabilities: ProcessJobCapabilitySet::full_control(),
+            ..ProcessJobCallerScope::default()
+        };
+
+        assert!(observer.can_access(&owner, ProcessJobOperation::List, ProcessJobBackendKind::Native));
+        assert!(observer.can_access(&owner, ProcessJobOperation::Log, ProcessJobBackendKind::Native));
+        assert!(!observer.can_access(&owner, ProcessJobOperation::Kill, ProcessJobBackendKind::Native));
+        assert!(!observer.can_access(&owner, ProcessJobOperation::WriteStdin, ProcessJobBackendKind::Native));
+        assert!(!other_session.can_access(&owner, ProcessJobOperation::Kill, ProcessJobBackendKind::Native));
+    }
+
+    #[test]
+    fn durable_backend_and_stdin_require_explicit_capabilities() {
+        let local_start_only = ProcessJobCapabilitySet {
+            observe: true,
+            start: true,
+            mutate: true,
+            ..ProcessJobCapabilitySet::default()
+        };
+
+        assert!(local_start_only.allows_operation(ProcessJobOperation::Start, ProcessJobBackendKind::Native));
+        assert!(!local_start_only.allows_operation(ProcessJobOperation::Start, ProcessJobBackendKind::Pueue));
+        assert!(!local_start_only.allows_operation(ProcessJobOperation::WriteStdin, ProcessJobBackendKind::Native));
+
+        let full = ProcessJobCapabilitySet::full_control();
+        assert!(full.allows_operation(ProcessJobOperation::Start, ProcessJobBackendKind::Systemd));
+        assert!(full.allows_operation(ProcessJobOperation::WriteStdin, ProcessJobBackendKind::Native));
     }
 
     #[test]
