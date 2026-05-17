@@ -17,6 +17,7 @@ pub use ucan::InvocationResult;
 pub use ucan::ProofCollection;
 pub use ucan::ProofReference;
 pub use ucan::ReplayAdmission;
+pub use ucan::RevocationChecker;
 pub use ucan::TokenSigner;
 pub use ucan::TokenTimeBounds;
 pub use ucan::VerificationContext;
@@ -153,6 +154,7 @@ pub struct PublicUcanAuthorizer<'a> {
     context: &'a VerificationContext,
     policies: &'a dyn CaveatPolicySet,
     replay: Option<&'a dyn ReplayAdmission>,
+    revocations: Option<&'a dyn RevocationChecker>,
 }
 
 impl<'a> PublicUcanAuthorizer<'a> {
@@ -167,6 +169,7 @@ impl<'a> PublicUcanAuthorizer<'a> {
             context,
             policies,
             replay: None,
+            revocations: None,
         }
     }
 
@@ -175,10 +178,32 @@ impl<'a> PublicUcanAuthorizer<'a> {
         self.replay = Some(replay);
         self
     }
+
+    #[must_use]
+    pub const fn with_revocations(mut self, revocations: &'a dyn RevocationChecker) -> Self {
+        self.revocations = Some(revocations);
+        self
+    }
 }
 
 impl UcanAuthorizer for PublicUcanAuthorizer<'_> {
     fn authorize(&self, invocation: &EffectInvocation) -> InvocationResult {
+        if let Some(revocations) = self.revocations {
+            if let Err(error) = ucan::verify_compact_token_with_resolvers_and_revocations(
+                self.token,
+                self.context.time(),
+                self.context.keys(),
+                self.context.proofs(),
+                revocations,
+                self.context.limits(),
+            ) {
+                return InvocationResult::Denied {
+                    reason: ucan::InvocationDenialReason::Verification {
+                        message: error.to_string(),
+                    },
+                };
+            }
+        }
         let request = InvocationRequest::new(
             self.token,
             self.context,
@@ -206,6 +231,7 @@ mod tests {
     use ucan::ProofCollection;
     use ucan::ProofReference;
     use ucan::ReplayAdmissionError;
+    use ucan::RevocationList;
     use ucan::TokenSigner;
     use ucan::TokenTimeBounds;
     use ucan::VerificationTime;
@@ -351,6 +377,20 @@ mod tests {
 
         assert!(first.is_allowed(), "first invocation should pass: {first:?}");
         assert!(!second.is_allowed(), "duplicate invocation should be denied: {second:?}");
+    }
+
+    #[test]
+    fn adapter_uses_caller_owned_revocation_checker() {
+        let (token, context) = token_for("file/*");
+        let mut revocations = RevocationList::empty();
+        revocations.revoke(proof_reference(&token));
+        let authorizer = authorizer(&token, &context).with_revocations(&revocations);
+        let invocation = EffectInvocation::new(CHILD_RESOURCE, READ_ABILITY).expect("invocation");
+
+        let result = authorizer.authorize(&invocation);
+
+        assert!(!result.is_allowed(), "revoked invocation should be denied: {result:?}");
+        assert!(format!("{result:?}").contains("revoked"));
     }
 
     #[test]
