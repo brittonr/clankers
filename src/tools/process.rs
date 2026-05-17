@@ -13,6 +13,15 @@ use std::time::Instant;
 use async_trait::async_trait;
 use chrono::DateTime;
 use chrono::Utc;
+use clankers_db::process_jobs::StoredProcessJobBackendKind;
+use clankers_db::process_jobs::StoredProcessJobCapabilitySummary;
+use clankers_db::process_jobs::StoredProcessJobCwd;
+use clankers_db::process_jobs::StoredProcessJobLogRef;
+use clankers_db::process_jobs::StoredProcessJobOwnerScope;
+use clankers_db::process_jobs::StoredProcessJobRecord;
+use clankers_db::process_jobs::StoredProcessJobResourcePolicy;
+use clankers_db::process_jobs::StoredProcessJobStatus;
+use clankers_db::process_jobs::StoredProcessJobStream;
 use clankers_runtime::RuntimeError;
 use clankers_runtime::process_jobs::BackendRef;
 use clankers_runtime::process_jobs::ProcessJobBackendKind;
@@ -198,7 +207,7 @@ impl ProcessJobService for NativeProcessJobService {
         ProcessTool::insert(entry.clone());
         spawn_reader(entry.clone(), "stdout", stdout);
         spawn_reader(entry, "stderr", stderr);
-        spawn_waiter(ProcessTool::get(&id).expect("inserted native process entry"), child, pid, kill_rx);
+        spawn_waiter(ProcessTool::get(&id).expect("inserted native process entry"), child, pid, kill_rx, None);
 
         Ok(ProcessJobReceipt {
             operation: ProcessJobOperation::Start,
@@ -463,6 +472,133 @@ fn tool_error_to_runtime(error: ToolResult) -> RuntimeError {
     )
 }
 
+fn stored_record_from_entry(entry: &ProcessEntry) -> StoredProcessJobRecord {
+    StoredProcessJobRecord {
+        schema_version: clankers_db::process_jobs::PROCESS_JOB_RECORD_SCHEMA_VERSION,
+        id: entry.id.clone(),
+        backend: StoredProcessJobBackendKind::Native,
+        backend_ref: entry.backend_ref.as_ref().map(|backend_ref| backend_ref.0.clone()),
+        command_preview: entry.command.chars().take(MAX_COMMAND_PREVIEW_LEN).collect(),
+        cwd: StoredProcessJobCwd::Inherited,
+        owner: StoredProcessJobOwnerScope::DaemonGlobal,
+        status: stored_status_from_process(&entry.status()),
+        started_at: entry.started_at_wall,
+        updated_at: Utc::now(),
+        completed_at: entry.status().is_done().then(Utc::now),
+        os_pid: entry
+            .backend_ref
+            .as_ref()
+            .and_then(|backend_ref| backend_ref.0.strip_prefix("pid:"))
+            .and_then(|pid| pid.parse().ok()),
+        process_group: entry
+            .backend_ref
+            .as_ref()
+            .and_then(|backend_ref| backend_ref.0.strip_prefix("pid:"))
+            .and_then(|pid| pid.parse().ok()),
+        log_refs: vec![StoredProcessJobLogRef {
+            stream: StoredProcessJobStream::Combined,
+            reference: format!("native:{}/combined.log", entry.id),
+            retained_until: None,
+            max_bytes: Some(u64::try_from(entry.snapshot_output().len()).unwrap_or(u64::MAX)),
+        }],
+        resource_policy: StoredProcessJobResourcePolicy {
+            timeout_seconds: None,
+            memory_max_bytes: None,
+            cpu_quota_percent: None,
+            max_log_bytes: None,
+        },
+        capability_summary: StoredProcessJobCapabilitySummary {
+            can_observe: true,
+            can_read_logs: true,
+            can_start: true,
+            can_kill: true,
+            can_restart: false,
+            can_write_stdin: true,
+            can_select_backend: false,
+        },
+        safe_metadata: Default::default(),
+    }
+}
+
+fn stored_status_from_process(status: &ProcessStatus) -> StoredProcessJobStatus {
+    match status {
+        ProcessStatus::Running => StoredProcessJobStatus::Running,
+        ProcessStatus::Exited { code, .. } => {
+            if code.unwrap_or_default() == 0 {
+                StoredProcessJobStatus::Succeeded { exit_code: *code }
+            } else {
+                StoredProcessJobStatus::Failed {
+                    exit_code: *code,
+                    reason: "process exited non-zero".to_string(),
+                }
+            }
+        }
+        ProcessStatus::Killed { .. } => StoredProcessJobStatus::Killed,
+        ProcessStatus::Failed { message, .. } => StoredProcessJobStatus::Failed {
+            exit_code: None,
+            reason: message.clone(),
+        },
+    }
+}
+
+fn stored_status_label(status: &StoredProcessJobStatus) -> String {
+    match status {
+        StoredProcessJobStatus::Pending => "pending".to_string(),
+        StoredProcessJobStatus::Running => "running".to_string(),
+        StoredProcessJobStatus::Waiting => "waiting".to_string(),
+        StoredProcessJobStatus::Succeeded { exit_code } => {
+            format!("exited({})", exit_code.map(|code| code.to_string()).unwrap_or_else(|| "ok".to_string()))
+        }
+        StoredProcessJobStatus::Failed { exit_code, reason } => format!(
+            "failed({}:{reason})",
+            exit_code.map(|code| code.to_string()).unwrap_or_else(|| "unknown".to_string())
+        ),
+        StoredProcessJobStatus::Killed => "killed".to_string(),
+        StoredProcessJobStatus::Cancelled => "cancelled".to_string(),
+        StoredProcessJobStatus::LostAfterRestart => "lost-after-restart".to_string(),
+        StoredProcessJobStatus::ReattachedLogIncomplete => "reattached-log-incomplete".to_string(),
+        StoredProcessJobStatus::BackendUnavailable { reason } => format!("backend-unavailable({reason})"),
+        StoredProcessJobStatus::Unknown { raw } => format!("unknown({raw})"),
+    }
+}
+
+fn stored_record_line(record: &StoredProcessJobRecord) -> String {
+    format!(
+        "{:<12} {:<16} {:<8} {}",
+        record.id,
+        stored_status_label(&record.status),
+        "durable",
+        record.command_preview
+    )
+}
+
+async fn persist_entry(db: Option<&clankers_db::Db>, entry: &ProcessEntry) {
+    let Some(db) = db else {
+        return;
+    };
+    if let Err(error) = db.async_process_jobs().upsert(stored_record_from_entry(entry)).await {
+        tracing::warn!("failed to persist native process job metadata: {error}");
+    }
+}
+
+async fn durable_record(db: Option<&clankers_db::Db>, id: &str) -> Option<StoredProcessJobRecord> {
+    let db = db?;
+    match db.async_process_jobs().get(id.to_string()).await {
+        Ok(record) => record,
+        Err(error) => {
+            tracing::warn!("failed to read durable process job metadata: {error}");
+            None
+        }
+    }
+}
+
+fn format_log_refs(refs: &[StoredProcessJobLogRef]) -> String {
+    if refs.is_empty() {
+        return "none".to_string();
+    }
+    refs.iter().map(|log_ref| log_ref.reference.as_str()).collect::<Vec<_>>().join(", ")
+}
+
 pub struct ProcessTool {
     definition: ToolDefinition,
     process_monitor: Option<crate::procmon::ProcessMonitorHandle>,
@@ -647,7 +783,7 @@ impl ProcessTool {
         }
     }
 
-    fn handle_start(&self, ctx: &ToolContext, params: &Value) -> ToolResult {
+    async fn handle_start(&self, ctx: &ToolContext, params: &Value) -> ToolResult {
         let (display_command, mut child) = match Self::start_spec(params) {
             Ok(spec) => spec,
             Err(result) => return result,
@@ -678,9 +814,10 @@ impl ProcessTool {
             });
         }
 
+        persist_entry(ctx.db(), &entry).await;
         spawn_reader(entry.clone(), "stdout", stdout);
         spawn_reader(entry.clone(), "stderr", stderr);
-        spawn_waiter(entry.clone(), child, pid, kill_rx);
+        spawn_waiter(entry.clone(), child, pid, kill_rx, ctx.db().cloned());
 
         ToolResult::text(format!(
             "Started background process {id} (pid: {})",
@@ -688,10 +825,22 @@ impl ProcessTool {
         ))
     }
 
-    fn handle_list() -> ToolResult {
+    async fn handle_list(ctx: &ToolContext) -> ToolResult {
         let mut entries = Self::all_entries();
         entries.sort_by_key(|entry| entry.id.clone());
-        if entries.is_empty() {
+        let mut durable = Vec::new();
+        if let Some(db) = ctx.db() {
+            match db.async_process_jobs().list().await {
+                Ok(records) => {
+                    let live_ids =
+                        entries.iter().map(|entry| entry.id.as_str()).collect::<std::collections::BTreeSet<_>>();
+                    durable = records.into_iter().filter(|record| !live_ids.contains(record.id.as_str())).collect();
+                    durable.sort_by(|left, right| left.id.cmp(&right.id));
+                }
+                Err(error) => tracing::warn!("failed to read durable process job metadata: {error}"),
+            }
+        }
+        if entries.is_empty() && durable.is_empty() {
             return ToolResult::text("No background processes.");
         }
 
@@ -707,18 +856,30 @@ impl ProcessTool {
                 command_preview
             ));
         }
+        lines.extend(durable.iter().map(stored_record_line));
         ToolResult::text(lines.join("\n"))
     }
 
-    fn handle_poll(params: &Value) -> ToolResult {
+    async fn handle_poll(ctx: &ToolContext, params: &Value) -> ToolResult {
         let session_id = match Self::required_session(params) {
             Ok(id) => id,
             Err(result) => return result,
         };
         let entry = match Self::get(&session_id) {
             Some(entry) => entry,
-            None => return ToolResult::error(format!("Unknown process session_id: {session_id}")),
+            None => {
+                if let Some(record) = durable_record(ctx.db(), &session_id).await {
+                    return ToolResult::text(format!(
+                        "{} status: {}\nNo live output stream; durable log refs: {}",
+                        record.id,
+                        stored_status_label(&record.status),
+                        format_log_refs(&record.log_refs)
+                    ));
+                }
+                return ToolResult::error(format!("Unknown process session_id: {session_id}"));
+            }
         };
+        persist_entry(ctx.db(), &entry).await;
         let output = entry.drain_new_output();
         let mut text = format!("{} status: {}\n", entry.id, entry.status().label());
         if output.is_empty() {
@@ -729,15 +890,26 @@ impl ProcessTool {
         ToolResult::text(text)
     }
 
-    fn handle_log(params: &Value) -> ToolResult {
+    async fn handle_log(ctx: &ToolContext, params: &Value) -> ToolResult {
         let session_id = match Self::required_session(params) {
             Ok(id) => id,
             Err(result) => return result,
         };
         let entry = match Self::get(&session_id) {
             Some(entry) => entry,
-            None => return ToolResult::error(format!("Unknown process session_id: {session_id}")),
+            None => {
+                if let Some(record) = durable_record(ctx.db(), &session_id).await {
+                    return ToolResult::text(format!(
+                        "{} live log stream is unavailable (durable status: {}, refs: {}).",
+                        record.id,
+                        stored_status_label(&record.status),
+                        format_log_refs(&record.log_refs)
+                    ));
+                }
+                return ToolResult::error(format!("Unknown process session_id: {session_id}"));
+            }
         };
+        persist_entry(ctx.db(), &entry).await;
         let output = entry.snapshot_output();
         let limit = params
             .get("limit")
@@ -766,23 +938,35 @@ impl ProcessTool {
         }
     }
 
-    async fn handle_wait(params: &Value) -> ToolResult {
+    async fn handle_wait(ctx: &ToolContext, params: &Value) -> ToolResult {
         let session_id = match Self::required_session(params) {
             Ok(id) => id,
             Err(result) => return result,
         };
         let entry = match Self::get(&session_id) {
             Some(entry) => entry,
-            None => return ToolResult::error(format!("Unknown process session_id: {session_id}")),
+            None => {
+                if let Some(record) = durable_record(ctx.db(), &session_id).await {
+                    return ToolResult::text(format!(
+                        "{} durable status: {} (live wait unavailable; refs: {})",
+                        record.id,
+                        stored_status_label(&record.status),
+                        format_log_refs(&record.log_refs)
+                    ));
+                }
+                return ToolResult::error(format!("Unknown process session_id: {session_id}"));
+            }
         };
         let timeout_secs = params.get("timeout").and_then(|v| v.as_u64()).unwrap_or(30);
         let deadline = Instant::now() + Duration::from_secs(timeout_secs);
         while !entry.status().is_done() {
             if timeout_secs > 0 && Instant::now() >= deadline {
+                persist_entry(ctx.db(), &entry).await;
                 return ToolResult::text(format!("{} still running after {}s", entry.id, timeout_secs));
             }
             tokio::time::sleep(Duration::from_millis(50)).await;
         }
+        persist_entry(ctx.db(), &entry).await;
         let output = entry.drain_new_output();
         let mut text = format!("{} finished with status: {}", entry.id, entry.status().label());
         if !output.is_empty() {
@@ -880,11 +1064,11 @@ impl Tool for ProcessTool {
         };
 
         match action {
-            "start" => self.handle_start(ctx, &params),
-            "list" => Self::handle_list(),
-            "poll" => Self::handle_poll(&params),
-            "log" => Self::handle_log(&params),
-            "wait" => Self::handle_wait(&params).await,
+            "start" => self.handle_start(ctx, &params).await,
+            "list" => Self::handle_list(ctx).await,
+            "poll" => Self::handle_poll(ctx, &params).await,
+            "log" => Self::handle_log(ctx, &params).await,
+            "wait" => Self::handle_wait(ctx, &params).await,
             "kill" => Self::handle_kill(&params),
             "write" => Self::handle_write(&params, false).await,
             "submit" => Self::handle_write(&params, true).await,
@@ -909,6 +1093,7 @@ fn spawn_waiter(
     mut child: tokio::process::Child,
     pid: Option<u32>,
     mut kill_rx: oneshot::Receiver<()>,
+    db: Option<clankers_db::Db>,
 ) {
     tokio::spawn(async move {
         let started_at = entry.started_at;
@@ -925,6 +1110,7 @@ fn spawn_waiter(
                 entry.set_status(ProcessStatus::Killed { elapsed: started_at.elapsed() });
             }
         }
+        persist_entry(db.as_ref(), &entry).await;
     });
 }
 
@@ -982,6 +1168,10 @@ mod tests {
         ToolContext::new("process-test".to_string(), CancellationToken::new(), None)
     }
 
+    fn make_ctx_with_db(db: clankers_db::Db) -> ToolContext {
+        make_ctx().with_db(db)
+    }
+
     fn text(result: &ToolResult) -> String {
         result
             .content
@@ -1035,6 +1225,42 @@ mod tests {
 
         let waited = service.wait(id, Some(Duration::from_secs(2))).await.expect("wait succeeds");
         assert!(waited.summary.contains("service-ok"), "{}", waited.summary);
+    }
+
+    #[tokio::test]
+    async fn process_tool_persists_native_metadata_and_uses_durable_fallback() {
+        let db = clankers_db::Db::in_memory().expect("db opens");
+        let ctx = make_ctx_with_db(db.clone());
+        let tool = ProcessTool::new();
+        let started = tool.execute(&ctx, json!({"action": "start", "command": "printf durable-ok"})).await;
+        assert!(!started.is_error, "{started:?}");
+        let id = extract_process_id(&started);
+        let waited = tool.execute(&ctx, json!({"action": "wait", "session_id": id, "timeout": 2})).await;
+        assert!(!waited.is_error, "{waited:?}");
+
+        let stored = db.async_process_jobs().get(id.clone()).await.expect("db read").expect("record stored");
+        assert_eq!(stored.id, id);
+        assert!(matches!(stored.status, StoredProcessJobStatus::Succeeded { .. }));
+        assert!(!stored.log_refs.is_empty());
+
+        let mut durable_only = StoredProcessJobRecord::new_native(
+            "proc_durable_only",
+            "printf old",
+            StoredProcessJobOwnerScope::DaemonGlobal,
+        );
+        durable_only.status = StoredProcessJobStatus::Succeeded { exit_code: Some(0) };
+        durable_only.log_refs = vec![StoredProcessJobLogRef {
+            stream: StoredProcessJobStream::Combined,
+            reference: "native:proc_durable_only/combined.log".to_string(),
+            retained_until: None,
+            max_bytes: Some(10),
+        }];
+        db.async_process_jobs().upsert(durable_only).await.expect("insert durable-only record");
+
+        let listed = tool.execute(&ctx, json!({"action": "list"})).await;
+        assert!(text(&listed).contains("proc_durable_only"), "{}", text(&listed));
+        let logged = tool.execute(&ctx, json!({"action": "log", "session_id": "proc_durable_only"})).await;
+        assert!(text(&logged).contains("durable status"), "{}", text(&logged));
     }
 
     #[tokio::test]
