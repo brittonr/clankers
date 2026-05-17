@@ -22,7 +22,7 @@
 
 ## Phase 3: Durable backend projections
 
-- [ ] [serial] [depends:phase-2] Add fake backend contract tests for list/poll/log/kill/restart/status projection, backend capability matrix, and unsupported-backend/action receipts.
+- [x] [serial] [depends:phase-2] Add fake backend contract tests for list/poll/log/kill/restart/status projection, backend capability matrix, and unsupported-backend/action receipts. ✅ completed: 2026-05-17T16:36:48Z; evidence: runtime fake backend tests now cover start/list/status-observe/log/kill/restart projection through shared backend/store/projection traits, explicit backend capability matrix assertions, and typed backend-unavailable + unsupported-action receipts; tests `fake_backend_contract_covers_projection_and_mutations`, `fake_backend_capability_matrix_and_unavailable_receipts_are_explicit`; `cargo test -p clankers-runtime process_jobs -- --nocapture`, `cargo check -p clankers --tests`, `cargo fmt --check`, `openspec validate add-durable-process-jobs --strict --json`, `git diff --check`.
 - [ ] [serial] [covers=durable-process-jobs.backends.pueue] Implement pueue backend integration behind availability/config checks, projecting pueue task ids, statuses, logs, groups, and restarts into Clankers receipts.
 - [ ] [serial] [covers=durable-process-jobs.backends.systemd] Implement systemd backend integration behind availability/config checks, projecting transient units/scopes, cgroup kill/restart, and journal/log references into Clankers receipts.
 - [ ] [parallel] [covers=durable-process-jobs.notifications-delivery.reattach] Persist notification events through the notification sink so detached sessions can receive completion/readiness state on authorized reattach.

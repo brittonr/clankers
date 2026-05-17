@@ -687,6 +687,7 @@ mod tests {
         }
 
         async fn restart(&self, backend_ref: BackendRef) -> Result<ProcessJobReceipt, RuntimeError> {
+            self.calls.lock().expect("fake backend calls lock poisoned").push("restart");
             Ok(ProcessJobReceipt::unsupported(
                 ProcessJobOperation::Restart,
                 None,
@@ -716,6 +717,7 @@ mod tests {
         }
 
         async fn close_stdin(&self, _backend_ref: BackendRef) -> Result<ProcessJobReceipt, RuntimeError> {
+            self.calls.lock().expect("fake backend calls lock poisoned").push("close_stdin");
             Ok(ProcessJobReceipt {
                 operation: ProcessJobOperation::CloseStdin,
                 id: Some(ProcessJobId("proc_1".to_string())),
@@ -895,6 +897,114 @@ mod tests {
         assert_eq!(store.get(id).await.expect("store get works"), Some(summary.clone()));
         assert!(projection.project_summary(&summary).contains("proc_1"));
         assert_eq!(projection.project_receipt(&receipt), "Kill:killed");
+    }
+
+    #[tokio::test]
+    async fn fake_backend_contract_covers_projection_and_mutations() {
+        let fake = FakeBackend::default();
+        let backend: &dyn ProcessJobBackend = &fake;
+        let store: &dyn ProcessJobStore = &FakeStore::default();
+        let projection = TextProjection;
+        let id = ProcessJobId("proc_contract".to_string());
+        let owner = ProcessJobOwnerScope::Session("sess".to_string());
+
+        let start = backend
+            .start(StartProcessJobRequest {
+                backend: ProcessJobBackendKind::Native,
+                command_preview: "sleep 1".to_string(),
+                program: Some("sleep".to_string()),
+                args: vec!["1".to_string()],
+                shell_command: None,
+                cwd: ProcessJobCwd::Inherited,
+                owner: owner.clone(),
+                resource_policy: ProcessJobResourcePolicy::default(),
+                notification_policy: ProcessJobNotificationPolicy::default(),
+                metadata: BTreeMap::new(),
+            })
+            .await
+            .expect("fake start projects backend state");
+        let observed = backend.observe(start.backend_ref.clone()).await.expect("fake observe projects status");
+        let summary = ProcessJobSummary {
+            id: id.clone(),
+            backend: backend.kind(),
+            backend_ref: Some(observed.backend_ref.clone()),
+            owner,
+            status: observed.status.clone(),
+            command_preview: "sleep 1".to_string(),
+            cwd: ProcessJobCwd::Inherited,
+            started_at: Some(observed.updated_at),
+            updated_at: observed.updated_at,
+            completed_at: None,
+            log_refs: observed.log_refs,
+        };
+        store.upsert(summary.clone()).await.expect("summary upserts");
+
+        let listed = store.list(ProcessJobFilter::default()).await.expect("list projects rows");
+        let log = backend
+            .log(start.backend_ref.clone(), ProcessJobLogRange {
+                stream: ProcessJobStream::Combined,
+                offset: Some(7),
+                limit_bytes: 32,
+            })
+            .await
+            .expect("fake log projects chunk");
+        let kill = backend.kill(start.backend_ref.clone()).await.expect("fake kill projects receipt");
+        let restart = backend.restart(start.backend_ref).await.expect("fake restart returns typed unsupported receipt");
+
+        assert_eq!(listed, vec![summary.clone()]);
+        assert!(projection.project_summary(&summary).contains("Running"));
+        assert_eq!(log.cursor.offset, 7);
+        assert_eq!(kill.status, Some(ProcessJobStatus::Killed));
+        assert_eq!(
+            restart.error.expect("restart is unsupported").code,
+            ProcessJobErrorCode::UnsupportedActionForBackend
+        );
+        assert_eq!(fake.calls.lock().expect("fake calls lock poisoned").as_slice(), [
+            "start", "observe", "log", "kill", "restart"
+        ]);
+    }
+
+    #[test]
+    fn fake_backend_capability_matrix_and_unavailable_receipts_are_explicit() {
+        let capabilities = FakeBackend::default().capabilities();
+        assert_eq!(capabilities.backend, Some(ProcessJobBackendKind::Native));
+        assert!(capabilities.supports_shell);
+        assert!(capabilities.supports_direct_exec);
+        assert!(capabilities.supports_stdin);
+        assert!(capabilities.supports_kill);
+        assert!(!capabilities.supports_restart);
+        assert!(!capabilities.supports_adopt);
+
+        let unavailable = ProcessJobReceipt {
+            operation: ProcessJobOperation::Start,
+            id: None,
+            backend: Some(ProcessJobBackendKind::Systemd),
+            status: None,
+            backend_ref: None,
+            log_refs: Vec::new(),
+            summary: "systemd not enabled".to_string(),
+            error: Some(ProcessJobError {
+                code: ProcessJobErrorCode::BackendUnavailable,
+                operation: ProcessJobOperation::Start,
+                id: None,
+                backend: Some(ProcessJobBackendKind::Systemd),
+                action: Some("start".to_string()),
+                message: "systemd not enabled".to_string(),
+            }),
+        };
+        let unsupported = ProcessJobReceipt::unsupported(
+            ProcessJobOperation::Restart,
+            Some(ProcessJobId("proc_1".to_string())),
+            ProcessJobBackendKind::Pueue,
+            "restart",
+            "restart unsupported",
+        );
+
+        assert_eq!(unavailable.error.expect("backend unavailable").code, ProcessJobErrorCode::BackendUnavailable);
+        assert_eq!(
+            unsupported.error.expect("restart unsupported").code,
+            ProcessJobErrorCode::UnsupportedActionForBackend
+        );
     }
 
     #[test]
