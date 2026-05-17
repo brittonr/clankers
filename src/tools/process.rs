@@ -1669,6 +1669,38 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn cancellation_detach_and_log_poll_do_not_kill_process() {
+        let tool = ProcessTool::new();
+        let cancel = CancellationToken::new();
+        let ctx = ToolContext::new("process-detach-start".to_string(), cancel.clone(), None);
+        let started = tool.execute(&ctx, json!({"action": "start", "command": "sleep 1; printf after-detach"})).await;
+        assert!(!started.is_error, "{started:?}");
+        let id = extract_process_id(&started);
+
+        let wait_id = id.clone();
+        let wait_cancel = cancel.clone();
+        let waiter = tokio::spawn(async move {
+            let tool = ProcessTool::new();
+            let ctx = ToolContext::new("process-detach-wait".to_string(), wait_cancel, None);
+            tool.execute(&ctx, json!({"action": "wait", "session_id": wait_id, "timeout": 5})).await
+        });
+        tokio::time::sleep(Duration::from_millis(100)).await;
+        cancel.cancel();
+        waiter.abort();
+
+        let poll = tool.execute(&make_ctx(), json!({"action": "poll", "session_id": id})).await;
+        assert!(!poll.is_error, "{poll:?}");
+        assert!(text(&poll).contains("running"), "{}", text(&poll));
+
+        let log = tool.execute(&make_ctx(), json!({"action": "log", "session_id": id, "limit": 1})).await;
+        assert!(!log.is_error, "{log:?}");
+
+        let waited = tool.execute(&make_ctx(), json!({"action": "wait", "session_id": id, "timeout": 3})).await;
+        assert!(!waited.is_error, "{waited:?}");
+        assert!(text(&waited).contains("after-detach"), "{}", text(&waited));
+    }
+
+    #[tokio::test]
     async fn kill_stops_running_process() {
         let tool = ProcessTool::new();
         let started = tool.execute(&make_ctx(), json!({"action": "start", "command": "sleep 10"})).await;
