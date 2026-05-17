@@ -136,6 +136,10 @@ pub enum LedgerPayload {
     Error(ErrorLedgerFact),
     /// Artifact hash reference fact.
     ArtifactReference(ArtifactReferenceLedgerFact),
+    /// Pending non-destructive change/refactor work fact.
+    PendingChange(PendingChangeLedgerFact),
+    /// Todo item lifecycle fact for structured work sessions.
+    Todo(TodoLedgerFact),
 }
 
 impl LedgerPayload {
@@ -148,6 +152,24 @@ impl LedgerPayload {
             Self::OpenSpec(fact) => Self::OpenSpec(fact.sanitized()),
             Self::Error(fact) => Self::Error(fact.sanitized()),
             Self::ArtifactReference(fact) => Self::ArtifactReference(fact.sanitized()),
+            Self::PendingChange(fact) => Self::PendingChange(fact.sanitized()),
+            Self::Todo(fact) => Self::Todo(fact.sanitized()),
+        }
+    }
+
+    /// Borrow shared query fields for indexing without exposing payload content.
+    #[must_use]
+    pub fn query_fields(&self) -> &LedgerQueryFields {
+        match self {
+            Self::Model(fact) => &fact.query,
+            Self::Tool(fact) => &fact.query,
+            Self::Block(fact) => &fact.query,
+            Self::Review(fact) => &fact.query,
+            Self::OpenSpec(fact) => &fact.query,
+            Self::Error(fact) => &fact.query,
+            Self::ArtifactReference(fact) => &fact.query,
+            Self::PendingChange(fact) => &fact.query,
+            Self::Todo(fact) => &fact.query,
         }
     }
 }
@@ -309,6 +331,44 @@ impl ArtifactReferenceLedgerFact {
         Self {
             artifact_hash: self.artifact_hash,
             artifact_kind: sanitize_ledger_text(self.artifact_kind),
+            query: self.query.sanitized(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PendingChangeLedgerFact {
+    pub change_id: String,
+    pub scope: String,
+    pub status: String,
+    pub query: LedgerQueryFields,
+}
+
+impl PendingChangeLedgerFact {
+    fn sanitized(self) -> Self {
+        Self {
+            change_id: sanitize_ledger_text(self.change_id),
+            scope: sanitize_ledger_text(self.scope),
+            status: sanitize_ledger_text(self.status),
+            query: self.query.sanitized(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct TodoLedgerFact {
+    pub todo_id: String,
+    pub content: String,
+    pub status: String,
+    pub query: LedgerQueryFields,
+}
+
+impl TodoLedgerFact {
+    fn sanitized(self) -> Self {
+        Self {
+            todo_id: sanitize_ledger_text(self.todo_id),
+            content: sanitize_ledger_text(self.content),
+            status: sanitize_ledger_text(self.status),
             query: self.query.sanitized(),
         }
     }
@@ -519,6 +579,45 @@ mod tests {
         let _ = std::fs::remove_file(&path);
 
         assert_eq!(restored, records);
+    }
+
+    #[test]
+    fn structured_work_facts_capture_pending_changes_and_todos() {
+        let req = "typed-durable-session-ledger.structured-work";
+        let records = vec![
+            LedgerRecord::typed(
+                "pending-change",
+                LedgerPayload::PendingChange(PendingChangeLedgerFact {
+                    change_id: "add-typed-durable-session-ledger".to_owned(),
+                    scope: "session/refactor".to_owned(),
+                    status: "pending".to_owned(),
+                    query: LedgerQueryFields {
+                        requirement_id: Some(req.to_owned()),
+                        ..LedgerQueryFields::default()
+                    },
+                }),
+            ),
+            LedgerRecord::typed(
+                "todo",
+                LedgerPayload::Todo(TodoLedgerFact {
+                    todo_id: "todo-1".to_owned(),
+                    content: "record structured todo".to_owned(),
+                    status: "in-progress".to_owned(),
+                    query: LedgerQueryFields {
+                        requirement_id: Some(req.to_owned()),
+                        ..LedgerQueryFields::default()
+                    },
+                }),
+            ),
+        ];
+
+        for record in records {
+            let LedgerRecord::Typed(typed) = record else {
+                panic!("expected typed work fact");
+            };
+            assert_eq!(typed.schema_version, LEDGER_SCHEMA_VERSION);
+            assert_eq!(typed.payload.query_fields().requirement_id.as_deref(), Some(req));
+        }
     }
 
     #[test]

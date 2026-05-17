@@ -7,7 +7,7 @@
 
 - [x] [depends:ledger-records] Write typed ledger facts alongside existing session JSONL without breaking legacy replay. [covers=typed-durable-session-ledger.compat] ✅ 1m 57s (started: 2026-05-17T00:08:35Z → completed: 2026-05-17T00:10:32Z; evidence: `cargo test -p clankers-session typed_ledger_sidecar -- --nocapture`; `cargo test -p clankers-session test_list_sessions_filters_non_jsonl -- --nocapture`; `cargo test -p clankers-session`)
 - [x] [depends:ledger-write] Add schema migration fixtures and old-session compatibility tests. [covers=typed-durable-session-ledger.migration] ✅ 49s (started: 2026-05-17T00:11:04Z → completed: 2026-05-17T00:11:53Z; evidence: `cargo test -p clankers-session read_ledger_records_migrates_future_or_unknown_records_to_opaque -- --nocapture`; `cargo test -p clankers-session typed_ledger_sidecar -- --nocapture`; `cargo test -p clankers-session`)
-- [ ] [depends:ledger-write] Add structured pending-change/todo ledger records for non-destructive refactor and OpenSpec work sessions. [covers=typed-durable-session-ledger.structured-work]
+- [x] [depends:ledger-write] Add structured pending-change/todo ledger records for non-destructive refactor and OpenSpec work sessions. [covers=typed-durable-session-ledger.structured-work] ✅ 1m 35s (started: 2026-05-17T00:12:15Z → completed: 2026-05-17T00:13:50Z; evidence: `cargo test -p clankers-session structured_work_facts -- --nocapture`; `cargo test -p clankers-session ledger -- --nocapture`; `cargo test -p clankers-session`)
 
 ## Phase 3: Query and verification
 
