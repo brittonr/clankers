@@ -5,6 +5,11 @@
 //! output.
 
 use std::collections::BTreeMap;
+use std::fs::OpenOptions;
+use std::io::BufRead;
+use std::io::BufReader;
+use std::io::Write;
+use std::path::Path;
 
 use chrono::DateTime;
 use chrono::Utc;
@@ -14,6 +19,9 @@ use clankers_artifacts::RedactionClass;
 use serde::Deserialize;
 use serde::Serialize;
 use serde_json::Value;
+
+use crate::error::Result;
+use crate::error::session_err;
 
 /// Current typed ledger schema version.
 pub const LEDGER_SCHEMA_VERSION: u32 = 1;
@@ -347,6 +355,35 @@ pub fn opaque_from_unknown_json(id: impl Into<String>, value: &Value) -> LedgerR
     LedgerRecord::opaque(id, original_kind, schema_version, safe_metadata)
 }
 
+/// Append one typed ledger record to a JSONL ledger file.
+pub fn append_ledger_record(path: &Path, record: &LedgerRecord) -> Result<()> {
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent).map_err(session_err)?;
+    }
+    let mut file = OpenOptions::new().create(true).append(true).open(path).map_err(session_err)?;
+    let line = serde_json::to_string(record).map_err(session_err)?;
+    writeln!(file, "{line}").map_err(session_err)?;
+    Ok(())
+}
+
+/// Read all typed ledger records from a JSONL ledger file.
+pub fn read_ledger_records(path: &Path) -> Result<Vec<LedgerRecord>> {
+    if !path.exists() {
+        return Ok(Vec::new());
+    }
+    let file = OpenOptions::new().read(true).open(path).map_err(session_err)?;
+    let reader = BufReader::new(file);
+    let mut records = Vec::new();
+    for line in reader.lines() {
+        let line = line.map_err(session_err)?;
+        if line.trim().is_empty() {
+            continue;
+        }
+        records.push(serde_json::from_str(&line).map_err(session_err)?);
+    }
+    Ok(records)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -378,6 +415,95 @@ mod tests {
         };
         assert_eq!(model.provider, "[redacted-secret-marker]");
         assert_eq!(model.query.artifact_hashes, vec![hash]);
+    }
+
+    #[test]
+    fn append_read_round_trips_all_typed_ledger_record_kinds() {
+        let path = std::env::temp_dir().join(format!("clankers-ledger-round-trip-{}.jsonl", std::process::id()));
+        let _ = std::fs::remove_file(&path);
+        let artifact = ArtifactHash::digest(b"artifact-reference");
+        let records = vec![
+            LedgerRecord::typed(
+                "model",
+                LedgerPayload::Model(ModelLedgerFact {
+                    message_id: Some(MessageId::new("model-message")),
+                    model: "gpt-test".to_owned(),
+                    provider: "openai".to_owned(),
+                    query: LedgerQueryFields::default(),
+                    redaction_class: RedactionClass::MetadataOnly,
+                }),
+            ),
+            LedgerRecord::typed(
+                "tool",
+                LedgerPayload::Tool(ToolLedgerFact {
+                    call_id: "call-1".to_owned(),
+                    tool_name: "terminal".to_owned(),
+                    status: "ok".to_owned(),
+                    query: LedgerQueryFields {
+                        artifact_hashes: vec![artifact],
+                        ..LedgerQueryFields::default()
+                    },
+                    redaction_class: RedactionClass::MetadataOnly,
+                }),
+            ),
+            LedgerRecord::typed(
+                "block",
+                LedgerPayload::Block(BlockLedgerFact {
+                    block_id: "block-1".to_owned(),
+                    block_kind: "assistant".to_owned(),
+                    finalized_hash: Some(artifact),
+                    query: LedgerQueryFields::default(),
+                }),
+            ),
+            LedgerRecord::typed(
+                "review",
+                LedgerPayload::Review(ReviewLedgerFact {
+                    review_id: "review-1".to_owned(),
+                    verdict: "pass".to_owned(),
+                    finding_count: 0,
+                    query: LedgerQueryFields {
+                        artifact_hashes: vec![artifact],
+                        ..LedgerQueryFields::default()
+                    },
+                }),
+            ),
+            LedgerRecord::typed(
+                "openspec",
+                LedgerPayload::OpenSpec(OpenSpecLedgerFact {
+                    change: "add-typed-durable-session-ledger".to_owned(),
+                    task: "records".to_owned(),
+                    status: "done".to_owned(),
+                    query: LedgerQueryFields {
+                        artifact_hashes: vec![artifact],
+                        ..LedgerQueryFields::default()
+                    },
+                }),
+            ),
+            LedgerRecord::typed(
+                "error",
+                LedgerPayload::Error(ErrorLedgerFact {
+                    class: "E_TEST".to_owned(),
+                    safe_message: "safe error".to_owned(),
+                    query: LedgerQueryFields::default(),
+                }),
+            ),
+            LedgerRecord::typed(
+                "artifact",
+                LedgerPayload::ArtifactReference(ArtifactReferenceLedgerFact {
+                    artifact_hash: artifact,
+                    artifact_kind: "result".to_owned(),
+                    query: LedgerQueryFields::default(),
+                }),
+            ),
+        ];
+
+        for record in &records {
+            append_ledger_record(&path, record).expect("append record");
+        }
+        let restored = read_ledger_records(&path).expect("read ledger records");
+        let _ = std::fs::remove_file(&path);
+
+        assert_eq!(restored, records);
     }
 
     #[test]
