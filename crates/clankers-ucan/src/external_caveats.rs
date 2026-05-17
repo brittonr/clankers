@@ -21,6 +21,10 @@ pub const CAVEAT_MODEL_PREFIX: &str = "model-prefix";
 pub const CAVEAT_ARTIFACT_HASH: &str = "artifact-hash";
 pub const CAVEAT_ARTIFACT_KIND: &str = "artifact-kind";
 pub const CAVEAT_REDACTION_CLASS: &str = "redaction-class";
+pub const CAVEAT_EXPIRES_AT_MS: &str = "expires-at-ms";
+pub const CAVEAT_NOT_BEFORE_MS: &str = "not-before-ms";
+pub const CAVEAT_NONCE: &str = "nonce";
+pub const CAVEAT_FRESHNESS_WINDOW_MS: &str = "freshness-window-ms";
 
 #[derive(Debug, Default, Clone, PartialEq, Eq)]
 pub struct EffectCaveatContext {
@@ -35,6 +39,9 @@ pub struct EffectCaveatContext {
     artifact_hash: Option<String>,
     artifact_kind: Option<String>,
     redaction_class: Option<String>,
+    now_ms: Option<u64>,
+    issued_at_ms: Option<u64>,
+    nonce: Option<String>,
 }
 
 impl EffectCaveatContext {
@@ -52,6 +59,9 @@ impl EffectCaveatContext {
             artifact_hash: None,
             artifact_kind: None,
             redaction_class: None,
+            now_ms: None,
+            issued_at_ms: None,
+            nonce: None,
         }
     }
 
@@ -118,6 +128,24 @@ impl EffectCaveatContext {
     #[must_use]
     pub fn with_redaction_class(mut self, redaction_class: impl Into<String>) -> Self {
         self.redaction_class = Some(redaction_class.into());
+        self
+    }
+
+    #[must_use]
+    pub const fn with_now_ms(mut self, now_ms: u64) -> Self {
+        self.now_ms = Some(now_ms);
+        self
+    }
+
+    #[must_use]
+    pub const fn with_issued_at_ms(mut self, issued_at_ms: u64) -> Self {
+        self.issued_at_ms = Some(issued_at_ms);
+        self
+    }
+
+    #[must_use]
+    pub fn with_nonce(mut self, nonce: impl Into<String>) -> Self {
+        self.nonce = Some(nonce.into());
         self
     }
 }
@@ -223,6 +251,22 @@ pub fn redaction_class_caveat(redaction_class: impl Into<String>) -> ucan::Resul
     caveat(CAVEAT_REDACTION_CLASS, "redaction_class", redaction_class.into())
 }
 
+pub fn expires_at_ms_caveat(expires_at_ms: u64) -> ucan::Result<CaveatDocument> {
+    caveat(CAVEAT_EXPIRES_AT_MS, "expires_at_ms", expires_at_ms.to_string())
+}
+
+pub fn not_before_ms_caveat(not_before_ms: u64) -> ucan::Result<CaveatDocument> {
+    caveat(CAVEAT_NOT_BEFORE_MS, "not_before_ms", not_before_ms.to_string())
+}
+
+pub fn nonce_caveat(nonce: impl Into<String>) -> ucan::Result<CaveatDocument> {
+    caveat(CAVEAT_NONCE, "nonce", nonce.into())
+}
+
+pub fn freshness_window_ms_caveat(window_ms: u64) -> ucan::Result<CaveatDocument> {
+    caveat(CAVEAT_FRESHNESS_WINDOW_MS, "freshness_window_ms", window_ms.to_string())
+}
+
 fn caveat(caveat_type: &str, key: &str, payload: String) -> ucan::Result<CaveatDocument> {
     CaveatDocument::new(CLANKERS_CAVEAT_DOMAIN.to_owned(), caveat_type.to_owned(), key.to_owned(), payload.into_bytes())
 }
@@ -241,6 +285,10 @@ fn is_supported_caveat(caveat_type: &str) -> bool {
             | CAVEAT_ARTIFACT_HASH
             | CAVEAT_ARTIFACT_KIND
             | CAVEAT_REDACTION_CLASS
+            | CAVEAT_EXPIRES_AT_MS
+            | CAVEAT_NOT_BEFORE_MS
+            | CAVEAT_NONCE
+            | CAVEAT_FRESHNESS_WINDOW_MS
     )
 }
 
@@ -260,6 +308,12 @@ fn evaluate_known_caveat(context: &EffectCaveatContext, caveat: &CaveatDocument)
         CAVEAT_ARTIFACT_KIND => string_equals(context.artifact_kind.as_deref(), payload_text(caveat)?, "artifact_kind"),
         CAVEAT_REDACTION_CLASS => {
             string_equals(context.redaction_class.as_deref(), payload_text(caveat)?, "redaction_class")
+        }
+        CAVEAT_EXPIRES_AT_MS => now_no_later_than(context.now_ms, payload_u64(caveat)?),
+        CAVEAT_NOT_BEFORE_MS => now_no_earlier_than(context.now_ms, payload_u64(caveat)?),
+        CAVEAT_NONCE => string_equals(context.nonce.as_deref(), payload_text(caveat)?, "nonce"),
+        CAVEAT_FRESHNESS_WINDOW_MS => {
+            freshness_within_window(context.now_ms, context.issued_at_ms, payload_u64(caveat)?)
         }
         other => Err(CaveatHookError::UnsupportedCaveat {
             caveat_type: other.to_owned(),
@@ -303,6 +357,54 @@ fn numeric_at_most(actual: Option<u64>, limit: u64, label: &'static str) -> Resu
         Err(CaveatHookError::UnsupportedCaveat {
             caveat_type: format!("{label}-limit-exceeded"),
         })
+    }
+}
+
+fn now_no_later_than(now_ms: Option<u64>, expires_at_ms: u64) -> Result<(), CaveatHookError> {
+    let now_ms = now_ms.ok_or_else(|| CaveatHookError::UnsupportedCaveat {
+        caveat_type: "missing-now_ms".to_owned(),
+    })?;
+    if now_ms <= expires_at_ms {
+        Ok(())
+    } else {
+        Err(CaveatHookError::UnsupportedCaveat {
+            caveat_type: "expired".to_owned(),
+        })
+    }
+}
+
+fn now_no_earlier_than(now_ms: Option<u64>, not_before_ms: u64) -> Result<(), CaveatHookError> {
+    let now_ms = now_ms.ok_or_else(|| CaveatHookError::UnsupportedCaveat {
+        caveat_type: "missing-now_ms".to_owned(),
+    })?;
+    if now_ms >= not_before_ms {
+        Ok(())
+    } else {
+        Err(CaveatHookError::UnsupportedCaveat {
+            caveat_type: "not-before".to_owned(),
+        })
+    }
+}
+
+fn freshness_within_window(
+    now_ms: Option<u64>,
+    issued_at_ms: Option<u64>,
+    window_ms: u64,
+) -> Result<(), CaveatHookError> {
+    let now_ms = now_ms.ok_or_else(|| CaveatHookError::UnsupportedCaveat {
+        caveat_type: "missing-now_ms".to_owned(),
+    })?;
+    let issued_at_ms = issued_at_ms.ok_or_else(|| CaveatHookError::UnsupportedCaveat {
+        caveat_type: "missing-issued_at_ms".to_owned(),
+    })?;
+    match now_ms.checked_sub(issued_at_ms) {
+        Some(age_ms) if age_ms <= window_ms => Ok(()),
+        Some(_) => Err(CaveatHookError::UnsupportedCaveat {
+            caveat_type: "freshness-window-exceeded".to_owned(),
+        }),
+        None => Err(CaveatHookError::UnsupportedCaveat {
+            caveat_type: "issued-at-in-future".to_owned(),
+        }),
     }
 }
 
@@ -453,6 +555,42 @@ mod tests {
         assert!(!satisfied(evaluate(context.clone(), &hash)));
         assert!(!satisfied(evaluate(context.clone(), &kind)));
         assert!(!satisfied(evaluate(context, &redaction)));
+    }
+
+    #[test]
+    fn freshness_hooks_enforce_time_and_nonce() {
+        let expires = expires_at_ms_caveat(2_000).expect("expires caveat");
+        let not_before = not_before_ms_caveat(1_000).expect("not before caveat");
+        let nonce = nonce_caveat("n-123").expect("nonce caveat");
+        let freshness = freshness_window_ms_caveat(500).expect("freshness caveat");
+        let context = EffectCaveatContext::new().with_now_ms(1_500).with_issued_at_ms(1_001).with_nonce("n-123");
+
+        assert!(satisfied(evaluate(context.clone(), &expires)));
+        assert!(satisfied(evaluate(context.clone(), &not_before)));
+        assert!(satisfied(evaluate(context.clone(), &nonce)));
+        assert!(satisfied(evaluate(context, &freshness)));
+    }
+
+    #[test]
+    fn freshness_hooks_reject_expired_early_replayed_and_stale_requests() {
+        let expires = expires_at_ms_caveat(1_000).expect("expires caveat");
+        let not_before = not_before_ms_caveat(2_000).expect("not before caveat");
+        let nonce = nonce_caveat("n-123").expect("nonce caveat");
+        let freshness = freshness_window_ms_caveat(500).expect("freshness caveat");
+        let context = EffectCaveatContext::new().with_now_ms(1_500).with_issued_at_ms(900).with_nonce("other");
+
+        assert!(!satisfied(evaluate(context.clone(), &expires)));
+        assert!(!satisfied(evaluate(context.clone(), &not_before)));
+        assert!(!satisfied(evaluate(context.clone(), &nonce)));
+        assert!(!satisfied(evaluate(context, &freshness)));
+    }
+
+    #[test]
+    fn freshness_window_rejects_future_issued_at() {
+        let freshness = freshness_window_ms_caveat(500).expect("freshness caveat");
+        let context = EffectCaveatContext::new().with_now_ms(1_000).with_issued_at_ms(1_001);
+
+        assert!(!satisfied(evaluate(context, &freshness)));
     }
 
     #[test]
