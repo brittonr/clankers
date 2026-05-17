@@ -3,6 +3,11 @@ let
   cfg = config.services.clankers-daemon;
   processCfg = cfg.processManagement;
   retentionCfg = processCfg.retention;
+  pueueCfg = processCfg.pueue;
+  pueueGroupSetupCommands = lib.concatLines (lib.mapAttrsToList (name: concurrency: ''
+    ${pueueCfg.package}/bin/pueue group add ${lib.escapeShellArg name} >/dev/null 2>&1 || true
+    ${pueueCfg.package}/bin/pueue parallel --group ${lib.escapeShellArg name} ${toString concurrency}
+  '') pueueCfg.groups);
 in
 {
   options.services.clankers-daemon = {
@@ -131,6 +136,35 @@ in
           description = "Maximum total process/job log bytes retained before garbage collection may prune old logs.";
         };
       };
+
+      pueue = {
+        enable = lib.mkEnableOption "pueue durable process/job backend integration";
+
+        package = lib.mkOption {
+          type = lib.types.package;
+          default = pkgs.pueue;
+          defaultText = lib.literalExpression "pkgs.pueue";
+          description = "pueue package used for the optional managed daemon and Clankers pueue backend calls.";
+        };
+
+        manageService = lib.mkOption {
+          type = lib.types.bool;
+          default = true;
+          description = "Whether this module manages a pueued system service for Clankers. Disable when an existing compatible pueue service is provided separately.";
+        };
+
+        stateDir = lib.mkOption {
+          type = lib.types.str;
+          default = "${cfg.stateDir}/pueue";
+          description = "Writable HOME/state directory used by the managed pueue service.";
+        };
+
+        groups = lib.mkOption {
+          type = lib.types.attrsOf lib.types.ints.unsigned;
+          default = { clankers = 4; };
+          description = "pueue groups and deterministic parallelism limits materialized by the module.";
+        };
+      };
     };
   };
 
@@ -142,6 +176,13 @@ in
       createHome = true;
     };
     users.groups.${cfg.group} = {};
+
+    assertions = [
+      {
+        assertion = processCfg.defaultBackend != "pueue" || pueueCfg.enable;
+        message = "services.clankers-daemon.processManagement.defaultBackend = \"pueue\" requires processManagement.pueue.enable = true.";
+      }
+    ];
 
     systemd.tmpfiles.rules =
       (lib.optionals (cfg.pluginsPackage != null) (
@@ -157,12 +198,64 @@ in
       ++ lib.optionals processCfg.enable [
         "d ${processCfg.registryDir} 0750 ${cfg.user} ${cfg.group} -"
         "d ${processCfg.logDir} 0750 ${cfg.user} ${cfg.group} -"
+      ]
+      ++ lib.optionals (processCfg.enable && pueueCfg.enable) [
+        "d ${pueueCfg.stateDir} 0750 ${cfg.user} ${cfg.group} -"
       ];
+
+    systemd.services.clankers-pueued = lib.mkIf (processCfg.enable && pueueCfg.enable && pueueCfg.manageService) {
+      description = "Clankers managed pueue daemon";
+      wantedBy = [ "multi-user.target" ];
+      before = [ "clankers-daemon.service" ];
+      serviceConfig = {
+        Type = "simple";
+        ExecStart = "${pueueCfg.package}/bin/pueued";
+        User = cfg.user;
+        Group = cfg.group;
+        Restart = "on-failure";
+        RestartSec = 5;
+        WorkingDirectory = pueueCfg.stateDir;
+        ReadWritePaths = [ pueueCfg.stateDir ];
+        NoNewPrivileges = true;
+        ProtectSystem = "strict";
+        ProtectHome = true;
+        PrivateTmp = true;
+      };
+      environment = {
+        HOME = pueueCfg.stateDir;
+        PUEUE_CONFIG_PATH = "${pueueCfg.stateDir}/pueue.yml";
+      };
+    };
+
+    systemd.services.clankers-pueue-setup = lib.mkIf (processCfg.enable && pueueCfg.enable && pueueCfg.manageService) {
+      description = "Configure Clankers pueue groups and concurrency";
+      after = [ "clankers-pueued.service" ];
+      requires = [ "clankers-pueued.service" ];
+      before = [ "clankers-daemon.service" ];
+      serviceConfig = {
+        Type = "oneshot";
+        User = cfg.user;
+        Group = cfg.group;
+      };
+      environment = {
+        HOME = pueueCfg.stateDir;
+        PUEUE_CONFIG_PATH = "${pueueCfg.stateDir}/pueue.yml";
+      };
+      script = ''
+        for _ in $(seq 1 50); do
+          if ${pueueCfg.package}/bin/pueue status >/dev/null 2>&1; then
+            break
+          fi
+          sleep 0.1
+        done
+        ${pueueGroupSetupCommands}
+      '';
+    };
 
     systemd.services.clankers-daemon = {
       description = "Clankers Agent Daemon";
-      after = [ "network-online.target" ];
-      wants = [ "network-online.target" ];
+      after = [ "network-online.target" ] ++ lib.optionals (processCfg.enable && pueueCfg.enable && pueueCfg.manageService) [ "clankers-pueue-setup.service" ];
+      wants = [ "network-online.target" ] ++ lib.optionals (processCfg.enable && pueueCfg.enable && pueueCfg.manageService) [ "clankers-pueued.service" ];
       wantedBy = [ "multi-user.target" ];
 
       environment = {
@@ -182,6 +275,11 @@ in
         CLANKERS_PROCESS_JOB_RETENTION_MAX_AGE_DAYS = toString retentionCfg.maxAgeDays;
         CLANKERS_PROCESS_JOB_RETENTION_MAX_RECORDS = toString retentionCfg.maxRecords;
         CLANKERS_PROCESS_JOB_RETENTION_MAX_LOG_BYTES = toString retentionCfg.maxLogBytes;
+      }
+      // lib.optionalAttrs (processCfg.enable && pueueCfg.enable) {
+        CLANKERS_PROCESS_JOB_PUEUE_ENABLED = "1";
+        CLANKERS_PROCESS_JOB_PUEUE_GROUPS = builtins.concatStringsSep "," (builtins.attrNames pueueCfg.groups);
+        PUEUE_CONFIG_PATH = "${pueueCfg.stateDir}/pueue.yml";
       }
       // lib.optionalAttrs (cfg.authFile != null) {
         CLANKERS_AUTH_FILE = toString cfg.authFile;
@@ -219,6 +317,8 @@ in
           processCfg.registryDir
           processCfg.logDir
           (builtins.dirOf processCfg.databasePath)
+        ] ++ lib.optionals (processCfg.enable && pueueCfg.enable) [
+          pueueCfg.stateDir
         ];
         PrivateTmp = true;
       } // lib.optionalAttrs (cfg.environmentFile != null) {

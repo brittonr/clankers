@@ -544,6 +544,97 @@
                 (.tmpfiles | index("d /var/log/clankers/jobs 0750 clankers clankers -"))
               ' "$out"
             '';
+          nixos-module-process-pueue =
+            let
+              fakeClankersPkg = pkgs.writeShellScriptBin "clankers" "exit 0";
+              enabled = nixpkgs.lib.nixosSystem {
+                inherit system;
+                modules = [
+                  self.nixosModules.clankers-daemon
+                  ({ ... }: {
+                    services.clankers-daemon = {
+                      enable = true;
+                      package = fakeClankersPkg;
+                      processManagement = {
+                        enable = true;
+                        defaultBackend = "pueue";
+                        pueue = {
+                          enable = true;
+                          package = pkgs.pueue;
+                          stateDir = "/var/lib/clankers/pueue-test";
+                          groups = {
+                            clankers = 3;
+                            long = 1;
+                          };
+                        };
+                      };
+                    };
+                  })
+                ];
+              };
+              disabled = nixpkgs.lib.nixosSystem {
+                inherit system;
+                modules = [
+                  self.nixosModules.clankers-daemon
+                  ({ ... }: {
+                    services.clankers-daemon = {
+                      enable = true;
+                      package = fakeClankersPkg;
+                      processManagement = {
+                        enable = true;
+                        defaultBackend = "native";
+                        pueue.enable = false;
+                      };
+                    };
+                  })
+                ];
+              };
+              enabledDaemon = enabled.config.systemd.services.clankers-daemon;
+              disabledDaemon = disabled.config.systemd.services.clankers-daemon;
+              payload = builtins.toJSON {
+                enabledDaemon = {
+                  inherit (enabledDaemon) after wants environment;
+                };
+                enabledPueued = {
+                  inherit (enabled.config.systemd.services.clankers-pueued) environment;
+                  serviceConfig = {
+                    inherit (enabled.config.systemd.services.clankers-pueued.serviceConfig) ExecStart;
+                  };
+                };
+                enabledSetup = {
+                  inherit (enabled.config.systemd.services.clankers-pueue-setup) script;
+                };
+                enabledTmpfiles = enabled.config.systemd.tmpfiles.rules;
+                disabledDaemon = {
+                  inherit (disabledDaemon) environment;
+                };
+                disabledServices = builtins.attrNames disabled.config.systemd.services;
+              };
+            in pkgs.runCommand "nixos-module-process-pueue" {
+              nativeBuildInputs = [ pkgs.jq ];
+              passAsFile = [ "payload" ];
+              inherit payload;
+            } ''
+              cp "$payloadPath" "$out"
+              jq -e '
+                .enabledDaemon.environment.CLANKERS_PROCESS_JOB_DEFAULT_BACKEND == "pueue" and
+                .enabledDaemon.environment.CLANKERS_PROCESS_JOB_PUEUE_ENABLED == "1" and
+                .enabledDaemon.environment.CLANKERS_PROCESS_JOB_PUEUE_GROUPS == "clankers,long" and
+                .enabledDaemon.environment.PUEUE_CONFIG_PATH == "/var/lib/clankers/pueue-test/pueue.yml" and
+                (.enabledDaemon.after | index("clankers-pueue-setup.service")) and
+                (.enabledDaemon.wants | index("clankers-pueued.service")) and
+                .enabledPueued.serviceConfig.ExecStart == "${pkgs.pueue}/bin/pueued" and
+                .enabledPueued.environment.HOME == "/var/lib/clankers/pueue-test" and
+                (.enabledSetup.script | contains("pueue group add clankers")) and
+                (.enabledSetup.script | contains("pueue parallel --group clankers 3")) and
+                (.enabledSetup.script | contains("pueue group add long")) and
+                (.enabledSetup.script | contains("pueue parallel --group long 1")) and
+                (.enabledTmpfiles | index("d /var/lib/clankers/pueue-test 0750 clankers clankers -")) and
+                (.disabledDaemon.environment | has("CLANKERS_PROCESS_JOB_PUEUE_ENABLED") | not) and
+                (.disabledServices | index("clankers-pueued") | not) and
+                .disabledDaemon.environment.CLANKERS_PROCESS_JOB_DEFAULT_BACKEND == "native"
+              ' "$out"
+            '';
         };
 
         devShells.default = pkgs.mkShell {
