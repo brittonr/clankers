@@ -832,6 +832,28 @@ mod tests {
     }
 
     #[test]
+    fn prompt_assembly_repeated_prompts_are_pure_and_do_not_suppress_follow_ups() {
+        let policy = PromptAssemblyPolicy::host_context_only();
+        let sources = PromptSources {
+            host_context: vec![HostContext {
+                label: "app".to_string(),
+                content: "safe app context".to_string(),
+            }],
+            ..PromptSources::default()
+        };
+
+        let first = PromptAssembler::assemble(&policy, &sources, "first".to_string()).unwrap();
+        let second = PromptAssembler::assemble(&policy, &sources, "second".to_string()).unwrap();
+        let first_again = PromptAssembler::assemble(&policy, &sources, "first".to_string()).unwrap();
+
+        assert_eq!(first.sections, first_again.sections);
+        assert_eq!(first.user_prompt, "first");
+        assert_eq!(second.user_prompt, "second");
+        assert_eq!(second.sections, first.sections);
+        assert!(second.provenance.iter().all(|item| !contains_secret_marker(&item.safe_summary)));
+    }
+
+    #[test]
     fn prompt_assembly_rejects_filesystem_discovery_when_disabled() {
         let policy = PromptAssemblyPolicy::host_context_only();
         let sources = PromptSources {
