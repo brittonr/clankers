@@ -19,6 +19,7 @@ pub mod confirmation;
 pub mod effects;
 mod event_summary;
 pub mod events;
+pub mod process_jobs;
 pub mod prompt;
 pub mod runtime;
 pub mod services;

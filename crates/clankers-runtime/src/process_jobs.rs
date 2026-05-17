@@ -1,0 +1,440 @@
+//! Backend-neutral process/job contracts.
+//!
+//! These types are the stable seam between the agent-visible `process` tool,
+//! service orchestration, storage, log backends, notification delivery, and UI
+//! projections. Concrete native, pueue, systemd, redb, TUI, and daemon adapters
+//! should depend on these DTOs rather than on each other.
+
+use std::collections::BTreeMap;
+use std::path::PathBuf;
+use std::time::Duration;
+
+use async_trait::async_trait;
+use chrono::DateTime;
+use chrono::Utc;
+use serde::Deserialize;
+use serde::Serialize;
+
+use crate::RuntimeError;
+
+/// Stable Clankers-owned process/job identifier.
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct ProcessJobId(pub String);
+
+/// Backend-owned reference, such as a PID/process-group, pueue task id, or systemd unit name.
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct BackendRef(pub String);
+
+/// Durable notification event id for completion/readiness delivery and deduplication.
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct ProcessJobEventId(pub String);
+
+/// Supported backend families. Unknown is retained for forward-compatible stored records.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ProcessJobBackendKind {
+    Native,
+    Pueue,
+    Systemd,
+    Unknown,
+}
+
+/// Backend-neutral operation vocabulary used for capability checks and receipts.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ProcessJobOperation {
+    Start,
+    List,
+    Poll,
+    Log,
+    Wait,
+    Kill,
+    Restart,
+    WriteStdin,
+    CloseStdin,
+    Adopt,
+    GarbageCollect,
+}
+
+/// Shared status vocabulary for native processes and durable queue/supervisor jobs.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case", tag = "state")]
+pub enum ProcessJobStatus {
+    Pending,
+    Running,
+    Waiting,
+    Succeeded { exit_code: Option<i32> },
+    Failed { exit_code: Option<i32>, reason: String },
+    Killed,
+    Cancelled,
+    LostAfterRestart,
+    ReattachedLogIncomplete,
+    BackendUnavailable { reason: String },
+    Unknown { raw: String },
+}
+
+impl ProcessJobStatus {
+    #[must_use]
+    pub fn is_terminal(&self) -> bool {
+        matches!(
+            self,
+            Self::Succeeded { .. }
+                | Self::Failed { .. }
+                | Self::Killed
+                | Self::Cancelled
+                | Self::LostAfterRestart
+                | Self::BackendUnavailable { .. }
+        )
+    }
+}
+
+/// Scope used to authorize cross-session observation and mutation.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case", tag = "kind", content = "value")]
+pub enum ProcessJobOwnerScope {
+    Session(String),
+    Workspace(String),
+    User(String),
+    DaemonGlobal,
+}
+
+/// Command working-directory policy recorded safely in metadata.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case", tag = "kind", content = "path")]
+pub enum ProcessJobCwd {
+    Inherited,
+    Explicit(PathBuf),
+}
+
+/// Log stream selector for append-only files or backend logs.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ProcessJobStream {
+    Stdout,
+    Stderr,
+    Combined,
+}
+
+/// Opaque safe reference to native log files or backend log cursors.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ProcessJobLogRef {
+    pub stream: ProcessJobStream,
+    pub reference: String,
+    pub retained_until: Option<DateTime<Utc>>,
+    pub max_bytes: Option<u64>,
+}
+
+/// Cursor for incremental log reads.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ProcessJobLogCursor {
+    pub stream: ProcessJobStream,
+    pub offset: u64,
+}
+
+/// Bounded range for log reads.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ProcessJobLogRange {
+    pub stream: ProcessJobStream,
+    pub offset: Option<u64>,
+    pub limit_bytes: u64,
+}
+
+/// Bounded log chunk returned by service/backend APIs.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ProcessJobLogChunk {
+    pub id: ProcessJobId,
+    pub backend: ProcessJobBackendKind,
+    pub stream: ProcessJobStream,
+    pub cursor: ProcessJobLogCursor,
+    pub next_cursor: Option<ProcessJobLogCursor>,
+    pub text: String,
+    pub truncated: bool,
+}
+
+/// Accepted notification policy. Continuous output stays in logs.
+#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
+pub struct ProcessJobNotificationPolicy {
+    pub notify_on_complete: bool,
+    pub watch_patterns: Vec<String>,
+}
+
+/// Resource limits accepted by policy before backend dispatch.
+#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
+pub struct ProcessJobResourcePolicy {
+    pub timeout: Option<Duration>,
+    pub memory_max_bytes: Option<u64>,
+    pub cpu_quota_percent: Option<u32>,
+    pub max_log_bytes: Option<u64>,
+}
+
+/// A backend-neutral start specification.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct StartProcessJobRequest {
+    pub backend: ProcessJobBackendKind,
+    pub command_preview: String,
+    pub program: Option<String>,
+    pub args: Vec<String>,
+    pub shell_command: Option<String>,
+    pub cwd: ProcessJobCwd,
+    pub owner: ProcessJobOwnerScope,
+    pub resource_policy: ProcessJobResourcePolicy,
+    pub notification_policy: ProcessJobNotificationPolicy,
+    pub metadata: BTreeMap<String, String>,
+}
+
+/// Query filter for process/job list operations.
+#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
+pub struct ProcessJobFilter {
+    pub owner: Option<ProcessJobOwnerScope>,
+    pub backend: Option<ProcessJobBackendKind>,
+    pub include_terminal: bool,
+}
+
+/// Service-level process/job summary safe for list/status surfaces.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ProcessJobSummary {
+    pub id: ProcessJobId,
+    pub backend: ProcessJobBackendKind,
+    pub backend_ref: Option<BackendRef>,
+    pub owner: ProcessJobOwnerScope,
+    pub status: ProcessJobStatus,
+    pub command_preview: String,
+    pub cwd: ProcessJobCwd,
+    pub started_at: Option<DateTime<Utc>>,
+    pub updated_at: DateTime<Utc>,
+    pub completed_at: Option<DateTime<Utc>>,
+    pub log_refs: Vec<ProcessJobLogRef>,
+}
+
+/// Backend capability descriptor used before dispatching mutations.
+#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
+pub struct ProcessJobBackendCapabilities {
+    pub backend: Option<ProcessJobBackendKind>,
+    pub supports_shell: bool,
+    pub supports_direct_exec: bool,
+    pub supports_stdin: bool,
+    pub supports_restart: bool,
+    pub supports_kill: bool,
+    pub supports_adopt: bool,
+    pub supports_resource_limits: bool,
+    pub supports_log_range: bool,
+    pub durable_across_daemon_restart: bool,
+    pub unavailable_reason: Option<String>,
+}
+
+impl ProcessJobBackendCapabilities {
+    #[must_use]
+    pub fn unavailable(backend: ProcessJobBackendKind, reason: impl Into<String>) -> Self {
+        Self {
+            backend: Some(backend),
+            unavailable_reason: Some(reason.into()),
+            ..Self::default()
+        }
+    }
+}
+
+/// Typed error code for receipts and projection surfaces.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ProcessJobErrorCode {
+    NotFound,
+    PermissionDenied,
+    BackendUnavailable,
+    UnsupportedActionForBackend,
+    InvalidRequest,
+    AdmissionDenied,
+    StorageUnavailable,
+    LogUnavailable,
+    BackendFailed,
+}
+
+/// Safe machine-readable error detail.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ProcessJobError {
+    pub code: ProcessJobErrorCode,
+    pub operation: ProcessJobOperation,
+    pub id: Option<ProcessJobId>,
+    pub backend: Option<ProcessJobBackendKind>,
+    pub action: Option<String>,
+    pub message: String,
+}
+
+/// Shared receipt for mutations and state transitions.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ProcessJobReceipt {
+    pub operation: ProcessJobOperation,
+    pub id: Option<ProcessJobId>,
+    pub backend: Option<ProcessJobBackendKind>,
+    pub status: Option<ProcessJobStatus>,
+    pub backend_ref: Option<BackendRef>,
+    pub log_refs: Vec<ProcessJobLogRef>,
+    pub summary: String,
+    pub error: Option<ProcessJobError>,
+}
+
+/// Backend result after accepting a start request.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ProcessJobBackendStart {
+    pub backend_ref: BackendRef,
+    pub status: ProcessJobStatus,
+    pub log_refs: Vec<ProcessJobLogRef>,
+}
+
+/// Backend-observed status payload.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ProcessJobBackendStatus {
+    pub backend_ref: BackendRef,
+    pub status: ProcessJobStatus,
+    pub updated_at: DateTime<Utc>,
+    pub log_refs: Vec<ProcessJobLogRef>,
+}
+
+/// Persisted notification event payload.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ProcessJobNotificationEvent {
+    pub event_id: ProcessJobEventId,
+    pub id: ProcessJobId,
+    pub backend: ProcessJobBackendKind,
+    pub status: ProcessJobStatus,
+    pub created_at: DateTime<Utc>,
+    pub summary: String,
+    pub log_excerpt: Option<String>,
+    pub log_refs: Vec<ProcessJobLogRef>,
+}
+
+/// Tool-facing service boundary. Implementations own policy orchestration and storage wiring.
+#[async_trait]
+pub trait ProcessJobService: Send + Sync {
+    async fn start(&self, request: StartProcessJobRequest) -> Result<ProcessJobReceipt, RuntimeError>;
+    async fn list(&self, filter: ProcessJobFilter) -> Result<Vec<ProcessJobSummary>, RuntimeError>;
+    async fn poll(
+        &self,
+        id: ProcessJobId,
+        cursor: Option<ProcessJobLogCursor>,
+    ) -> Result<ProcessJobReceipt, RuntimeError>;
+    async fn log(&self, id: ProcessJobId, range: ProcessJobLogRange) -> Result<ProcessJobLogChunk, RuntimeError>;
+    async fn wait(&self, id: ProcessJobId, timeout: Option<Duration>) -> Result<ProcessJobReceipt, RuntimeError>;
+    async fn kill(&self, id: ProcessJobId) -> Result<ProcessJobReceipt, RuntimeError>;
+    async fn restart(&self, id: ProcessJobId) -> Result<ProcessJobReceipt, RuntimeError>;
+    async fn write_stdin(
+        &self,
+        id: ProcessJobId,
+        data: Vec<u8>,
+        newline: bool,
+    ) -> Result<ProcessJobReceipt, RuntimeError>;
+    async fn close_stdin(&self, id: ProcessJobId) -> Result<ProcessJobReceipt, RuntimeError>;
+    async fn adopt(
+        &self,
+        backend: ProcessJobBackendKind,
+        backend_ref: BackendRef,
+    ) -> Result<ProcessJobReceipt, RuntimeError>;
+    async fn garbage_collect(&self, filter: ProcessJobFilter) -> Result<ProcessJobReceipt, RuntimeError>;
+}
+
+/// Backend adapter boundary. Backends expose facts and capabilities; they do not own UI/storage
+/// policy.
+#[async_trait]
+pub trait ProcessJobBackend: Send + Sync {
+    fn kind(&self) -> ProcessJobBackendKind;
+    fn capabilities(&self) -> ProcessJobBackendCapabilities;
+    async fn start(&self, request: StartProcessJobRequest) -> Result<ProcessJobBackendStart, RuntimeError>;
+    async fn observe(&self, backend_ref: BackendRef) -> Result<ProcessJobBackendStatus, RuntimeError>;
+    async fn log(&self, backend_ref: BackendRef, range: ProcessJobLogRange)
+    -> Result<ProcessJobLogChunk, RuntimeError>;
+    async fn kill(&self, backend_ref: BackendRef) -> Result<ProcessJobReceipt, RuntimeError>;
+    async fn restart(&self, backend_ref: BackendRef) -> Result<ProcessJobReceipt, RuntimeError>;
+    async fn write_stdin(
+        &self,
+        backend_ref: BackendRef,
+        data: Vec<u8>,
+        newline: bool,
+    ) -> Result<ProcessJobReceipt, RuntimeError>;
+    async fn close_stdin(&self, backend_ref: BackendRef) -> Result<ProcessJobReceipt, RuntimeError>;
+}
+
+/// Metadata persistence boundary, backed by redb in production and fakes in tests.
+#[async_trait]
+pub trait ProcessJobStore: Send + Sync {
+    async fn upsert(&self, summary: ProcessJobSummary) -> Result<(), RuntimeError>;
+    async fn get(&self, id: ProcessJobId) -> Result<Option<ProcessJobSummary>, RuntimeError>;
+    async fn list(&self, filter: ProcessJobFilter) -> Result<Vec<ProcessJobSummary>, RuntimeError>;
+    async fn record_notification(&self, event: ProcessJobNotificationEvent) -> Result<(), RuntimeError>;
+}
+
+/// Log storage boundary. Native implementations can append files; pueue/systemd can store
+/// references.
+#[async_trait]
+pub trait ProcessJobLogStore: Send + Sync {
+    async fn append(
+        &self,
+        id: ProcessJobId,
+        stream: ProcessJobStream,
+        chunk: &[u8],
+    ) -> Result<ProcessJobLogCursor, RuntimeError>;
+    async fn read(&self, id: ProcessJobId, range: ProcessJobLogRange) -> Result<ProcessJobLogChunk, RuntimeError>;
+    async fn references(&self, id: ProcessJobId) -> Result<Vec<ProcessJobLogRef>, RuntimeError>;
+}
+
+/// Delivery boundary for completion/readiness notifications.
+#[async_trait]
+pub trait ProcessJobNotificationSink: Send + Sync {
+    async fn deliver(&self, event: ProcessJobNotificationEvent) -> Result<(), RuntimeError>;
+}
+
+/// Projection boundary for agent/TUI/daemon surfaces.
+pub trait ProcessJobProjection: Send + Sync {
+    type Output;
+
+    fn project_summary(&self, summary: &ProcessJobSummary) -> Self::Output;
+    fn project_receipt(&self, receipt: &ProcessJobReceipt) -> Self::Output;
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn status_terminal_classification_is_explicit() {
+        assert!(!ProcessJobStatus::Running.is_terminal());
+        assert!(ProcessJobStatus::Succeeded { exit_code: Some(0) }.is_terminal());
+        assert!(ProcessJobStatus::LostAfterRestart.is_terminal());
+    }
+
+    #[test]
+    fn unavailable_backend_capabilities_are_fail_closed() {
+        let capabilities = ProcessJobBackendCapabilities::unavailable(ProcessJobBackendKind::Systemd, "not systemd");
+        assert_eq!(capabilities.backend, Some(ProcessJobBackendKind::Systemd));
+        assert_eq!(capabilities.unavailable_reason.as_deref(), Some("not systemd"));
+        assert!(!capabilities.supports_kill);
+        assert!(!capabilities.durable_across_daemon_restart);
+    }
+
+    #[test]
+    fn unsupported_action_receipt_is_machine_readable() {
+        let receipt = ProcessJobReceipt {
+            operation: ProcessJobOperation::WriteStdin,
+            id: Some(ProcessJobId("proc_1".to_string())),
+            backend: Some(ProcessJobBackendKind::Pueue),
+            status: Some(ProcessJobStatus::Running),
+            backend_ref: Some(BackendRef("42".to_string())),
+            log_refs: Vec::new(),
+            summary: "stdin is not supported by pueue backend".to_string(),
+            error: Some(ProcessJobError {
+                code: ProcessJobErrorCode::UnsupportedActionForBackend,
+                operation: ProcessJobOperation::WriteStdin,
+                id: Some(ProcessJobId("proc_1".to_string())),
+                backend: Some(ProcessJobBackendKind::Pueue),
+                action: Some("write_stdin".to_string()),
+                message: "stdin is not supported by pueue backend".to_string(),
+            }),
+        };
+
+        let json = serde_json::to_value(&receipt).expect("receipt serializes");
+        assert_eq!(json["operation"], "write_stdin");
+        assert_eq!(json["backend"], "pueue");
+        assert_eq!(json["error"]["code"], "unsupported_action_for_backend");
+    }
+}

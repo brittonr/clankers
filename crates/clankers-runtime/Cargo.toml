@@ -5,6 +5,7 @@ edition.workspace = true
 license.workspace = true
 
 [dependencies]
+async-trait = "0.1"
 chrono = { workspace = true }
 clankers-artifacts = { version = "0.1.0", path = "../clankers-artifacts" }
 serde = { workspace = true }
