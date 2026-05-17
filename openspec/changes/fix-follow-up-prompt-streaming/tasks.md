@@ -1,7 +1,7 @@
 ## Phase 1: Reproduction and lifecycle inventory
 
-- [ ] [serial] [covers=embeddable-agent-engine.host-driven-contracts.subsequent-user-prompt-streams] Reproduce the failure with a deterministic fake-provider/session-path test: first prompt streams/completes, second prompt in the same session must also stream/complete.
-- [ ] [parallel] [covers=embeddable-agent-engine.host-driven-contracts.follow-up-completion-correlation] Inventory prompt/follow-up lifecycle ownership across `event_loop_runner`, `agent_task`, controller pending prompt state, and engine request correlation; record the stale-state root cause in code comments or test names.
+- [x] [serial] [covers=embeddable-agent-engine.host-driven-contracts.subsequent-user-prompt-streams] Reproduce the failure with a deterministic fake-provider/session-path test: first prompt streams/completes, second prompt in the same session must also stream/complete. ✅ completed: 2026-05-17T05:22:42Z; evidence: `cargo test -p clankers-controller repeated_daemon_prompts_stream_and_complete_in_session_order -- --nocapture`
+- [~] [parallel] [covers=embeddable-agent-engine.host-driven-contracts.follow-up-completion-correlation] Inventory prompt/follow-up lifecycle ownership across `event_loop_runner`, `agent_task`, controller pending prompt state, and engine request correlation; record the stale-state root cause in code comments or test names. ⏱ started: 2026-05-17T05:22:42Z
 - [x] [parallel] [covers=prompt-assembly.service.repeated-prompt-no-suppression] Verify prompt assembly for repeated prompts is pure/repeatable and does not mutate or short-circuit lifecycle state. ✅ completed: 2026-05-17T05:09:51Z
 
 ## Phase 2: Lifecycle and correlation repair

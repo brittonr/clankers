@@ -15,6 +15,13 @@ impl SessionController {
     /// In daemon mode, reads from the internal agent event receiver.
     /// In embedded mode, events must be fed via [`feed_event`] first.
     pub fn drain_events(&mut self) -> Vec<DaemonEvent> {
+        self.drain_agent_events_to_outgoing();
+        std::mem::take(&mut self.outgoing)
+    }
+
+    /// Drain pending agent broadcast events into the outgoing protocol buffer
+    /// without taking already accumulated daemon events.
+    pub(crate) fn drain_agent_events_to_outgoing(&mut self) {
         // Drain agent events from internal receiver (daemon mode).
         // Collect into a Vec to avoid borrowing event_rx and self simultaneously.
         let events: Vec<AgentEvent> = if let Some(ref mut rx) = self.event_rx {
@@ -37,7 +44,6 @@ impl SessionController {
         for event in &events {
             self.process_agent_event(event);
         }
-        std::mem::take(&mut self.outgoing)
     }
 
     /// Take accumulated outgoing events without draining the internal

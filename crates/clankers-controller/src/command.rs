@@ -481,6 +481,9 @@ impl SessionController {
             agent.prompt_with_images(&text, image_content).await
         };
         self.agent = Some(agent);
+        // Drain model stream events before terminal PromptDone so daemon clients
+        // never observe a stale completion before the accepted turn's output.
+        self.drain_agent_events_to_outgoing();
 
         let (completion_status, prompt_error) = match result {
             Ok(()) => (CompletionStatus::Succeeded, None),
@@ -705,6 +708,22 @@ mod tests {
         requests: Arc<Mutex<Vec<RecordedPromptRequest>>>,
     }
 
+    fn record_prompt_request(
+        requests: &Mutex<Vec<RecordedPromptRequest>>,
+        request: clankers_provider::CompletionRequest,
+    ) -> RecordedPromptRequest {
+        let prompt_text =
+            extract_last_user_prompt_text(&request.messages).expect("prompt request should carry a user message");
+        let recorded = RecordedPromptRequest {
+            model: request.model,
+            prompt_text,
+            system_prompt: request.system_prompt,
+            session_id: request.extra_params.get("_session_id").and_then(|value| value.as_str()).map(str::to_string),
+        };
+        requests.lock().unwrap_or_else(|poisoned| poisoned.into_inner()).push(recorded.clone());
+        recorded
+    }
+
     #[async_trait::async_trait]
     impl clankers_provider::Provider for RecordingPromptProvider {
         async fn complete(
@@ -712,18 +731,7 @@ mod tests {
             request: clankers_provider::CompletionRequest,
             _tx: tokio::sync::mpsc::Sender<clankers_provider::streaming::StreamEvent>,
         ) -> clankers_provider::error::Result<()> {
-            let prompt_text =
-                extract_last_user_prompt_text(&request.messages).expect("prompt request should carry a user message");
-            self.requests.lock().unwrap_or_else(|poisoned| poisoned.into_inner()).push(RecordedPromptRequest {
-                model: request.model,
-                prompt_text,
-                system_prompt: request.system_prompt,
-                session_id: request
-                    .extra_params
-                    .get("_session_id")
-                    .and_then(|value| value.as_str())
-                    .map(str::to_string),
-            });
+            record_prompt_request(&self.requests, request);
             Ok(())
         }
 
@@ -733,6 +741,60 @@ mod tests {
 
         fn name(&self) -> &str {
             "recording"
+        }
+    }
+
+    struct StreamingPromptProvider {
+        requests: Arc<Mutex<Vec<RecordedPromptRequest>>>,
+    }
+
+    #[async_trait::async_trait]
+    impl clankers_provider::Provider for StreamingPromptProvider {
+        async fn complete(
+            &self,
+            request: clankers_provider::CompletionRequest,
+            tx: tokio::sync::mpsc::Sender<clankers_provider::streaming::StreamEvent>,
+        ) -> clankers_provider::error::Result<()> {
+            let recorded = record_prompt_request(&self.requests, request);
+            let streamed_text = format!("stream:{}", recorded.prompt_text);
+            tx.send(clankers_provider::streaming::StreamEvent::MessageStart {
+                message: clankers_provider::streaming::MessageMetadata {
+                    id: format!("msg-{}", recorded.prompt_text),
+                    model: recorded.model,
+                    role: "assistant".to_string(),
+                },
+            })
+            .await
+            .ok();
+            tx.send(clankers_provider::streaming::StreamEvent::ContentBlockStart {
+                index: 0,
+                content_block: clanker_message::Content::Text { text: String::new() },
+            })
+            .await
+            .ok();
+            tx.send(clankers_provider::streaming::StreamEvent::ContentBlockDelta {
+                index: 0,
+                delta: clankers_provider::streaming::ContentDelta::TextDelta { text: streamed_text },
+            })
+            .await
+            .ok();
+            tx.send(clankers_provider::streaming::StreamEvent::ContentBlockStop { index: 0 }).await.ok();
+            tx.send(clankers_provider::streaming::StreamEvent::MessageDelta {
+                stop_reason: Some("end_turn".to_string()),
+                usage: clanker_message::Usage::default(),
+            })
+            .await
+            .ok();
+            tx.send(clankers_provider::streaming::StreamEvent::MessageStop).await.ok();
+            Ok(())
+        }
+
+        fn models(&self) -> &[clankers_provider::Model] {
+            &[]
+        }
+
+        fn name(&self) -> &str {
+            "streaming-recording"
         }
     }
 
@@ -978,9 +1040,69 @@ mod tests {
                 session_id: Some("test-session".to_string()),
             }
         ]);
-        assert!(matches!(ctrl.take_outgoing().as_slice(), [DaemonEvent::AgentStart, DaemonEvent::PromptDone {
-            error: None
-        }]));
+        let events = ctrl.take_outgoing();
+        assert!(matches!(events.first(), Some(DaemonEvent::AgentStart)));
+        assert!(matches!(events.last(), Some(DaemonEvent::PromptDone { error: None })));
+        assert!(events.iter().any(|event| matches!(event, DaemonEvent::AgentEnd)));
+        assert!(!events.iter().any(|event| matches!(event, DaemonEvent::TextDelta { .. })));
+    }
+
+    #[tokio::test]
+    async fn repeated_daemon_prompts_stream_and_complete_in_session_order() {
+        let recorded_requests = Arc::new(Mutex::new(Vec::new()));
+        let provider = Arc::new(StreamingPromptProvider {
+            requests: Arc::clone(&recorded_requests),
+        });
+        let mut ctrl = make_test_controller_with_provider(provider);
+
+        ctrl.handle_command(SessionCommand::Prompt {
+            text: "first".to_string(),
+            images: vec![],
+        })
+        .await;
+        let first_events = ctrl.drain_events();
+
+        ctrl.handle_command(SessionCommand::Prompt {
+            text: "second".to_string(),
+            images: vec![],
+        })
+        .await;
+        let second_events = ctrl.drain_events();
+
+        assert_prompt_stream_completed_after_delta(&first_events, "stream:first");
+        assert_prompt_stream_completed_after_delta(&second_events, "stream:second");
+        assert!(!ctrl.busy);
+        assert!(!ctrl.core_state.busy);
+        assert!(ctrl.core_state.pending_prompt.is_none());
+        assert_eq!(recorded_requests.lock().unwrap_or_else(|poisoned| poisoned.into_inner()).as_slice(), [
+            RecordedPromptRequest {
+                model: "test-model".to_string(),
+                prompt_text: "first".to_string(),
+                system_prompt: Some("You are a test assistant.".to_string()),
+                session_id: Some("test-session".to_string()),
+            },
+            RecordedPromptRequest {
+                model: "test-model".to_string(),
+                prompt_text: "second".to_string(),
+                system_prompt: Some("You are a test assistant.".to_string()),
+                session_id: Some("test-session".to_string()),
+            },
+        ]);
+    }
+
+    fn assert_prompt_stream_completed_after_delta(events: &[DaemonEvent], expected_delta: &str) {
+        let delta_index = events
+            .iter()
+            .position(|event| matches!(event, DaemonEvent::TextDelta { text } if text == expected_delta))
+            .unwrap_or_else(|| panic!("missing text delta {expected_delta:?}: {events:?}"));
+        let done_index = events
+            .iter()
+            .position(|event| matches!(event, DaemonEvent::PromptDone { error: None }))
+            .unwrap_or_else(|| panic!("missing prompt completion after {expected_delta:?}: {events:?}"));
+        assert!(
+            delta_index < done_index,
+            "stream delta must be visible before terminal prompt completion: {events:?}"
+        );
     }
 
     #[tokio::test]
