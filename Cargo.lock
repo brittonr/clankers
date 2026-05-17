@@ -1948,6 +1948,7 @@ name = "clankers-ucan"
 version = "0.1.0"
 dependencies = [
  "clanker-auth",
+ "clankers-runtime",
  "iroh",
  "rand 0.9.4",
  "redb 2.6.3",

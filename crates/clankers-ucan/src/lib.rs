@@ -15,6 +15,8 @@ pub mod external_adapter;
 #[cfg(feature = "external-ucan")]
 pub mod external_caveats;
 pub mod revocation;
+#[cfg(feature = "runtime-admission")]
+pub mod runtime_admission;
 pub mod utils;
 
 // Re-export generic infrastructure

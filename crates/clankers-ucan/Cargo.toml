@@ -7,6 +7,7 @@ description = "Clankers-specific capability types over clanker-auth generic toke
 
 [dependencies]
 clanker-auth = { workspace = true }
+clankers-runtime = { version = "0.1.0", path = "../clankers-runtime", optional = true }
 iroh = { version = "0.96", features = ["address-lookup-mdns"] }
 serde = { workspace = true }
 redb = "2.6"
@@ -17,6 +18,7 @@ ucan = { path = "../../../ucan", optional = true }
 [features]
 default = []
 external-ucan = ["dep:ucan"]
+runtime-admission = ["dep:clankers-runtime", "external-ucan"]
 
 [dev-dependencies]
 tokio = { workspace = true }
