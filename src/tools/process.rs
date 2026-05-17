@@ -1745,8 +1745,18 @@ mod tests {
     #[tokio::test]
     async fn kill_escalates_process_group_after_grace_period() {
         let tool = ProcessTool::new();
-        let started = tool.execute(&make_ctx(), json!({"action": "start", "command": "trap '' TERM; sleep 10"})).await;
+        let started = tool
+            .execute(
+                &make_ctx(),
+                json!({
+                    "action": "start",
+                    "program": "python3",
+                    "args": ["-c", "import signal,time; signal.signal(signal.SIGTERM, signal.SIG_IGN); time.sleep(10)"],
+                }),
+            )
+            .await;
         let id = extract_process_id(&started);
+        tokio::time::sleep(Duration::from_millis(200)).await;
         let killed = tool.execute(&make_ctx(), json!({"action": "kill", "session_id": id})).await;
         assert!(!killed.is_error, "{killed:?}");
         let waited = tool.execute(&make_ctx(), json!({"action": "wait", "session_id": id, "timeout": 4})).await;
