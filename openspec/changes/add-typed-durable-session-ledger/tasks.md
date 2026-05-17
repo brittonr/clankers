@@ -11,6 +11,6 @@
 
 ## Phase 3: Query and verification
 
-- [ ] [depends:ledger-write] Build a local index/query API for artifact hash, tool kind, error class, crate path, requirement ID, and request shape. [covers=typed-durable-session-ledger.query]
+- [x] [depends:ledger-write] Build a local index/query API for artifact hash, tool kind, error class, crate path, requirement ID, and request shape. [covers=typed-durable-session-ledger.query] ✅ 1m 11s (started: 2026-05-17T00:14:20Z → completed: 2026-05-17T00:15:31Z; evidence: `cargo test -p clankers-session local_ledger_index -- --nocapture`; `cargo test -p clankers-session ledger -- --nocapture`; `cargo test -p clankers-session`)
 - [ ] [depends:ledger-query] Add CLI or internal inspection path with redacted query results and missing-index rebuild behavior. [covers=typed-durable-session-ledger.inspect]
 - [ ] [serial] Run focused ledger/migration/query tests and a replay parity subset. [covers=typed-durable-session-ledger.validation]

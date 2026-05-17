@@ -191,6 +191,60 @@ pub struct LedgerQueryFields {
     pub request_shape: Option<String>,
 }
 
+/// Query over safe ledger metadata.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct LedgerQuery {
+    pub artifact_hash: Option<ArtifactHash>,
+    pub tool_kind: Option<String>,
+    pub error_class: Option<String>,
+    pub crate_path: Option<String>,
+    pub requirement_id: Option<String>,
+    pub request_shape: Option<String>,
+}
+
+/// In-memory local index for typed session ledger records.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct LedgerIndex {
+    records: Vec<LedgerRecord>,
+}
+
+impl LedgerIndex {
+    #[must_use]
+    pub fn from_records(records: Vec<LedgerRecord>) -> Self {
+        Self { records }
+    }
+
+    #[must_use]
+    pub fn records(&self) -> &[LedgerRecord] {
+        &self.records
+    }
+
+    #[must_use]
+    pub fn query(&self, query: &LedgerQuery) -> Vec<&LedgerRecord> {
+        self.records.iter().filter(|record| record_matches_query(record, query)).collect()
+    }
+}
+
+fn record_matches_query(record: &LedgerRecord, query: &LedgerQuery) -> bool {
+    let LedgerRecord::Typed(record) = record else {
+        return false;
+    };
+    query_fields_match(record.payload.query_fields(), query)
+}
+
+fn query_fields_match(fields: &LedgerQueryFields, query: &LedgerQuery) -> bool {
+    query.artifact_hash.is_none_or(|hash| fields.artifact_hashes.contains(&hash))
+        && optional_query_text_matches(&query.tool_kind, &fields.tool_kind)
+        && optional_query_text_matches(&query.error_class, &fields.error_class)
+        && optional_query_text_matches(&query.crate_path, &fields.crate_path)
+        && optional_query_text_matches(&query.requirement_id, &fields.requirement_id)
+        && optional_query_text_matches(&query.request_shape, &fields.request_shape)
+}
+
+fn optional_query_text_matches(expected: &Option<String>, actual: &Option<String>) -> bool {
+    expected.as_ref().is_none_or(|expected| actual.as_ref() == Some(expected))
+}
+
 impl LedgerQueryFields {
     fn sanitized(mut self) -> Self {
         self.artifact_hashes.sort_by_key(|hash| hash.hex());
@@ -579,6 +633,69 @@ mod tests {
         let _ = std::fs::remove_file(&path);
 
         assert_eq!(restored, records);
+    }
+
+    #[test]
+    fn local_ledger_index_queries_safe_metadata_fields() {
+        let artifact = ArtifactHash::digest(b"query-artifact");
+        let matching = LedgerRecord::typed(
+            "tool-query",
+            LedgerPayload::Tool(ToolLedgerFact {
+                call_id: "call-1".to_owned(),
+                tool_name: "terminal".to_owned(),
+                status: "ok".to_owned(),
+                query: LedgerQueryFields {
+                    artifact_hashes: vec![artifact],
+                    tool_kind: Some("shell".to_owned()),
+                    crate_path: Some("crates/clankers-session".to_owned()),
+                    requirement_id: Some("typed-durable-session-ledger.query".to_owned()),
+                    request_shape: Some("tool-call".to_owned()),
+                    ..LedgerQueryFields::default()
+                },
+                redaction_class: RedactionClass::MetadataOnly,
+            }),
+        );
+        let error = LedgerRecord::typed(
+            "error-query",
+            LedgerPayload::Error(ErrorLedgerFact {
+                class: "io".to_owned(),
+                safe_message: "safe".to_owned(),
+                query: LedgerQueryFields {
+                    error_class: Some("io".to_owned()),
+                    ..LedgerQueryFields::default()
+                },
+            }),
+        );
+        let index = LedgerIndex::from_records(vec![matching, error]);
+
+        assert_eq!(
+            index
+                .query(&LedgerQuery {
+                    artifact_hash: Some(artifact),
+                    tool_kind: Some("shell".to_owned()),
+                    requirement_id: Some("typed-durable-session-ledger.query".to_owned()),
+                    ..LedgerQuery::default()
+                })
+                .len(),
+            1
+        );
+        assert_eq!(
+            index
+                .query(&LedgerQuery {
+                    error_class: Some("io".to_owned()),
+                    ..LedgerQuery::default()
+                })
+                .len(),
+            1
+        );
+        assert!(
+            index
+                .query(&LedgerQuery {
+                    request_shape: Some("missing".to_owned()),
+                    ..LedgerQuery::default()
+                })
+                .is_empty()
+        );
     }
 
     #[test]
