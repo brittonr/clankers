@@ -9,6 +9,7 @@ pub mod context;
 pub mod entry;
 pub mod error;
 pub mod export;
+pub mod ledger;
 pub mod merge;
 pub mod store;
 pub mod tree;

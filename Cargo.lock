@@ -1872,6 +1872,7 @@ dependencies = [
  "automerge",
  "chrono",
  "clanker-message",
+ "clankers-artifacts",
  "pretty_assertions",
  "serde",
  "serde_json",

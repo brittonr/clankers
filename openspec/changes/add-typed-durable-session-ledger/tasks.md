@@ -1,6 +1,6 @@
 ## Phase 1: Ledger model
 
-- [ ] [serial] Define typed ledger record kinds, schema versions, redaction rules, and opaque-unknown fallback. [covers=typed-durable-session-ledger.records]
+- [x] [serial] Define typed ledger record kinds, schema versions, redaction rules, and opaque-unknown fallback. [covers=typed-durable-session-ledger.records] ✅ 2m 11s (started: 2026-05-17T00:00:37Z → completed: 2026-05-17T00:02:48Z; evidence: `cargo test -p clankers-session ledger -- --nocapture`; `cargo test -p clankers-session`)
 - [ ] [depends:ledger-records] Add append/read round-trip tests for model, tool, block, review, OpenSpec, error, and artifact-reference records. [covers=typed-durable-session-ledger.records]
 
 ## Phase 2: Persistence and migration

@@ -7,6 +7,7 @@ description = "Session persistence and tree management for agent conversations"
 
 [dependencies]
 clanker-message = { workspace = true }
+clankers-artifacts = { version = "0.1.0", path = "../clankers-artifacts" }
 automerge = "0.7"
 chrono = { workspace = true }
 serde = { workspace = true }
