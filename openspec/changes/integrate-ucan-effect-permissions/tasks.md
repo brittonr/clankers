@@ -10,7 +10,7 @@
 - [x] [serial] Define stable Clankers ability strings and URI normalization fixtures for file, shell, network, secret, browser, scheduler, remote, provider, delivery, artifact, plugin, and MCP effects. [covers=ucan-effect-permissions.effect-vocabulary.known-effect,ucan-effect-permissions.effect-vocabulary.unknown-effect] [evidence=vocabulary-fixture-tests] ✅ 3m (started: 2026-05-17T04:00:54Z → completed: 2026-05-17T04:03:10Z)
 - [x] [serial] Define deterministic path, command, timeout, and max-bytes caveat hooks. [covers=ucan-effect-permissions.caveat-policy.path-command] [evidence=caveat-policy-tests] ✅ 2m (started: 2026-05-17T04:06:36Z → completed: 2026-05-17T04:08:26Z)
 - [x] [parallel] Define deterministic network host, scheme, provider, and model-scope caveat hooks. [covers=ucan-effect-permissions.caveat-policy.network-provider] [evidence=caveat-policy-tests] ✅ 6m (started: 2026-05-17T04:08:59Z → completed: 2026-05-17T04:14:52Z)
-- [ ] [parallel] Define deterministic artifact hash, artifact kind, and redaction-class caveat hooks. [covers=ucan-effect-permissions.caveat-policy.artifact-redaction] [evidence=caveat-policy-tests]
+- [x] [parallel] Define deterministic artifact hash, artifact kind, and redaction-class caveat hooks. [covers=ucan-effect-permissions.caveat-policy.artifact-redaction] [evidence=caveat-policy-tests] ✅ 1m (started: 2026-05-17T04:15:19Z → completed: 2026-05-17T04:16:22Z)
 - [ ] [parallel] Define deterministic expiry, not-before, nonce, and freshness-window caveat hooks. [covers=ucan-effect-permissions.caveat-policy.freshness,ucan-effect-permissions.caveat-policy.unknown-denies] [evidence=caveat-policy-tests]
 
 ## Phase 3: Admission Integration

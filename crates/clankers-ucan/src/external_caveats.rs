@@ -18,6 +18,9 @@ pub const CAVEAT_NETWORK_HOST: &str = "network-host";
 pub const CAVEAT_NETWORK_SCHEME: &str = "network-scheme";
 pub const CAVEAT_PROVIDER: &str = "provider";
 pub const CAVEAT_MODEL_PREFIX: &str = "model-prefix";
+pub const CAVEAT_ARTIFACT_HASH: &str = "artifact-hash";
+pub const CAVEAT_ARTIFACT_KIND: &str = "artifact-kind";
+pub const CAVEAT_REDACTION_CLASS: &str = "redaction-class";
 
 #[derive(Debug, Default, Clone, PartialEq, Eq)]
 pub struct EffectCaveatContext {
@@ -29,6 +32,9 @@ pub struct EffectCaveatContext {
     network_scheme: Option<String>,
     provider: Option<String>,
     model: Option<String>,
+    artifact_hash: Option<String>,
+    artifact_kind: Option<String>,
+    redaction_class: Option<String>,
 }
 
 impl EffectCaveatContext {
@@ -43,6 +49,9 @@ impl EffectCaveatContext {
             network_scheme: None,
             provider: None,
             model: None,
+            artifact_hash: None,
+            artifact_kind: None,
+            redaction_class: None,
         }
     }
 
@@ -91,6 +100,24 @@ impl EffectCaveatContext {
     #[must_use]
     pub fn with_model(mut self, model: impl Into<String>) -> Self {
         self.model = Some(model.into());
+        self
+    }
+
+    #[must_use]
+    pub fn with_artifact_hash(mut self, hash: impl Into<String>) -> Self {
+        self.artifact_hash = Some(hash.into());
+        self
+    }
+
+    #[must_use]
+    pub fn with_artifact_kind(mut self, kind: impl Into<String>) -> Self {
+        self.artifact_kind = Some(kind.into());
+        self
+    }
+
+    #[must_use]
+    pub fn with_redaction_class(mut self, redaction_class: impl Into<String>) -> Self {
+        self.redaction_class = Some(redaction_class.into());
         self
     }
 }
@@ -184,6 +211,18 @@ pub fn model_prefix_caveat(prefix: impl Into<String>) -> ucan::Result<CaveatDocu
     caveat(CAVEAT_MODEL_PREFIX, "model", prefix.into())
 }
 
+pub fn artifact_hash_caveat(hash: impl Into<String>) -> ucan::Result<CaveatDocument> {
+    caveat(CAVEAT_ARTIFACT_HASH, "hash", hash.into())
+}
+
+pub fn artifact_kind_caveat(kind: impl Into<String>) -> ucan::Result<CaveatDocument> {
+    caveat(CAVEAT_ARTIFACT_KIND, "kind", kind.into())
+}
+
+pub fn redaction_class_caveat(redaction_class: impl Into<String>) -> ucan::Result<CaveatDocument> {
+    caveat(CAVEAT_REDACTION_CLASS, "redaction_class", redaction_class.into())
+}
+
 fn caveat(caveat_type: &str, key: &str, payload: String) -> ucan::Result<CaveatDocument> {
     CaveatDocument::new(CLANKERS_CAVEAT_DOMAIN.to_owned(), caveat_type.to_owned(), key.to_owned(), payload.into_bytes())
 }
@@ -199,6 +238,9 @@ fn is_supported_caveat(caveat_type: &str) -> bool {
             | CAVEAT_NETWORK_SCHEME
             | CAVEAT_PROVIDER
             | CAVEAT_MODEL_PREFIX
+            | CAVEAT_ARTIFACT_HASH
+            | CAVEAT_ARTIFACT_KIND
+            | CAVEAT_REDACTION_CLASS
     )
 }
 
@@ -214,6 +256,11 @@ fn evaluate_known_caveat(context: &EffectCaveatContext, caveat: &CaveatDocument)
         }
         CAVEAT_PROVIDER => string_equals(context.provider.as_deref(), payload_text(caveat)?, "provider"),
         CAVEAT_MODEL_PREFIX => string_starts_with(context.model.as_deref(), payload_text(caveat)?, "model"),
+        CAVEAT_ARTIFACT_HASH => string_equals(context.artifact_hash.as_deref(), payload_text(caveat)?, "artifact_hash"),
+        CAVEAT_ARTIFACT_KIND => string_equals(context.artifact_kind.as_deref(), payload_text(caveat)?, "artifact_kind"),
+        CAVEAT_REDACTION_CLASS => {
+            string_equals(context.redaction_class.as_deref(), payload_text(caveat)?, "redaction_class")
+        }
         other => Err(CaveatHookError::UnsupportedCaveat {
             caveat_type: other.to_owned(),
         }),
@@ -376,6 +423,36 @@ mod tests {
         assert!(!satisfied(evaluate(context.clone(), &scheme)));
         assert!(!satisfied(evaluate(context.clone(), &provider)));
         assert!(!satisfied(evaluate(context, &model)));
+    }
+
+    #[test]
+    fn artifact_and_redaction_hooks_enforce_exact_scopes() {
+        let hash = artifact_hash_caveat("b3:abc123").expect("hash caveat");
+        let kind = artifact_kind_caveat("tool-output").expect("kind caveat");
+        let redaction = redaction_class_caveat("secret-free").expect("redaction caveat");
+        let context = EffectCaveatContext::new()
+            .with_artifact_hash("b3:abc123")
+            .with_artifact_kind("tool-output")
+            .with_redaction_class("secret-free");
+
+        assert!(satisfied(evaluate(context.clone(), &hash)));
+        assert!(satisfied(evaluate(context.clone(), &kind)));
+        assert!(satisfied(evaluate(context, &redaction)));
+    }
+
+    #[test]
+    fn artifact_and_redaction_hooks_reject_mismatches() {
+        let hash = artifact_hash_caveat("b3:abc123").expect("hash caveat");
+        let kind = artifact_kind_caveat("tool-output").expect("kind caveat");
+        let redaction = redaction_class_caveat("secret-free").expect("redaction caveat");
+        let context = EffectCaveatContext::new()
+            .with_artifact_hash("b3:other")
+            .with_artifact_kind("prompt")
+            .with_redaction_class("contains-secret");
+
+        assert!(!satisfied(evaluate(context.clone(), &hash)));
+        assert!(!satisfied(evaluate(context.clone(), &kind)));
+        assert!(!satisfied(evaluate(context, &redaction)));
     }
 
     #[test]
