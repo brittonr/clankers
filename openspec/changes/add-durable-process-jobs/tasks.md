@@ -1,7 +1,7 @@
 ## Phase 1: Storage and contract foundation
 
 - [x] [serial] [covers=durable-process-jobs.interfaces.tool-service-boundary] Define backend-neutral `ProcessJobService`, `ProcessJobBackend`, store, log store, notification sink, and projection traits/DTOs before wiring concrete backends. ✅ completed: 2026-05-17T05:39:45Z; evidence: `cargo test -p clankers-runtime process_jobs -- --nocapture`, `cargo check -p clankers-runtime --tests`, `openspec validate add-durable-process-jobs --strict --json`, `git diff --check`.
-- [ ] [serial] [covers=durable-process-jobs.redb.metadata-log-reference] Define process/job record DTOs, status vocabulary, redaction rules, and redb table schema in `clankers-db`; include migration and unknown-future-version fixture coverage.
+- [x] [serial] [covers=durable-process-jobs.redb.metadata-log-reference] Define process/job record DTOs, status vocabulary, redaction rules, and redb table schema in `clankers-db`; include migration a...[truncated]
 - [ ] [parallel] [covers=durable-process-jobs.receipts.typed] Define structured receipt/error DTOs for start/list/poll/log/wait/kill/restart/stdin/adopt/GC with stable id, backend kind, typed status, log refs, and unsupported-action codes.
 - [ ] [parallel] [covers=durable-process-jobs.identity-ownership.stable-id] Define stable Clankers id, backend reference, owner/session/workspace scope, and cross-session capability model.
 - [ ] [parallel] [covers=durable-process-jobs.logs.bounded] Define bounded log reference/chunk/cursor DTOs and native append-only log file retention behavior without storing unbounded output in redb.

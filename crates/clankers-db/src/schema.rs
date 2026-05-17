@@ -29,7 +29,7 @@ const META_TABLE: TableDefinition<&str, &[u8]> = TableDefinition::new("_meta");
 const VERSION_KEY: &str = "schema_version";
 
 /// Current schema version. Bump this when adding a migration.
-pub const CURRENT_VERSION: u32 = 6;
+pub const CURRENT_VERSION: u32 = 7;
 
 /// Each migration function advances the schema by one version.
 /// Index 0 = migration from v0→v1, index 1 = v1→v2, etc.
@@ -44,6 +44,7 @@ const MIGRATIONS: &[fn(&WriteTransaction) -> Result<()>] = &[
     migrate_3_to_4,
     migrate_4_to_5,
     migrate_5_to_6,
+    migrate_6_to_7,
 ];
 
 /// Run all pending migrations. Called from [`Db::open`] on every startup.
@@ -185,6 +186,13 @@ fn migrate_5_to_6(tx: &WriteTransaction) -> Result<()> {
     Ok(())
 }
 
+/// v6 → v7: Add durable process/job metadata table.
+fn migrate_6_to_7(tx: &WriteTransaction) -> Result<()> {
+    use crate::process_jobs;
+    tx.open_table(process_jobs::TABLE).map_err(db_err)?;
+    Ok(())
+}
+
 /// Read the schema version from an already-open database.
 /// Useful for diagnostics / status commands.
 pub fn version(db: &redb::Database) -> Result<u32> {
@@ -295,13 +303,14 @@ mod tests {
         migrate(&db)?;
 
         let tx = db.begin_read().map_err(db_err)?;
-        // All 6 data tables + _meta should be openable.
+        // All 7 data tables + _meta should be openable.
         tx.open_table(crate::audit::TABLE).map_err(db_err)?;
         tx.open_table(crate::memory::TABLE).map_err(db_err)?;
         tx.open_table(crate::session_index::TABLE).map_err(db_err)?;
         tx.open_table(crate::history::TABLE).map_err(db_err)?;
         tx.open_table(crate::usage::TABLE).map_err(db_err)?;
         tx.open_table(WORKTREE_TABLE).map_err(db_err)?;
+        tx.open_table(crate::process_jobs::TABLE).map_err(db_err)?;
         tx.open_table(META_TABLE).map_err(db_err)?;
         Ok(())
     }
