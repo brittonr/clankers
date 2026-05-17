@@ -237,6 +237,9 @@ pub struct RemoteArtifactEnvelope {
     pub computed_hash: ArtifactHash,
     /// Redaction class of the envelope body. Secret envelopes are never syncable.
     pub redaction_class: RedactionClass,
+    /// Optional safe UCAN authorization metadata; never contains compact tokens or secrets.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub ucan_authorization: Option<UcanAuthorizationMetadata>,
 }
 
 impl RemoteArtifactEnvelope {
@@ -253,8 +256,140 @@ impl RemoteArtifactEnvelope {
             schema_version,
             computed_hash,
             redaction_class,
+            ucan_authorization: None,
         }
     }
+
+    /// Attach redacted UCAN authorization metadata to the envelope.
+    #[must_use]
+    pub fn with_ucan_authorization(mut self, metadata: UcanAuthorizationMetadata) -> Self {
+        self.ucan_authorization = Some(metadata);
+        self
+    }
+}
+
+/// Safe UCAN authorization metadata for effect receipts and sync envelopes.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct UcanAuthorizationMetadata {
+    /// Stable ability string checked by the UCAN adapter.
+    pub ability: String,
+    /// Stable resource URI checked by the UCAN adapter.
+    pub resource_uri: String,
+    /// Allowed, denied, replayed, revoked, or unavailable authorization status.
+    pub status: String,
+    /// Safe issuer DID, when available.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub issuer: Option<String>,
+    /// Safe audience DID, when available.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub audience: Option<String>,
+    /// Safe proof-chain or grant references, never raw compact token strings.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub proof_references: Vec<String>,
+    /// Safe caveat identifiers/classes evaluated for this decision.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub caveat_ids: Vec<String>,
+    /// Replay admission status, when replay checking was involved.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub replay_status: Option<String>,
+    /// Revocation status, when revocation checking was involved.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub revocation_status: Option<String>,
+    /// Redacted denial class for denied authorization receipts.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub denial_class: Option<String>,
+}
+
+impl UcanAuthorizationMetadata {
+    /// Build safe receipt metadata. Inputs are sanitized and secret-looking values are redacted.
+    #[must_use]
+    pub fn new(ability: impl Into<String>, resource_uri: impl Into<String>, status: impl Into<String>) -> Self {
+        Self {
+            ability: sanitize_authorization_value(ability.into()),
+            resource_uri: sanitize_authorization_value(resource_uri.into()),
+            status: sanitize_authorization_value(status.into()),
+            issuer: None,
+            audience: None,
+            proof_references: Vec::new(),
+            caveat_ids: Vec::new(),
+            replay_status: None,
+            revocation_status: None,
+            denial_class: None,
+        }
+    }
+
+    #[must_use]
+    pub fn with_issuer(mut self, issuer: impl Into<String>) -> Self {
+        self.issuer = Some(sanitize_authorization_value(issuer.into()));
+        self
+    }
+
+    #[must_use]
+    pub fn with_audience(mut self, audience: impl Into<String>) -> Self {
+        self.audience = Some(sanitize_authorization_value(audience.into()));
+        self
+    }
+
+    #[must_use]
+    pub fn with_proof_references<I, S>(mut self, references: I) -> Self
+    where
+        I: IntoIterator<Item = S>,
+        S: Into<String>,
+    {
+        self.proof_references = sorted_sanitized_values(references);
+        self
+    }
+
+    #[must_use]
+    pub fn with_caveat_ids<I, S>(mut self, caveat_ids: I) -> Self
+    where
+        I: IntoIterator<Item = S>,
+        S: Into<String>,
+    {
+        self.caveat_ids = sorted_sanitized_values(caveat_ids);
+        self
+    }
+
+    #[must_use]
+    pub fn with_replay_status(mut self, replay_status: impl Into<String>) -> Self {
+        self.replay_status = Some(sanitize_authorization_value(replay_status.into()));
+        self
+    }
+
+    #[must_use]
+    pub fn with_revocation_status(mut self, revocation_status: impl Into<String>) -> Self {
+        self.revocation_status = Some(sanitize_authorization_value(revocation_status.into()));
+        self
+    }
+
+    #[must_use]
+    pub fn with_denial_class(mut self, denial_class: impl Into<String>) -> Self {
+        self.denial_class = Some(sanitize_authorization_value(denial_class.into()));
+        self
+    }
+}
+
+fn sorted_sanitized_values<I, S>(values: I) -> Vec<String>
+where
+    I: IntoIterator<Item = S>,
+    S: Into<String>,
+{
+    let mut sanitized = values.into_iter().map(|value| sanitize_authorization_value(value.into())).collect::<Vec<_>>();
+    sanitized.sort();
+    sanitized.dedup();
+    sanitized
+}
+
+fn sanitize_authorization_value(value: String) -> String {
+    if contains_secret_marker(&value) || looks_like_compact_token(&value) {
+        "[redacted-secret-marker]".to_owned()
+    } else {
+        sanitize_metadata_value(value)
+    }
+}
+
+fn looks_like_compact_token(value: &str) -> bool {
+    value.matches('.').count() == 2 && value.starts_with("ey") && value.len() > 80
 }
 
 /// Fail-closed remote dependency sync failure kind.
@@ -428,6 +563,9 @@ pub struct EffectResult {
     pub output_artifact: Option<ArtifactHash>,
     /// Safe, sanitized summary suitable for logs/review receipts.
     pub safe_summary: String,
+    /// Optional safe UCAN authorization metadata; never contains compact tokens or secrets.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub ucan_authorization: Option<UcanAuthorizationMetadata>,
 }
 
 impl EffectResult {
@@ -445,6 +583,7 @@ impl EffectResult {
             status,
             output_artifact: None,
             safe_summary,
+            ucan_authorization: None,
         }
     }
 
@@ -452,6 +591,13 @@ impl EffectResult {
     #[must_use]
     pub fn with_output_artifact(mut self, hash: ArtifactHash) -> Self {
         self.output_artifact = Some(hash);
+        self
+    }
+
+    /// Attach redacted UCAN authorization metadata to the receipt.
+    #[must_use]
+    pub fn with_ucan_authorization(mut self, metadata: UcanAuthorizationMetadata) -> Self {
+        self.ucan_authorization = Some(metadata);
         self
     }
 }
@@ -631,6 +777,74 @@ mod tests {
         assert!(!metadata_json.contains("Bearer"));
         assert!(!metadata_json.contains("secret-token"));
         assert!(metadata_json.contains("redacted"));
+    }
+
+    #[test]
+    fn effect_receipt_carries_redacted_ucan_authorization_metadata() {
+        let request = EffectRequest::new(
+            EffectAbilityClass::Filesystem,
+            EffectCorrelationId::from_static("ucan-receipt"),
+            RedactionClass::MetadataOnly,
+        );
+        let compact_token = format!("ey{}.ey{}.sig", "a".repeat(40), "b".repeat(40));
+        let metadata = UcanAuthorizationMetadata::new("file/read", "clankers:file:///workspace/src/lib.rs", "allowed")
+            .with_issuer("did:key:z6Missuer")
+            .with_audience("did:key:z6Maudience")
+            .with_proof_references(["proof-b", "proof-a", "proof-a", compact_token.as_str()])
+            .with_caveat_ids(["path-prefix", "max-bytes"])
+            .with_replay_status("checked")
+            .with_revocation_status("clear");
+
+        let receipt =
+            EffectResult::new(&request, EffectResultStatus::Allowed, "read ok").with_ucan_authorization(metadata);
+        let serialized = serde_json::to_string(&receipt).expect("receipt json");
+
+        assert!(serialized.contains("file/read"));
+        assert!(serialized.contains("proof-a"));
+        assert!(serialized.contains("proof-b"));
+        assert!(!serialized.contains(compact_token.as_str()));
+        assert!(serialized.contains("redacted"));
+    }
+
+    #[test]
+    fn denied_ucan_receipt_records_class_without_secret_details() {
+        let request = EffectRequest::new(
+            EffectAbilityClass::Secret,
+            EffectCorrelationId::from_static("ucan-denial"),
+            RedactionClass::MetadataOnly,
+        );
+        let metadata = UcanAuthorizationMetadata::new("secret/read", "secret://api", "denied")
+            .with_denial_class("revoked: Bearer secret-token")
+            .with_revocation_status("revoked");
+
+        let receipt = EffectResult::new(&request, EffectResultStatus::Denied, "Bearer secret-token denied")
+            .with_ucan_authorization(metadata);
+        let serialized = serde_json::to_string(&receipt).expect("denial json");
+
+        assert!(serialized.contains("denied"));
+        assert!(serialized.contains("revoked"));
+        assert!(!serialized.contains("Bearer"));
+        assert!(!serialized.contains("secret-token"));
+    }
+
+    #[test]
+    fn artifact_envelope_carries_safe_ucan_metadata_only() {
+        let dependency =
+            RemoteExecutionDependency::new(RemoteExecutionArtifactKind::Policy, ArtifactHash::digest(b"policy"));
+        let metadata = UcanAuthorizationMetadata::new("artifact/read", "artifact://policy", "allowed")
+            .with_proof_references(["proof-ref"]);
+        let envelope = RemoteArtifactEnvelope::new(
+            dependency,
+            REMOTE_EXECUTION_ARTIFACT_SCHEMA_VERSION,
+            ArtifactHash::digest(b"policy"),
+            RedactionClass::Public,
+        )
+        .with_ucan_authorization(metadata);
+        let serialized = serde_json::to_string(&envelope).expect("envelope json");
+
+        assert!(serialized.contains("artifact/read"));
+        assert!(serialized.contains("proof-ref"));
+        assert!(!serialized.contains("compact-token"));
     }
 
     #[test]

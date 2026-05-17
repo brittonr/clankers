@@ -53,6 +53,7 @@ pub use effects::RemoteExecutionDependency;
 pub use effects::RemoteExecutionRequest;
 pub use effects::RemoteExecutionTarget;
 pub use effects::StaticEffectHandler;
+pub use effects::UcanAuthorizationMetadata;
 pub use effects::evaluate_remote_dependency_sync;
 pub use effects::initial_effect_handler_subset;
 pub use effects::run_effect_fail_closed;
