@@ -24,7 +24,7 @@
 
 - [x] [serial] Extend effect receipts and content-addressed artifact envelopes with redacted UCAN authorization metadata. [covers=ucan-effect-permissions.authorization-receipts.allowed,ucan-effect-permissions.authorization-receipts.denied-redacted,content-addressed-agent-artifacts.receipts.replay,content-addressed-agent-artifacts.receipts.redaction] [evidence=receipt-redaction-tests] ✅ 3m (started: 2026-05-17T04:56:36Z → completed: 2026-05-17T04:59:39Z)
 - [x] [parallel] Persist safe typed ledger facts for authorization decisions and denials. [covers=ucan-effect-permissions.ledger-facts.query-denial,typed-durable-session-ledger.records.execution,typed-durable-session-ledger.records.redaction] [evidence=typed-ledger-authorization-tests] ✅ 4m (started: 2026-05-17T05:00:22Z → completed: 2026-05-17T05:04:14Z)
-- [ ] [parallel] Ensure remote/subagent artifact sync transmits only safe grant metadata/proof references and never secret token material. [covers=ucan-effect-permissions.remote-proof-sync.safe-reference,ucan-effect-permissions.remote-proof-sync.missing-authority,effect-ability-runtime.remote-deps.missing-safe,effect-ability-runtime.remote-deps.secret-denied] [evidence=remote-proof-sync-tests]
+- [x] [parallel] Ensure remote/subagent artifact sync transmits only safe grant metadata/proof references and never secret token material. [covers=ucan-effect-permissions.remote-proof-sync.safe-reference,ucan-effect-permissions.remote-proof-sync.missing-authority,effect-ability-runtime.remote-deps.missing-safe,effect-ability-runtime.remote-deps.secret-denied] [evidence=remote-proof-sync-tests] ✅ 1m (started: 2026-05-17T05:04:14Z → completed: 2026-05-17T05:05:02Z)
 
 ## Phase 5: Verification and Closeout
 
