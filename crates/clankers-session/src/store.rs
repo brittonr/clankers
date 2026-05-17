@@ -12,6 +12,8 @@ use clanker_message::Content;
 use super::entry::SessionEntry;
 use crate::error::Result;
 use crate::error::session_err;
+use crate::ledger::LedgerIndex;
+use crate::ledger::LedgerQuery;
 use crate::ledger::LedgerRecord;
 use crate::ledger::append_ledger_record;
 use crate::ledger::read_ledger_records;
@@ -64,6 +66,32 @@ pub fn append_typed_ledger_fact(session_path: &Path, record: &LedgerRecord) -> R
 /// Read typed ledger facts stored beside a legacy session JSONL file.
 pub fn read_typed_ledger_facts(session_path: &Path) -> Result<Vec<LedgerRecord>> {
     read_ledger_records(&typed_ledger_file_path(session_path))
+}
+
+/// Redacted inspection result for typed ledger facts.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TypedLedgerInspection {
+    pub rebuilt_index: bool,
+    pub matches: Vec<LedgerRecord>,
+}
+
+/// Inspect typed ledger facts, rebuilding the in-memory index when none is supplied.
+pub fn inspect_typed_ledger_facts(
+    session_path: &Path,
+    query: &LedgerQuery,
+    index: Option<&LedgerIndex>,
+) -> Result<TypedLedgerInspection> {
+    if let Some(index) = index {
+        return Ok(TypedLedgerInspection {
+            rebuilt_index: false,
+            matches: index.query(query).into_iter().cloned().collect(),
+        });
+    }
+    let index = LedgerIndex::from_records(read_typed_ledger_facts(session_path)?);
+    Ok(TypedLedgerInspection {
+        rebuilt_index: true,
+        matches: index.query(query).into_iter().cloned().collect(),
+    })
 }
 
 /// Generate session file path (JSONL format — legacy).
@@ -453,6 +481,44 @@ mod tests {
         };
         assert_eq!(header_entry.session_id, "sess-ledger");
         assert_eq!(read_typed_ledger_facts(&session_file)?, vec![record]);
+        Ok(())
+    }
+
+    #[test]
+    fn typed_ledger_inspection_rebuilds_missing_index_and_uses_supplied_index() -> Result<()> {
+        let temp = TempDir::new().expect("test: failed to create temp dir");
+        let session_file = temp.path().join("inspect_session.jsonl");
+        append_entry(&session_file, &make_header("inspect-ledger"))?;
+        let artifact = ArtifactHash::digest(b"inspect-artifact");
+        let record = crate::ledger::LedgerRecord::typed(
+            "inspect-tool",
+            crate::ledger::LedgerPayload::Tool(crate::ledger::ToolLedgerFact {
+                call_id: "call-1".to_owned(),
+                tool_name: "terminal".to_owned(),
+                status: "ok".to_owned(),
+                query: crate::ledger::LedgerQueryFields {
+                    artifact_hashes: vec![artifact],
+                    tool_kind: Some("shell".to_owned()),
+                    ..crate::ledger::LedgerQueryFields::default()
+                },
+                redaction_class: clankers_artifacts::RedactionClass::MetadataOnly,
+            }),
+        );
+        append_typed_ledger_fact(&session_file, &record)?;
+        let query = crate::ledger::LedgerQuery {
+            artifact_hash: Some(artifact),
+            tool_kind: Some("shell".to_owned()),
+            ..crate::ledger::LedgerQuery::default()
+        };
+
+        let rebuilt = inspect_typed_ledger_facts(&session_file, &query, None)?;
+        assert!(rebuilt.rebuilt_index);
+        assert_eq!(rebuilt.matches, vec![record.clone()]);
+
+        let supplied_index = crate::ledger::LedgerIndex::from_records(vec![record.clone()]);
+        let inspected = inspect_typed_ledger_facts(&session_file, &query, Some(&supplied_index))?;
+        assert!(!inspected.rebuilt_index);
+        assert_eq!(inspected.matches, vec![record]);
         Ok(())
     }
 
