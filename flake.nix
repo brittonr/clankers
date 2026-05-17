@@ -635,6 +635,60 @@
                 .disabledDaemon.environment.CLANKERS_PROCESS_JOB_DEFAULT_BACKEND == "native"
               ' "$out"
             '';
+          nixos-module-process-systemd-limits =
+            let
+              fakeClankersPkg = pkgs.writeShellScriptBin "clankers" "exit 0";
+              evaluated = nixpkgs.lib.nixosSystem {
+                inherit system;
+                modules = [
+                  self.nixosModules.clankers-daemon
+                  ({ ... }: {
+                    services.clankers-daemon = {
+                      enable = true;
+                      package = fakeClankersPkg;
+                      processManagement = {
+                        enable = true;
+                        defaultBackend = "systemd";
+                        systemd = {
+                          enable = true;
+                          unitPrefix = "clankers-test";
+                          memoryMax = "512M";
+                          cpuQuota = "50%";
+                          runtimeMaxSec = 600;
+                          workingDirectory = "/srv/clankers/work";
+                          writablePaths = [ "/srv/clankers/work" "/var/tmp/clankers-jobs" ];
+                          killGraceSec = 9;
+                        };
+                      };
+                    };
+                  })
+                ];
+              };
+              service = evaluated.config.systemd.services.clankers-daemon;
+              payload = builtins.toJSON {
+                environment = service.environment;
+                readWritePaths = service.serviceConfig.ReadWritePaths;
+              };
+            in pkgs.runCommand "nixos-module-process-systemd-limits" {
+              nativeBuildInputs = [ pkgs.jq ];
+              passAsFile = [ "payload" ];
+              inherit payload;
+            } ''
+              cp "$payloadPath" "$out"
+              jq -e '
+                .environment.CLANKERS_PROCESS_JOB_DEFAULT_BACKEND == "systemd" and
+                .environment.CLANKERS_PROCESS_JOB_SYSTEMD_ENABLED == "1" and
+                .environment.CLANKERS_PROCESS_JOB_SYSTEMD_UNIT_PREFIX == "clankers-test" and
+                .environment.CLANKERS_PROCESS_JOB_SYSTEMD_MEMORY_MAX == "512M" and
+                .environment.CLANKERS_PROCESS_JOB_SYSTEMD_CPU_QUOTA == "50%" and
+                .environment.CLANKERS_PROCESS_JOB_SYSTEMD_RUNTIME_MAX_SEC == "600" and
+                .environment.CLANKERS_PROCESS_JOB_SYSTEMD_WORKING_DIRECTORY == "/srv/clankers/work" and
+                .environment.CLANKERS_PROCESS_JOB_SYSTEMD_WRITABLE_PATHS == "/srv/clankers/work:/var/tmp/clankers-jobs" and
+                .environment.CLANKERS_PROCESS_JOB_SYSTEMD_KILL_GRACE_SEC == "9" and
+                (.readWritePaths | index("/srv/clankers/work")) and
+                (.readWritePaths | index("/var/tmp/clankers-jobs"))
+              ' "$out"
+            '';
         };
 
         devShells.default = pkgs.mkShell {

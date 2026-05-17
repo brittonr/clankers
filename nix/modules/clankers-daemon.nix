@@ -4,6 +4,7 @@ let
   processCfg = cfg.processManagement;
   retentionCfg = processCfg.retention;
   pueueCfg = processCfg.pueue;
+  systemdBackendCfg = processCfg.systemd;
   pueueGroupSetupCommands = lib.concatLines (lib.mapAttrsToList (name: concurrency: ''
     ${pueueCfg.package}/bin/pueue group add ${lib.escapeShellArg name} >/dev/null 2>&1 || true
     ${pueueCfg.package}/bin/pueue parallel --group ${lib.escapeShellArg name} ${toString concurrency}
@@ -165,6 +166,52 @@ in
           description = "pueue groups and deterministic parallelism limits materialized by the module.";
         };
       };
+
+      systemd = {
+        enable = lib.mkEnableOption "systemd-run durable process/job backend integration";
+
+        unitPrefix = lib.mkOption {
+          type = lib.types.str;
+          default = "clankers-job";
+          description = "Prefix applied to transient systemd units created for durable process jobs.";
+        };
+
+        memoryMax = lib.mkOption {
+          type = lib.types.nullOr lib.types.str;
+          default = null;
+          description = "Optional MemoryMax value passed to systemd-backed jobs.";
+        };
+
+        cpuQuota = lib.mkOption {
+          type = lib.types.nullOr lib.types.str;
+          default = null;
+          description = "Optional CPUQuota value, such as 50%, passed to systemd-backed jobs.";
+        };
+
+        runtimeMaxSec = lib.mkOption {
+          type = lib.types.nullOr lib.types.ints.positive;
+          default = null;
+          description = "Optional RuntimeMaxSec value for systemd-backed jobs.";
+        };
+
+        workingDirectory = lib.mkOption {
+          type = lib.types.nullOr lib.types.str;
+          default = null;
+          description = "Optional absolute working directory for systemd-backed jobs.";
+        };
+
+        writablePaths = lib.mkOption {
+          type = lib.types.listOf lib.types.str;
+          default = [];
+          description = "Additional absolute paths that systemd-backed jobs may write.";
+        };
+
+        killGraceSec = lib.mkOption {
+          type = lib.types.ints.positive;
+          default = 2;
+          description = "Grace period in seconds before Clankers escalates systemd-backed job termination.";
+        };
+      };
     };
   };
 
@@ -181,6 +228,18 @@ in
       {
         assertion = processCfg.defaultBackend != "pueue" || pueueCfg.enable;
         message = "services.clankers-daemon.processManagement.defaultBackend = \"pueue\" requires processManagement.pueue.enable = true.";
+      }
+      {
+        assertion = processCfg.defaultBackend != "systemd" || systemdBackendCfg.enable;
+        message = "services.clankers-daemon.processManagement.defaultBackend = \"systemd\" requires processManagement.systemd.enable = true.";
+      }
+      {
+        assertion = systemdBackendCfg.workingDirectory == null || lib.hasPrefix "/" systemdBackendCfg.workingDirectory;
+        message = "processManagement.systemd.workingDirectory must be an absolute path when set.";
+      }
+      {
+        assertion = builtins.all (path: lib.hasPrefix "/" path) systemdBackendCfg.writablePaths;
+        message = "processManagement.systemd.writablePaths entries must be absolute paths.";
       }
     ];
 
@@ -224,7 +283,25 @@ in
       environment = {
         HOME = pueueCfg.stateDir;
         PUEUE_CONFIG_PATH = "${pueueCfg.stateDir}/pueue.yml";
-      };
+      }
+      // lib.optionalAttrs (processCfg.enable && systemdBackendCfg.enable) ({
+        CLANKERS_PROCESS_JOB_SYSTEMD_ENABLED = "1";
+        CLANKERS_PROCESS_JOB_SYSTEMD_UNIT_PREFIX = systemdBackendCfg.unitPrefix;
+        CLANKERS_PROCESS_JOB_SYSTEMD_KILL_GRACE_SEC = toString systemdBackendCfg.killGraceSec;
+        CLANKERS_PROCESS_JOB_SYSTEMD_WRITABLE_PATHS = builtins.concatStringsSep ":" systemdBackendCfg.writablePaths;
+      }
+      // lib.optionalAttrs (systemdBackendCfg.memoryMax != null) {
+        CLANKERS_PROCESS_JOB_SYSTEMD_MEMORY_MAX = systemdBackendCfg.memoryMax;
+      }
+      // lib.optionalAttrs (systemdBackendCfg.cpuQuota != null) {
+        CLANKERS_PROCESS_JOB_SYSTEMD_CPU_QUOTA = systemdBackendCfg.cpuQuota;
+      }
+      // lib.optionalAttrs (systemdBackendCfg.runtimeMaxSec != null) {
+        CLANKERS_PROCESS_JOB_SYSTEMD_RUNTIME_MAX_SEC = toString systemdBackendCfg.runtimeMaxSec;
+      }
+      // lib.optionalAttrs (systemdBackendCfg.workingDirectory != null) {
+        CLANKERS_PROCESS_JOB_SYSTEMD_WORKING_DIRECTORY = systemdBackendCfg.workingDirectory;
+      });
     };
 
     systemd.services.clankers-pueue-setup = lib.mkIf (processCfg.enable && pueueCfg.enable && pueueCfg.manageService) {
@@ -240,7 +317,25 @@ in
       environment = {
         HOME = pueueCfg.stateDir;
         PUEUE_CONFIG_PATH = "${pueueCfg.stateDir}/pueue.yml";
-      };
+      }
+      // lib.optionalAttrs (processCfg.enable && systemdBackendCfg.enable) ({
+        CLANKERS_PROCESS_JOB_SYSTEMD_ENABLED = "1";
+        CLANKERS_PROCESS_JOB_SYSTEMD_UNIT_PREFIX = systemdBackendCfg.unitPrefix;
+        CLANKERS_PROCESS_JOB_SYSTEMD_KILL_GRACE_SEC = toString systemdBackendCfg.killGraceSec;
+        CLANKERS_PROCESS_JOB_SYSTEMD_WRITABLE_PATHS = builtins.concatStringsSep ":" systemdBackendCfg.writablePaths;
+      }
+      // lib.optionalAttrs (systemdBackendCfg.memoryMax != null) {
+        CLANKERS_PROCESS_JOB_SYSTEMD_MEMORY_MAX = systemdBackendCfg.memoryMax;
+      }
+      // lib.optionalAttrs (systemdBackendCfg.cpuQuota != null) {
+        CLANKERS_PROCESS_JOB_SYSTEMD_CPU_QUOTA = systemdBackendCfg.cpuQuota;
+      }
+      // lib.optionalAttrs (systemdBackendCfg.runtimeMaxSec != null) {
+        CLANKERS_PROCESS_JOB_SYSTEMD_RUNTIME_MAX_SEC = toString systemdBackendCfg.runtimeMaxSec;
+      }
+      // lib.optionalAttrs (systemdBackendCfg.workingDirectory != null) {
+        CLANKERS_PROCESS_JOB_SYSTEMD_WORKING_DIRECTORY = systemdBackendCfg.workingDirectory;
+      });
       script = ''
         for _ in $(seq 1 50); do
           if ${pueueCfg.package}/bin/pueue status >/dev/null 2>&1; then
@@ -281,6 +376,24 @@ in
         CLANKERS_PROCESS_JOB_PUEUE_GROUPS = builtins.concatStringsSep "," (builtins.attrNames pueueCfg.groups);
         PUEUE_CONFIG_PATH = "${pueueCfg.stateDir}/pueue.yml";
       }
+      // lib.optionalAttrs (processCfg.enable && systemdBackendCfg.enable) ({
+        CLANKERS_PROCESS_JOB_SYSTEMD_ENABLED = "1";
+        CLANKERS_PROCESS_JOB_SYSTEMD_UNIT_PREFIX = systemdBackendCfg.unitPrefix;
+        CLANKERS_PROCESS_JOB_SYSTEMD_KILL_GRACE_SEC = toString systemdBackendCfg.killGraceSec;
+        CLANKERS_PROCESS_JOB_SYSTEMD_WRITABLE_PATHS = builtins.concatStringsSep ":" systemdBackendCfg.writablePaths;
+      }
+      // lib.optionalAttrs (systemdBackendCfg.memoryMax != null) {
+        CLANKERS_PROCESS_JOB_SYSTEMD_MEMORY_MAX = systemdBackendCfg.memoryMax;
+      }
+      // lib.optionalAttrs (systemdBackendCfg.cpuQuota != null) {
+        CLANKERS_PROCESS_JOB_SYSTEMD_CPU_QUOTA = systemdBackendCfg.cpuQuota;
+      }
+      // lib.optionalAttrs (systemdBackendCfg.runtimeMaxSec != null) {
+        CLANKERS_PROCESS_JOB_SYSTEMD_RUNTIME_MAX_SEC = toString systemdBackendCfg.runtimeMaxSec;
+      }
+      // lib.optionalAttrs (systemdBackendCfg.workingDirectory != null) {
+        CLANKERS_PROCESS_JOB_SYSTEMD_WORKING_DIRECTORY = systemdBackendCfg.workingDirectory;
+      })
       // lib.optionalAttrs (cfg.authFile != null) {
         CLANKERS_AUTH_FILE = toString cfg.authFile;
       }
@@ -319,7 +432,9 @@ in
           (builtins.dirOf processCfg.databasePath)
         ] ++ lib.optionals (processCfg.enable && pueueCfg.enable) [
           pueueCfg.stateDir
-        ];
+        ] ++ lib.optionals (processCfg.enable && systemdBackendCfg.enable && systemdBackendCfg.workingDirectory != null) [
+          systemdBackendCfg.workingDirectory
+        ] ++ lib.optionals (processCfg.enable && systemdBackendCfg.enable) systemdBackendCfg.writablePaths;
         PrivateTmp = true;
       } // lib.optionalAttrs (cfg.environmentFile != null) {
         EnvironmentFile = cfg.environmentFile;
