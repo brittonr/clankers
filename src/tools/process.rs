@@ -25,6 +25,7 @@ use clankers_db::process_jobs::StoredProcessJobStream;
 use clankers_runtime::RuntimeError;
 use clankers_runtime::process_jobs::BackendRef;
 use clankers_runtime::process_jobs::ProcessJobBackendKind;
+use clankers_runtime::process_jobs::ProcessJobCwd;
 use clankers_runtime::process_jobs::ProcessJobError;
 use clankers_runtime::process_jobs::ProcessJobErrorCode;
 use clankers_runtime::process_jobs::ProcessJobFilter;
@@ -32,10 +33,13 @@ use clankers_runtime::process_jobs::ProcessJobId;
 use clankers_runtime::process_jobs::ProcessJobLogChunk;
 use clankers_runtime::process_jobs::ProcessJobLogCursor;
 use clankers_runtime::process_jobs::ProcessJobLogRange;
+use clankers_runtime::process_jobs::ProcessJobLogRef;
 use clankers_runtime::process_jobs::ProcessJobOperation;
+use clankers_runtime::process_jobs::ProcessJobOwnerScope;
 use clankers_runtime::process_jobs::ProcessJobReceipt;
 use clankers_runtime::process_jobs::ProcessJobService;
 use clankers_runtime::process_jobs::ProcessJobStatus;
+use clankers_runtime::process_jobs::ProcessJobStream;
 use clankers_runtime::process_jobs::ProcessJobSummary;
 use clankers_runtime::process_jobs::StartProcessJobRequest;
 use serde_json::Value;
@@ -500,6 +504,518 @@ impl ProcessJobService for NativeProcessJobService {
     }
 }
 
+#[async_trait]
+pub trait PueueRunner: Send + Sync {
+    async fn run(&self, args: &[String]) -> Result<String, RuntimeError>;
+}
+
+#[derive(Debug, Default, Clone, Copy)]
+pub struct PueueCliRunner;
+
+#[async_trait]
+impl PueueRunner for PueueCliRunner {
+    async fn run(&self, args: &[String]) -> Result<String, RuntimeError> {
+        let output = Command::new("pueue")
+            .args(args)
+            .output()
+            .await
+            .map_err(|e| RuntimeError::InvalidTool(format!("failed to execute pueue: {e}")))?;
+        if !output.status.success() {
+            let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
+            let stdout = String::from_utf8_lossy(&output.stdout).trim().to_string();
+            let message = if stderr.is_empty() { stdout } else { stderr };
+            return Err(RuntimeError::InvalidTool(format!("pueue {:?} failed: {message}", args)));
+        }
+        Ok(String::from_utf8_lossy(&output.stdout).to_string())
+    }
+}
+
+#[derive(Clone)]
+pub struct PueueProcessJobService<R = PueueCliRunner> {
+    runner: Arc<R>,
+    enabled: bool,
+}
+
+impl Default for PueueProcessJobService<PueueCliRunner> {
+    fn default() -> Self {
+        Self::new(PueueCliRunner)
+    }
+}
+
+impl<R> PueueProcessJobService<R> {
+    pub fn new(runner: R) -> Self {
+        Self {
+            runner: Arc::new(runner),
+            enabled: true,
+        }
+    }
+
+    #[cfg(test)]
+    fn disabled(runner: R) -> Self {
+        Self {
+            runner: Arc::new(runner),
+            enabled: false,
+        }
+    }
+}
+
+impl<R: PueueRunner> PueueProcessJobService<R> {
+    async fn ensure_available(
+        &self,
+        operation: ProcessJobOperation,
+    ) -> Result<Option<ProcessJobReceipt>, RuntimeError> {
+        if !self.enabled {
+            return Ok(Some(pueue_backend_unavailable(operation, "pueue backend is disabled by configuration")));
+        }
+        match self.runner.run(&["--version".to_string()]).await {
+            Ok(_) => Ok(None),
+            Err(error) => Ok(Some(pueue_backend_unavailable(operation, error.to_string()))),
+        }
+    }
+
+    async fn pueue_tasks(&self) -> Result<Vec<PueueTaskProjection>, RuntimeError> {
+        let json = self.runner.run(&["status".to_string(), "--json".to_string()]).await?;
+        Ok(parse_pueue_tasks(&json))
+    }
+
+    async fn pueue_task(&self, id: &ProcessJobId) -> Result<PueueTaskProjection, RuntimeError> {
+        let task_id = pueue_task_id(id)?;
+        self.pueue_tasks()
+            .await?
+            .into_iter()
+            .find(|task| task.task_id == task_id)
+            .ok_or_else(|| RuntimeError::InvalidTool(format!("Unknown pueue process session_id: {}", id.0)))
+    }
+}
+
+#[async_trait]
+impl<R: PueueRunner> ProcessJobService for PueueProcessJobService<R> {
+    async fn start(&self, request: StartProcessJobRequest) -> Result<ProcessJobReceipt, RuntimeError> {
+        if request.backend != ProcessJobBackendKind::Pueue {
+            return Ok(ProcessJobReceipt::unsupported(
+                ProcessJobOperation::Start,
+                None,
+                request.backend,
+                "start",
+                "pueue process service only supports pueue backend requests",
+            ));
+        }
+        if let Some(receipt) = self.ensure_available(ProcessJobOperation::Start).await? {
+            return Ok(receipt);
+        }
+        let command = pueue_command_from_request(&request)?;
+        let mut args = vec!["add".to_string(), "--print-task-id".to_string()];
+        if let ProcessJobCwd::Explicit(cwd) = &request.cwd {
+            args.push("--working-directory".to_string());
+            args.push(cwd.display().to_string());
+        }
+        if let Some(group) = request.metadata.get("pueue_group").or_else(|| request.metadata.get("group")) {
+            args.push("--group".to_string());
+            args.push(group.clone());
+        }
+        if let Some(label) = request.metadata.get("label") {
+            args.push("--label".to_string());
+            args.push(label.clone());
+        }
+        args.push(command);
+        let output = self.runner.run(&args).await?;
+        let task_id = output
+            .lines()
+            .find_map(|line| line.trim().parse::<u64>().ok())
+            .ok_or_else(|| RuntimeError::InvalidTool(format!("pueue add did not return a task id: {output}")))?;
+        let id = ProcessJobId(format!("pueue_{task_id}"));
+        Ok(ProcessJobReceipt {
+            operation: ProcessJobOperation::Start,
+            id: Some(id.clone()),
+            backend: Some(ProcessJobBackendKind::Pueue),
+            status: Some(ProcessJobStatus::Pending),
+            backend_ref: Some(BackendRef(format!("pueue:{task_id}"))),
+            log_refs: pueue_log_refs(&id),
+            summary: format!("Started pueue task {task_id} as {}", id.0),
+            error: None,
+        })
+    }
+
+    async fn list(&self, filter: ProcessJobFilter) -> Result<Vec<ProcessJobSummary>, RuntimeError> {
+        if self.ensure_available(ProcessJobOperation::List).await?.is_some() {
+            return Ok(Vec::new());
+        }
+        let summaries = self
+            .pueue_tasks()
+            .await?
+            .into_iter()
+            .map(|task| task.summary())
+            .filter(|summary| filter.backend.is_none_or(|backend| backend == summary.backend))
+            .filter(|summary| filter.include_terminal || !summary.status.is_terminal())
+            .collect();
+        Ok(summaries)
+    }
+
+    async fn poll(
+        &self,
+        id: ProcessJobId,
+        _cursor: Option<ProcessJobLogCursor>,
+    ) -> Result<ProcessJobReceipt, RuntimeError> {
+        let task = self.pueue_task(&id).await?;
+        Ok(task.receipt(ProcessJobOperation::Poll, format!("{} status: {}", id.0, task.status_label)))
+    }
+
+    async fn log(&self, id: ProcessJobId, range: ProcessJobLogRange) -> Result<ProcessJobLogChunk, RuntimeError> {
+        let task_id = pueue_task_id(&id)?;
+        let lines = range.limit_bytes.clamp(1, DEFAULT_LOG_LIMIT as u64).to_string();
+        let output = self
+            .runner
+            .run(&[
+                "log".to_string(),
+                "--json".to_string(),
+                "--lines".to_string(),
+                lines,
+                task_id.to_string(),
+            ])
+            .await?;
+        let text = parse_pueue_log_text(&output, task_id);
+        let start = range.offset.unwrap_or(0);
+        let len = u64::try_from(text.lines().count()).unwrap_or(u64::MAX);
+        Ok(ProcessJobLogChunk {
+            id,
+            backend: ProcessJobBackendKind::Pueue,
+            stream: range.stream,
+            cursor: ProcessJobLogCursor {
+                stream: range.stream,
+                offset: start,
+            },
+            next_cursor: Some(ProcessJobLogCursor {
+                stream: range.stream,
+                offset: start.saturating_add(len),
+            }),
+            text,
+            truncated: false,
+        })
+    }
+
+    async fn wait(&self, id: ProcessJobId, timeout: Option<Duration>) -> Result<ProcessJobReceipt, RuntimeError> {
+        let deadline = Instant::now() + timeout.unwrap_or(Duration::from_secs(30));
+        loop {
+            let task = self.pueue_task(&id).await?;
+            if task.status.is_terminal() {
+                return Ok(task.receipt(
+                    ProcessJobOperation::Wait,
+                    format!("{} finished with status: {}", id.0, task.status_label),
+                ));
+            }
+            if Instant::now() >= deadline {
+                return Ok(task.receipt(
+                    ProcessJobOperation::Wait,
+                    format!("{} still running as pueue task {}", id.0, task.task_id),
+                ));
+            }
+            tokio::time::sleep(Duration::from_millis(250)).await;
+        }
+    }
+
+    async fn kill(&self, id: ProcessJobId) -> Result<ProcessJobReceipt, RuntimeError> {
+        let task_id = pueue_task_id(&id)?;
+        self.runner.run(&["kill".to_string(), task_id.to_string()]).await?;
+        Ok(ProcessJobReceipt {
+            operation: ProcessJobOperation::Kill,
+            id: Some(id),
+            backend: Some(ProcessJobBackendKind::Pueue),
+            status: Some(ProcessJobStatus::Killed),
+            backend_ref: Some(BackendRef(format!("pueue:{task_id}"))),
+            log_refs: Vec::new(),
+            summary: format!("Kill requested for pueue task {task_id}"),
+            error: None,
+        })
+    }
+
+    async fn restart(&self, id: ProcessJobId) -> Result<ProcessJobReceipt, RuntimeError> {
+        let task_id = pueue_task_id(&id)?;
+        self.runner.run(&["restart".to_string(), "--in-place".to_string(), task_id.to_string()]).await?;
+        Ok(ProcessJobReceipt {
+            operation: ProcessJobOperation::Restart,
+            id: Some(id),
+            backend: Some(ProcessJobBackendKind::Pueue),
+            status: Some(ProcessJobStatus::Pending),
+            backend_ref: Some(BackendRef(format!("pueue:{task_id}"))),
+            log_refs: Vec::new(),
+            summary: format!("Restart requested for pueue task {task_id}"),
+            error: None,
+        })
+    }
+
+    async fn write_stdin(
+        &self,
+        id: ProcessJobId,
+        _data: Vec<u8>,
+        _newline: bool,
+    ) -> Result<ProcessJobReceipt, RuntimeError> {
+        Ok(ProcessJobReceipt::unsupported(
+            ProcessJobOperation::WriteStdin,
+            Some(id),
+            ProcessJobBackendKind::Pueue,
+            "write_stdin",
+            "pueue backend stdin mutation is not supported by the process tool",
+        ))
+    }
+
+    async fn close_stdin(&self, id: ProcessJobId) -> Result<ProcessJobReceipt, RuntimeError> {
+        Ok(ProcessJobReceipt::unsupported(
+            ProcessJobOperation::CloseStdin,
+            Some(id),
+            ProcessJobBackendKind::Pueue,
+            "close_stdin",
+            "pueue backend stdin close is not supported by the process tool",
+        ))
+    }
+
+    async fn adopt(
+        &self,
+        _backend: ProcessJobBackendKind,
+        backend_ref: BackendRef,
+    ) -> Result<ProcessJobReceipt, RuntimeError> {
+        Ok(ProcessJobReceipt::unsupported(
+            ProcessJobOperation::Adopt,
+            None,
+            ProcessJobBackendKind::Pueue,
+            "adopt",
+            format!("pueue adoption is not implemented for {}", backend_ref.0),
+        ))
+    }
+
+    async fn garbage_collect(&self, _filter: ProcessJobFilter) -> Result<ProcessJobReceipt, RuntimeError> {
+        Ok(ProcessJobReceipt::unsupported(
+            ProcessJobOperation::GarbageCollect,
+            None,
+            ProcessJobBackendKind::Pueue,
+            "garbage_collect",
+            "pueue retention is owned by pueue cleanup policies for now",
+        ))
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct PueueTaskProjection {
+    task_id: u64,
+    command: String,
+    group: Option<String>,
+    status: ProcessJobStatus,
+    status_label: String,
+    started_at: Option<DateTime<Utc>>,
+    updated_at: DateTime<Utc>,
+    completed_at: Option<DateTime<Utc>>,
+}
+
+impl PueueTaskProjection {
+    fn process_id(&self) -> ProcessJobId {
+        ProcessJobId(format!("pueue_{}", self.task_id))
+    }
+
+    fn backend_ref(&self) -> BackendRef {
+        BackendRef(format!("pueue:{}", self.task_id))
+    }
+
+    fn summary(&self) -> ProcessJobSummary {
+        let id = self.process_id();
+        let mut metadata = self.command.clone();
+        if let Some(group) = &self.group {
+            metadata = format!("[{group}] {metadata}");
+        }
+        ProcessJobSummary {
+            id: id.clone(),
+            backend: ProcessJobBackendKind::Pueue,
+            backend_ref: Some(self.backend_ref()),
+            owner: ProcessJobOwnerScope::DaemonGlobal,
+            status: self.status.clone(),
+            command_preview: metadata.chars().take(MAX_COMMAND_PREVIEW_LEN).collect(),
+            cwd: ProcessJobCwd::Inherited,
+            started_at: self.started_at,
+            updated_at: self.updated_at,
+            completed_at: self.completed_at,
+            log_refs: pueue_log_refs(&id),
+        }
+    }
+
+    fn receipt(&self, operation: ProcessJobOperation, summary: String) -> ProcessJobReceipt {
+        let id = self.process_id();
+        ProcessJobReceipt {
+            operation,
+            id: Some(id.clone()),
+            backend: Some(ProcessJobBackendKind::Pueue),
+            status: Some(self.status.clone()),
+            backend_ref: Some(self.backend_ref()),
+            log_refs: pueue_log_refs(&id),
+            summary,
+            error: None,
+        }
+    }
+}
+
+fn pueue_command_from_request(request: &StartProcessJobRequest) -> Result<String, RuntimeError> {
+    match (&request.shell_command, &request.program) {
+        (Some(command), None) => Ok(command.clone()),
+        (None, Some(program)) => Ok(format_direct_command(program, &request.args)),
+        (Some(_), Some(_)) => Err(RuntimeError::InvalidTool(
+            "pueue start requires either shell_command or program, not both".to_string(),
+        )),
+        (None, None) => Err(RuntimeError::InvalidTool("pueue start requires shell_command or program".to_string())),
+    }
+}
+
+fn pueue_task_id(id: &ProcessJobId) -> Result<u64, RuntimeError> {
+    id.0.strip_prefix("pueue_")
+        .and_then(|raw| raw.parse::<u64>().ok())
+        .ok_or_else(|| RuntimeError::InvalidTool(format!("{} is not a pueue process id", id.0)))
+}
+
+fn pueue_log_refs(id: &ProcessJobId) -> Vec<ProcessJobLogRef> {
+    vec![ProcessJobLogRef {
+        stream: ProcessJobStream::Combined,
+        reference: format!("pueue:{}:log", id.0.trim_start_matches("pueue_")),
+        retained_until: None,
+        max_bytes: None,
+    }]
+}
+
+fn pueue_backend_unavailable(operation: ProcessJobOperation, reason: impl Into<String>) -> ProcessJobReceipt {
+    let reason = reason.into();
+    ProcessJobReceipt {
+        operation,
+        id: None,
+        backend: Some(ProcessJobBackendKind::Pueue),
+        status: Some(ProcessJobStatus::BackendUnavailable { reason: reason.clone() }),
+        backend_ref: None,
+        log_refs: Vec::new(),
+        summary: reason.clone(),
+        error: Some(ProcessJobError {
+            code: ProcessJobErrorCode::BackendUnavailable,
+            operation,
+            id: None,
+            backend: Some(ProcessJobBackendKind::Pueue),
+            action: Some(format!("{:?}", operation).to_ascii_lowercase()),
+            message: reason,
+        }),
+    }
+}
+
+fn parse_pueue_tasks(raw: &str) -> Vec<PueueTaskProjection> {
+    let Ok(value) = serde_json::from_str::<Value>(raw) else {
+        return Vec::new();
+    };
+    let Some(tasks) = value.get("tasks").and_then(Value::as_object) else {
+        return Vec::new();
+    };
+    tasks.values().filter_map(parse_pueue_task).collect()
+}
+
+fn parse_pueue_task(value: &Value) -> Option<PueueTaskProjection> {
+    let task_id = value.get("id")?.as_u64()?;
+    let command = value
+        .get("original_command")
+        .or_else(|| value.get("command"))
+        .and_then(Value::as_str)
+        .unwrap_or("")
+        .to_string();
+    let group = value.get("group").and_then(Value::as_str).map(str::to_string);
+    let (status, status_label, terminal_time) = parse_pueue_status(value.get("status"));
+    let created_at = value.get("created_at").and_then(Value::as_str).and_then(parse_pueue_time);
+    let started_at = value
+        .get("start")
+        .or_else(|| value.get("started_at"))
+        .and_then(Value::as_str)
+        .and_then(parse_pueue_time)
+        .or(created_at);
+    let updated_at = terminal_time.or(started_at).unwrap_or_else(Utc::now);
+    Some(PueueTaskProjection {
+        task_id,
+        command,
+        group,
+        status,
+        status_label,
+        started_at,
+        updated_at,
+        completed_at: terminal_time,
+    })
+}
+
+fn parse_pueue_status(status: Option<&Value>) -> (ProcessJobStatus, String, Option<DateTime<Utc>>) {
+    let Some(status) = status else {
+        return (
+            ProcessJobStatus::Unknown {
+                raw: "missing".to_string(),
+            },
+            "missing".to_string(),
+            None,
+        );
+    };
+    let Some((name, detail)) = status.as_object().and_then(|object| object.iter().next()) else {
+        return (
+            ProcessJobStatus::Unknown {
+                raw: status.to_string(),
+            },
+            status.to_string(),
+            None,
+        );
+    };
+    let lower = name.to_ascii_lowercase();
+    let completed_at = detail
+        .get("finished_at")
+        .or_else(|| detail.get("end"))
+        .or_else(|| detail.get("done_at"))
+        .and_then(Value::as_str)
+        .and_then(parse_pueue_time);
+    let exit_code = detail
+        .get("exit_code")
+        .or_else(|| detail.get("code"))
+        .and_then(Value::as_i64)
+        .and_then(|code| i32::try_from(code).ok());
+    let projected = match lower.as_str() {
+        "running" => ProcessJobStatus::Running,
+        "queued" | "stashed" | "paused" | "locked" => ProcessJobStatus::Pending,
+        "done" | "success" | "succeeded" => ProcessJobStatus::Succeeded {
+            exit_code: exit_code.or(Some(0)),
+        },
+        "failed" => ProcessJobStatus::Failed {
+            exit_code,
+            reason: detail.get("reason").and_then(Value::as_str).unwrap_or("pueue task failed").to_string(),
+        },
+        "killed" => ProcessJobStatus::Killed,
+        _ if lower.contains("failed") => ProcessJobStatus::Failed {
+            exit_code,
+            reason: name.clone(),
+        },
+        _ => ProcessJobStatus::Unknown { raw: name.clone() },
+    };
+    (projected, lower, completed_at)
+}
+
+fn parse_pueue_log_text(raw: &str, task_id: u64) -> String {
+    let Ok(value) = serde_json::from_str::<Value>(raw) else {
+        return raw.to_string();
+    };
+    let task = value
+        .get("tasks")
+        .and_then(Value::as_object)
+        .and_then(|tasks| tasks.get(&task_id.to_string()))
+        .or_else(|| value.get(&task_id.to_string()))
+        .or_else(|| value.get("output"));
+    let Some(task) = task else {
+        return String::new();
+    };
+    for key in ["output", "log", "stdout", "stderr"] {
+        if let Some(text) = task.get(key).and_then(Value::as_str) {
+            return text.to_string();
+        }
+    }
+    if let Some(lines) = task.get("lines").and_then(Value::as_array) {
+        return lines.iter().filter_map(Value::as_str).collect::<Vec<_>>().join("\n");
+    }
+    task.as_str().unwrap_or_default().to_string()
+}
+
+fn parse_pueue_time(raw: &str) -> Option<DateTime<Utc>> {
+    DateTime::parse_from_rfc3339(raw).ok().map(|time| time.with_timezone(&Utc))
+}
+
 fn native_entry(id: &ProcessJobId) -> Result<Arc<ProcessEntry>, RuntimeError> {
     ProcessTool::get(&id.0).ok_or_else(|| RuntimeError::InvalidTool(format!("Unknown process session_id: {}", id.0)))
 }
@@ -827,8 +1343,21 @@ impl ProcessTool {
                     "properties": {
                         "action": {
                             "type": "string",
-                            "enum": ["start", "list", "poll", "log", "wait", "kill", "write", "submit", "close"],
+                            "enum": ["start", "list", "poll", "log", "wait", "kill", "restart", "write", "submit", "close"],
                             "description": "Action to perform"
+                        },
+                        "backend": {
+                            "type": "string",
+                            "enum": ["native", "pueue"],
+                            "description": "Durable backend for start/list/poll/log/wait/kill/restart (default: native)"
+                        },
+                        "group": {
+                            "type": "string",
+                            "description": "Backend group/queue for pueue starts"
+                        },
+                        "label": {
+                            "type": "string",
+                            "description": "Backend label for pueue starts"
                         },
                         "command": {
                             "type": "string",
@@ -1015,7 +1544,118 @@ impl ProcessTool {
             (None, None) => Err(ToolResult::error("Missing required parameter: command or program")),
         }
     }
+
+    fn requested_backend(params: &Value) -> Result<ProcessJobBackendKind, ToolResult> {
+        match params.get("backend").and_then(Value::as_str).unwrap_or("native") {
+            "native" => Ok(ProcessJobBackendKind::Native),
+            "pueue" => Ok(ProcessJobBackendKind::Pueue),
+            other => Err(ToolResult::error(format!("Unsupported process backend: {other}"))),
+        }
+    }
+
+    fn pueue_service() -> PueueProcessJobService {
+        PueueProcessJobService::default()
+    }
+
+    fn pueue_id(session_id: &str) -> Option<ProcessJobId> {
+        session_id.starts_with("pueue_").then(|| ProcessJobId(session_id.to_string()))
+    }
+
+    fn start_request(params: &Value, backend: ProcessJobBackendKind) -> Result<StartProcessJobRequest, ToolResult> {
+        let command = params.get("command").and_then(Value::as_str).filter(|s| !s.trim().is_empty());
+        let program = params.get("program").and_then(Value::as_str).filter(|s| !s.trim().is_empty());
+        if command.is_some() && program.is_some() {
+            return Err(ToolResult::error("Provide either 'command' or 'program', not both."));
+        }
+        let args = Self::parse_args(params)?;
+        let command_preview = match (command, program) {
+            (Some(command), None) => command.to_string(),
+            (None, Some(program)) => format_direct_command(program, &args),
+            (None, None) => return Err(ToolResult::error("Missing required parameter: command or program")),
+            (Some(_), Some(_)) => unreachable!(),
+        };
+        let mut metadata = std::collections::BTreeMap::new();
+        for key in ["group", "label"] {
+            if let Some(value) = params.get(key).and_then(Value::as_str).filter(|value| !value.is_empty()) {
+                metadata.insert(key.to_string(), value.to_string());
+            }
+        }
+        Ok(StartProcessJobRequest {
+            backend,
+            command_preview,
+            program: program.map(str::to_string),
+            args,
+            shell_command: command.map(str::to_string),
+            cwd: ProcessJobCwd::Inherited,
+            owner: ProcessJobOwnerScope::DaemonGlobal,
+            resource_policy: clankers_runtime::process_jobs::ProcessJobResourcePolicy::default(),
+            notification_policy: clankers_runtime::process_jobs::ProcessJobNotificationPolicy::default(),
+            metadata,
+        })
+    }
+
+    async fn handle_pueue_start(params: &Value) -> ToolResult {
+        let request = match Self::start_request(params, ProcessJobBackendKind::Pueue) {
+            Ok(request) => request,
+            Err(result) => return result,
+        };
+        match Self::pueue_service().start(request).await {
+            Ok(receipt) if receipt.error.is_some() => {
+                ToolResult::error(serde_json::to_string(&receipt).unwrap_or(receipt.summary))
+            }
+            Ok(receipt) => ToolResult::text(serde_json::to_string(&receipt).unwrap_or(receipt.summary)),
+            Err(error) => ToolResult::error(error.to_string()),
+        }
+    }
+
+    async fn handle_pueue_list() -> ToolResult {
+        match Self::pueue_service()
+            .list(ProcessJobFilter {
+                backend: Some(ProcessJobBackendKind::Pueue),
+                include_terminal: true,
+                ..ProcessJobFilter::default()
+            })
+            .await
+        {
+            Ok(summaries) if summaries.is_empty() => ToolResult::text("No pueue process jobs."),
+            Ok(summaries) => ToolResult::text(serde_json::to_string(&summaries).unwrap_or_else(|_| "[]".to_string())),
+            Err(error) => ToolResult::error(error.to_string()),
+        }
+    }
+
+    async fn pueue_receipt_result(result: Result<ProcessJobReceipt, RuntimeError>) -> ToolResult {
+        match result {
+            Ok(receipt) if receipt.error.is_some() => {
+                ToolResult::error(serde_json::to_string(&receipt).unwrap_or(receipt.summary))
+            }
+            Ok(receipt) => ToolResult::text(serde_json::to_string(&receipt).unwrap_or(receipt.summary)),
+            Err(error) => ToolResult::error(error.to_string()),
+        }
+    }
+
+    async fn handle_pueue_log(session_id: &str, params: &Value) -> Option<ToolResult> {
+        let id = Self::pueue_id(session_id)?;
+        let limit = params.get("limit").and_then(Value::as_u64).unwrap_or(DEFAULT_LOG_LIMIT as u64);
+        let offset = params.get("offset").and_then(Value::as_u64);
+        let range = ProcessJobLogRange {
+            stream: ProcessJobStream::Combined,
+            offset,
+            limit_bytes: limit,
+        };
+        Some(match Self::pueue_service().log(id, range).await {
+            Ok(chunk) => ToolResult::text(serde_json::to_string(&chunk).unwrap_or(chunk.text)),
+            Err(error) => ToolResult::error(error.to_string()),
+        })
+    }
+
     async fn handle_start(&self, ctx: &ToolContext, params: &Value) -> ToolResult {
+        let backend = match Self::requested_backend(params) {
+            Ok(backend) => backend,
+            Err(result) => return result,
+        };
+        if backend == ProcessJobBackendKind::Pueue {
+            return Self::handle_pueue_start(params).await;
+        }
         let admission = match Self::reserve_native_start() {
             Ok(admission) => admission,
             Err(decision) => {
@@ -1073,7 +1713,14 @@ impl ProcessTool {
         ))
     }
 
-    async fn handle_list(ctx: &ToolContext) -> ToolResult {
+    async fn handle_list(ctx: &ToolContext, params: &Value) -> ToolResult {
+        let backend = match Self::requested_backend(params) {
+            Ok(backend) => backend,
+            Err(result) => return result,
+        };
+        if backend == ProcessJobBackendKind::Pueue {
+            return Self::handle_pueue_list().await;
+        }
         let mut entries = Self::all_entries();
         entries.sort_by_key(|entry| entry.id.clone());
         let mut durable = Vec::new();
@@ -1111,6 +1758,9 @@ impl ProcessTool {
             Ok(id) => id,
             Err(result) => return result,
         };
+        if let Some(id) = Self::pueue_id(&session_id) {
+            return Self::pueue_receipt_result(Self::pueue_service().poll(id, None).await).await;
+        }
         let entry = match Self::get(&session_id) {
             Some(entry) => entry,
             None => {
@@ -1141,6 +1791,9 @@ impl ProcessTool {
             Ok(id) => id,
             Err(result) => return result,
         };
+        if let Some(result) = Self::handle_pueue_log(&session_id, params).await {
+            return result;
+        }
         let entry = match Self::get(&session_id) {
             Some(entry) => entry,
             None => {
@@ -1189,6 +1842,10 @@ impl ProcessTool {
             Ok(id) => id,
             Err(result) => return result,
         };
+        if let Some(id) = Self::pueue_id(&session_id) {
+            let timeout = params.get("timeout").and_then(Value::as_u64).map(Duration::from_secs);
+            return Self::pueue_receipt_result(Self::pueue_service().wait(id, timeout).await).await;
+        }
         let entry = match Self::get(&session_id) {
             Some(entry) => entry,
             None => {
@@ -1222,11 +1879,14 @@ impl ProcessTool {
         ToolResult::text(text)
     }
 
-    fn handle_kill(params: &Value) -> ToolResult {
+    async fn handle_kill(params: &Value) -> ToolResult {
         let session_id = match Self::required_session(params) {
             Ok(id) => id,
             Err(result) => return result,
         };
+        if let Some(id) = Self::pueue_id(&session_id) {
+            return Self::pueue_receipt_result(Self::pueue_service().kill(id).await).await;
+        }
         let entry = match Self::get(&session_id) {
             Some(entry) => entry,
             None => return ToolResult::error(format!("Unknown process session_id: {session_id}")),
@@ -1250,6 +1910,12 @@ impl ProcessTool {
             Err(result) => return result,
         };
         let data = params.get("data").and_then(|v| v.as_str()).unwrap_or("");
+        if let Some(id) = Self::pueue_id(&session_id) {
+            return Self::pueue_receipt_result(
+                Self::pueue_service().write_stdin(id, data.as_bytes().to_vec(), newline).await,
+            )
+            .await;
+        }
         let entry = match Self::get(&session_id) {
             Some(entry) => entry,
             None => return ToolResult::error(format!("Unknown process session_id: {session_id}")),
@@ -1278,6 +1944,9 @@ impl ProcessTool {
             Ok(id) => id,
             Err(result) => return result,
         };
+        if let Some(id) = Self::pueue_id(&session_id) {
+            return Self::pueue_receipt_result(Self::pueue_service().close_stdin(id).await).await;
+        }
         let entry = match Self::get(&session_id) {
             Some(entry) => entry,
             None => return ToolResult::error(format!("Unknown process session_id: {session_id}")),
@@ -1288,6 +1957,17 @@ impl ProcessTool {
         } else {
             ToolResult::text(format!("Stdin already closed for {}", entry.id))
         }
+    }
+
+    async fn handle_restart(params: &Value) -> ToolResult {
+        let session_id = match Self::required_session(params) {
+            Ok(id) => id,
+            Err(result) => return result,
+        };
+        let Some(id) = Self::pueue_id(&session_id) else {
+            return ToolResult::error("Native process restart is not supported; start a new native process instead.");
+        };
+        Self::pueue_receipt_result(Self::pueue_service().restart(id).await).await
     }
 }
 
@@ -1311,11 +1991,12 @@ impl Tool for ProcessTool {
 
         match action {
             "start" => self.handle_start(ctx, &params).await,
-            "list" => Self::handle_list(ctx).await,
+            "list" => Self::handle_list(ctx, &params).await,
             "poll" => Self::handle_poll(ctx, &params).await,
             "log" => Self::handle_log(ctx, &params).await,
             "wait" => Self::handle_wait(ctx, &params).await,
-            "kill" => Self::handle_kill(&params),
+            "kill" => Self::handle_kill(&params).await,
+            "restart" => Self::handle_restart(&params).await,
             "write" => Self::handle_write(&params, false).await,
             "submit" => Self::handle_write(&params, true).await,
             "close" => Self::handle_close(&params).await,
@@ -1455,6 +2136,188 @@ mod tests {
             notification_policy: clankers_runtime::process_jobs::ProcessJobNotificationPolicy::default(),
             metadata: Default::default(),
         }
+    }
+
+    #[derive(Clone)]
+    struct FakePueueRunner {
+        calls: Arc<std::sync::Mutex<Vec<Vec<String>>>>,
+        status_json: String,
+        log_json: String,
+        add_output: String,
+        fail_version: bool,
+    }
+
+    impl FakePueueRunner {
+        fn new(status_json: String, log_json: String) -> Self {
+            Self {
+                calls: Arc::new(std::sync::Mutex::new(Vec::new())),
+                status_json,
+                log_json,
+                add_output: "42\n".to_string(),
+                fail_version: false,
+            }
+        }
+
+        fn unavailable() -> Self {
+            Self {
+                calls: Arc::new(std::sync::Mutex::new(Vec::new())),
+                status_json: "{}".to_string(),
+                log_json: "{}".to_string(),
+                add_output: String::new(),
+                fail_version: true,
+            }
+        }
+
+        fn calls(&self) -> Vec<Vec<String>> {
+            self.calls.lock().expect("calls lock poisoned").clone()
+        }
+    }
+
+    #[async_trait]
+    impl PueueRunner for FakePueueRunner {
+        async fn run(&self, args: &[String]) -> Result<String, RuntimeError> {
+            self.calls.lock().expect("calls lock poisoned").push(args.to_vec());
+            match args.first().map(String::as_str) {
+                Some("--version") if self.fail_version => {
+                    Err(RuntimeError::InvalidTool("pueue unavailable".to_string()))
+                }
+                Some("--version") => Ok("pueue 4.0.4".to_string()),
+                Some("status") => Ok(self.status_json.clone()),
+                Some("log") => Ok(self.log_json.clone()),
+                Some("add") => Ok(self.add_output.clone()),
+                Some("kill") | Some("restart") => Ok(String::new()),
+                other => Err(RuntimeError::InvalidTool(format!("unexpected pueue call: {other:?}"))),
+            }
+        }
+    }
+
+    fn pueue_status_fixture() -> String {
+        json!({
+            "tasks": {
+                "42": {
+                    "id": 42,
+                    "created_at": "2026-05-17T16:00:00Z",
+                    "original_command": "cargo check",
+                    "command": "cargo check",
+                    "path": "/tmp/work",
+                    "group": "builds",
+                    "status": { "Running": { "start": "2026-05-17T16:00:01Z" } }
+                },
+                "43": {
+                    "id": 43,
+                    "created_at": "2026-05-17T16:00:00Z",
+                    "original_command": "false",
+                    "command": "false",
+                    "path": "/tmp/work",
+                    "group": "builds",
+                    "status": { "Done": { "finished_at": "2026-05-17T16:00:03Z", "exit_code": 0 } }
+                }
+            },
+            "groups": { "builds": { "parallel_tasks": 1 } }
+        })
+        .to_string()
+    }
+
+    #[tokio::test]
+    async fn pueue_backend_projects_status_logs_and_mutations_without_hard_seam() {
+        let runner = FakePueueRunner::new(
+            pueue_status_fixture(),
+            json!({ "tasks": { "42": { "output": "line one\nline two" } } }).to_string(),
+        );
+        let service = PueueProcessJobService::new(runner.clone());
+        let mut request = native_start_request("cargo check");
+        request.backend = ProcessJobBackendKind::Pueue;
+        request.metadata.insert("group".to_string(), "builds".to_string());
+        request.metadata.insert("label".to_string(), "clankers".to_string());
+
+        let started = service.start(request).await.expect("pueue start succeeds");
+        assert_eq!(started.id, Some(ProcessJobId("pueue_42".to_string())));
+        assert_eq!(started.backend_ref, Some(BackendRef("pueue:42".to_string())));
+
+        let summaries = service
+            .list(ProcessJobFilter {
+                backend: Some(ProcessJobBackendKind::Pueue),
+                include_terminal: true,
+                ..ProcessJobFilter::default()
+            })
+            .await
+            .expect("list succeeds");
+        assert_eq!(summaries.len(), 2);
+        assert_eq!(summaries[0].backend, ProcessJobBackendKind::Pueue);
+        assert_eq!(summaries[0].backend_ref, Some(BackendRef("pueue:42".to_string())));
+        assert!(summaries[0].command_preview.contains("cargo check"));
+        assert_eq!(summaries[0].log_refs[0].reference, "pueue:42:log");
+
+        let poll = service.poll(ProcessJobId("pueue_42".to_string()), None).await.expect("poll succeeds");
+        assert_eq!(poll.status, Some(ProcessJobStatus::Running));
+
+        let log = service
+            .log(ProcessJobId("pueue_42".to_string()), ProcessJobLogRange {
+                stream: ProcessJobStream::Combined,
+                offset: None,
+                limit_bytes: 10,
+            })
+            .await
+            .expect("log succeeds");
+        assert_eq!(log.text, "line one\nline two");
+
+        let killed = service.kill(ProcessJobId("pueue_42".to_string())).await.expect("kill succeeds");
+        assert_eq!(killed.status, Some(ProcessJobStatus::Killed));
+        let restarted = service.restart(ProcessJobId("pueue_42".to_string())).await.expect("restart succeeds");
+        assert_eq!(restarted.status, Some(ProcessJobStatus::Pending));
+        let stdin = service
+            .write_stdin(ProcessJobId("pueue_42".to_string()), b"input".to_vec(), true)
+            .await
+            .expect("stdin receipt succeeds");
+        assert_eq!(stdin.error.expect("unsupported receipt").code, ProcessJobErrorCode::UnsupportedActionForBackend);
+
+        let calls = runner.calls();
+        assert!(calls.iter().any(|call| call == &["--version"]));
+        assert!(calls.iter().any(|call| call
+            == &[
+                "add",
+                "--print-task-id",
+                "--group",
+                "builds",
+                "--label",
+                "clankers",
+                "cargo check"
+            ]));
+        assert!(calls.iter().any(|call| call == &["status", "--json"]));
+        assert!(calls.iter().any(|call| call == &["log", "--json", "--lines", "10", "42"]));
+        assert!(calls.iter().any(|call| call == &["kill", "42"]));
+        assert!(calls.iter().any(|call| call == &["restart", "--in-place", "42"]));
+    }
+
+    #[tokio::test]
+    async fn pueue_backend_unavailable_returns_typed_receipt_before_mutation() {
+        let runner = FakePueueRunner::unavailable();
+        let service = PueueProcessJobService::new(runner.clone());
+        let mut request = native_start_request("cargo check");
+        request.backend = ProcessJobBackendKind::Pueue;
+
+        let receipt = service.start(request).await.expect("unavailable is typed receipt");
+        let error = receipt.error.expect("error receipt");
+        assert_eq!(error.code, ProcessJobErrorCode::BackendUnavailable);
+        assert_eq!(
+            receipt.status,
+            Some(ProcessJobStatus::BackendUnavailable {
+                reason: "invalid tool: pueue unavailable".to_string()
+            })
+        );
+        assert_eq!(runner.calls(), vec![vec!["--version".to_string()]]);
+    }
+
+    #[tokio::test]
+    async fn pueue_backend_disabled_is_config_guard_not_cli_failure() {
+        let runner = FakePueueRunner::new("{}".to_string(), "{}".to_string());
+        let service = PueueProcessJobService::disabled(runner.clone());
+        let mut request = native_start_request("cargo check");
+        request.backend = ProcessJobBackendKind::Pueue;
+
+        let receipt = service.start(request).await.expect("disabled is typed receipt");
+        assert_eq!(receipt.error.expect("error receipt").code, ProcessJobErrorCode::BackendUnavailable);
+        assert!(runner.calls().is_empty(), "disabled config must avoid pueue CLI mutation seam");
     }
 
     #[tokio::test]
