@@ -140,6 +140,8 @@ pub enum LedgerPayload {
     PendingChange(PendingChangeLedgerFact),
     /// Todo item lifecycle fact for structured work sessions.
     Todo(TodoLedgerFact),
+    /// UCAN/runtime authorization decision fact.
+    Authorization(AuthorizationLedgerFact),
 }
 
 impl LedgerPayload {
@@ -154,6 +156,7 @@ impl LedgerPayload {
             Self::ArtifactReference(fact) => Self::ArtifactReference(fact.sanitized()),
             Self::PendingChange(fact) => Self::PendingChange(fact.sanitized()),
             Self::Todo(fact) => Self::Todo(fact.sanitized()),
+            Self::Authorization(fact) => Self::Authorization(fact.sanitized()),
         }
     }
 
@@ -170,6 +173,7 @@ impl LedgerPayload {
             Self::ArtifactReference(fact) => &fact.query,
             Self::PendingChange(fact) => &fact.query,
             Self::Todo(fact) => &fact.query,
+            Self::Authorization(fact) => &fact.query,
         }
     }
 }
@@ -189,6 +193,12 @@ pub struct LedgerQueryFields {
     pub requirement_id: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub request_shape: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub authorization_status: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub effect_ability: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub effect_resource: Option<String>,
 }
 
 /// Query over safe ledger metadata.
@@ -200,6 +210,9 @@ pub struct LedgerQuery {
     pub crate_path: Option<String>,
     pub requirement_id: Option<String>,
     pub request_shape: Option<String>,
+    pub authorization_status: Option<String>,
+    pub effect_ability: Option<String>,
+    pub effect_resource: Option<String>,
 }
 
 /// In-memory local index for typed session ledger records.
@@ -239,6 +252,9 @@ fn query_fields_match(fields: &LedgerQueryFields, query: &LedgerQuery) -> bool {
         && optional_query_text_matches(&query.crate_path, &fields.crate_path)
         && optional_query_text_matches(&query.requirement_id, &fields.requirement_id)
         && optional_query_text_matches(&query.request_shape, &fields.request_shape)
+        && optional_query_text_matches(&query.authorization_status, &fields.authorization_status)
+        && optional_query_text_matches(&query.effect_ability, &fields.effect_ability)
+        && optional_query_text_matches(&query.effect_resource, &fields.effect_resource)
 }
 
 fn optional_query_text_matches(expected: &Option<String>, actual: &Option<String>) -> bool {
@@ -254,6 +270,9 @@ impl LedgerQueryFields {
         self.crate_path = self.crate_path.map(sanitize_ledger_text);
         self.requirement_id = self.requirement_id.map(sanitize_ledger_text);
         self.request_shape = self.request_shape.map(sanitize_ledger_text);
+        self.authorization_status = self.authorization_status.map(sanitize_ledger_text);
+        self.effect_ability = self.effect_ability.map(sanitize_ledger_text);
+        self.effect_resource = self.effect_resource.map(sanitize_ledger_text);
         self
     }
 }
@@ -425,6 +444,47 @@ impl TodoLedgerFact {
             status: sanitize_ledger_text(self.status),
             query: self.query.sanitized(),
         }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct AuthorizationLedgerFact {
+    pub decision_id: String,
+    pub status: String,
+    pub effect_ability: String,
+    pub effect_resource: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub issuer_did: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub audience_did: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub proof_reference: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub denial_class: Option<String>,
+    pub query: LedgerQueryFields,
+}
+
+impl AuthorizationLedgerFact {
+    fn sanitized(mut self) -> Self {
+        self.decision_id = sanitize_ledger_text(self.decision_id);
+        self.status = sanitize_ledger_text(self.status);
+        self.effect_ability = sanitize_ledger_text(self.effect_ability);
+        self.effect_resource = sanitize_ledger_text(self.effect_resource);
+        self.issuer_did = self.issuer_did.map(sanitize_ledger_text);
+        self.audience_did = self.audience_did.map(sanitize_ledger_text);
+        self.proof_reference = self.proof_reference.map(sanitize_ledger_text);
+        self.denial_class = self.denial_class.map(sanitize_ledger_text);
+        self.query = self.query.sanitized();
+        if self.query.authorization_status.is_none() {
+            self.query.authorization_status = Some(self.status.clone());
+        }
+        if self.query.effect_ability.is_none() {
+            self.query.effect_ability = Some(self.effect_ability.clone());
+        }
+        if self.query.effect_resource.is_none() {
+            self.query.effect_resource = Some(self.effect_resource.clone());
+        }
+        self
     }
 }
 
@@ -624,6 +684,20 @@ mod tests {
                     query: LedgerQueryFields::default(),
                 }),
             ),
+            LedgerRecord::typed(
+                "authorization",
+                LedgerPayload::Authorization(AuthorizationLedgerFact {
+                    decision_id: "decision-1".to_owned(),
+                    status: "allowed".to_owned(),
+                    effect_ability: "file.read".to_owned(),
+                    effect_resource: "file/src/lib.rs".to_owned(),
+                    issuer_did: Some("did:key:issuer".to_owned()),
+                    audience_did: Some("did:key:audience".to_owned()),
+                    proof_reference: Some("proof-ref".to_owned()),
+                    denial_class: None,
+                    query: LedgerQueryFields::default(),
+                }),
+            ),
         ];
 
         for record in &records {
@@ -696,6 +770,56 @@ mod tests {
                 })
                 .is_empty()
         );
+    }
+
+    #[test]
+    fn authorization_facts_are_queryable_and_redact_secret_markers() {
+        let allowed = LedgerRecord::typed(
+            "auth-allowed",
+            LedgerPayload::Authorization(AuthorizationLedgerFact {
+                decision_id: "decision-allowed".to_owned(),
+                status: "allowed".to_owned(),
+                effect_ability: "file.read".to_owned(),
+                effect_resource: "file/src/lib.rs".to_owned(),
+                issuer_did: Some("did:key:issuer".to_owned()),
+                audience_did: Some("did:key:audience".to_owned()),
+                proof_reference: Some("proof-ref".to_owned()),
+                denial_class: None,
+                query: LedgerQueryFields::default(),
+            }),
+        );
+        let denied = LedgerRecord::typed(
+            "auth-denied",
+            LedgerPayload::Authorization(AuthorizationLedgerFact {
+                decision_id: "decision-denied".to_owned(),
+                status: "denied".to_owned(),
+                effect_ability: "tool.execute".to_owned(),
+                effect_resource: "token-bearing-secret-command".to_owned(),
+                issuer_did: None,
+                audience_did: None,
+                proof_reference: None,
+                denial_class: Some("missing_authority".to_owned()),
+                query: LedgerQueryFields::default(),
+            }),
+        );
+        let index = LedgerIndex::from_records(vec![allowed, denied]);
+
+        let denials = index.query(&LedgerQuery {
+            authorization_status: Some("denied".to_owned()),
+            effect_ability: Some("tool.execute".to_owned()),
+            ..LedgerQuery::default()
+        });
+        assert_eq!(denials.len(), 1);
+        let LedgerRecord::Typed(record) = denials[0] else {
+            panic!("expected typed record");
+        };
+        let LedgerPayload::Authorization(fact) = &record.payload else {
+            panic!("expected authorization fact");
+        };
+        assert_eq!(fact.effect_resource, "[redacted-secret-marker]");
+        assert_eq!(fact.query.authorization_status.as_deref(), Some("denied"));
+        assert_eq!(fact.query.effect_ability.as_deref(), Some("tool.execute"));
+        assert_eq!(fact.denial_class.as_deref(), Some("missing_authority"));
     }
 
     #[test]
