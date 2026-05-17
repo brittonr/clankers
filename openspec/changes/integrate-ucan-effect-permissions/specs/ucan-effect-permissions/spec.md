@@ -2,7 +2,7 @@
 
 ### Requirement: UCAN-backed effect admission
 
-Protected Clankers effect handlers MUST verify a UCAN invocation decision before performing filesystem, shell, network, secret, browser, scheduler, remote execution, provider, artifact-store mutation, or delivery side effects.
+Protected Clankers effect handlers MUST verify a UCAN invocation decision before performing filesystem, shell, network, secret, browser, scheduler, remote execution, provider, artifact-store mutation, delivery, plugin, or MCP tool side effects. A protected effect class is one explicitly wired to the UCAN admission adapter; legacy operations that are not yet migrated MUST NOT be described as UCAN-protected and MUST continue to obey existing host confirmation and handler policy.
 r[ucan-effect-permissions.handler-admission]
 
 #### Scenario: matching UCAN grant allows handler execution
@@ -11,7 +11,7 @@ r[ucan-effect-permissions.handler-admission.allow]
 - GIVEN an effect request with a normalized ability, resource URI, caveat context, invoker DID, audience DID, and proof references
 - AND the configured UCAN verifier returns an allowed invocation decision for those facts
 - WHEN the effect dispatcher evaluates admission
-- THEN the dispatcher invokes the effect handler
+- THEN the dispatcher invokes the effect handler only after any existing host confirmation gate also allows the request
 - THEN the effect receipt records safe authorization metadata and the handler result hash
 
 #### Scenario: denied UCAN blocks side effects
@@ -20,7 +20,16 @@ r[ucan-effect-permissions.handler-admission.deny]
 - GIVEN an effect request whose UCAN proof chain is missing, expired, revoked, wrong-audience, insufficient, or rejected by caveat policy
 - WHEN the effect dispatcher evaluates admission
 - THEN it returns a structured authorization denial before contacting the effect handler
-- THEN filesystem, process, network, browser, provider, secret, scheduler, delivery, and remote resources are not touched
+- THEN filesystem, process, network, browser, provider, plugin, MCP, secret, scheduler, delivery, and remote resources are not touched
+
+#### Scenario: UCAN allow preserves human confirmation policy
+r[ucan-effect-permissions.handler-admission.confirmation-order]
+
+- GIVEN an effect class already requires human confirmation or a host-owned approval policy
+- AND UCAN authorization allows the invocation
+- WHEN the dispatcher evaluates the request
+- THEN the request still waits for the required confirmation or approval before handler execution
+- THEN denial or cancellation at that later gate prevents the side effect and records both the UCAN allow and confirmation denial safely
 
 ### Requirement: Stable Clankers effect capability vocabulary
 
@@ -30,7 +39,7 @@ r[ucan-effect-permissions.effect-vocabulary]
 #### Scenario: known effect maps to stable ability and resource
 r[ucan-effect-permissions.effect-vocabulary.known-effect]
 
-- GIVEN a file-read, file-write, shell, network, secret, browser, scheduler, remote-exec, artifact-read, or artifact-write effect request
+- GIVEN a file-read, file-write, shell, network, secret, browser, scheduler, remote-exec, provider-request, artifact-read, artifact-write, delivery-send, plugin-invoke, or MCP-tool-invoke effect request
 - WHEN Clankers builds UCAN invocation facts
 - THEN the request maps to a documented `clankers/...` ability identifier
 - THEN the resource URI is normalized by fixture-covered rules before verification
@@ -55,6 +64,30 @@ r[ucan-effect-permissions.caveat-policy.path-command]
 - WHEN an effect request is checked against that token
 - THEN authorization succeeds only when the request facts satisfy every caveat
 - THEN any wider path, unlisted command, excessive timeout, or excessive byte request is denied
+
+#### Scenario: network and provider caveats narrow authority
+r[ucan-effect-permissions.caveat-policy.network-provider]
+
+- GIVEN a token grants network or provider authority with host, scheme, model, provider, timeout, and max-bytes caveats
+- WHEN an effect request is checked against that token
+- THEN authorization succeeds only for matching hosts, schemes, model/provider scope, timeout ceilings, and byte limits
+- THEN mismatched hosts, models, providers, schemes, or excessive limits are denied
+
+#### Scenario: artifact and redaction caveats narrow authority
+r[ucan-effect-permissions.caveat-policy.artifact-redaction]
+
+- GIVEN a token grants artifact or receipt access with artifact-hash, artifact-kind, and redaction-class caveats
+- WHEN an artifact read, write, receipt, or sync request is checked against that token
+- THEN authorization succeeds only when the request references the permitted artifact identity and redaction class
+- THEN requests for wider artifact sets or less-redacted payloads are denied
+
+#### Scenario: freshness caveats gate replayable effects
+r[ucan-effect-permissions.caveat-policy.freshness]
+
+- GIVEN a token grants replayable authority with expiry, not-before, nonce, or freshness-window caveats
+- WHEN an effect request is checked against that token
+- THEN authorization succeeds only inside the permitted time and replay window
+- THEN stale, premature, duplicate, or missing freshness facts are denied
 
 #### Scenario: unknown caveat denies authorization
 r[ucan-effect-permissions.caveat-policy.unknown-denies]
@@ -135,6 +168,27 @@ r[ucan-effect-permissions.ledger-facts.query-denial]
 - WHEN a caller queries the typed ledger by authorization status, effect ability, resource class, or denial class
 - THEN Clankers returns matching redacted records with stable IDs and artifact/proof references
 - THEN it does not expose raw token or secret payloads
+
+### Requirement: Remote proof-reference sync is safe and secret-free
+
+Remote, subagent, replay, and scheduled contexts MUST exchange only safe UCAN grant metadata, proof references, policy artifact hashes, and authorization receipt hashes; raw compact tokens and signing material MUST remain in host-owned authority stores.
+r[ucan-effect-permissions.remote-proof-sync]
+
+#### Scenario: remote sync sends proof references only
+r[ucan-effect-permissions.remote-proof-sync.safe-reference]
+
+- GIVEN a remote or subagent context needs proof context for a protected effect
+- WHEN Clankers prepares dependency sync
+- THEN it may send safe proof-chain hashes, grant IDs, caveat-policy artifact hashes, replay admission IDs, revocation status, and redacted authorization receipts
+- THEN it does not send raw compact UCAN tokens, signing keys, credential headers, provider payloads, or environment values
+
+#### Scenario: missing authority fails explicitly
+r[ucan-effect-permissions.remote-proof-sync.missing-authority]
+
+- GIVEN a remote context cannot resolve the host-owned token or signing authority needed for verification
+- WHEN the protected effect is requested
+- THEN execution fails with a missing-authority or unavailable-handler denial before side effects
+- THEN the denial receipt includes only safe proof/reference metadata
 
 ### Requirement: Clankers consumes sibling UCAN public APIs through an adapter seam
 

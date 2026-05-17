@@ -29,15 +29,15 @@ Clankers has Unison-inspired specs for immutable content-addressed agent artifac
 
 ### 2. Clankers maps effects into a narrow capability vocabulary
 
-**Choice:** Define stable ability identifiers such as `clankers/file.read`, `clankers/file.write`, `clankers/shell.exec`, `clankers/network.fetch`, `clankers/secret.read`, `clankers/browser.act`, `clankers/scheduler.enqueue`, `clankers/remote.exec`, `clankers/artifact.read`, and `clankers/artifact.write`.
+**Choice:** Define stable ability identifiers such as `clankers/file.read`, `clankers/file.write`, `clankers/shell.exec`, `clankers/network.fetch`, `clankers/secret.read`, `clankers/browser.act`, `clankers/scheduler.enqueue`, `clankers/remote.exec`, `clankers/provider.request`, `clankers/delivery.send`, `clankers/artifact.read`, `clankers/artifact.write`, `clankers/plugin.invoke`, and `clankers/mcp.invoke`.
 
 **Rationale:** Stable names are required for grants, attenuation, fixtures, and audit. They also avoid exposing internal Rust type names as authorization contracts.
 
-**Implementation:** The adapter translates internal effect classes to UCAN ability strings and resource URIs. Unknown effect classes fail closed.
+**Implementation:** The adapter translates internal effect classes to UCAN ability strings and resource URIs. Unknown effect classes fail closed. The first handler migration may route one low-risk effect through the adapter, but tests and docs must avoid describing other legacy paths as UCAN-protected until they are wired.
 
 ### 3. Caveats carry Clankers-specific policy facts
 
-**Choice:** Use UCAN caveat payloads for bounded permissions: path prefixes, command allowlists, network host allowlists, timeout ceilings, artifact hashes, redaction classes, replay nonce/freshness, model/provider scope, and max bytes.
+**Choice:** Use UCAN caveat payloads for bounded permissions: path prefixes, command allowlists, network host allowlists, timeout ceilings, artifact hashes, redaction classes, replay nonce/freshness, model/provider scope, delivery targets, and max bytes.
 
 **Rationale:** The `../ucan/` library intentionally leaves application caveat semantics to callers while preserving fail-closed policy hooks. Clankers owns the meaning of its resources.
 
@@ -75,11 +75,13 @@ Clankers has Unison-inspired specs for immutable content-addressed agent artifac
 
 **Overbroad grants** → Mitigate with attenuation tests proving child grants cannot add abilities, widen resources, relax caveats, or extend expiry beyond parent authority.
 
-**Confirmation bypass** → Mitigate by ordering gates explicitly: UCAN admission is necessary but not sufficient where human confirmation policy applies.
+**Confirmation bypass** → Mitigate by ordering gates explicitly: UCAN admission is necessary but not sufficient where human confirmation policy applies. A UCAN allow result must flow into the existing confirmation/admission chain rather than calling handlers directly.
 
 ## Validation Summary
 
-- Positive fixtures: file read, shell check, artifact read, and remote/subagent execution allowed by matching UCAN grants.
-- Negative fixtures: missing proof, wrong audience, no matching capability, caveat violation, revoked proof, replay duplicate/stale, and unknown caveat deny before handler contact.
-- Receipt fixtures: allowed/denied receipts include safe proof metadata and omit raw tokens/secrets.
+- Vocabulary fixtures: every protected class maps to a stable `clankers/...` ability and normalized resource URI, while unknown classes deny.
+- Caveat fixtures: path/command, network/provider, artifact/redaction, freshness/replay, malformed, and unknown caveats are deterministic and fail closed.
+- Admission fixtures: the migrated low-risk handler allows with matching UCAN, denies before handler contact without authority, and preserves existing human confirmation ordering.
+- Delegation fixtures: child grants cannot add abilities, widen resources, relax caveats, extend expiry, or mutate parent authority.
+- Receipt/ledger fixtures: allowed/denied receipts and typed facts include safe proof metadata and omit raw tokens/secrets.
 - Dependency rail: Clankers targeted check plus `../ucan` workspace tests or a pinned compatibility fixture.

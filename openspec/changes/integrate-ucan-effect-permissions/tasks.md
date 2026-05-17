@@ -1,28 +1,33 @@
 ## Phase 1: Spec Foundation
 
 - [x] [serial] Create the UCAN effect-permission OpenSpec package. [covers=ucan-effect-permissions.*] [evidence=openspec/changes/integrate-ucan-effect-permissions]
-- [ ] [serial] Run proposal/design/tasks gates and resolve review findings. [covers=ucan-effect-permissions.*] [evidence=openspec gate outputs]
+- [x] [serial] Run proposal/design/tasks gates and resolve review findings. [covers=ucan-effect-permissions.*] [evidence=openspec/changes/integrate-ucan-effect-permissions/gate-report.md,openspec-validate] ✅ 10m (started: 2026-05-17T03:41:48Z → completed: 2026-05-17T03:51:46Z)
 
 ## Phase 2: Dependency and Adapter Seam
 
-- [ ] [serial] Add a Clankers UCAN authorization adapter that consumes only public `../ucan/` APIs and records the source/pinning strategy. [covers=ucan-effect-permissions.ucan-adapter]
-- [ ] [parallel] Define stable Clankers effect ability strings and resource URI normalization fixtures. [covers=ucan-effect-permissions.effect-vocabulary]
-- [ ] [parallel] Define deterministic Clankers caveat policy hooks for paths, commands, network hosts, artifact hashes, time, replay, and redaction classes. [covers=ucan-effect-permissions.caveat-policy]
+- [ ] [serial] Add a Clankers UCAN authorization adapter that consumes only public `../ucan/` APIs. [covers=ucan-effect-permissions.ucan-adapter.public-api] [evidence=cargo-check-adapter,cargo-test-adapter]
+- [ ] [serial] Record the UCAN source/pinning strategy and unsupported-sibling-checkout release behavior. [covers=ucan-effect-permissions.ucan-adapter.reproducible-source] [evidence=docs-or-cargo-nix-source-plan]
+- [ ] [serial] Define stable Clankers ability strings and URI normalization fixtures for file, shell, network, secret, browser, scheduler, remote, provider, delivery, artifact, plugin, and MCP effects. [covers=ucan-effect-permissions.effect-vocabulary.known-effect,ucan-effect-permissions.effect-vocabulary.unknown-effect] [evidence=vocabulary-fixture-tests]
+- [ ] [serial] Define deterministic path, command, timeout, and max-bytes caveat hooks. [covers=ucan-effect-permissions.caveat-policy.path-command] [evidence=caveat-policy-tests]
+- [ ] [parallel] Define deterministic network host, scheme, provider, and model-scope caveat hooks. [covers=ucan-effect-permissions.caveat-policy.network-provider] [evidence=caveat-policy-tests]
+- [ ] [parallel] Define deterministic artifact hash, artifact kind, and redaction-class caveat hooks. [covers=ucan-effect-permissions.caveat-policy.artifact-redaction] [evidence=caveat-policy-tests]
+- [ ] [parallel] Define deterministic expiry, not-before, nonce, and freshness-window caveat hooks. [covers=ucan-effect-permissions.caveat-policy.freshness,ucan-effect-permissions.caveat-policy.unknown-denies] [evidence=caveat-policy-tests]
 
 ## Phase 3: Admission Integration
 
-- [ ] [serial] Route one low-risk built-in effect through UCAN admission before handler execution. [covers=ucan-effect-permissions.handler-admission]
-- [ ] [parallel] Add subagent/session delegation helpers that attenuate parent authority. [covers=ucan-effect-permissions.delegation]
-- [ ] [parallel] Add replay/revocation admission integration using caller-owned UCAN hooks. [covers=ucan-effect-permissions.replay-revocation]
+- [ ] [serial] Route one low-risk built-in effect through UCAN admission before handler execution. [covers=ucan-effect-permissions.handler-admission.allow,ucan-effect-permissions.handler-admission.deny,effect-ability-runtime.handlers.ucan-denial] [evidence=handler-admission-tests]
+- [ ] [serial] Preserve existing human confirmation/admission ordering after UCAN allow decisions. [covers=ucan-effect-permissions.handler-admission.confirmation-order,effect-ability-runtime.handlers.confirmation-order] [evidence=confirmation-order-tests]
+- [ ] [parallel] Add subagent/session delegation helpers that attenuate parent authority. [covers=ucan-effect-permissions.delegation.no-widening,ucan-effect-permissions.delegation.child-denied] [evidence=delegation-tests]
+- [ ] [parallel] Add replay/revocation admission integration using caller-owned UCAN hooks. [covers=ucan-effect-permissions.replay-revocation.duplicate,ucan-effect-permissions.replay-revocation.revoked] [evidence=replay-revocation-tests]
 
 ## Phase 4: Receipts, Ledger, and Remote Sync
 
-- [ ] [serial] Extend effect receipts and content-addressed artifact envelopes with redacted UCAN authorization metadata. [covers=ucan-effect-permissions.authorization-receipts]
-- [ ] [parallel] Persist safe typed ledger facts for authorization decisions and denials. [covers=ucan-effect-permissions.ledger-facts]
-- [ ] [parallel] Ensure remote/subagent artifact sync transmits only safe grant metadata/proof references and never secret token material. [covers=ucan-effect-permissions.remote-proof-sync]
+- [ ] [serial] Extend effect receipts and content-addressed artifact envelopes with redacted UCAN authorization metadata. [covers=ucan-effect-permissions.authorization-receipts.allowed,ucan-effect-permissions.authorization-receipts.denied-redacted,content-addressed-agent-artifacts.receipts.replay,content-addressed-agent-artifacts.receipts.redaction] [evidence=receipt-redaction-tests]
+- [ ] [parallel] Persist safe typed ledger facts for authorization decisions and denials. [covers=ucan-effect-permissions.ledger-facts.query-denial,typed-durable-session-ledger.records.execution,typed-durable-session-ledger.records.redaction] [evidence=typed-ledger-authorization-tests]
+- [ ] [parallel] Ensure remote/subagent artifact sync transmits only safe grant metadata/proof references and never secret token material. [covers=ucan-effect-permissions.remote-proof-sync.safe-reference,ucan-effect-permissions.remote-proof-sync.missing-authority,effect-ability-runtime.remote-deps.missing-safe,effect-ability-runtime.remote-deps.secret-denied] [evidence=remote-proof-sync-tests]
 
 ## Phase 5: Verification and Closeout
 
-- [ ] [serial] Add positive and negative fixture tests for allow, denial, caveat, revocation, replay, delegation attenuation, and receipt redaction. [covers=ucan-effect-permissions.*]
-- [ ] [serial] Run targeted Clankers checks plus the agreed `../ucan/` compatibility check. [covers=ucan-effect-permissions.ucan-adapter]
-- [ ] [serial] Sync specs, archive the change, and commit with validation receipts. [covers=ucan-effect-permissions.*]
+- [ ] [serial] Add positive and negative fixture coverage for vocabulary, admission allow/deny, caveats, revocation, replay, delegation attenuation, confirmation ordering, receipt redaction, ledger facts, and remote proof sync. [covers=ucan-effect-permissions.*] [evidence=cargo-nextest-focused]
+- [ ] [serial] Run targeted Clankers checks plus the agreed `../ucan/` compatibility check. [covers=ucan-effect-permissions.ucan-adapter] [evidence=cargo-nextest-focused,ucan-compat-check,git-diff-check]
+- [ ] [serial] Sync specs, archive the change, and commit with validation receipts. [covers=ucan-effect-permissions.*] [evidence=openspec-validate-all,archive-commit]

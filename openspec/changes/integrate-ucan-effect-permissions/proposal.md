@@ -8,7 +8,7 @@ The sibling `../ucan/` crate now exposes issuance, verification, proof chains, c
 
 - **UCAN-backed effect admission**: every protected effect request can be checked against a verified UCAN invocation before the handler performs side effects.
 - **Delegated subagent/session permissions**: parent sessions attenuate UCAN grants for subagents, remote peers, scheduled jobs, and replay handlers.
-- **Caveat vocabulary for Clankers resources**: resource/effect caveats cover path prefixes, command allowlists, network hosts, time/expiry, replay nonce, artifact hashes, and redaction class.
+- **Caveat vocabulary for Clankers resources**: resource/effect caveats cover path prefixes, command allowlists, network hosts, provider/model scope, time/expiry, replay nonce, artifact hashes, max-bytes, and redaction class.
 - **Content-addressed proof receipts**: model/tool/session receipts record safe UCAN proof identifiers and authorization decisions alongside artifact hashes.
 - **Sibling UCAN integration**: Clankers consumes `../ucan/` public APIs at an adapter seam and does not reimplement token/proof/caveat/attenuation logic.
 
@@ -27,11 +27,11 @@ The sibling `../ucan/` crate now exposes issuance, verification, proof chains, c
 - **Files**: future work will touch Clankers effect/tool dispatch, session persistence, remote/subagent delegation, dependency metadata, docs, and Cargo/Nix wiring for `../ucan/`.
 - **APIs**: add an internal UCAN authorization adapter that maps `EffectRequest` into `ucan` invocation facts and maps authorization results into Clankers denials/receipts.
 - **Dependencies**: introduce a controlled dependency on sibling `../ucan/` public crates for local development, with a pinned/reproducible source plan before release packaging.
-- **Testing**: fixture-backed allow/deny tests for each protected effect class, delegated subagent attenuation, caveat failures, replay admission failures, missing proof/revocation failures, and redacted receipt/ledger output.
+- **Testing**: fixture-backed allow/deny tests for each protected effect class named by the vocabulary, delegated subagent attenuation, caveat failures, replay admission failures, missing proof/revocation failures, confirmation ordering, safe remote proof-reference sync, and redacted receipt/ledger output.
 
 ## Non-Goals
 
 - Do not replace existing user confirmations with silent UCAN approval; confirmations remain separate policy gates where required.
 - Do not transmit secrets or raw tokens in artifact sync, replay receipts, logs, or typed ledger facts.
 - Do not implement a new UCAN library inside Clankers.
-- Do not require every legacy read-only operation to be migrated in the first implementation slice.
+- Do not claim unmigrated legacy operations are UCAN-protected; the first handler slice may migrate one low-risk effect while the vocabulary, receipts, and tests define the broader protected set.
