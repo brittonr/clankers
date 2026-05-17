@@ -593,7 +593,308 @@ pub trait ProcessJobProjection: Send + Sync {
 
 #[cfg(test)]
 mod tests {
+    use std::sync::Mutex;
+
     use super::*;
+
+    #[derive(Default)]
+    struct FakeBackend {
+        calls: Mutex<Vec<&'static str>>,
+    }
+
+    #[async_trait]
+    impl ProcessJobBackend for FakeBackend {
+        fn kind(&self) -> ProcessJobBackendKind {
+            ProcessJobBackendKind::Native
+        }
+
+        fn capabilities(&self) -> ProcessJobBackendCapabilities {
+            ProcessJobBackendCapabilities {
+                backend: Some(ProcessJobBackendKind::Native),
+                supports_shell: true,
+                supports_direct_exec: true,
+                supports_stdin: true,
+                supports_restart: false,
+                supports_kill: true,
+                supports_adopt: false,
+                supports_resource_limits: false,
+                supports_log_range: true,
+                durable_across_daemon_restart: false,
+                unavailable_reason: None,
+            }
+        }
+
+        async fn start(&self, _request: StartProcessJobRequest) -> Result<ProcessJobBackendStart, RuntimeError> {
+            self.calls.lock().expect("fake backend calls lock poisoned").push("start");
+            Ok(ProcessJobBackendStart {
+                backend_ref: BackendRef("pid:123".to_string()),
+                status: ProcessJobStatus::Running,
+                log_refs: vec![ProcessJobLogRef {
+                    stream: ProcessJobStream::Combined,
+                    reference: "native:proc_1/combined.log".to_string(),
+                    retained_until: None,
+                    max_bytes: Some(1024),
+                }],
+            })
+        }
+
+        async fn observe(&self, backend_ref: BackendRef) -> Result<ProcessJobBackendStatus, RuntimeError> {
+            self.calls.lock().expect("fake backend calls lock poisoned").push("observe");
+            Ok(ProcessJobBackendStatus {
+                backend_ref,
+                status: ProcessJobStatus::Running,
+                updated_at: Utc::now(),
+                log_refs: Vec::new(),
+            })
+        }
+
+        async fn log(
+            &self,
+            _backend_ref: BackendRef,
+            range: ProcessJobLogRange,
+        ) -> Result<ProcessJobLogChunk, RuntimeError> {
+            self.calls.lock().expect("fake backend calls lock poisoned").push("log");
+            Ok(ProcessJobLogChunk {
+                id: ProcessJobId("proc_1".to_string()),
+                backend: ProcessJobBackendKind::Native,
+                stream: range.stream,
+                cursor: ProcessJobLogCursor {
+                    stream: range.stream,
+                    offset: range.offset.unwrap_or(0),
+                },
+                next_cursor: Some(ProcessJobLogCursor {
+                    stream: range.stream,
+                    offset: range.limit_bytes,
+                }),
+                text: "bounded fake log".to_string(),
+                truncated: false,
+            })
+        }
+
+        async fn kill(&self, _backend_ref: BackendRef) -> Result<ProcessJobReceipt, RuntimeError> {
+            self.calls.lock().expect("fake backend calls lock poisoned").push("kill");
+            Ok(ProcessJobReceipt {
+                operation: ProcessJobOperation::Kill,
+                id: Some(ProcessJobId("proc_1".to_string())),
+                backend: Some(ProcessJobBackendKind::Native),
+                status: Some(ProcessJobStatus::Killed),
+                backend_ref: Some(BackendRef("pid:123".to_string())),
+                log_refs: Vec::new(),
+                summary: "killed".to_string(),
+                error: None,
+            })
+        }
+
+        async fn restart(&self, backend_ref: BackendRef) -> Result<ProcessJobReceipt, RuntimeError> {
+            Ok(ProcessJobReceipt::unsupported(
+                ProcessJobOperation::Restart,
+                None,
+                ProcessJobBackendKind::Native,
+                "restart",
+                format!("restart unsupported for {backend_ref:?}"),
+            ))
+        }
+
+        async fn write_stdin(
+            &self,
+            _backend_ref: BackendRef,
+            _data: Vec<u8>,
+            _newline: bool,
+        ) -> Result<ProcessJobReceipt, RuntimeError> {
+            self.calls.lock().expect("fake backend calls lock poisoned").push("write_stdin");
+            Ok(ProcessJobReceipt {
+                operation: ProcessJobOperation::WriteStdin,
+                id: Some(ProcessJobId("proc_1".to_string())),
+                backend: Some(ProcessJobBackendKind::Native),
+                status: Some(ProcessJobStatus::Running),
+                backend_ref: Some(BackendRef("pid:123".to_string())),
+                log_refs: Vec::new(),
+                summary: "wrote stdin".to_string(),
+                error: None,
+            })
+        }
+
+        async fn close_stdin(&self, _backend_ref: BackendRef) -> Result<ProcessJobReceipt, RuntimeError> {
+            Ok(ProcessJobReceipt {
+                operation: ProcessJobOperation::CloseStdin,
+                id: Some(ProcessJobId("proc_1".to_string())),
+                backend: Some(ProcessJobBackendKind::Native),
+                status: Some(ProcessJobStatus::Running),
+                backend_ref: Some(BackendRef("pid:123".to_string())),
+                log_refs: Vec::new(),
+                summary: "closed stdin".to_string(),
+                error: None,
+            })
+        }
+    }
+
+    #[derive(Default)]
+    struct FakeStore {
+        summaries: Mutex<Vec<ProcessJobSummary>>,
+        notifications: Mutex<Vec<ProcessJobNotificationEvent>>,
+    }
+
+    #[async_trait]
+    impl ProcessJobStore for FakeStore {
+        async fn upsert(&self, summary: ProcessJobSummary) -> Result<(), RuntimeError> {
+            self.summaries.lock().expect("fake store lock poisoned").push(summary);
+            Ok(())
+        }
+
+        async fn get(&self, id: ProcessJobId) -> Result<Option<ProcessJobSummary>, RuntimeError> {
+            Ok(self
+                .summaries
+                .lock()
+                .expect("fake store lock poisoned")
+                .iter()
+                .find(|summary| summary.id == id)
+                .cloned())
+        }
+
+        async fn list(&self, _filter: ProcessJobFilter) -> Result<Vec<ProcessJobSummary>, RuntimeError> {
+            Ok(self.summaries.lock().expect("fake store lock poisoned").clone())
+        }
+
+        async fn record_notification(&self, event: ProcessJobNotificationEvent) -> Result<(), RuntimeError> {
+            self.notifications.lock().expect("fake notification lock poisoned").push(event);
+            Ok(())
+        }
+    }
+
+    #[derive(Default)]
+    struct FakeLogStore {
+        appends: Mutex<Vec<(ProcessJobId, ProcessJobStream, usize)>>,
+    }
+
+    #[async_trait]
+    impl ProcessJobLogStore for FakeLogStore {
+        async fn append(
+            &self,
+            id: ProcessJobId,
+            stream: ProcessJobStream,
+            chunk: &[u8],
+        ) -> Result<ProcessJobLogCursor, RuntimeError> {
+            self.appends.lock().expect("fake log store lock poisoned").push((id, stream, chunk.len()));
+            Ok(ProcessJobLogCursor {
+                stream,
+                offset: u64::try_from(chunk.len()).expect("chunk len fits u64"),
+            })
+        }
+
+        async fn read(&self, id: ProcessJobId, range: ProcessJobLogRange) -> Result<ProcessJobLogChunk, RuntimeError> {
+            Ok(ProcessJobLogChunk {
+                id,
+                backend: ProcessJobBackendKind::Native,
+                stream: range.stream,
+                cursor: ProcessJobLogCursor {
+                    stream: range.stream,
+                    offset: range.offset.unwrap_or(0),
+                },
+                next_cursor: None,
+                text: "fake".to_string(),
+                truncated: false,
+            })
+        }
+
+        async fn references(&self, id: ProcessJobId) -> Result<Vec<ProcessJobLogRef>, RuntimeError> {
+            Ok(vec![NativeProcessJobLogLayout::for_stream(id, ProcessJobStream::Combined).into_log_ref(1024)])
+        }
+    }
+
+    impl NativeProcessJobLogLayout {
+        fn into_log_ref(self, max_bytes: u64) -> ProcessJobLogRef {
+            ProcessJobLogRef {
+                stream: self.stream,
+                reference: self.reference,
+                retained_until: None,
+                max_bytes: Some(max_bytes),
+            }
+        }
+    }
+
+    #[derive(Default)]
+    struct FakeSink {
+        delivered: Mutex<Vec<ProcessJobEventId>>,
+    }
+
+    #[async_trait]
+    impl ProcessJobNotificationSink for FakeSink {
+        async fn deliver(&self, event: ProcessJobNotificationEvent) -> Result<(), RuntimeError> {
+            self.delivered.lock().expect("fake sink lock poisoned").push(event.event_id);
+            Ok(())
+        }
+    }
+
+    struct TextProjection;
+
+    impl ProcessJobProjection for TextProjection {
+        type Output = String;
+
+        fn project_summary(&self, summary: &ProcessJobSummary) -> Self::Output {
+            format!("{}:{:?}", summary.id.0, summary.status)
+        }
+
+        fn project_receipt(&self, receipt: &ProcessJobReceipt) -> Self::Output {
+            format!("{:?}:{}", receipt.operation, receipt.summary)
+        }
+    }
+
+    #[tokio::test]
+    async fn fake_boundaries_compose_without_concrete_coupling() {
+        let backend: &dyn ProcessJobBackend = &FakeBackend::default();
+        let store: &dyn ProcessJobStore = &FakeStore::default();
+        let logs: &dyn ProcessJobLogStore = &FakeLogStore::default();
+        let sink: &dyn ProcessJobNotificationSink = &FakeSink::default();
+        let projection = TextProjection;
+
+        let request = StartProcessJobRequest {
+            backend: ProcessJobBackendKind::Native,
+            command_preview: "sleep 1".to_string(),
+            program: Some("sleep".to_string()),
+            args: vec!["1".to_string()],
+            shell_command: None,
+            cwd: ProcessJobCwd::Inherited,
+            owner: ProcessJobOwnerScope::Session("sess".to_string()),
+            resource_policy: ProcessJobResourcePolicy::default(),
+            notification_policy: ProcessJobNotificationPolicy::default(),
+            metadata: BTreeMap::new(),
+        };
+        let backend_start = backend.start(request).await.expect("fake backend starts");
+        let id = ProcessJobId("proc_1".to_string());
+        let summary = ProcessJobSummary {
+            id: id.clone(),
+            backend: backend.kind(),
+            backend_ref: Some(backend_start.backend_ref.clone()),
+            owner: ProcessJobOwnerScope::Session("sess".to_string()),
+            status: backend_start.status.clone(),
+            command_preview: "sleep 1".to_string(),
+            cwd: ProcessJobCwd::Inherited,
+            started_at: Some(Utc::now()),
+            updated_at: Utc::now(),
+            completed_at: None,
+            log_refs: backend_start.log_refs,
+        };
+        store.upsert(summary.clone()).await.expect("store accepts summary");
+        let cursor = logs.append(id.clone(), ProcessJobStream::Combined, b"hello").await.expect("log append works");
+        let event = ProcessJobNotificationEvent {
+            event_id: ProcessJobEventId("evt_1".to_string()),
+            id: id.clone(),
+            backend: ProcessJobBackendKind::Native,
+            status: ProcessJobStatus::Running,
+            created_at: Utc::now(),
+            summary: "ready".to_string(),
+            log_excerpt: Some("hello".to_string()),
+            log_refs: logs.references(id.clone()).await.expect("refs work"),
+        };
+        store.record_notification(event.clone()).await.expect("notification persists");
+        sink.deliver(event).await.expect("notification delivers");
+        let receipt = backend.kill(BackendRef("pid:123".to_string())).await.expect("kill returns receipt");
+
+        assert_eq!(cursor.offset, 5);
+        assert_eq!(store.get(id).await.expect("store get works"), Some(summary.clone()));
+        assert!(projection.project_summary(&summary).contains("proc_1"));
+        assert_eq!(projection.project_receipt(&receipt), "Kill:killed");
+    }
 
     #[test]
     fn status_terminal_classification_is_explicit() {
