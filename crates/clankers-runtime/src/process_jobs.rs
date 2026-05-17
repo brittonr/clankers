@@ -275,6 +275,53 @@ pub struct ProcessJobReceipt {
     pub error: Option<ProcessJobError>,
 }
 
+impl ProcessJobReceipt {
+    #[must_use]
+    pub fn unsupported(
+        operation: ProcessJobOperation,
+        id: Option<ProcessJobId>,
+        backend: ProcessJobBackendKind,
+        action: impl Into<String>,
+        message: impl Into<String>,
+    ) -> Self {
+        let message = message.into();
+        Self {
+            operation,
+            id: id.clone(),
+            backend: Some(backend),
+            status: None,
+            backend_ref: None,
+            log_refs: Vec::new(),
+            summary: message.clone(),
+            error: Some(ProcessJobError {
+                code: ProcessJobErrorCode::UnsupportedActionForBackend,
+                operation,
+                id,
+                backend: Some(backend),
+                action: Some(action.into()),
+                message,
+            }),
+        }
+    }
+}
+
+/// Typed tool result surface for every durable process/job operation.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case", tag = "operation", content = "result")]
+pub enum ProcessJobToolResult {
+    Start(ProcessJobReceipt),
+    List(Vec<ProcessJobSummary>),
+    Poll(ProcessJobReceipt),
+    Log(ProcessJobLogChunk),
+    Wait(ProcessJobReceipt),
+    Kill(ProcessJobReceipt),
+    Restart(ProcessJobReceipt),
+    WriteStdin(ProcessJobReceipt),
+    CloseStdin(ProcessJobReceipt),
+    Adopt(ProcessJobReceipt),
+    GarbageCollect(ProcessJobReceipt),
+}
+
 /// Backend result after accepting a start request.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ProcessJobBackendStart {
@@ -414,27 +461,74 @@ mod tests {
 
     #[test]
     fn unsupported_action_receipt_is_machine_readable() {
-        let receipt = ProcessJobReceipt {
-            operation: ProcessJobOperation::WriteStdin,
-            id: Some(ProcessJobId("proc_1".to_string())),
-            backend: Some(ProcessJobBackendKind::Pueue),
-            status: Some(ProcessJobStatus::Running),
-            backend_ref: Some(BackendRef("42".to_string())),
-            log_refs: Vec::new(),
-            summary: "stdin is not supported by pueue backend".to_string(),
-            error: Some(ProcessJobError {
-                code: ProcessJobErrorCode::UnsupportedActionForBackend,
-                operation: ProcessJobOperation::WriteStdin,
-                id: Some(ProcessJobId("proc_1".to_string())),
-                backend: Some(ProcessJobBackendKind::Pueue),
-                action: Some("write_stdin".to_string()),
-                message: "stdin is not supported by pueue backend".to_string(),
-            }),
-        };
+        let receipt = ProcessJobReceipt::unsupported(
+            ProcessJobOperation::WriteStdin,
+            Some(ProcessJobId("proc_1".to_string())),
+            ProcessJobBackendKind::Pueue,
+            "write_stdin",
+            "stdin is not supported by pueue backend",
+        );
 
         let json = serde_json::to_value(&receipt).expect("receipt serializes");
         assert_eq!(json["operation"], "write_stdin");
         assert_eq!(json["backend"], "pueue");
         assert_eq!(json["error"]["code"], "unsupported_action_for_backend");
+    }
+
+    #[test]
+    fn tool_result_variants_cover_public_operations() {
+        let receipt = ProcessJobReceipt {
+            operation: ProcessJobOperation::Start,
+            id: Some(ProcessJobId("proc_1".to_string())),
+            backend: Some(ProcessJobBackendKind::Native),
+            status: Some(ProcessJobStatus::Running),
+            backend_ref: Some(BackendRef("pid:123".to_string())),
+            log_refs: Vec::new(),
+            summary: "started".to_string(),
+            error: None,
+        };
+        let log_chunk = ProcessJobLogChunk {
+            id: ProcessJobId("proc_1".to_string()),
+            backend: ProcessJobBackendKind::Native,
+            stream: ProcessJobStream::Combined,
+            cursor: ProcessJobLogCursor {
+                stream: ProcessJobStream::Combined,
+                offset: 0,
+            },
+            next_cursor: None,
+            text: "ok".to_string(),
+            truncated: false,
+        };
+        let variants = vec![
+            ProcessJobToolResult::Start(receipt.clone()),
+            ProcessJobToolResult::List(Vec::new()),
+            ProcessJobToolResult::Poll(receipt.clone()),
+            ProcessJobToolResult::Log(log_chunk),
+            ProcessJobToolResult::Wait(receipt.clone()),
+            ProcessJobToolResult::Kill(receipt.clone()),
+            ProcessJobToolResult::Restart(receipt.clone()),
+            ProcessJobToolResult::WriteStdin(receipt.clone()),
+            ProcessJobToolResult::CloseStdin(receipt.clone()),
+            ProcessJobToolResult::Adopt(receipt.clone()),
+            ProcessJobToolResult::GarbageCollect(receipt),
+        ];
+
+        let operation_names: Vec<_> = variants
+            .into_iter()
+            .map(|variant| serde_json::to_value(variant).expect("variant serializes")["operation"].clone())
+            .collect();
+        assert_eq!(operation_names, vec![
+            "start",
+            "list",
+            "poll",
+            "log",
+            "wait",
+            "kill",
+            "restart",
+            "write_stdin",
+            "close_stdin",
+            "adopt",
+            "garbage_collect"
+        ]);
     }
 }
