@@ -490,6 +490,60 @@
             clankersDaemonModule = self.nixosModules.clankers-daemon;
             clankerRouterModule = self.nixosModules.clanker-router;
           };
+          nixos-module-process-persistence =
+            let
+              fakeClankersPkg = pkgs.writeShellScriptBin "clankers" "exit 0";
+              evaluated = nixpkgs.lib.nixosSystem {
+                inherit system;
+                modules = [
+                  self.nixosModules.clankers-daemon
+                  ({ ... }: {
+                    services.clankers-daemon = {
+                      enable = true;
+                      package = fakeClankersPkg;
+                      processManagement = {
+                        enable = true;
+                        defaultBackend = "systemd";
+                        databasePath = "/srv/clankers/jobs/jobs.redb";
+                        registryDir = "/srv/clankers/jobs";
+                        logDir = "/var/log/clankers/jobs";
+                        retention = {
+                          maxAgeDays = 7;
+                          maxRecords = 123;
+                          maxLogBytes = 456789;
+                        };
+                      };
+                    };
+                  })
+                ];
+              };
+              service = evaluated.config.systemd.services.clankers-daemon;
+              payload = builtins.toJSON {
+                environment = service.environment;
+                readWritePaths = service.serviceConfig.ReadWritePaths;
+                tmpfiles = evaluated.config.systemd.tmpfiles.rules;
+              };
+            in pkgs.runCommand "nixos-module-process-persistence" {
+              nativeBuildInputs = [ pkgs.jq ];
+              passAsFile = [ "payload" ];
+              inherit payload;
+            } ''
+              cp "$payloadPath" "$out"
+              jq -e '
+                .environment.CLANKERS_PROCESS_JOBS_ENABLED == "1" and
+                .environment.CLANKERS_PROCESS_JOB_DEFAULT_BACKEND == "systemd" and
+                .environment.CLANKERS_PROCESS_JOB_DB == "/srv/clankers/jobs/jobs.redb" and
+                .environment.CLANKERS_PROCESS_JOB_REGISTRY_DIR == "/srv/clankers/jobs" and
+                .environment.CLANKERS_PROCESS_JOB_LOG_DIR == "/var/log/clankers/jobs" and
+                .environment.CLANKERS_PROCESS_JOB_RETENTION_MAX_AGE_DAYS == "7" and
+                .environment.CLANKERS_PROCESS_JOB_RETENTION_MAX_RECORDS == "123" and
+                .environment.CLANKERS_PROCESS_JOB_RETENTION_MAX_LOG_BYTES == "456789" and
+                (.readWritePaths | index("/srv/clankers/jobs")) and
+                (.readWritePaths | index("/var/log/clankers/jobs")) and
+                (.tmpfiles | index("d /srv/clankers/jobs 0750 clankers clankers -")) and
+                (.tmpfiles | index("d /var/log/clankers/jobs 0750 clankers clankers -"))
+              ' "$out"
+            '';
         };
 
         devShells.default = pkgs.mkShell {

@@ -31,7 +31,7 @@
 
 ## Phase 4: NixOS and TUI integration
 
-- [ ] [serial] [covers=nixos-process-job-config.module.persistence] Extend `nix/modules/clankers-daemon.nix` with process/job persistence options, directory/log configuration, database path wiring, retention/GC policy, and hardening write-path updates.
+- [x] [serial] [covers=nixos-process-job-config.module.persistence] Extend `nix/modules/clankers-daemon.nix` with process/job persistence options, directory/log configuration, database path wiring, retention/GC policy, and hardening write-path updates. ✅ 2026-05-17T20:33:45Z (started: 2026-05-17T20:26:23Z; evidence: `nix build .#checks.x86_64-linux.nixos-module-process-persistence --no-link --accept-flake-config`; `cargo check -p clankers --tests`; `cargo fmt --check`; `openspec validate add-durable-process-jobs --strict --json`; `git diff --check`).
 - [ ] [serial] [covers=nixos-process-job-config.module.pueue] Add optional pueue service/config integration and deterministic module eval tests for groups/concurrency and disabled fallback behavior.
 - [ ] [serial] [covers=nixos-process-job-config.module.systemd-limits] Add systemd backend resource-limit options and validation/eval tests for memory, CPU, runtime, writable paths, and kill grace period.
 - [ ] [parallel] [covers=durable-process-jobs.project-profiles.resolve] Add validated project job profile parsing that resolves named profiles into backend-neutral `ProcessJobSpec` values without backend-specific execution from config code.

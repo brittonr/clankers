@@ -34,6 +34,18 @@ pkgs.testers.runNixOSTest {
       heartbeat = 0;  # disable heartbeat in test
       allowAll = true;
       environmentFile = "/etc/clankers-env";
+      processManagement = {
+        enable = true;
+        defaultBackend = "native";
+        databasePath = "/var/lib/clankers/process-jobs/process-jobs.redb";
+        registryDir = "/var/lib/clankers/process-jobs";
+        logDir = "/var/log/clankers/process-jobs";
+        retention = {
+          maxAgeDays = 7;
+          maxRecords = 250;
+          maxLogBytes = 10485760;
+        };
+      };
     };
   };
 
@@ -55,7 +67,15 @@ pkgs.testers.runNixOSTest {
     assert owner == "clankers:clankers", f"bad ownership: {owner}"
     machine.log("State directory exists with correct ownership")
 
-    # ── Phase 3: Service starts ──────────────────────────────────────
+    # ── Phase 3: Process-job persistence directories ─────────────────
+    machine.succeed("test -d /var/lib/clankers/process-jobs")
+    machine.succeed("test -d /var/log/clankers/process-jobs")
+    job_owner = machine.succeed("stat -c '%U:%G %a' /var/lib/clankers/process-jobs").strip()
+    log_owner = machine.succeed("stat -c '%U:%G %a' /var/log/clankers/process-jobs").strip()
+    assert job_owner == "clankers:clankers 750", f"bad job dir ownership/mode: {job_owner}"
+    assert log_owner == "clankers:clankers 750", f"bad log dir ownership/mode: {log_owner}"
+
+    # ── Phase 4: Service starts ──────────────────────────────────────
     # The daemon takes a moment to bind its iroh endpoint; wait for
     # the unit to reach active state (or at least be started).
     machine.wait_for_unit("clankers-daemon.service", timeout=60)
@@ -71,17 +91,29 @@ pkgs.testers.runNixOSTest {
     assert ps_user == "clankers", f"expected clankers user, got: {ps_user}"
     machine.log("Daemon process running as clankers user")
 
-    # ── Phase 4: Systemd hardening ───────────────────────────────────
+    # ── Phase 5: Systemd hardening ───────────────────────────────────
     props = machine.succeed(
         "systemctl show clankers-daemon.service "
-        "--property=NoNewPrivileges,PrivateTmp,ProtectSystem"
+        "--property=NoNewPrivileges,PrivateTmp,ProtectSystem,ReadWritePaths"
     )
     machine.log(f"Service properties:\n{props}")
     assert "NoNewPrivileges=yes" in props, f"NoNewPrivileges not set: {props}"
     assert "PrivateTmp=yes" in props, f"PrivateTmp not set: {props}"
     assert "ProtectSystem=strict" in props, f"ProtectSystem not strict: {props}"
+    assert "/var/lib/clankers/process-jobs" in props, f"process job registry path not writable: {props}"
+    assert "/var/log/clankers/process-jobs" in props, f"process job log path not writable: {props}"
 
-    # ── Phase 5: Environment file loaded ─────────────────────────────
+    # ── Phase 6: Process-job environment configured ──────────────────
+    env_props = machine.succeed(
+        "systemctl show clankers-daemon.service --property=Environment"
+    )
+    assert "CLANKERS_PROCESS_JOBS_ENABLED=1" in env_props, env_props
+    assert "CLANKERS_PROCESS_JOB_DEFAULT_BACKEND=native" in env_props, env_props
+    assert "CLANKERS_PROCESS_JOB_DB=/var/lib/clankers/process-jobs/process-jobs.redb" in env_props, env_props
+    assert "CLANKERS_PROCESS_JOB_LOG_DIR=/var/log/clankers/process-jobs" in env_props, env_props
+    assert "CLANKERS_PROCESS_JOB_RETENTION_MAX_AGE_DAYS=7" in env_props, env_props
+
+    # ── Phase 7: Environment file loaded ─────────────────────────────
     env_file_prop = machine.succeed(
         "systemctl show clankers-daemon.service --property=EnvironmentFiles"
     ).strip()
