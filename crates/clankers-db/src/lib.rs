@@ -174,6 +174,12 @@ impl Db {
         process_jobs::ProcessJobStore::new(self)
     }
 
+    /// Async process/job metadata facade that keeps redb I/O off async runtime workers.
+    #[must_use]
+    pub fn async_process_jobs(&self) -> process_jobs::AsyncProcessJobStore {
+        process_jobs::AsyncProcessJobStore::new(self.clone())
+    }
+
     /// Resource registry accessor.
     pub fn registry(&self) -> registry::Registry<'_> {
         registry::Registry::new(self)

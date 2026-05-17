@@ -168,6 +168,11 @@ pub struct ProcessJobStore<'db> {
     db: &'db Db,
 }
 
+#[derive(Clone)]
+pub struct AsyncProcessJobStore {
+    db: Db,
+}
+
 impl<'db> ProcessJobStore<'db> {
     pub(crate) fn new(db: &'db Db) -> Self {
         Self { db }
@@ -217,6 +222,30 @@ impl<'db> ProcessJobStore<'db> {
         let tx = self.db.begin_read()?;
         let table = tx.open_table(TABLE).map_err(db_err)?;
         table.len().map_err(db_err)
+    }
+}
+
+impl AsyncProcessJobStore {
+    #[must_use]
+    pub fn new(db: Db) -> Self {
+        Self { db }
+    }
+
+    pub async fn upsert(&self, record: StoredProcessJobRecord) -> Result<()> {
+        self.db.blocking(move |db| db.process_jobs().upsert(&record)).await
+    }
+
+    pub async fn get(&self, id: impl Into<String>) -> Result<Option<StoredProcessJobRecord>> {
+        let id = id.into();
+        self.db.blocking(move |db| db.process_jobs().get(&id)).await
+    }
+
+    pub async fn list(&self) -> Result<Vec<StoredProcessJobRecord>> {
+        self.db.blocking(|db| db.process_jobs().list()).await
+    }
+
+    pub async fn count(&self) -> Result<u64> {
+        self.db.blocking(|db| db.process_jobs().count()).await
     }
 }
 
@@ -333,6 +362,24 @@ mod tests {
         assert!(store.get("proc_future")?.is_none());
         assert!(store.list()?.is_empty());
         assert_eq!(store.count()?, 1);
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn async_facade_uses_blocking_store_roundtrip() -> Result<()> {
+        let db = test_db()?;
+        let store = db.async_process_jobs();
+        let mut record = StoredProcessJobRecord::new_native(
+            "proc_async",
+            "sleep 1",
+            StoredProcessJobOwnerScope::Session("sess".to_string()),
+        );
+        record.backend_ref = Some("pid:123".to_string());
+        store.upsert(record.clone()).await?;
+
+        assert_eq!(store.count().await?, 1);
+        assert_eq!(store.get("proc_async").await?, Some(record.clone()));
+        assert_eq!(store.list().await?, vec![record]);
         Ok(())
     }
 }
