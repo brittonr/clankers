@@ -35,6 +35,7 @@ use clankers_runtime::process_jobs::ProcessJobErrorCode;
 use clankers_runtime::process_jobs::ProcessJobEventId;
 use clankers_runtime::process_jobs::ProcessJobFilter;
 use clankers_runtime::process_jobs::ProcessJobId;
+use clankers_runtime::process_jobs::ProcessJobListProjection;
 use clankers_runtime::process_jobs::ProcessJobLogChunk;
 use clankers_runtime::process_jobs::ProcessJobLogCursor;
 use clankers_runtime::process_jobs::ProcessJobLogRange;
@@ -48,12 +49,14 @@ use clankers_runtime::process_jobs::ProcessJobNotificationPolicyEngine;
 use clankers_runtime::process_jobs::ProcessJobNotificationPolicyState;
 use clankers_runtime::process_jobs::ProcessJobOperation;
 use clankers_runtime::process_jobs::ProcessJobOwnerScope;
+use clankers_runtime::process_jobs::ProcessJobProjectionBounds;
 use clankers_runtime::process_jobs::ProcessJobReceipt;
 use clankers_runtime::process_jobs::ProcessJobService;
 use clankers_runtime::process_jobs::ProcessJobStatus;
 use clankers_runtime::process_jobs::ProcessJobStream;
 use clankers_runtime::process_jobs::ProcessJobSummary;
 use clankers_runtime::process_jobs::StartProcessJobRequest;
+use clankers_runtime::process_jobs::project_process_job_list;
 use serde_json::Value;
 use serde_json::json;
 use tokio::io::AsyncBufReadExt;
@@ -341,10 +344,6 @@ impl ProcessEntry {
         let new = output.get(*cursor..).unwrap_or(&[]).to_vec();
         *cursor = output.len();
         new
-    }
-
-    fn elapsed(&self) -> Duration {
-        self.started_at.elapsed()
     }
 
     fn summary(&self) -> ProcessJobSummary {
@@ -1671,6 +1670,9 @@ fn parse_systemd_list_units(raw: &str) -> Vec<ProcessJobSummary> {
             if !(unit.ends_with(".service") || unit.ends_with(".scope")) {
                 return None;
             }
+            if !unit.starts_with("clankers-") {
+                return None;
+            }
             let description = if fields.len() > 4 {
                 fields[4..].join(" ")
             } else {
@@ -1923,13 +1925,103 @@ fn stored_status_label(status: &StoredProcessJobStatus) -> String {
     }
 }
 
-fn stored_record_line(record: &StoredProcessJobRecord) -> String {
-    format!(
-        "{:<12} {:<16} {:<8} {}",
-        record.id,
-        stored_status_label(&record.status),
-        "durable",
-        record.command_preview
+fn stored_status_to_job_status(status: &StoredProcessJobStatus) -> ProcessJobStatus {
+    match status {
+        StoredProcessJobStatus::Pending => ProcessJobStatus::Pending,
+        StoredProcessJobStatus::Running => ProcessJobStatus::Running,
+        StoredProcessJobStatus::Waiting => ProcessJobStatus::Waiting,
+        StoredProcessJobStatus::Succeeded { exit_code } => ProcessJobStatus::Succeeded { exit_code: *exit_code },
+        StoredProcessJobStatus::Failed { exit_code, reason } => ProcessJobStatus::Failed {
+            exit_code: *exit_code,
+            reason: reason.clone(),
+        },
+        StoredProcessJobStatus::Killed => ProcessJobStatus::Killed,
+        StoredProcessJobStatus::Cancelled => ProcessJobStatus::Cancelled,
+        StoredProcessJobStatus::LostAfterRestart => ProcessJobStatus::LostAfterRestart,
+        StoredProcessJobStatus::ReattachedLogIncomplete => ProcessJobStatus::ReattachedLogIncomplete,
+        StoredProcessJobStatus::BackendUnavailable { reason } => {
+            ProcessJobStatus::BackendUnavailable { reason: reason.clone() }
+        }
+        StoredProcessJobStatus::Unknown { raw } => ProcessJobStatus::Unknown { raw: raw.clone() },
+    }
+}
+
+fn stored_backend_to_job_backend(backend: StoredProcessJobBackendKind) -> ProcessJobBackendKind {
+    match backend {
+        StoredProcessJobBackendKind::Native => ProcessJobBackendKind::Native,
+        StoredProcessJobBackendKind::Pueue => ProcessJobBackendKind::Pueue,
+        StoredProcessJobBackendKind::Systemd => ProcessJobBackendKind::Systemd,
+        StoredProcessJobBackendKind::Unknown => ProcessJobBackendKind::Unknown,
+    }
+}
+
+fn stored_cwd_to_job_cwd(cwd: &StoredProcessJobCwd) -> ProcessJobCwd {
+    match cwd {
+        StoredProcessJobCwd::Inherited => ProcessJobCwd::Inherited,
+        StoredProcessJobCwd::Explicit(path) => ProcessJobCwd::Explicit(path.clone()),
+    }
+}
+
+fn stored_log_ref_to_job_log_ref(log_ref: &StoredProcessJobLogRef) -> ProcessJobLogRef {
+    ProcessJobLogRef {
+        stream: match log_ref.stream {
+            StoredProcessJobStream::Stdout => ProcessJobStream::Stdout,
+            StoredProcessJobStream::Stderr => ProcessJobStream::Stderr,
+            StoredProcessJobStream::Combined => ProcessJobStream::Combined,
+        },
+        reference: log_ref.reference.clone(),
+        retained_until: log_ref.retained_until,
+        max_bytes: log_ref.max_bytes,
+    }
+}
+
+fn stored_record_summary(record: &StoredProcessJobRecord) -> ProcessJobSummary {
+    ProcessJobSummary {
+        id: ProcessJobId(record.id.clone()),
+        backend: stored_backend_to_job_backend(record.backend),
+        backend_ref: record.backend_ref.clone().map(BackendRef),
+        owner: ProcessJobOwnerScope::DaemonGlobal,
+        status: stored_status_to_job_status(&record.status),
+        command_preview: record.command_preview.clone(),
+        cwd: stored_cwd_to_job_cwd(&record.cwd),
+        started_at: Some(record.started_at),
+        updated_at: record.updated_at,
+        completed_at: record.completed_at,
+        log_refs: record.log_refs.iter().map(stored_log_ref_to_job_log_ref).collect(),
+    }
+}
+
+fn format_process_job_projection(projection: &ProcessJobListProjection) -> String {
+    if projection.total_active == 0 && projection.total_completed == 0 {
+        return "No background processes.".to_string();
+    }
+    let mut lines = vec![format!(
+        "{:<12} {:<8} {:<24} {:<10} {}",
+        "SESSION", "BACKEND", "STATUS", "BUCKET", "COMMAND"
+    )];
+    lines.push("─".repeat(96));
+    for item in projection.active.iter().chain(projection.completed.iter()) {
+        let bucket = match item.lifecycle {
+            clankers_runtime::process_jobs::ProcessJobLifecycleBucket::Active => "active",
+            clankers_runtime::process_jobs::ProcessJobLifecycleBucket::Completed => "completed",
+        };
+        lines.push(format!(
+            "{:<12} {:<8} {:<24} {:<10} {}",
+            item.id.0, item.backend_label, item.status_label, bucket, item.command_preview
+        ));
+    }
+    if projection.truncated_active || projection.truncated_completed {
+        lines.push(format!(
+            "… truncated: showing {}/{} active and {}/{} completed",
+            projection.active.len(),
+            projection.total_active,
+            projection.completed.len(),
+            projection.total_completed
+        ));
+    }
+    lines.join(
+        "
+",
     )
 }
 
@@ -2450,42 +2542,12 @@ impl ProcessTool {
         }
     }
 
-    async fn handle_pueue_list() -> ToolResult {
-        match Self::pueue_service()
-            .list(ProcessJobFilter {
-                backend: Some(ProcessJobBackendKind::Pueue),
-                include_terminal: true,
-                ..ProcessJobFilter::default()
-            })
-            .await
-        {
-            Ok(summaries) if summaries.is_empty() => ToolResult::text("No pueue process jobs."),
-            Ok(summaries) => ToolResult::text(serde_json::to_string(&summaries).unwrap_or_else(|_| "[]".to_string())),
-            Err(error) => ToolResult::error(error.to_string()),
-        }
-    }
-
     async fn handle_systemd_start(params: &Value) -> ToolResult {
         let request = match Self::start_request(params, ProcessJobBackendKind::Systemd) {
             Ok(request) => request,
             Err(result) => return result,
         };
         Self::systemd_receipt_result(Self::systemd_service().start(request).await).await
-    }
-
-    async fn handle_systemd_list() -> ToolResult {
-        match Self::systemd_service()
-            .list(ProcessJobFilter {
-                backend: Some(ProcessJobBackendKind::Systemd),
-                include_terminal: true,
-                ..ProcessJobFilter::default()
-            })
-            .await
-        {
-            Ok(summaries) if summaries.is_empty() => ToolResult::text("No systemd process jobs."),
-            Ok(summaries) => ToolResult::text(serde_json::to_string(&summaries).unwrap_or_else(|_| "[]".to_string())),
-            Err(error) => ToolResult::error(error.to_string()),
-        }
     }
 
     async fn pueue_receipt_result(result: Result<ProcessJobReceipt, RuntimeError>) -> ToolResult {
@@ -2612,46 +2674,62 @@ impl ProcessTool {
     }
 
     async fn handle_list(ctx: &ToolContext, params: &Value) -> ToolResult {
-        let backend = match Self::requested_backend(params) {
-            Ok(backend) => backend,
-            Err(result) => return result,
+        let backend_filter = match params.get("backend") {
+            Some(_) => match Self::requested_backend(params) {
+                Ok(backend) => Some(backend),
+                Err(result) => return result,
+            },
+            None => None,
         };
-        if backend == ProcessJobBackendKind::Pueue {
-            return Self::handle_pueue_list().await;
+        let mut summaries = Vec::new();
+        if backend_filter.is_none_or(|backend| backend == ProcessJobBackendKind::Native) {
+            let entries = Self::all_entries();
+            let mut durable = Vec::new();
+            if let Some(db) = ctx.db() {
+                let live_ids = entries.iter().map(|entry| entry.id.as_str()).collect::<std::collections::BTreeSet<_>>();
+                durable = reconcile_durable_native_process_jobs(db)
+                    .await
+                    .into_iter()
+                    .filter(|record| !live_ids.contains(record.id.as_str()))
+                    .collect();
+            }
+            summaries.extend(entries.into_iter().map(|entry| entry.summary()));
+            summaries.extend(durable.iter().map(stored_record_summary));
         }
-        if backend == ProcessJobBackendKind::Systemd {
-            return Self::handle_systemd_list().await;
-        }
-        let mut entries = Self::all_entries();
-        entries.sort_by_key(|entry| entry.id.clone());
-        let mut durable = Vec::new();
-        if let Some(db) = ctx.db() {
-            let live_ids = entries.iter().map(|entry| entry.id.as_str()).collect::<std::collections::BTreeSet<_>>();
-            durable = reconcile_durable_native_process_jobs(db)
+        if backend_filter.is_none_or(|backend| backend == ProcessJobBackendKind::Pueue) {
+            match Self::pueue_service()
+                .list(ProcessJobFilter {
+                    backend: Some(ProcessJobBackendKind::Pueue),
+                    include_terminal: true,
+                    ..ProcessJobFilter::default()
+                })
                 .await
-                .into_iter()
-                .filter(|record| !live_ids.contains(record.id.as_str()))
-                .collect();
-            durable.sort_by(|left, right| left.id.cmp(&right.id));
+            {
+                Ok(items) => summaries.extend(items),
+                Err(error) if backend_filter == Some(ProcessJobBackendKind::Pueue) => {
+                    return ToolResult::error(error.to_string());
+                }
+                Err(error) => tracing::debug!("pueue process projection unavailable: {error}"),
+            }
         }
-        if entries.is_empty() && durable.is_empty() {
-            return ToolResult::text("No background processes.");
+        if backend_filter.is_none_or(|backend| backend == ProcessJobBackendKind::Systemd) {
+            match Self::systemd_service()
+                .list(ProcessJobFilter {
+                    backend: Some(ProcessJobBackendKind::Systemd),
+                    include_terminal: true,
+                    ..ProcessJobFilter::default()
+                })
+                .await
+            {
+                Ok(items) => summaries.extend(items),
+                Err(error) if backend_filter == Some(ProcessJobBackendKind::Systemd) => {
+                    return ToolResult::error(error.to_string());
+                }
+                Err(error) => tracing::debug!("systemd process projection unavailable: {error}"),
+            }
         }
-
-        let mut lines = vec![format!("{:<12} {:<16} {:<8} {}", "SESSION", "STATUS", "AGE", "COMMAND")];
-        lines.push("─".repeat(80));
-        for entry in entries {
-            let command_preview: String = entry.command.chars().take(MAX_COMMAND_PREVIEW_LEN).collect();
-            lines.push(format!(
-                "{:<12} {:<16} {:<8} {}",
-                entry.id,
-                entry.status().label(),
-                format_duration(entry.elapsed()),
-                command_preview
-            ));
-        }
-        lines.extend(durable.iter().map(stored_record_line));
-        ToolResult::text(lines.join("\n"))
+        let projection = project_process_job_list(summaries, ProcessJobProjectionBounds::default());
+        ToolResult::text(format_process_job_projection(&projection))
     }
 
     async fn handle_poll(ctx: &ToolContext, params: &Value) -> ToolResult {

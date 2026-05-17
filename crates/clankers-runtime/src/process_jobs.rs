@@ -681,6 +681,140 @@ pub struct ProcessJobSummary {
     pub log_refs: Vec<ProcessJobLogRef>,
 }
 
+impl ProcessJobBackendKind {
+    #[must_use]
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::Native => "native",
+            Self::Pueue => "pueue",
+            Self::Systemd => "systemd",
+            Self::Unknown => "unknown",
+        }
+    }
+}
+
+impl ProcessJobStatus {
+    #[must_use]
+    pub fn label(&self) -> String {
+        match self {
+            Self::Pending => "pending".to_string(),
+            Self::Running => "running".to_string(),
+            Self::Waiting => "waiting".to_string(),
+            Self::Succeeded { exit_code } => {
+                format!("succeeded({})", exit_code.map(|code| code.to_string()).unwrap_or_else(|| "ok".to_string()))
+            }
+            Self::Failed { exit_code, reason } => format!(
+                "failed({}:{reason})",
+                exit_code.map(|code| code.to_string()).unwrap_or_else(|| "unknown".to_string())
+            ),
+            Self::Killed => "killed".to_string(),
+            Self::Cancelled => "cancelled".to_string(),
+            Self::LostAfterRestart => "lost-after-restart".to_string(),
+            Self::ReattachedLogIncomplete => "reattached-log-incomplete".to_string(),
+            Self::BackendUnavailable { reason } => format!("backend-unavailable({reason})"),
+            Self::Unknown { raw } => format!("unknown({raw})"),
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ProcessJobLifecycleBucket {
+    Active,
+    Completed,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ProcessJobProjectionBounds {
+    pub max_active: usize,
+    pub max_completed: usize,
+}
+
+impl Default for ProcessJobProjectionBounds {
+    fn default() -> Self {
+        Self {
+            max_active: 32,
+            max_completed: 32,
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ProcessJobProjectionItem {
+    pub id: ProcessJobId,
+    pub backend: ProcessJobBackendKind,
+    pub backend_label: String,
+    pub backend_ref: Option<BackendRef>,
+    pub lifecycle: ProcessJobLifecycleBucket,
+    pub status: ProcessJobStatus,
+    pub status_label: String,
+    pub command_preview: String,
+    pub cwd: ProcessJobCwd,
+    pub started_at: Option<DateTime<Utc>>,
+    pub updated_at: DateTime<Utc>,
+    pub completed_at: Option<DateTime<Utc>>,
+    pub log_refs: Vec<ProcessJobLogRef>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ProcessJobListProjection {
+    pub active: Vec<ProcessJobProjectionItem>,
+    pub completed: Vec<ProcessJobProjectionItem>,
+    pub total_active: usize,
+    pub total_completed: usize,
+    pub truncated_active: bool,
+    pub truncated_completed: bool,
+}
+
+#[must_use]
+pub fn project_process_job_list(
+    summaries: impl IntoIterator<Item = ProcessJobSummary>,
+    bounds: ProcessJobProjectionBounds,
+) -> ProcessJobListProjection {
+    let mut active = Vec::new();
+    let mut completed = Vec::new();
+    for summary in summaries {
+        let lifecycle = if summary.status.is_terminal() {
+            ProcessJobLifecycleBucket::Completed
+        } else {
+            ProcessJobLifecycleBucket::Active
+        };
+        let item = ProcessJobProjectionItem {
+            id: summary.id,
+            backend: summary.backend,
+            backend_label: summary.backend.label().to_string(),
+            backend_ref: summary.backend_ref,
+            lifecycle: lifecycle.clone(),
+            status_label: summary.status.label(),
+            status: summary.status,
+            command_preview: summary.command_preview,
+            cwd: summary.cwd,
+            started_at: summary.started_at,
+            updated_at: summary.updated_at,
+            completed_at: summary.completed_at,
+            log_refs: summary.log_refs,
+        };
+        match lifecycle {
+            ProcessJobLifecycleBucket::Active => active.push(item),
+            ProcessJobLifecycleBucket::Completed => completed.push(item),
+        }
+    }
+    active.sort_by(|left, right| right.updated_at.cmp(&left.updated_at).then_with(|| left.id.0.cmp(&right.id.0)));
+    completed.sort_by(|left, right| right.updated_at.cmp(&left.updated_at).then_with(|| left.id.0.cmp(&right.id.0)));
+    let total_active = active.len();
+    let total_completed = completed.len();
+    active.truncate(bounds.max_active);
+    completed.truncate(bounds.max_completed);
+    ProcessJobListProjection {
+        active,
+        completed,
+        total_active,
+        total_completed,
+        truncated_active: total_active > bounds.max_active,
+        truncated_completed: total_completed > bounds.max_completed,
+    }
+}
+
 /// Backend capability descriptor used before dispatching mutations.
 #[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
 pub struct ProcessJobBackendCapabilities {
@@ -1836,5 +1970,64 @@ mod tests {
             "adopt",
             "garbage_collect"
         ]);
+    }
+    #[test]
+    fn process_job_projection_unifies_backends_and_bounds_active_completed_views() {
+        let base = Utc::now();
+        let summaries = vec![
+            ProcessJobSummary {
+                id: ProcessJobId("native_active".to_string()),
+                backend: ProcessJobBackendKind::Native,
+                backend_ref: Some(BackendRef("pid:101".to_string())),
+                owner: ProcessJobOwnerScope::DaemonGlobal,
+                status: ProcessJobStatus::Running,
+                command_preview: "native watcher".to_string(),
+                cwd: ProcessJobCwd::Inherited,
+                started_at: Some(base),
+                updated_at: base,
+                completed_at: None,
+                log_refs: Vec::new(),
+            },
+            ProcessJobSummary {
+                id: ProcessJobId("pueue_done".to_string()),
+                backend: ProcessJobBackendKind::Pueue,
+                backend_ref: Some(BackendRef("pueue:7".to_string())),
+                owner: ProcessJobOwnerScope::DaemonGlobal,
+                status: ProcessJobStatus::Succeeded { exit_code: Some(0) },
+                command_preview: "pueue build".to_string(),
+                cwd: ProcessJobCwd::Inherited,
+                started_at: Some(base),
+                updated_at: base + chrono::Duration::seconds(1),
+                completed_at: Some(base + chrono::Duration::seconds(1)),
+                log_refs: Vec::new(),
+            },
+            ProcessJobSummary {
+                id: ProcessJobId("systemd_active".to_string()),
+                backend: ProcessJobBackendKind::Systemd,
+                backend_ref: Some(BackendRef("systemd:clankers-job.scope".to_string())),
+                owner: ProcessJobOwnerScope::DaemonGlobal,
+                status: ProcessJobStatus::Waiting,
+                command_preview: "systemd run".to_string(),
+                cwd: ProcessJobCwd::Inherited,
+                started_at: Some(base),
+                updated_at: base + chrono::Duration::seconds(2),
+                completed_at: None,
+                log_refs: Vec::new(),
+            },
+        ];
+
+        let projection = project_process_job_list(summaries, ProcessJobProjectionBounds {
+            max_active: 1,
+            max_completed: 8,
+        });
+
+        assert_eq!(projection.total_active, 2);
+        assert_eq!(projection.total_completed, 1);
+        assert!(projection.truncated_active);
+        assert!(!projection.truncated_completed);
+        assert_eq!(projection.active[0].id.0, "systemd_active");
+        assert_eq!(projection.active[0].backend_label, "systemd");
+        assert_eq!(projection.completed[0].backend_label, "pueue");
+        assert_eq!(projection.completed[0].status_label, "succeeded(0)");
     }
 }
