@@ -449,7 +449,7 @@ pub struct ProcessJobResourcePolicy {
     pub max_log_bytes: Option<u64>,
 }
 
-/// A backend-neutral start specification.
+/// A backend-neutral process job specification.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct StartProcessJobRequest {
     pub backend: ProcessJobBackendKind,
@@ -462,6 +462,199 @@ pub struct StartProcessJobRequest {
     pub resource_policy: ProcessJobResourcePolicy,
     pub notification_policy: ProcessJobNotificationPolicy,
     pub metadata: BTreeMap<String, String>,
+}
+
+/// Alias used by config/profile parsing code that resolves named jobs before dispatch.
+pub type ProcessJobSpec = StartProcessJobRequest;
+
+/// Policy bounds for resolving project-defined process/job profiles.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ProjectProcessJobProfilePolicy {
+    pub default_backend: ProcessJobBackendKind,
+    pub allowed_backends: Vec<ProcessJobBackendKind>,
+    pub max_timeout: Option<Duration>,
+    pub max_memory_bytes: Option<u64>,
+    pub max_cpu_quota_percent: Option<u32>,
+    pub allowed_env_prefixes: Vec<String>,
+}
+
+impl Default for ProjectProcessJobProfilePolicy {
+    fn default() -> Self {
+        Self {
+            default_backend: ProcessJobBackendKind::Native,
+            allowed_backends: vec![ProcessJobBackendKind::Native],
+            max_timeout: None,
+            max_memory_bytes: None,
+            max_cpu_quota_percent: None,
+            allowed_env_prefixes: Vec::new(),
+        }
+    }
+}
+
+/// Named project process/job profile collection. Parsing this type is pure and
+/// never dispatches to native, pueue, systemd, or storage adapters.
+#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
+pub struct ProjectProcessJobProfiles {
+    #[serde(default)]
+    pub profiles: BTreeMap<String, ProjectProcessJobProfile>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
+pub struct ProjectProcessJobProfile {
+    pub backend: Option<ProcessJobBackendKind>,
+    pub command: Option<String>,
+    pub program: Option<String>,
+    #[serde(default)]
+    pub args: Vec<String>,
+    pub cwd: Option<PathBuf>,
+    #[serde(default)]
+    pub env: BTreeMap<String, String>,
+    #[serde(default)]
+    pub resource_policy: ProcessJobResourcePolicy,
+    #[serde(default)]
+    pub notification_policy: ProcessJobNotificationPolicy,
+    #[serde(default)]
+    pub metadata: BTreeMap<String, String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ProjectProcessJobProfileResolution {
+    pub name: String,
+    pub request: ProcessJobSpec,
+}
+
+impl ProjectProcessJobProfiles {
+    pub fn from_json_str(input: &str) -> Result<Self, RuntimeError> {
+        serde_json::from_str(input)
+            .map_err(|err| RuntimeError::InvalidTool(format!("invalid process job profiles config: {err}")))
+    }
+
+    pub fn resolve(
+        &self,
+        name: &str,
+        owner: ProcessJobOwnerScope,
+        policy: &ProjectProcessJobProfilePolicy,
+    ) -> Result<ProjectProcessJobProfileResolution, RuntimeError> {
+        let profile = self
+            .profiles
+            .get(name)
+            .ok_or_else(|| RuntimeError::InvalidTool(format!("unknown process job profile: {name}")))?;
+        profile.resolve_named(name, owner, policy)
+    }
+}
+
+impl ProjectProcessJobProfile {
+    fn resolve_named(
+        &self,
+        name: &str,
+        owner: ProcessJobOwnerScope,
+        policy: &ProjectProcessJobProfilePolicy,
+    ) -> Result<ProjectProcessJobProfileResolution, RuntimeError> {
+        let backend = self.backend.unwrap_or(policy.default_backend);
+        validate_profile_backend(name, backend, policy)?;
+        validate_profile_command_shape(name, self)?;
+        validate_profile_environment(name, &self.env, policy)?;
+        validate_profile_resources(name, &self.resource_policy, policy)?;
+
+        let cwd = self.cwd.clone().map_or(ProcessJobCwd::Inherited, ProcessJobCwd::Explicit);
+        let mut metadata = self.metadata.clone();
+        metadata.insert("profile".to_string(), name.to_string());
+        for (key, value) in &self.env {
+            metadata.insert(format!("env:{key}"), value.clone());
+        }
+        let command_preview = self.command.clone().unwrap_or_else(|| {
+            std::iter::once(self.program.clone().unwrap_or_default())
+                .chain(self.args.clone())
+                .collect::<Vec<_>>()
+                .join(" ")
+        });
+
+        Ok(ProjectProcessJobProfileResolution {
+            name: name.to_string(),
+            request: StartProcessJobRequest {
+                backend,
+                command_preview,
+                program: self.program.clone(),
+                args: self.args.clone(),
+                shell_command: self.command.clone(),
+                cwd,
+                owner,
+                resource_policy: self.resource_policy.clone(),
+                notification_policy: self.notification_policy.clone(),
+                metadata,
+            },
+        })
+    }
+}
+
+fn validate_profile_backend(
+    name: &str,
+    backend: ProcessJobBackendKind,
+    policy: &ProjectProcessJobProfilePolicy,
+) -> Result<(), RuntimeError> {
+    if backend == ProcessJobBackendKind::Unknown || !policy.allowed_backends.contains(&backend) {
+        return Err(RuntimeError::InvalidTool(format!(
+            "process job profile {name} uses disallowed backend {backend:?}"
+        )));
+    }
+    Ok(())
+}
+
+fn validate_profile_command_shape(name: &str, profile: &ProjectProcessJobProfile) -> Result<(), RuntimeError> {
+    let has_command = profile.command.as_ref().is_some_and(|value| !value.trim().is_empty());
+    let has_program = profile.program.as_ref().is_some_and(|value| !value.trim().is_empty());
+    if has_command == has_program {
+        return Err(RuntimeError::InvalidTool(format!(
+            "process job profile {name} must set exactly one of command or program"
+        )));
+    }
+    if !has_program && !profile.args.is_empty() {
+        return Err(RuntimeError::InvalidTool(format!("process job profile {name} cannot set args without program")));
+    }
+    Ok(())
+}
+
+fn validate_profile_environment(
+    name: &str,
+    env: &BTreeMap<String, String>,
+    policy: &ProjectProcessJobProfilePolicy,
+) -> Result<(), RuntimeError> {
+    for key in env.keys() {
+        let allowed = key.chars().all(|ch| ch.is_ascii_uppercase() || ch.is_ascii_digit() || ch == '_')
+            && !key.contains("SECRET")
+            && !key.contains("TOKEN")
+            && !key.contains("KEY")
+            && policy.allowed_env_prefixes.iter().any(|prefix| key.starts_with(prefix));
+        if !allowed {
+            return Err(RuntimeError::InvalidTool(format!(
+                "process job profile {name} has disallowed environment key {key}"
+            )));
+        }
+    }
+    Ok(())
+}
+
+fn validate_profile_resources(
+    name: &str,
+    resources: &ProcessJobResourcePolicy,
+    policy: &ProjectProcessJobProfilePolicy,
+) -> Result<(), RuntimeError> {
+    if let (Some(actual), Some(maximum)) = (resources.timeout, policy.max_timeout) {
+        if actual > maximum {
+            return Err(RuntimeError::InvalidTool(format!("process job profile {name} timeout exceeds policy")));
+        }
+    }
+    if let (Some(actual), Some(maximum)) = (resources.memory_max_bytes, policy.max_memory_bytes) {
+        if actual > maximum {
+            return Err(RuntimeError::InvalidTool(format!("process job profile {name} memory exceeds policy")));
+        }
+    }
+    if let (Some(actual), Some(maximum)) = (resources.cpu_quota_percent, policy.max_cpu_quota_percent) {
+        if actual > maximum {
+            return Err(RuntimeError::InvalidTool(format!("process job profile {name} cpu quota exceeds policy")));
+        }
+    }
+    Ok(())
 }
 
 /// Query filter for process/job list operations.
@@ -920,6 +1113,72 @@ mod tests {
                 error: None,
             })
         }
+    }
+
+    fn profile_policy() -> ProjectProcessJobProfilePolicy {
+        ProjectProcessJobProfilePolicy {
+            default_backend: ProcessJobBackendKind::Native,
+            allowed_backends: vec![ProcessJobBackendKind::Native, ProcessJobBackendKind::Pueue],
+            max_timeout: Some(Duration::from_secs(600)),
+            max_memory_bytes: Some(1024 * 1024 * 1024),
+            max_cpu_quota_percent: Some(100),
+            allowed_env_prefixes: vec!["APP_".to_string()],
+        }
+    }
+
+    #[test]
+    fn project_job_profile_resolves_to_backend_neutral_start_spec() {
+        let profiles = ProjectProcessJobProfiles::from_json_str(
+            r#"{
+              "profiles": {
+                "verify": {
+                  "backend": "pueue",
+                  "program": "cargo",
+                  "args": ["nextest", "run"],
+                  "cwd": "/repo",
+                  "env": {"APP_MODE": "ci"},
+                  "notification_policy": {"notify_on_complete": true},
+                  "metadata": {"intent": "verify"}
+                }
+              }
+            }"#,
+        )
+        .expect("profile config parses");
+
+        let resolved = profiles
+            .resolve("verify", ProcessJobOwnerScope::Workspace("repo".to_string()), &profile_policy())
+            .expect("profile resolves");
+
+        assert_eq!(resolved.name, "verify");
+        assert_eq!(resolved.request.backend, ProcessJobBackendKind::Pueue);
+        assert_eq!(resolved.request.program.as_deref(), Some("cargo"));
+        assert_eq!(resolved.request.args, vec!["nextest", "run"]);
+        assert_eq!(resolved.request.shell_command, None);
+        assert_eq!(resolved.request.command_preview, "cargo nextest run");
+        assert!(matches!(resolved.request.cwd, ProcessJobCwd::Explicit(ref path) if path == &PathBuf::from("/repo")));
+        assert_eq!(resolved.request.metadata.get("profile").map(String::as_str), Some("verify"));
+        assert_eq!(resolved.request.metadata.get("env:APP_MODE").map(String::as_str), Some("ci"));
+        assert!(resolved.request.notification_policy.notify_on_complete);
+    }
+
+    #[test]
+    fn project_job_profile_rejects_invalid_config_before_backend_dispatch() {
+        let mut profiles = ProjectProcessJobProfiles::default();
+        profiles.profiles.insert("bad".to_string(), ProjectProcessJobProfile {
+            backend: Some(ProcessJobBackendKind::Systemd),
+            command: Some("run secret thing".to_string()),
+            env: BTreeMap::from([("APP_SECRET".to_string(), "nope".to_string())]),
+            resource_policy: ProcessJobResourcePolicy {
+                timeout: Some(Duration::from_secs(1200)),
+                ..ProcessJobResourcePolicy::default()
+            },
+            ..ProjectProcessJobProfile::default()
+        });
+
+        let err = profiles
+            .resolve("bad", ProcessJobOwnerScope::Workspace("repo".to_string()), &profile_policy())
+            .expect_err("invalid profile rejects before dispatch");
+        assert!(err.to_string().contains("disallowed backend"));
     }
 
     #[derive(Default)]
