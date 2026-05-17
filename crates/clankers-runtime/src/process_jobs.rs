@@ -306,11 +306,138 @@ pub struct ProcessJobLogChunk {
     pub truncated: bool,
 }
 
+pub const MAX_PROCESS_JOB_WATCH_PATTERNS: usize = 8;
+pub const MAX_PROCESS_JOB_WATCH_PATTERN_LEN: usize = 128;
+pub const PROCESS_JOB_WATCH_RATE_LIMIT_TICKS: u64 = 15;
+pub const PROCESS_JOB_WATCH_SUPPRESSION_LIMIT: u32 = 3;
+
 /// Accepted notification policy. Continuous output stays in logs.
 #[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
 pub struct ProcessJobNotificationPolicy {
+    #[serde(default)]
     pub notify_on_complete: bool,
+    #[serde(default)]
     pub watch_patterns: Vec<String>,
+}
+
+impl ProcessJobNotificationPolicy {
+    #[must_use]
+    pub fn bounded_watch_patterns(&self) -> Vec<String> {
+        self.watch_patterns
+            .iter()
+            .filter_map(|pattern| {
+                let trimmed = pattern.trim();
+                (!trimmed.is_empty())
+                    .then(|| trimmed.chars().take(MAX_PROCESS_JOB_WATCH_PATTERN_LEN).collect::<String>())
+            })
+            .take(MAX_PROCESS_JOB_WATCH_PATTERNS)
+            .collect()
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case", tag = "kind")]
+pub enum ProcessJobNotificationKind {
+    Completion,
+    WatchPattern { pattern_index: usize, pattern: String },
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ProcessJobNotificationDecision {
+    pub kind: ProcessJobNotificationKind,
+    pub summary: String,
+    pub log_excerpt: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ProcessJobNotificationObservation {
+    pub status: ProcessJobStatus,
+    pub line: Option<String>,
+    pub tick: u64,
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct ProcessJobNotificationPolicyState {
+    completion_sent: bool,
+    watch_states: Vec<ProcessJobWatchPatternState>,
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+struct ProcessJobWatchPatternState {
+    last_delivered_tick: Option<u64>,
+    suppressed_matches: u32,
+    disabled: bool,
+}
+
+#[async_trait]
+pub trait ProcessJobNotificationPolicyEngine: Send + Sync {
+    async fn evaluate(
+        &self,
+        policy: &ProcessJobNotificationPolicy,
+        state: &mut ProcessJobNotificationPolicyState,
+        observation: ProcessJobNotificationObservation,
+    ) -> Vec<ProcessJobNotificationDecision>;
+}
+
+#[derive(Debug, Default, Clone, Copy)]
+pub struct DefaultProcessJobNotificationPolicyEngine;
+
+#[async_trait]
+impl ProcessJobNotificationPolicyEngine for DefaultProcessJobNotificationPolicyEngine {
+    async fn evaluate(
+        &self,
+        policy: &ProcessJobNotificationPolicy,
+        state: &mut ProcessJobNotificationPolicyState,
+        observation: ProcessJobNotificationObservation,
+    ) -> Vec<ProcessJobNotificationDecision> {
+        let mut decisions = Vec::new();
+        if observation.status.is_terminal() && policy.notify_on_complete && !state.completion_sent {
+            state.completion_sent = true;
+            decisions.push(ProcessJobNotificationDecision {
+                kind: ProcessJobNotificationKind::Completion,
+                summary: format!("process job reached terminal status: {:?}", observation.status),
+                log_excerpt: observation.line.clone(),
+            });
+        }
+
+        let Some(line) = observation.line else {
+            return decisions;
+        };
+        let patterns = policy.bounded_watch_patterns();
+        if state.watch_states.len() < patterns.len() {
+            state.watch_states.resize_with(patterns.len(), ProcessJobWatchPatternState::default);
+        }
+        for (pattern_index, pattern) in patterns.iter().enumerate() {
+            if !line.contains(pattern) {
+                continue;
+            }
+            let watch_state = &mut state.watch_states[pattern_index];
+            if watch_state.disabled {
+                continue;
+            }
+            let rate_limited = watch_state
+                .last_delivered_tick
+                .is_some_and(|last| observation.tick.saturating_sub(last) < PROCESS_JOB_WATCH_RATE_LIMIT_TICKS);
+            if rate_limited {
+                watch_state.suppressed_matches = watch_state.suppressed_matches.saturating_add(1);
+                if watch_state.suppressed_matches >= PROCESS_JOB_WATCH_SUPPRESSION_LIMIT {
+                    watch_state.disabled = true;
+                }
+                continue;
+            }
+            watch_state.last_delivered_tick = Some(observation.tick);
+            watch_state.suppressed_matches = 0;
+            decisions.push(ProcessJobNotificationDecision {
+                kind: ProcessJobNotificationKind::WatchPattern {
+                    pattern_index,
+                    pattern: pattern.clone(),
+                },
+                summary: format!("process job matched readiness pattern {pattern_index}: {pattern}"),
+                log_excerpt: Some(line.clone()),
+            });
+        }
+        decisions
+    }
 }
 
 /// Resource limits accepted by policy before backend dispatch.
@@ -499,6 +626,7 @@ pub struct ProcessJobNotificationEvent {
     pub id: ProcessJobId,
     pub backend: ProcessJobBackendKind,
     pub owner: ProcessJobOwnerScope,
+    pub kind: ProcessJobNotificationKind,
     pub status: ProcessJobStatus,
     pub created_at: DateTime<Utc>,
     pub summary: String,
@@ -926,6 +1054,10 @@ mod tests {
             id: id.clone(),
             backend: ProcessJobBackendKind::Native,
             owner: ProcessJobOwnerScope::Session("sess".to_string()),
+            kind: ProcessJobNotificationKind::WatchPattern {
+                pattern_index: 0,
+                pattern: "hello".to_string(),
+            },
             status: ProcessJobStatus::Running,
             created_at: Utc::now(),
             summary: "ready".to_string(),
@@ -958,6 +1090,7 @@ mod tests {
             id: ProcessJobId("proc_notify".to_string()),
             backend: ProcessJobBackendKind::Native,
             owner,
+            kind: ProcessJobNotificationKind::Completion,
             status: ProcessJobStatus::Succeeded { exit_code: Some(0) },
             created_at: Utc::now(),
             summary: "process completed".to_string(),
@@ -969,6 +1102,96 @@ mod tests {
                 max_bytes: Some(1024),
             }],
         }
+    }
+
+    #[tokio::test]
+    async fn default_notification_policy_delivers_completion_once() {
+        let engine = DefaultProcessJobNotificationPolicyEngine;
+        let policy = ProcessJobNotificationPolicy {
+            notify_on_complete: true,
+            watch_patterns: Vec::new(),
+        };
+        let mut state = ProcessJobNotificationPolicyState::default();
+        let observation = ProcessJobNotificationObservation {
+            status: ProcessJobStatus::Succeeded { exit_code: Some(0) },
+            line: Some("done".to_string()),
+            tick: 1,
+        };
+
+        let first = engine.evaluate(&policy, &mut state, observation.clone()).await;
+        let second = engine.evaluate(&policy, &mut state, observation).await;
+
+        assert_eq!(first.len(), 1);
+        assert_eq!(first[0].kind, ProcessJobNotificationKind::Completion);
+        assert!(second.is_empty(), "completion notification is one-shot");
+    }
+
+    #[tokio::test]
+    async fn watch_patterns_are_bounded_rate_limited_and_suppress_noisy_matches() {
+        let engine = DefaultProcessJobNotificationPolicyEngine;
+        let policy = ProcessJobNotificationPolicy {
+            notify_on_complete: true,
+            watch_patterns: (0..(MAX_PROCESS_JOB_WATCH_PATTERNS + 3)).map(|index| format!("ready-{index}")).collect(),
+        };
+        let mut state = ProcessJobNotificationPolicyState::default();
+        let first = engine
+            .evaluate(&policy, &mut state, ProcessJobNotificationObservation {
+                status: ProcessJobStatus::Running,
+                line: Some("ready-0".to_string()),
+                tick: 1,
+            })
+            .await;
+        let noisy_1 = engine
+            .evaluate(&policy, &mut state, ProcessJobNotificationObservation {
+                status: ProcessJobStatus::Running,
+                line: Some("ready-0".to_string()),
+                tick: 2,
+            })
+            .await;
+        let noisy_2 = engine
+            .evaluate(&policy, &mut state, ProcessJobNotificationObservation {
+                status: ProcessJobStatus::Running,
+                line: Some("ready-0".to_string()),
+                tick: 3,
+            })
+            .await;
+        let noisy_3 = engine
+            .evaluate(&policy, &mut state, ProcessJobNotificationObservation {
+                status: ProcessJobStatus::Running,
+                line: Some("ready-0".to_string()),
+                tick: 4,
+            })
+            .await;
+        let after_window = engine
+            .evaluate(&policy, &mut state, ProcessJobNotificationObservation {
+                status: ProcessJobStatus::Running,
+                line: Some("ready-0".to_string()),
+                tick: PROCESS_JOB_WATCH_RATE_LIMIT_TICKS + 2,
+            })
+            .await;
+        let out_of_bounds = engine
+            .evaluate(&policy, &mut state, ProcessJobNotificationObservation {
+                status: ProcessJobStatus::Running,
+                line: Some(format!("ready-{}", MAX_PROCESS_JOB_WATCH_PATTERNS + 1)),
+                tick: 100,
+            })
+            .await;
+        let completion = engine
+            .evaluate(&policy, &mut state, ProcessJobNotificationObservation {
+                status: ProcessJobStatus::Succeeded { exit_code: Some(0) },
+                line: Some("done".to_string()),
+                tick: 101,
+            })
+            .await;
+
+        assert_eq!(first.len(), 1);
+        assert!(noisy_1.is_empty());
+        assert!(noisy_2.is_empty());
+        assert!(noisy_3.is_empty());
+        assert!(after_window.is_empty(), "pattern is disabled after noisy suppression");
+        assert!(out_of_bounds.is_empty(), "patterns beyond the bounded limit are ignored");
+        assert_eq!(completion.len(), 1, "completion delivery does not depend on watch patterns");
+        assert_eq!(completion[0].kind, ProcessJobNotificationKind::Completion);
     }
 
     #[tokio::test]

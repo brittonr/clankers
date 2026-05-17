@@ -7,6 +7,8 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 use std::sync::LazyLock;
+use std::sync::atomic::AtomicU64;
+use std::sync::atomic::Ordering;
 use std::time::Duration;
 use std::time::Instant;
 
@@ -24,16 +26,25 @@ use clankers_db::process_jobs::StoredProcessJobStatus;
 use clankers_db::process_jobs::StoredProcessJobStream;
 use clankers_runtime::RuntimeError;
 use clankers_runtime::process_jobs::BackendRef;
+use clankers_runtime::process_jobs::DefaultProcessJobNotificationPolicyEngine;
 use clankers_runtime::process_jobs::ProcessJobBackendKind;
 use clankers_runtime::process_jobs::ProcessJobCwd;
 use clankers_runtime::process_jobs::ProcessJobError;
 use clankers_runtime::process_jobs::ProcessJobErrorCode;
+use clankers_runtime::process_jobs::ProcessJobEventId;
 use clankers_runtime::process_jobs::ProcessJobFilter;
 use clankers_runtime::process_jobs::ProcessJobId;
 use clankers_runtime::process_jobs::ProcessJobLogChunk;
 use clankers_runtime::process_jobs::ProcessJobLogCursor;
 use clankers_runtime::process_jobs::ProcessJobLogRange;
 use clankers_runtime::process_jobs::ProcessJobLogRef;
+use clankers_runtime::process_jobs::ProcessJobNotificationDecision;
+use clankers_runtime::process_jobs::ProcessJobNotificationEvent;
+use clankers_runtime::process_jobs::ProcessJobNotificationKind;
+use clankers_runtime::process_jobs::ProcessJobNotificationObservation;
+use clankers_runtime::process_jobs::ProcessJobNotificationPolicy;
+use clankers_runtime::process_jobs::ProcessJobNotificationPolicyEngine;
+use clankers_runtime::process_jobs::ProcessJobNotificationPolicyState;
 use clankers_runtime::process_jobs::ProcessJobOperation;
 use clankers_runtime::process_jobs::ProcessJobOwnerScope;
 use clankers_runtime::process_jobs::ProcessJobReceipt;
@@ -203,6 +214,11 @@ struct ProcessEntry {
     backend_ref: Option<BackendRef>,
     output: std::sync::Mutex<Vec<String>>,
     poll_cursor: std::sync::Mutex<usize>,
+    notification_policy: ProcessJobNotificationPolicy,
+    notification_state: tokio::sync::Mutex<ProcessJobNotificationPolicyState>,
+    notifications: std::sync::Mutex<Vec<ProcessJobNotificationEvent>>,
+    notification_cursor: std::sync::Mutex<usize>,
+    next_notification_seq: AtomicU64,
     status: std::sync::Mutex<ProcessStatus>,
     stdin: tokio::sync::Mutex<Option<ChildStdin>>,
     kill_tx: std::sync::Mutex<Option<oneshot::Sender<()>>>,
@@ -215,6 +231,7 @@ impl ProcessEntry {
         stdin: Option<ChildStdin>,
         kill_tx: oneshot::Sender<()>,
         pid: Option<u32>,
+        notification_policy: ProcessJobNotificationPolicy,
     ) -> Self {
         Self {
             id,
@@ -224,16 +241,83 @@ impl ProcessEntry {
             backend_ref: pid.map(|pid| BackendRef(format!("pid:{pid}"))),
             output: std::sync::Mutex::new(Vec::new()),
             poll_cursor: std::sync::Mutex::new(0),
+            notification_policy,
+            notification_state: tokio::sync::Mutex::new(ProcessJobNotificationPolicyState::default()),
+            notifications: std::sync::Mutex::new(Vec::new()),
+            notification_cursor: std::sync::Mutex::new(0),
+            next_notification_seq: AtomicU64::new(0),
             status: std::sync::Mutex::new(ProcessStatus::Running),
             stdin: tokio::sync::Mutex::new(stdin),
             kill_tx: std::sync::Mutex::new(Some(kill_tx)),
         }
     }
 
-    fn push_output(&self, stream: &str, raw: &str) {
+    fn push_output(&self, stream: &str, raw: &str) -> String {
         let line = strip_ansi(raw);
         let mut output = self.output.lock().expect("process output lock poisoned");
         output.push(format!("[{stream}] {line}"));
+        line
+    }
+
+    async fn evaluate_output_notification(&self, line: String) {
+        self.evaluate_notification(ProcessJobNotificationObservation {
+            status: self.job_status(),
+            line: Some(line),
+            tick: self.started_at.elapsed().as_secs(),
+        })
+        .await;
+    }
+
+    async fn evaluate_completion_notification(&self) {
+        let excerpt = self.snapshot_output().last().cloned();
+        self.evaluate_notification(ProcessJobNotificationObservation {
+            status: self.job_status(),
+            line: excerpt,
+            tick: self.started_at.elapsed().as_secs(),
+        })
+        .await;
+    }
+
+    async fn evaluate_notification(&self, observation: ProcessJobNotificationObservation) {
+        let engine = DefaultProcessJobNotificationPolicyEngine;
+        let mut state = self.notification_state.lock().await;
+        let decisions = engine.evaluate(&self.notification_policy, &mut state, observation).await;
+        drop(state);
+        for decision in decisions {
+            self.record_notification(decision);
+        }
+    }
+
+    fn record_notification(&self, decision: ProcessJobNotificationDecision) {
+        let event = ProcessJobNotificationEvent {
+            event_id: ProcessJobEventId(format!(
+                "{}_evt_{}",
+                self.id,
+                self.next_notification_seq.fetch_add(1, Ordering::Relaxed) + 1
+            )),
+            id: ProcessJobId(self.id.clone()),
+            backend: ProcessJobBackendKind::Native,
+            owner: ProcessJobOwnerScope::DaemonGlobal,
+            kind: decision.kind,
+            status: self.job_status(),
+            created_at: Utc::now(),
+            summary: decision.summary,
+            log_excerpt: decision.log_excerpt,
+            log_refs: Vec::new(),
+        };
+        self.notifications.lock().expect("process notification lock poisoned").push(event);
+    }
+
+    fn drain_new_notifications(&self) -> Vec<ProcessJobNotificationEvent> {
+        let notifications = self.notifications.lock().expect("process notification lock poisoned");
+        let mut cursor = self.notification_cursor.lock().expect("process notification cursor lock poisoned");
+        let new = notifications.get(*cursor..).unwrap_or(&[]).to_vec();
+        *cursor = notifications.len();
+        new
+    }
+
+    fn job_status(&self) -> ProcessJobStatus {
+        status_to_job_status(&self.status())
     }
 
     fn set_status(&self, status: ProcessStatus) {
@@ -309,7 +393,14 @@ impl ProcessJobService for NativeProcessJobService {
         })?;
         let (kill_tx, kill_rx) = oneshot::channel();
         let id = ProcessTool::next_id();
-        let entry = Arc::new(ProcessEntry::new(id.clone(), display_command, stdin, kill_tx, pid));
+        let entry = Arc::new(ProcessEntry::new(
+            id.clone(),
+            display_command,
+            stdin,
+            kill_tx,
+            pid,
+            request.notification_policy.clone(),
+        ));
         let backend_ref = entry.backend_ref.clone();
         ProcessTool::insert(entry.clone());
         admission.release();
@@ -1913,6 +2004,15 @@ impl ProcessTool {
                             "items": { "type": "string" },
                             "description": "Arguments for direct exec mode"
                         },
+                        "notify_on_complete": {
+                            "type": "boolean",
+                            "description": "When true, emit one completion notification when the process reaches a terminal state"
+                        },
+                        "watch_patterns": {
+                            "type": "array",
+                            "items": { "type": "string" },
+                            "description": "Bounded rare readiness patterns; noisy repeated matches are rate-limited and suppressed"
+                        },
                         "session_id": {
                             "type": "string",
                             "description": "Background process session ID"
@@ -2019,6 +2119,30 @@ impl ProcessTool {
             args.push(arg.to_string());
         }
         Ok(args)
+    }
+
+    fn notification_policy(params: &Value) -> Result<ProcessJobNotificationPolicy, ToolResult> {
+        let notify_on_complete = params.get("notify_on_complete").and_then(Value::as_bool).unwrap_or(false);
+        let watch_patterns = match params.get("watch_patterns") {
+            Some(value) => {
+                let Some(values) = value.as_array() else {
+                    return Err(ToolResult::error("Parameter 'watch_patterns' must be an array of strings."));
+                };
+                let mut patterns = Vec::with_capacity(values.len());
+                for value in values {
+                    let Some(pattern) = value.as_str() else {
+                        return Err(ToolResult::error("Parameter 'watch_patterns' must be an array of strings."));
+                    };
+                    patterns.push(pattern.to_string());
+                }
+                patterns
+            }
+            None => Vec::new(),
+        };
+        Ok(ProcessJobNotificationPolicy {
+            notify_on_complete,
+            watch_patterns,
+        })
     }
 
     fn configure_child(cmd: &mut Command) {
@@ -2139,7 +2263,7 @@ impl ProcessTool {
             cwd: ProcessJobCwd::Inherited,
             owner: ProcessJobOwnerScope::DaemonGlobal,
             resource_policy: clankers_runtime::process_jobs::ProcessJobResourcePolicy::default(),
-            notification_policy: clankers_runtime::process_jobs::ProcessJobNotificationPolicy::default(),
+            notification_policy: Self::notification_policy(params)?,
             metadata,
         })
     }
@@ -2286,9 +2410,14 @@ impl ProcessTool {
                 return ToolResult::error("Failed to capture stderr from background process");
             }
         };
+        let notification_policy = match Self::notification_policy(params) {
+            Ok(policy) => policy,
+            Err(result) => return result,
+        };
         let (kill_tx, kill_rx) = oneshot::channel();
         let id = Self::next_id();
-        let entry = Arc::new(ProcessEntry::new(id.clone(), display_command.clone(), stdin, kill_tx, pid));
+        let entry =
+            Arc::new(ProcessEntry::new(id.clone(), display_command.clone(), stdin, kill_tx, pid, notification_policy));
         Self::insert(entry.clone());
         admission.release();
 
@@ -2389,6 +2518,19 @@ impl ProcessTool {
             text.push_str("No new output.");
         } else {
             text.push_str(&output.join("\n"));
+        }
+        let notifications = entry.drain_new_notifications();
+        if !notifications.is_empty() {
+            text.push_str("\nNotifications:");
+            for notification in notifications {
+                let kind = match &notification.kind {
+                    ProcessJobNotificationKind::Completion => "completion".to_string(),
+                    ProcessJobNotificationKind::WatchPattern { pattern_index, pattern } => {
+                        format!("watch_pattern[{pattern_index}]={pattern}")
+                    }
+                };
+                text.push_str(&format!("\n- {} {}: {}", notification.event_id.0, kind, notification.summary));
+            }
         }
         ToolResult::text(text)
     }
@@ -2639,7 +2781,8 @@ where R: tokio::io::AsyncRead + Unpin + Send + 'static {
     tokio::spawn(async move {
         let mut lines = BufReader::new(reader).lines();
         while let Ok(Some(line)) = lines.next_line().await {
-            entry.push_output(stream, &line);
+            let clean_line = entry.push_output(stream, &line);
+            entry.evaluate_output_notification(clean_line).await;
         }
     });
 }
@@ -2669,6 +2812,7 @@ fn spawn_waiter(
                 });
             }
         }
+        entry.evaluate_completion_notification().await;
         persist_entry(db.as_ref(), &entry).await;
     });
 }
@@ -2762,7 +2906,7 @@ mod tests {
             cwd: clankers_runtime::process_jobs::ProcessJobCwd::Inherited,
             owner: clankers_runtime::process_jobs::ProcessJobOwnerScope::DaemonGlobal,
             resource_policy: clankers_runtime::process_jobs::ProcessJobResourcePolicy::default(),
-            notification_policy: clankers_runtime::process_jobs::ProcessJobNotificationPolicy::default(),
+            notification_policy: ProcessJobNotificationPolicy::default(),
             metadata: Default::default(),
         }
     }
@@ -3380,6 +3524,32 @@ mod tests {
         assert!(text(&first).contains("first"), "{}", text(&first));
         let second = tool.execute(&make_ctx(), json!({"action": "poll", "session_id": id})).await;
         assert!(text(&second).contains("No new output"), "{}", text(&second));
+    }
+
+    #[tokio::test]
+    async fn notify_on_complete_and_watch_patterns_emit_through_policy_seam() {
+        let tool = ProcessTool::new();
+        let started = tool
+            .execute(
+                &make_ctx(),
+                json!({
+                    "action": "start",
+                    "command": "printf 'READY\\nREADY\\nREADY\\nREADY\\ndone\\n'",
+                    "notify_on_complete": true,
+                    "watch_patterns": ["READY"]
+                }),
+            )
+            .await;
+        assert!(!started.is_error, "{started:?}");
+        let id = extract_process_id(&started);
+        let waited = tool.execute(&make_ctx(), json!({"action": "wait", "session_id": id, "timeout": 2})).await;
+        assert!(!waited.is_error, "{waited:?}");
+
+        let polled = tool.execute(&make_ctx(), json!({"action": "poll", "session_id": id})).await;
+        let polled_text = text(&polled);
+        assert!(polled_text.contains("watch_pattern[0]=READY"), "{polled_text}");
+        assert!(polled_text.contains("completion"), "{polled_text}");
+        assert_eq!(polled_text.matches("watch_pattern[0]=READY").count(), 1, "{polled_text}");
     }
 
     #[tokio::test]
