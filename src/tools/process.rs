@@ -25,6 +25,8 @@ use clankers_db::process_jobs::StoredProcessJobStream;
 use clankers_runtime::RuntimeError;
 use clankers_runtime::process_jobs::BackendRef;
 use clankers_runtime::process_jobs::ProcessJobBackendKind;
+use clankers_runtime::process_jobs::ProcessJobError;
+use clankers_runtime::process_jobs::ProcessJobErrorCode;
 use clankers_runtime::process_jobs::ProcessJobFilter;
 use clankers_runtime::process_jobs::ProcessJobId;
 use clankers_runtime::process_jobs::ProcessJobLogChunk;
@@ -53,6 +55,28 @@ use crate::util::ansi::strip_ansi;
 
 const DEFAULT_LOG_LIMIT: usize = 200;
 const MAX_COMMAND_PREVIEW_LEN: usize = 200;
+const MAX_NATIVE_ACTIVE_PROCESS_JOBS: usize = 32;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct NativeAdmissionDecision {
+    accepted: bool,
+    active: usize,
+    limit: usize,
+}
+
+impl NativeAdmissionDecision {
+    fn summary(&self) -> String {
+        format!("native process admission denied: active process limit reached ({}/{})", self.active, self.limit)
+    }
+}
+
+fn native_admission_decision(active: usize, limit: usize) -> NativeAdmissionDecision {
+    NativeAdmissionDecision {
+        accepted: active < limit,
+        active,
+        limit,
+    }
+}
 
 static REGISTRY: LazyLock<std::sync::Mutex<ProcessRegistry>> =
     LazyLock::new(|| std::sync::Mutex::new(ProcessRegistry::default()));
@@ -61,6 +85,54 @@ static REGISTRY: LazyLock<std::sync::Mutex<ProcessRegistry>> =
 struct ProcessRegistry {
     next_id: u64,
     entries: HashMap<String, Arc<ProcessEntry>>,
+    reserved_starts: usize,
+}
+
+impl ProcessRegistry {
+    fn active_or_reserved_count(&self) -> usize {
+        self.entries.values().filter(|entry| !entry.status().is_done()).count() + self.reserved_starts
+    }
+
+    fn admission_decision(&self, limit: usize) -> NativeAdmissionDecision {
+        native_admission_decision(self.active_or_reserved_count(), limit)
+    }
+
+    fn reserve_start(&mut self, limit: usize) -> Result<NativeAdmissionReservation, NativeAdmissionDecision> {
+        let decision = self.admission_decision(limit);
+        if !decision.accepted {
+            return Err(decision);
+        }
+        self.reserved_starts += 1;
+        Ok(NativeAdmissionReservation { released: false })
+    }
+
+    fn release_start_reservation(&mut self) {
+        self.reserved_starts = self.reserved_starts.saturating_sub(1);
+    }
+}
+
+struct NativeAdmissionReservation {
+    released: bool,
+}
+
+impl NativeAdmissionReservation {
+    fn release(mut self) {
+        self.release_inner();
+    }
+
+    fn release_inner(&mut self) {
+        if self.released {
+            return;
+        }
+        REGISTRY.lock().expect("process registry lock poisoned").release_start_reservation();
+        self.released = true;
+    }
+}
+
+impl Drop for NativeAdmissionReservation {
+    fn drop(&mut self) {
+        self.release_inner();
+    }
 }
 
 #[derive(Clone, Debug)]
@@ -190,6 +262,10 @@ impl ProcessJobService for NativeProcessJobService {
                 "current process tool default service supports only native backend",
             ));
         }
+        let admission = match ProcessTool::reserve_native_start() {
+            Ok(admission) => admission,
+            Err(decision) => return Ok(ProcessTool::admission_denied_receipt(decision)),
+        };
 
         let (display_command, mut child) = spawn_from_start_request(&request)?;
         let pid = child.id();
@@ -205,6 +281,7 @@ impl ProcessJobService for NativeProcessJobService {
         let entry = Arc::new(ProcessEntry::new(id.clone(), display_command, stdin, kill_tx, pid));
         let backend_ref = entry.backend_ref.clone();
         ProcessTool::insert(entry.clone());
+        admission.release();
         spawn_reader(entry.clone(), "stdout", stdout);
         spawn_reader(entry, "stderr", stderr);
         spawn_waiter(ProcessTool::get(&id).expect("inserted native process entry"), child, pid, kill_rx, None);
@@ -783,6 +860,13 @@ impl ProcessTool {
         registry.entries.insert(entry.id.clone(), entry);
     }
 
+    fn reserve_native_start() -> Result<NativeAdmissionReservation, NativeAdmissionDecision> {
+        REGISTRY
+            .lock()
+            .expect("process registry lock poisoned")
+            .reserve_start(MAX_NATIVE_ACTIVE_PROCESS_JOBS)
+    }
+
     fn get(session_id: &str) -> Option<Arc<ProcessEntry>> {
         let registry = REGISTRY.lock().expect("process registry lock poisoned");
         registry.entries.get(session_id).cloned()
@@ -791,6 +875,27 @@ impl ProcessTool {
     fn all_entries() -> Vec<Arc<ProcessEntry>> {
         let registry = REGISTRY.lock().expect("process registry lock poisoned");
         registry.entries.values().cloned().collect()
+    }
+
+    fn admission_denied_receipt(decision: NativeAdmissionDecision) -> ProcessJobReceipt {
+        let summary = decision.summary();
+        ProcessJobReceipt {
+            operation: ProcessJobOperation::Start,
+            id: None,
+            backend: Some(ProcessJobBackendKind::Native),
+            status: Some(ProcessJobStatus::Waiting),
+            backend_ref: None,
+            log_refs: Vec::new(),
+            summary: summary.clone(),
+            error: Some(ProcessJobError {
+                code: ProcessJobErrorCode::ConcurrencyLimitExceeded,
+                operation: ProcessJobOperation::Start,
+                id: None,
+                backend: Some(ProcessJobBackendKind::Native),
+                action: Some("start".to_string()),
+                message: summary,
+            }),
+        }
     }
 
     fn required_session(params: &Value) -> Result<String, ToolResult> {
@@ -883,8 +988,16 @@ impl ProcessTool {
             (None, None) => Err(ToolResult::error("Missing required parameter: command or program")),
         }
     }
-
     async fn handle_start(&self, ctx: &ToolContext, params: &Value) -> ToolResult {
+        let admission = match Self::reserve_native_start() {
+            Ok(admission) => admission,
+            Err(decision) => {
+                let receipt = Self::admission_denied_receipt(decision);
+                let payload = serde_json::to_string(&receipt).unwrap_or_else(|_| receipt.summary.clone());
+                return ToolResult::error(payload);
+            }
+        };
+
         let (display_command, mut child) = match Self::start_spec(params) {
             Ok(spec) => spec,
             Err(result) => return result,
@@ -893,16 +1006,23 @@ impl ProcessTool {
         let stdin = child.stdin.take();
         let stdout = match child.stdout.take() {
             Some(stdout) => stdout,
-            None => return ToolResult::error("Failed to capture stdout from background process"),
+            None => {
+                admission.release();
+                return ToolResult::error("Failed to capture stdout from background process");
+            }
         };
         let stderr = match child.stderr.take() {
             Some(stderr) => stderr,
-            None => return ToolResult::error("Failed to capture stderr from background process"),
+            None => {
+                admission.release();
+                return ToolResult::error("Failed to capture stderr from background process");
+            }
         };
         let (kill_tx, kill_rx) = oneshot::channel();
         let id = Self::next_id();
         let entry = Arc::new(ProcessEntry::new(id.clone(), display_command.clone(), stdin, kill_tx, pid));
         Self::insert(entry.clone());
+        admission.release();
 
         if let Some(ref monitor) = self.process_monitor
             && let Some(pid) = pid
@@ -1324,6 +1444,39 @@ mod tests {
 
         let waited = service.wait(id, Some(Duration::from_secs(2))).await.expect("wait succeeds");
         assert!(waited.summary.contains("service-ok"), "{}", waited.summary);
+    }
+
+    #[test]
+    fn native_admission_limit_rejects_at_capacity_with_typed_receipt() {
+        let accepted = native_admission_decision(MAX_NATIVE_ACTIVE_PROCESS_JOBS - 1, MAX_NATIVE_ACTIVE_PROCESS_JOBS);
+        assert!(accepted.accepted);
+
+        let rejected = native_admission_decision(MAX_NATIVE_ACTIVE_PROCESS_JOBS, MAX_NATIVE_ACTIVE_PROCESS_JOBS);
+        assert!(!rejected.accepted);
+        let receipt = ProcessTool::admission_denied_receipt(rejected);
+        assert_eq!(receipt.operation, ProcessJobOperation::Start);
+        assert_eq!(receipt.backend, Some(ProcessJobBackendKind::Native));
+        assert_eq!(receipt.status, Some(ProcessJobStatus::Waiting));
+        let error = receipt.error.expect("typed admission error");
+        assert_eq!(error.code, ProcessJobErrorCode::ConcurrencyLimitExceeded);
+        assert!(error.message.contains("active process limit reached"));
+        let payload = serde_json::to_value(&error).expect("typed error serializes");
+        assert_eq!(payload["code"], "concurrency_limit_exceeded");
+    }
+
+    #[test]
+    fn native_admission_reservations_count_against_capacity_before_spawn() {
+        let mut registry = ProcessRegistry::default();
+        assert!(registry.admission_decision(1).accepted);
+
+        registry.reserved_starts = 1;
+        let rejected = registry.admission_decision(1);
+        assert!(!rejected.accepted);
+        assert_eq!(rejected.active, 1);
+        assert_eq!(rejected.limit, 1);
+
+        registry.release_start_reservation();
+        assert!(registry.admission_decision(1).accepted);
     }
 
     #[tokio::test]

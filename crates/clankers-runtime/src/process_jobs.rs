@@ -398,6 +398,7 @@ pub enum ProcessJobErrorCode {
     UnsupportedActionForBackend,
     InvalidRequest,
     AdmissionDenied,
+    ConcurrencyLimitExceeded,
     StorageUnavailable,
     LogUnavailable,
     BackendFailed,
