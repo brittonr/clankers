@@ -379,9 +379,24 @@ pub fn read_ledger_records(path: &Path) -> Result<Vec<LedgerRecord>> {
         if line.trim().is_empty() {
             continue;
         }
-        records.push(serde_json::from_str(&line).map_err(session_err)?);
+        records.push(parse_ledger_record_compat(&line)?);
     }
     Ok(records)
+}
+
+fn parse_ledger_record_compat(line: &str) -> Result<LedgerRecord> {
+    let value: Value = serde_json::from_str(line).map_err(session_err)?;
+    let parsed = serde_json::from_value::<LedgerRecord>(value.clone());
+    match parsed {
+        Ok(LedgerRecord::Typed(record)) if record.schema_version == LEDGER_SCHEMA_VERSION => {
+            Ok(LedgerRecord::Typed(record))
+        }
+        Ok(LedgerRecord::Opaque(record)) => Ok(LedgerRecord::Opaque(record)),
+        _ => {
+            let id = value.get("id").and_then(Value::as_str).unwrap_or("opaque-ledger-record");
+            Ok(opaque_from_unknown_json(id, &value))
+        }
+    }
 }
 
 #[cfg(test)]
@@ -504,6 +519,32 @@ mod tests {
         let _ = std::fs::remove_file(&path);
 
         assert_eq!(restored, records);
+    }
+
+    #[test]
+    fn read_ledger_records_migrates_future_or_unknown_records_to_opaque() {
+        let path = std::env::temp_dir().join(format!("clankers-ledger-migration-{}.jsonl", std::process::id()));
+        let _ = std::fs::remove_file(&path);
+        std::fs::write(
+            &path,
+            r#"{"record_kind":"future_kind","id":"future-1","schema_version":7,"safe_metadata":{"kind":"future","authorization":"Bearer nope"},"raw_payload":"drop-me"}
+{"record_kind":"typed","id":"typed-future","schema_version":99,"created_at":"2026-05-17T00:00:00Z","safe_metadata":{"note":"future typed"},"payload":{"payload_kind":"error","class":"future","safe_message":"future","query":{"artifact_hashes":[]}}}
+"#,
+        )
+        .expect("write fixture");
+
+        let records = read_ledger_records(&path).expect("read compat records");
+        let _ = std::fs::remove_file(&path);
+
+        assert_eq!(records.len(), 2);
+        for record in records {
+            let LedgerRecord::Opaque(opaque) = record else {
+                panic!("future record should become opaque");
+            };
+            let serialized = serde_json::to_string(&opaque).expect("opaque json");
+            assert!(!serialized.contains("Bearer"));
+            assert!(!serialized.contains("drop-me"));
+        }
     }
 
     #[test]
