@@ -2,7 +2,6 @@
 
 ## Purpose
 Define typed effect classes, host-owned effect handlers, fail-closed side-effect gating, and content-addressed remote dependency preflight for Clankers runtime execution.
-
 ## Requirements
 ### Requirement: Typed effect ability classes
 
@@ -32,7 +31,7 @@ r[effect-ability-runtime.catalog-mapping.no-expansion]
 
 ### Requirement: Host-owned effect handlers
 
-The system MUST execute effect requests through host-owned handlers that can allow, deny, simulate, replay, or fail closed before side effects occur.
+The system MUST execute effect requests through host-owned handlers that can allow, deny, simulate, replay, or fail closed before side effects occur. For protected effect classes, handler admission MUST include UCAN authorization verification before the handler touches the protected resource.
 r[effect-ability-runtime.handlers]
 
 #### Scenario: absent handler fails closed
@@ -58,6 +57,23 @@ r[effect-ability-runtime.handlers.replay]
 - THEN Clankers returns the recorded result according to replay policy
 - THEN mismatched or missing receipts fail explicitly instead of executing the live effect
 
+#### Scenario: UCAN denial fails before handler contact
+r[effect-ability-runtime.handlers.ucan-denial]
+
+- GIVEN a protected effect request has no matching UCAN grant or violates grant caveats
+- WHEN dispatch evaluates the request
+- THEN Clankers returns a structured authorization denial before invoking the effect handler
+- THEN the denial receipt records safe UCAN metadata and omits raw token material
+
+#### Scenario: UCAN admission does not bypass confirmation
+r[effect-ability-runtime.handlers.confirmation-order]
+
+- GIVEN an effect request requires human confirmation under existing host policy
+- AND UCAN authorization allows the request
+- WHEN dispatch evaluates admission
+- THEN Clankers still requires the human confirmation gate before handler execution
+- THEN a UCAN allow decision alone is not sufficient to touch the protected resource
+
 ### Requirement: Existing tool dispatch uses effect handlers incrementally
 
 The system MUST be able to route selected existing tool dispatch paths through effect handlers while preserving user-visible tool names and compatibility receipts.
@@ -73,13 +89,13 @@ r[effect-ability-runtime.tool-dispatch.public-name]
 
 ### Requirement: Remote execution declares hashed dependencies
 
-The system MUST allow subagent and remote-daemon execution requests to declare required safe artifacts by content hash before execution.
+The system MUST allow subagent and remote-daemon execution requests to declare required safe artifacts by content hash before execution. Remote execution requests that require protected side effects MUST also declare safe UCAN grant/proof references needed for admission, while secret-bearing authority material remains host-owned and is not synced as an artifact.
 r[effect-ability-runtime.remote-deps]
 
 #### Scenario: remote peer requests missing safe artifacts
 r[effect-ability-runtime.remote-deps.missing-safe]
 
-- GIVEN a remote or subagent execution request references safe prompt, skill, tool schema, manifest, or policy artifact hashes that the peer lacks
+- GIVEN a remote or subagent execution request references safe prompt, skill, tool schema, manifest, policy, or redacted authorization artifact hashes that the peer lacks
 - WHEN the peer prepares execution
 - THEN it requests the missing artifacts by hash
 - THEN the sender provides only safe artifact envelopes whose hashes match the request
@@ -87,10 +103,10 @@ r[effect-ability-runtime.remote-deps.missing-safe]
 #### Scenario: secret dependency is not synced
 r[effect-ability-runtime.remote-deps.secret-denied]
 
-- GIVEN an execution request would require credentials, raw environment values, provider tokens, or other secret material not present on the peer
+- GIVEN an execution request would require credentials, raw environment values, provider tokens, compact UCAN tokens not approved for sync, or other secret material not present on the peer
 - WHEN dependency sync evaluates the request
 - THEN Clankers does not transmit the secret material
-- THEN execution fails with an explicit missing-secret or unavailable-handler result
+- THEN execution fails with an explicit missing-secret, missing-authority, or unavailable-handler result
 
 ### Requirement: Remote dependency sync is fail-closed and versioned
 
