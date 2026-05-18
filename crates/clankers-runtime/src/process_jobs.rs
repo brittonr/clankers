@@ -6,6 +6,7 @@
 //! should depend on these DTOs rather than on each other.
 
 use std::collections::BTreeMap;
+use std::collections::BTreeSet;
 use std::path::PathBuf;
 use std::time::Duration;
 
@@ -1171,7 +1172,13 @@ pub async fn replay_authorized_notifications(
     caller: ProcessJobCallerScope,
     after: Option<ProcessJobEventId>,
 ) -> Result<Vec<ProcessJobNotificationEvent>, RuntimeError> {
-    store.list_notifications(caller, after).await
+    let events = store.list_notifications(caller, after).await?;
+    Ok(deduplicate_notification_events(events))
+}
+
+fn deduplicate_notification_events(events: Vec<ProcessJobNotificationEvent>) -> Vec<ProcessJobNotificationEvent> {
+    let mut seen = BTreeSet::new();
+    events.into_iter().filter(|event| seen.insert(event.event_id.clone())).collect()
 }
 
 /// Projection boundary for agent/TUI/daemon surfaces.
@@ -1744,6 +1751,58 @@ mod tests {
         .await
         .expect("cursor replay succeeds");
         assert!(after.is_empty());
+    }
+
+    #[tokio::test]
+    async fn persisted_completion_events_replay_independently_for_multiple_reattached_clients() {
+        let store = FakeStore::default();
+        let owner = ProcessJobOwnerScope::Session("sess".to_string());
+        let first = notification_event("evt_notify_1", owner.clone());
+        let second = notification_event("evt_notify_2", owner);
+        store.record_notification(first.clone()).await.expect("first notification persists");
+        store.record_notification(second.clone()).await.expect("second notification persists");
+
+        let client_a = ProcessJobCallerScope {
+            session_id: Some("sess".to_string()),
+            capabilities: ProcessJobCapabilitySet::observe_only(),
+            ..ProcessJobCallerScope::default()
+        };
+        let client_b = client_a.clone();
+
+        let replay_a = replay_authorized_notifications(&store, client_a, None)
+            .await
+            .expect("first reattached client replays notifications");
+        let replay_b = replay_authorized_notifications(&store, client_b, Some(first.event_id.clone()))
+            .await
+            .expect("second reattached client uses its own event cursor");
+
+        assert_eq!(replay_a.iter().map(|event| event.event_id.clone()).collect::<Vec<_>>(), vec![
+            first.event_id.clone(),
+            second.event_id.clone(),
+        ]);
+        assert_eq!(replay_b, vec![second]);
+    }
+
+    #[tokio::test]
+    async fn replay_deduplicates_persisted_completion_events_by_event_id() {
+        let store = FakeStore::default();
+        let event = notification_event("evt_notify_dedupe", ProcessJobOwnerScope::DaemonGlobal);
+        store.record_notification(event.clone()).await.expect("original notification persists");
+        store.record_notification(event.clone()).await.expect("duplicate notification persists");
+
+        let replayed = replay_authorized_notifications(
+            &store,
+            ProcessJobCallerScope {
+                daemon_global: true,
+                capabilities: ProcessJobCapabilitySet::observe_only(),
+                ..ProcessJobCallerScope::default()
+            },
+            None,
+        )
+        .await
+        .expect("deduplicated replay succeeds");
+
+        assert_eq!(replayed, vec![event]);
     }
 
     #[tokio::test]
