@@ -393,6 +393,8 @@ Input is local JSONL: each line is an object with a non-empty `prompt`, optional
 
 Core: `read`, `write`, `edit`, `patch`, `execute_code`, `process`, `bash`, `grep`, `find`, `ls`, `ask`, `commit`, `web`, `nix`
 
+The `process` tool manages durable background jobs by session ID. It supports `native` (default), `pueue`, and `systemd` backends; `notify_on_complete` for finite builds/tests; rate-limited `watch_patterns` for rare readiness signals; adoption of existing PID/pueue/systemd jobs; and `gc`/`garbage_collect` retention controls for completed records and logs. NixOS deployments can enable `services.clankers-daemon.processManagement` to configure registry/log paths, retention, pueue groups, and systemd unit/resource policy. See [`docs/src/reference/process-jobs.md`](docs/src/reference/process-jobs.md).
+
 Orchestration: `subagent`, `delegate_task`, `switch_model`, `loop`, `signal_loop_success`
 
 Specialty: `review`, `todo`, `cost`, `schedule`, `browser` (when `browserAutomation.enabled`), `external_memory` (when `externalMemory.enabled`), `checkpoint`, `tool_gateway`, `voice_mode`, `soul_personality`, `image_gen`, `procmon`, `skills_list`, `skill_view`, `validate_tui`

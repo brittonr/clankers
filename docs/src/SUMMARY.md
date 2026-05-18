@@ -15,6 +15,7 @@
 - [Session Format](./reference/session-format.md)
 - [Daemon & Actors](./reference/daemon.md)
 - [Request Lifecycle](./reference/request-lifecycle.md)
+- [Durable Process Jobs](./reference/process-jobs.md)
 - [Provider Contracts](./reference/provider-contracts.md)
 - [Release Readiness](./reference/release-readiness.md)
 - [Embedding](./reference/embedding.md)
