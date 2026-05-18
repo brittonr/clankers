@@ -14,5 +14,5 @@
 ## Phase 3: Verification
 
 - [x] [serial] [depends:phase-2] Add temp-dir native log GC tests and active-job skip tests. ✅ 6m (started: 2026-05-18T13:48:00Z → completed: 2026-05-18T13:54:11Z; evidence: `process_gc_only_deletes_native_logs_under_configured_temp_dir`, `process_gc_active_native_jobs_survive_age_count_and_log_pressure`, `process_gc_removes_expired_completed_records_logs_and_skips_active_jobs`)
-- [ ] [serial] [depends:phase-2] Add disk-full/output-overflow/truncation fixture tests where practical.
+- [x] [serial] [depends:phase-2] Add disk-full/output-overflow/truncation fixture tests where practical. ✅ 6m (started: 2026-05-18T13:57:00Z → completed: 2026-05-18T14:03:06Z; evidence: `log_overflow_policy_fixtures_cover_truncation_and_disk_pressure`, `log_overflow_policy_fixture_serialization_is_stable`)
 - [ ] [serial] [depends:phase-2] Run focused retention/GC tests, Nix module eval tests, `openspec validate define-process-job-retention-gc --strict --json`, and `git diff --check`.

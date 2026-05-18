@@ -3594,21 +3594,92 @@ mod tests {
             policy.eligibility_for_summary(&failed_summary, now + chrono::Duration::seconds(120), None),
             ProcessJobRetentionEligibility::Eligible { .. }
         ));
+    }
 
+    #[test]
+    fn log_overflow_policy_fixtures_cover_truncation_and_disk_pressure() {
         let overflow = ProcessJobLogOverflowPolicy {
             max_line_bytes: 10,
             max_chunk_bytes: 20,
             max_file_bytes: 30,
             max_total_bytes: 40,
         };
-        assert_eq!(overflow.classify_write(9, 19, 29), ProcessJobLogWriteDisposition::Accept);
-        assert_eq!(overflow.classify_write(11, 19, 29), ProcessJobLogWriteDisposition::TruncateLine {
-            dropped_bytes: 1
-        });
-        assert_eq!(overflow.classify_write(9, 25, 29), ProcessJobLogWriteDisposition::TruncateChunk {
-            dropped_bytes: 5
-        });
-        assert_eq!(overflow.classify_write(9, 19, 31), ProcessJobLogWriteDisposition::DegradeDiskFull);
+        let fixtures = [
+            (
+                "under every limit is accepted",
+                10,
+                20,
+                30,
+                ProcessJobLogWriteDisposition::Accept,
+                serde_json::json!({ "kind": "accept" }),
+            ),
+            (
+                "line overflow reports dropped bytes before chunk/file pressure",
+                12,
+                25,
+                35,
+                ProcessJobLogWriteDisposition::TruncateLine { dropped_bytes: 2 },
+                serde_json::json!({ "kind": "truncate_line", "dropped_bytes": 2 }),
+            ),
+            (
+                "chunk overflow reports dropped bytes when line is bounded",
+                9,
+                25,
+                29,
+                ProcessJobLogWriteDisposition::TruncateChunk { dropped_bytes: 5 },
+                serde_json::json!({ "kind": "truncate_chunk", "dropped_bytes": 5 }),
+            ),
+            (
+                "per-file overflow degrades as disk-full without corrupting counters",
+                9,
+                19,
+                31,
+                ProcessJobLogWriteDisposition::DegradeDiskFull,
+                serde_json::json!({ "kind": "degrade_disk_full" }),
+            ),
+            (
+                "total overflow degrades as disk-full even below per-file cap",
+                9,
+                19,
+                41,
+                ProcessJobLogWriteDisposition::DegradeDiskFull,
+                serde_json::json!({ "kind": "degrade_disk_full" }),
+            ),
+        ];
+
+        for (name, line_bytes, chunk_bytes, total_bytes, expected, expected_json) in fixtures {
+            let actual = overflow.classify_write(line_bytes, chunk_bytes, total_bytes);
+            assert_eq!(actual, expected, "{name}");
+            assert_eq!(serde_json::to_value(&actual).expect("disposition serializes"), expected_json, "{name}");
+            assert_eq!(
+                serde_json::from_value::<ProcessJobLogWriteDisposition>(expected_json)
+                    .expect("disposition deserializes"),
+                expected,
+                "{name}"
+            );
+        }
+    }
+
+    #[test]
+    fn log_overflow_policy_fixture_serialization_is_stable() {
+        let policy = ProcessJobLogOverflowPolicy {
+            max_line_bytes: 10,
+            max_chunk_bytes: 20,
+            max_file_bytes: 30,
+            max_total_bytes: 40,
+        };
+        let json = serde_json::to_value(&policy).expect("policy serializes");
+        assert_eq!(
+            json,
+            serde_json::json!({
+                "max_line_bytes": 10,
+                "max_chunk_bytes": 20,
+                "max_file_bytes": 30,
+                "max_total_bytes": 40,
+            })
+        );
+        let roundtrip: ProcessJobLogOverflowPolicy = serde_json::from_value(json).expect("policy deserializes");
+        assert_eq!(roundtrip, policy);
     }
 
     #[tokio::test]
