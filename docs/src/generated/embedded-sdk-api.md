@@ -6,7 +6,7 @@
 
 # Embedded SDK API Inventory
 
-This inventory defines the documented embedded-agent SDK surface for `clankers-engine`, `clankers-engine-host`, `clankers-tool-host`, and the shared message contracts that those crates use.
+This inventory defines the documented embedded-agent SDK surface for `clankers-engine`, `clankers-engine-host`, `clankers-tool-host`, `clankers-adapters`, and the shared message contracts that those crates use.
 
 Support labels:
 
@@ -51,6 +51,25 @@ Support labels:
 | `EngineTurnPhase` | `clankers-engine` | enum | supported | `crates/clankers-engine/src/lib.rs` |
 | `reduce` | `clankers-engine` | function | supported | `crates/clankers-engine/src/lib.rs` |
 | `embedded-agent-sdk example` | `example` | example | supported | `examples/embedded-agent-sdk/Cargo.toml` |
+| `embedded-minimal-kit example` | `example` | example | supported | `examples/embedded-minimal-kit/Cargo.toml` |
+| `embedded-provider-adapter example` | `example` | example | supported | `examples/embedded-provider-adapter/Cargo.toml` |
+| `embedded-tool-kit example` | `example` | example | supported | `examples/embedded-tool-kit/Cargo.toml` |
+| `ApprovalPolicy` | `clankers-adapters` | enum | supported | `crates/clankers-adapters/src/lib.rs` |
+| `AtomicCancellationSource` | `clankers-adapters` | struct | supported | `crates/clankers-adapters/src/lib.rs` |
+| `CapabilityPack` | `clankers-adapters` | struct | supported | `crates/clankers-adapters/src/lib.rs` |
+| `CatalogToolExecutor` | `clankers-adapters` | struct | supported | `crates/clankers-adapters/src/lib.rs` |
+| `CatalogValidationError` | `clankers-adapters` | enum | supported | `crates/clankers-adapters/src/lib.rs` |
+| `CollectingUsageObserver` | `clankers-adapters` | struct | supported | `crates/clankers-adapters/src/lib.rs` |
+| `DEFAULT_CANCELLED_REASON` | `clankers-adapters` | constant | unsupported-internal | `crates/clankers-adapters/src/lib.rs` |
+| `EmbeddedCapability` | `clankers-adapters` | enum | supported | `crates/clankers-adapters/src/lib.rs` |
+| `EmbeddedToolCatalog` | `clankers-adapters` | struct | supported | `crates/clankers-adapters/src/lib.rs` |
+| `EmbeddedToolMetadata` | `clankers-adapters` | struct | supported | `crates/clankers-adapters/src/lib.rs` |
+| `EmbeddedToolRuntime` | `clankers-adapters` | enum | supported | `crates/clankers-adapters/src/lib.rs` |
+| `MemoryEventSink` | `clankers-adapters` | struct | supported | `crates/clankers-adapters/src/lib.rs` |
+| `NoopRetrySleeper` | `clankers-adapters` | struct | supported | `crates/clankers-adapters/src/lib.rs` |
+| `RedactionPolicy` | `clankers-adapters` | enum | supported | `crates/clankers-adapters/src/lib.rs` |
+| `ScriptedModelHost` | `clankers-adapters` | struct | supported | `crates/clankers-adapters/src/lib.rs` |
+| `ScriptedToolExecutor` | `clankers-adapters` | struct | supported | `crates/clankers-adapters/src/lib.rs` |
 | `CAPABILITY_DENIED_ERROR_PREFIX` | `clankers-engine-host` | constant | unsupported-internal | `crates/clankers-engine-host/src/lib.rs` |
 | `HOST_CANCELLED_REASON` | `clankers-engine-host` | constant | supported | `crates/clankers-engine-host/src/lib.rs` |
 | `MISSING_TOOL_ERROR_PREFIX` | `clankers-engine-host` | constant | unsupported-internal | `crates/clankers-engine-host/src/lib.rs` |

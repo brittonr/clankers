@@ -38,6 +38,7 @@ const SOURCE_ROOTS: &[&str] = &[
     "crates/clankers-engine-host/src",
     "crates/clankers-tool-host/src",
     "crates/clanker-message/src",
+    "crates/clankers-adapters/src",
 ];
 
 const VALID_STABILITIES: &[&str] = &["supported", "optional-support", "experimental", "unsupported-internal"];
