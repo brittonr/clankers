@@ -95,7 +95,7 @@ The example and validation bundle must exercise successful model responses, retr
 
 Declarative tool catalogs are parser-neutral DTOs. JSON is supported by the current serde model, but public semantics are the Rust data model: tool name, description, runtime kind, capabilities, approval policy, redaction policy, and input schema. Validation is fail-closed for duplicate names, missing descriptions, unknown runtime kinds, unsafe capabilities without explicit per-call approval, and secret-adjacent tools without redaction. Mutating, shell, network, raw-log, and secret-adjacent capabilities are explicit opt-ins.
 
-Capability packs are named snapshots, not open-ended role expansion. `read-only`, `tool-user`, and `operator` preserve exact capability sets under tests so later additions are intentional and reviewed.
+Capability packs are named snapshots, not open-ended role expansion. Product-facing presets `embedding_safe`, `read_only`, `networkless_coding`, `project_local_edit`, and `human_approved_shell` preserve exact capability sets under tests so later additions are intentional and reviewed. `embedding_safe`, `read_only`, and `networkless_coding` exclude mutating, shell, network, raw-log, and secret-adjacent capabilities; `human_approved_shell` is an explicit opt-in danger boundary. Legacy `tool_user` and `operator` helpers remain compatibility aliases for existing consumers.
 
 ## Adapter-only modular coupling rules
 

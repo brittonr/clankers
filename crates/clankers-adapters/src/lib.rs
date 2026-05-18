@@ -413,8 +413,34 @@ pub struct CapabilityPack {
 
 impl CapabilityPack {
     #[must_use]
+    pub fn embedding_safe() -> Self {
+        Self::from_capabilities("embedding_safe", [])
+    }
+
+    #[must_use]
     pub fn read_only() -> Self {
-        Self::from_capabilities("read-only", [EmbeddedCapability::Read])
+        Self::from_capabilities("read_only", [EmbeddedCapability::Read])
+    }
+
+    #[must_use]
+    pub fn networkless_coding() -> Self {
+        Self::from_capabilities("networkless_coding", [EmbeddedCapability::Read])
+    }
+
+    #[must_use]
+    pub fn project_local_edit() -> Self {
+        Self::from_capabilities("project_local_edit", [EmbeddedCapability::Read, EmbeddedCapability::Mutate])
+    }
+
+    #[must_use]
+    pub fn human_approved_shell() -> Self {
+        Self::from_capabilities("human_approved_shell", [
+            EmbeddedCapability::Mutate,
+            EmbeddedCapability::Shell,
+            EmbeddedCapability::Network,
+            EmbeddedCapability::RawLog,
+            EmbeddedCapability::SecretAdjacent,
+        ])
     }
 
     #[must_use]
@@ -632,7 +658,25 @@ mod tests {
 
     #[test]
     fn capability_pack_snapshots_do_not_expand_silently() {
+        assert_eq!(CapabilityPack::embedding_safe().name, "embedding_safe");
+        assert_eq!(CapabilityPack::embedding_safe().capabilities(), vec![]);
+        assert_eq!(CapabilityPack::read_only().name, "read_only");
         assert_eq!(CapabilityPack::read_only().capabilities(), vec![EmbeddedCapability::Read]);
+        assert_eq!(CapabilityPack::networkless_coding().name, "networkless_coding");
+        assert_eq!(CapabilityPack::networkless_coding().capabilities(), vec![EmbeddedCapability::Read]);
+        assert_eq!(CapabilityPack::project_local_edit().name, "project_local_edit");
+        assert_eq!(CapabilityPack::project_local_edit().capabilities(), vec![
+            EmbeddedCapability::Read,
+            EmbeddedCapability::Mutate,
+        ]);
+        assert_eq!(CapabilityPack::human_approved_shell().name, "human_approved_shell");
+        assert_eq!(CapabilityPack::human_approved_shell().capabilities(), vec![
+            EmbeddedCapability::Mutate,
+            EmbeddedCapability::Shell,
+            EmbeddedCapability::Network,
+            EmbeddedCapability::RawLog,
+            EmbeddedCapability::SecretAdjacent,
+        ]);
         assert_eq!(CapabilityPack::tool_user().capabilities(), vec![
             EmbeddedCapability::Read,
             EmbeddedCapability::Network
@@ -645,6 +689,25 @@ mod tests {
             EmbeddedCapability::RawLog,
             EmbeddedCapability::SecretAdjacent,
         ]);
+    }
+
+    #[test]
+    fn safe_capability_pack_presets_exclude_explicit_opt_in_capabilities() {
+        for pack in [
+            CapabilityPack::embedding_safe(),
+            CapabilityPack::read_only(),
+            CapabilityPack::networkless_coding(),
+        ] {
+            assert!(
+                pack.capabilities().into_iter().all(|capability| !capability.is_explicit_opt_in()),
+                "safe preset {} unexpectedly includes an explicit opt-in capability",
+                pack.name
+            );
+        }
+
+        let dangerous = CapabilityPack::human_approved_shell().capabilities();
+        assert!(!dangerous.is_empty());
+        assert!(dangerous.into_iter().all(EmbeddedCapability::is_explicit_opt_in));
     }
 
     #[test]
