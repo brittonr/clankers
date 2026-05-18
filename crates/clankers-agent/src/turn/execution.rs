@@ -700,7 +700,8 @@ async fn execute_tool_with_accumulator(
     });
 
     // Execute tool
-    let mut ctx = ToolContext::new(call_id.to_string(), cancel, Some(event_tx.clone()));
+    let mut ctx =
+        ToolContext::new(call_id.to_string(), cancel, Some(event_tx.clone())).with_session_id(session_id.clone());
     if let Some(pipeline) = hook_pipeline {
         ctx = ctx.with_hooks(pipeline, session_id);
     }

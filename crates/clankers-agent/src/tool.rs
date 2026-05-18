@@ -95,6 +95,12 @@ impl ToolContext {
         }
     }
 
+    /// Attach a session ID to this context.
+    pub fn with_session_id(mut self, session_id: String) -> Self {
+        self.session_id = session_id;
+        self
+    }
+
     /// Attach a hook pipeline to this context.
     pub fn with_hooks(mut self, pipeline: Arc<clankers_hooks::HookPipeline>, session_id: String) -> Self {
         self.hook_pipeline = Some(pipeline);

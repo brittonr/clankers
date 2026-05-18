@@ -43,9 +43,10 @@ fn test_harness_dry_run_receipts_cover_representative_modes() {
         HarnessCase {
             name: "deterministic",
             args: &["deterministic"],
-            expected_steps: &["deterministic turn replay"],
+            expected_steps: &["deterministic engine replay", "deterministic controller replay"],
             expected_commands: &[
                 "cargo nextest run -p clankers-engine --test deterministic_turn_replay --no-fail-fast",
+                "cargo nextest run -p clankers --test controller_deterministic_replay --no-fail-fast",
             ],
         },
         HarnessCase {
@@ -113,6 +114,7 @@ fn test_harness_list_mode_documents_profiles_selectors_env_and_receipts() {
         "E2E selectors",
         "Deterministic profile",
         "scripted provider/tool fixtures",
+        "controller/agent replay tests",
         "no live credentials",
         "Live selectors",
         "VM selectors",
