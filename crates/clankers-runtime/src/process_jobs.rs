@@ -2207,6 +2207,7 @@ mod tests {
     #[derive(Default)]
     struct FakeBackend {
         calls: Mutex<Vec<&'static str>>,
+        reconciliation_state: Option<ProcessJobReconciliationState>,
     }
 
     #[async_trait]
@@ -2245,15 +2246,54 @@ mod tests {
 
         async fn reconcile(&self, summary: ProcessJobSummary) -> Result<ProcessJobReconciliationOutcome, RuntimeError> {
             self.calls.lock().expect("fake backend calls lock poisoned").push("reconcile");
+            let state = self.reconciliation_state.unwrap_or(ProcessJobReconciliationState::ReattachedLogIncomplete);
+            let (log_state, status, reason) = match state {
+                ProcessJobReconciliationState::Running | ProcessJobReconciliationState::Reattached => {
+                    (ProcessJobLogReconciliationState::Complete, ProcessJobStatus::Running, None)
+                }
+                ProcessJobReconciliationState::ReattachedLogIncomplete => (
+                    ProcessJobLogReconciliationState::Incomplete,
+                    ProcessJobStatus::ReattachedLogIncomplete,
+                    Some("fake backend reattached status but log pipes were not recoverable".to_string()),
+                ),
+                ProcessJobReconciliationState::Exited => (
+                    ProcessJobLogReconciliationState::Complete,
+                    ProcessJobStatus::Succeeded { exit_code: Some(0) },
+                    None,
+                ),
+                ProcessJobReconciliationState::LostAfterRestart => (
+                    ProcessJobLogReconciliationState::Unavailable {
+                        reason: "fake lost after restart".to_string(),
+                    },
+                    ProcessJobStatus::LostAfterRestart,
+                    Some("fake lost after restart".to_string()),
+                ),
+                ProcessJobReconciliationState::BackendUnavailable => (
+                    ProcessJobLogReconciliationState::Unavailable {
+                        reason: "fake backend unavailable".to_string(),
+                    },
+                    ProcessJobStatus::BackendUnavailable {
+                        reason: "fake backend unavailable".to_string(),
+                    },
+                    Some("fake backend unavailable".to_string()),
+                ),
+                ProcessJobReconciliationState::Orphaned | ProcessJobReconciliationState::IdentityMismatch => (
+                    ProcessJobLogReconciliationState::Unavailable {
+                        reason: "fake fail-closed reconciliation".to_string(),
+                    },
+                    ProcessJobStatus::LostAfterRestart,
+                    Some("fake fail-closed reconciliation".to_string()),
+                ),
+            };
             Ok(ProcessJobReconciliationOutcome {
                 id: summary.id,
                 backend: summary.backend,
                 backend_ref: summary.backend_ref,
-                state: ProcessJobReconciliationState::ReattachedLogIncomplete,
-                log_state: ProcessJobLogReconciliationState::Incomplete,
-                status: ProcessJobStatus::ReattachedLogIncomplete,
+                state,
+                log_state,
+                status,
                 log_refs: summary.log_refs,
-                reason: Some("fake backend reattached status but log pipes were not recoverable".to_string()),
+                reason,
             })
         }
 
@@ -3339,6 +3379,55 @@ mod tests {
             .find(|summary| summary.id.0 == "pueue_missing")
             .expect("unavailable summary persisted");
         assert!(matches!(unavailable.status, ProcessJobStatus::BackendUnavailable { .. }));
+    }
+
+    #[tokio::test]
+    async fn fake_backend_reconciliation_covers_every_outcome_state() {
+        let states = [
+            ProcessJobReconciliationState::Running,
+            ProcessJobReconciliationState::Reattached,
+            ProcessJobReconciliationState::ReattachedLogIncomplete,
+            ProcessJobReconciliationState::Exited,
+            ProcessJobReconciliationState::LostAfterRestart,
+            ProcessJobReconciliationState::BackendUnavailable,
+            ProcessJobReconciliationState::Orphaned,
+            ProcessJobReconciliationState::IdentityMismatch,
+        ];
+
+        for state in states {
+            let backend = FakeBackend {
+                reconciliation_state: Some(state),
+                ..FakeBackend::default()
+            };
+            let summary = persisted_summary("proc_state", ProcessJobBackendKind::Native, ProcessJobStatus::Running);
+            let outcome = backend.reconcile(summary.clone()).await.expect("fake backend reconciles");
+            assert_eq!(outcome.state, state);
+            let updated = outcome.into_summary_update(summary, Utc::now());
+            assert_eq!(updated.id, ProcessJobId("proc_state".to_string()));
+            assert_eq!(updated.backend_ref, Some(BackendRef("native:proc_state".to_string())));
+            match state {
+                ProcessJobReconciliationState::Running | ProcessJobReconciliationState::Reattached => {
+                    assert_eq!(updated.status, ProcessJobStatus::Running);
+                }
+                ProcessJobReconciliationState::ReattachedLogIncomplete => {
+                    assert_eq!(updated.status, ProcessJobStatus::ReattachedLogIncomplete);
+                }
+                ProcessJobReconciliationState::Exited => {
+                    assert_eq!(updated.status, ProcessJobStatus::Succeeded { exit_code: Some(0) });
+                    assert!(updated.completed_at.is_some());
+                }
+                ProcessJobReconciliationState::BackendUnavailable => {
+                    assert!(matches!(updated.status, ProcessJobStatus::BackendUnavailable { .. }));
+                    assert!(updated.completed_at.is_some());
+                }
+                ProcessJobReconciliationState::LostAfterRestart
+                | ProcessJobReconciliationState::Orphaned
+                | ProcessJobReconciliationState::IdentityMismatch => {
+                    assert_eq!(updated.status, ProcessJobStatus::LostAfterRestart);
+                    assert!(updated.completed_at.is_some());
+                }
+            }
+        }
     }
 
     #[test]

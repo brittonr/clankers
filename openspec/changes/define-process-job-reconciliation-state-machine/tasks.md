@@ -12,6 +12,6 @@
 
 ## Phase 3: Verification
 
-- [ ] [serial] [depends:phase-2] Add fake backend tests for every reconciliation outcome.
+- [x] [serial] [depends:phase-2] Add fake backend tests for every reconciliation outcome. ✅ 2m (started: 2026-05-18T06:30:18Z → completed: 2026-05-18T06:32:00Z; evidence: `fake_backend_reconciliation_covers_every_outcome_state` in `cargo test -p clankers-runtime reconciliation --lib`, `cargo check -p clankers-runtime --tests`)
 - [ ] [serial] [depends:phase-2] Add native restart/crash-style tests with temp db/log dirs and long-lived child processes where practical.
 - [ ] [serial] [depends:phase-2] Run focused reconciliation tests, `openspec validate define-process-job-reconciliation-state-machine --strict --json`, and `git diff --check`.
