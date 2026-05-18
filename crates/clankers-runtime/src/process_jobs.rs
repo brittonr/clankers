@@ -870,7 +870,7 @@ impl ProcessJobRetentionPolicy {
     pub fn classify_summary(
         &self,
         summary: &ProcessJobSummary,
-        now: DateTime<Utc>,
+        _now: DateTime<Utc>,
         policy_ref: Option<String>,
     ) -> ProcessJobRetentionMetadata {
         let class = match &summary.status {
@@ -887,7 +887,9 @@ impl ProcessJobRetentionPolicy {
             ProcessJobStatus::Succeeded { .. } => ProcessJobRetentionClass::RecentCompleted,
             ProcessJobStatus::Unknown { .. } => ProcessJobRetentionClass::Tombstone,
         };
-        let retained_until = self.max_age.and_then(|age| chrono::Duration::from_std(age).ok()).map(|age| now + age);
+        let retention_base = summary.completed_at.unwrap_or(summary.updated_at);
+        let retained_until =
+            self.max_age.and_then(|age| chrono::Duration::from_std(age).ok()).map(|age| retention_base + age);
         ProcessJobRetentionMetadata {
             class,
             metadata_retained_until: retained_until,
@@ -895,6 +897,55 @@ impl ProcessJobRetentionPolicy {
             event_retained_until: retained_until,
             tombstone_retained_until: retained_until,
             policy_ref,
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case", tag = "decision")]
+pub enum ProcessJobRetentionEligibility {
+    ProtectActive {
+        id: ProcessJobId,
+        class: ProcessJobRetentionClass,
+    },
+    KeepUntil {
+        id: ProcessJobId,
+        retained_until: DateTime<Utc>,
+    },
+    Eligible {
+        id: ProcessJobId,
+        class: ProcessJobRetentionClass,
+        log_refs: Vec<ProcessJobLogRef>,
+    },
+}
+
+impl ProcessJobRetentionPolicy {
+    #[must_use]
+    pub fn eligibility_for_summary(
+        &self,
+        summary: &ProcessJobSummary,
+        now: DateTime<Utc>,
+        policy_ref: Option<String>,
+    ) -> ProcessJobRetentionEligibility {
+        let metadata = self.classify_summary(summary, now, policy_ref);
+        if metadata.class.protects_active_state() || !summary.status.is_terminal() {
+            return ProcessJobRetentionEligibility::ProtectActive {
+                id: summary.id.clone(),
+                class: metadata.class,
+            };
+        }
+        if let Some(retained_until) = metadata.metadata_retained_until {
+            if now < retained_until {
+                return ProcessJobRetentionEligibility::KeepUntil {
+                    id: summary.id.clone(),
+                    retained_until,
+                };
+            }
+        }
+        ProcessJobRetentionEligibility::Eligible {
+            id: summary.id.clone(),
+            class: metadata.class,
+            log_refs: summary.log_refs.clone(),
         }
     }
 }
@@ -3516,6 +3567,18 @@ mod tests {
         let failed = policy.classify_summary(&failed_summary, now, None);
         assert_eq!(failed.class, ProcessJobRetentionClass::Failed);
         assert!(!failed.class.protects_active_state());
+        assert!(matches!(
+            policy.eligibility_for_summary(&active_summary, now + chrono::Duration::seconds(3600), None),
+            ProcessJobRetentionEligibility::ProtectActive { .. }
+        ));
+        assert!(matches!(
+            policy.eligibility_for_summary(&failed_summary, now + chrono::Duration::seconds(30), None),
+            ProcessJobRetentionEligibility::KeepUntil { .. }
+        ));
+        assert!(matches!(
+            policy.eligibility_for_summary(&failed_summary, now + chrono::Duration::seconds(120), None),
+            ProcessJobRetentionEligibility::Eligible { .. }
+        ));
 
         let overflow = ProcessJobLogOverflowPolicy {
             max_line_bytes: 10,
