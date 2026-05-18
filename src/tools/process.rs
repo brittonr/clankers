@@ -29,6 +29,10 @@ use clankers_runtime::RuntimeError;
 use clankers_runtime::process_jobs::AdoptProcessJobRequest;
 use clankers_runtime::process_jobs::BackendRef;
 use clankers_runtime::process_jobs::DefaultProcessJobNotificationPolicyEngine;
+use clankers_runtime::process_jobs::GarbageCollectProcessJobsRequest;
+use clankers_runtime::process_jobs::ListProcessJobsRequest;
+use clankers_runtime::process_jobs::MutateProcessJobRequest;
+use clankers_runtime::process_jobs::PollProcessJobRequest;
 use clankers_runtime::process_jobs::ProcessJobBackendKind;
 use clankers_runtime::process_jobs::ProcessJobCwd;
 use clankers_runtime::process_jobs::ProcessJobError;
@@ -62,7 +66,10 @@ use clankers_runtime::process_jobs::ProcessJobSummary;
 use clankers_runtime::process_jobs::ProcessJobToolReceipt;
 use clankers_runtime::process_jobs::ProcessJobToolRequest;
 use clankers_runtime::process_jobs::ProcessJobToolResult;
+use clankers_runtime::process_jobs::ReadProcessJobLogRequest;
 use clankers_runtime::process_jobs::StartProcessJobRequest;
+use clankers_runtime::process_jobs::WaitProcessJobRequest;
+use clankers_runtime::process_jobs::WriteProcessJobStdinRequest;
 use serde_json::Value;
 use serde_json::json;
 use tokio::io::AsyncBufReadExt;
@@ -2617,6 +2624,30 @@ impl ProcessTool {
         })
     }
 
+    fn process_job_filter_request(params: &Value) -> Result<ProcessJobFilter, ToolResult> {
+        let backend = match params.get("backend") {
+            Some(_) => Some(Self::requested_backend(params)?),
+            None => None,
+        };
+        Ok(ProcessJobFilter {
+            backend,
+            include_terminal: params.get("include_terminal").and_then(Value::as_bool).unwrap_or(true),
+            ..ProcessJobFilter::default()
+        })
+    }
+
+    fn process_job_log_range(params: &Value) -> ProcessJobLogRange {
+        ProcessJobLogRange {
+            stream: ProcessJobStream::Combined,
+            offset: params.get("offset").and_then(Value::as_u64),
+            limit_bytes: params.get("limit").and_then(Value::as_u64).unwrap_or(DEFAULT_LOG_LIMIT as u64),
+        }
+    }
+
+    fn process_job_timeout(params: &Value) -> Option<Duration> {
+        params.get("timeout").and_then(Value::as_u64).map(Duration::from_secs)
+    }
+
     fn process_job_tool_request(params: &Value) -> Result<ProcessJobToolRequest, ToolResult> {
         let action = params.get("action").and_then(Value::as_str).unwrap_or("start");
         match action {
@@ -2624,7 +2655,46 @@ impl ProcessTool {
                 let backend = Self::requested_backend(params)?;
                 Self::start_request(params, backend).map(ProcessJobToolRequest::Start)
             }
-            other => Err(ToolResult::error(format!("process job DTO parser does not yet handle action '{other}'"))),
+            "list" => Self::process_job_filter_request(params)
+                .map(|filter| ProcessJobToolRequest::List(ListProcessJobsRequest { filter })),
+            "poll" => Ok(ProcessJobToolRequest::Poll(PollProcessJobRequest {
+                id: ProcessJobId(Self::required_session(params)?),
+                cursor: None,
+            })),
+            "log" => Ok(ProcessJobToolRequest::Log(ReadProcessJobLogRequest {
+                id: ProcessJobId(Self::required_session(params)?),
+                range: Self::process_job_log_range(params),
+            })),
+            "wait" => Ok(ProcessJobToolRequest::Wait(WaitProcessJobRequest {
+                id: ProcessJobId(Self::required_session(params)?),
+                timeout: Self::process_job_timeout(params),
+            })),
+            "kill" => Ok(ProcessJobToolRequest::Kill(MutateProcessJobRequest {
+                id: ProcessJobId(Self::required_session(params)?),
+            })),
+            "restart" => Ok(ProcessJobToolRequest::Restart(MutateProcessJobRequest {
+                id: ProcessJobId(Self::required_session(params)?),
+            })),
+            "write" => Ok(ProcessJobToolRequest::WriteStdin(WriteProcessJobStdinRequest {
+                id: ProcessJobId(Self::required_session(params)?),
+                data: params.get("data").and_then(Value::as_str).unwrap_or("").as_bytes().to_vec(),
+                newline: false,
+            })),
+            "submit" => Ok(ProcessJobToolRequest::WriteStdin(WriteProcessJobStdinRequest {
+                id: ProcessJobId(Self::required_session(params)?),
+                data: params.get("data").and_then(Value::as_str).unwrap_or("").as_bytes().to_vec(),
+                newline: true,
+            })),
+            "close" => Ok(ProcessJobToolRequest::CloseStdin(MutateProcessJobRequest {
+                id: ProcessJobId(Self::required_session(params)?),
+            })),
+            "adopt" => {
+                let backend = Self::requested_backend(params)?;
+                Self::adopt_request(params, backend).map(ProcessJobToolRequest::Adopt)
+            }
+            "gc" | "garbage_collect" => Self::process_job_filter_request(params)
+                .map(|filter| ProcessJobToolRequest::GarbageCollect(GarbageCollectProcessJobsRequest { filter })),
+            other => Err(ToolResult::error(format!("Unknown process action: {other}"))),
         }
     }
 
@@ -2669,31 +2739,17 @@ impl ProcessTool {
         }
     }
 
-    async fn handle_pueue_log(session_id: &str, params: &Value) -> Option<ToolResult> {
-        let id = Self::pueue_id(session_id)?;
-        let limit = params.get("limit").and_then(Value::as_u64).unwrap_or(DEFAULT_LOG_LIMIT as u64);
-        let offset = params.get("offset").and_then(Value::as_u64);
-        let range = ProcessJobLogRange {
-            stream: ProcessJobStream::Combined,
-            offset,
-            limit_bytes: limit,
-        };
-        Some(match Self::pueue_service().log(id, range).await {
+    async fn handle_pueue_log(request: ReadProcessJobLogRequest) -> Option<ToolResult> {
+        let id = Self::pueue_id(&request.id.0)?;
+        Some(match Self::pueue_service().log(id, request.range).await {
             Ok(chunk) => Self::tool_receipt_result(ProcessJobToolResult::Log(chunk)),
             Err(error) => ToolResult::error(error.to_string()),
         })
     }
 
-    async fn handle_systemd_log(session_id: &str, params: &Value) -> Option<ToolResult> {
-        let id = Self::systemd_id(session_id)?;
-        let limit = params.get("limit").and_then(Value::as_u64).unwrap_or(DEFAULT_LOG_LIMIT as u64);
-        let offset = params.get("offset").and_then(Value::as_u64);
-        let range = ProcessJobLogRange {
-            stream: ProcessJobStream::Combined,
-            offset,
-            limit_bytes: limit,
-        };
-        Some(match Self::systemd_service().log(id, range).await {
+    async fn handle_systemd_log(request: ReadProcessJobLogRequest) -> Option<ToolResult> {
+        let id = Self::systemd_id(&request.id.0)?;
+        Some(match Self::systemd_service().log(id, request.range).await {
             Ok(chunk) => Self::tool_receipt_result(ProcessJobToolResult::Log(chunk)),
             Err(error) => ToolResult::error(error.to_string()),
         })
@@ -2788,15 +2844,14 @@ impl ProcessTool {
     }
 
     async fn handle_list(ctx: &ToolContext, params: &Value) -> ToolResult {
+        let request = match Self::process_job_tool_request(params) {
+            Ok(ProcessJobToolRequest::List(request)) => request,
+            Ok(_) => return ToolResult::error("Parsed unexpected process job request for list action"),
+            Err(result) => return result,
+        };
         let policy = process_job_retention_policy(&json!({}));
         let _ = apply_process_job_retention(ctx.db(), policy, retention_log_dir(&json!({}))).await;
-        let backend_filter = match params.get("backend") {
-            Some(_) => match Self::requested_backend(params) {
-                Ok(backend) => Some(backend),
-                Err(result) => return result,
-            },
-            None => None,
-        };
+        let backend_filter = request.filter.backend;
         let mut summaries = Vec::new();
         if backend_filter.is_none_or(|backend| backend == ProcessJobBackendKind::Native) {
             let entries = Self::all_entries();
@@ -2809,14 +2864,24 @@ impl ProcessTool {
                     .filter(|record| !live_ids.contains(record.id.as_str()))
                     .collect();
             }
-            summaries.extend(entries.into_iter().map(|entry| entry.summary()));
-            summaries.extend(durable.iter().map(stored_record_summary));
+            summaries.extend(
+                entries
+                    .into_iter()
+                    .map(|entry| entry.summary())
+                    .filter(|summary| request.filter.include_terminal || !summary.status.is_terminal()),
+            );
+            summaries.extend(
+                durable
+                    .iter()
+                    .map(stored_record_summary)
+                    .filter(|summary| request.filter.include_terminal || !summary.status.is_terminal()),
+            );
         }
         if backend_filter.is_none_or(|backend| backend == ProcessJobBackendKind::Pueue) {
             match Self::pueue_service()
                 .list(ProcessJobFilter {
                     backend: Some(ProcessJobBackendKind::Pueue),
-                    include_terminal: true,
+                    include_terminal: request.filter.include_terminal,
                     ..ProcessJobFilter::default()
                 })
                 .await
@@ -2832,7 +2897,7 @@ impl ProcessTool {
             match Self::systemd_service()
                 .list(ProcessJobFilter {
                     backend: Some(ProcessJobBackendKind::Systemd),
-                    include_terminal: true,
+                    include_terminal: request.filter.include_terminal,
                     ..ProcessJobFilter::default()
                 })
                 .await
@@ -2848,21 +2913,28 @@ impl ProcessTool {
     }
 
     async fn handle_gc(ctx: &ToolContext, params: &Value) -> ToolResult {
+        let _request = match Self::process_job_tool_request(params) {
+            Ok(ProcessJobToolRequest::GarbageCollect(request)) => request,
+            Ok(_) => return ToolResult::error("Parsed unexpected process job request for garbage_collect action"),
+            Err(result) => return result,
+        };
         let policy = process_job_retention_policy(params);
         let receipt = apply_process_job_retention(ctx.db(), policy, retention_log_dir(params)).await;
         Self::tool_receipt_result(ProcessJobToolResult::GarbageCollect(receipt))
     }
 
     async fn handle_poll(ctx: &ToolContext, params: &Value) -> ToolResult {
-        let session_id = match Self::required_session(params) {
-            Ok(id) => id,
+        let request = match Self::process_job_tool_request(params) {
+            Ok(ProcessJobToolRequest::Poll(request)) => request,
+            Ok(_) => return ToolResult::error("Parsed unexpected process job request for poll action"),
             Err(result) => return result,
         };
+        let session_id = request.id.0.clone();
         if let Some(id) = Self::pueue_id(&session_id) {
-            return Self::pueue_receipt_result(Self::pueue_service().poll(id, None).await).await;
+            return Self::pueue_receipt_result(Self::pueue_service().poll(id, request.cursor).await).await;
         }
         if let Some(id) = Self::systemd_id(&session_id) {
-            return Self::systemd_receipt_result(Self::systemd_service().poll(id, None).await).await;
+            return Self::systemd_receipt_result(Self::systemd_service().poll(id, request.cursor).await).await;
         }
         let entry = match Self::get(&session_id) {
             Some(entry) => entry,
@@ -2903,14 +2975,16 @@ impl ProcessTool {
     }
 
     async fn handle_log(ctx: &ToolContext, params: &Value) -> ToolResult {
-        let session_id = match Self::required_session(params) {
-            Ok(id) => id,
+        let request = match Self::process_job_tool_request(params) {
+            Ok(ProcessJobToolRequest::Log(request)) => request,
+            Ok(_) => return ToolResult::error("Parsed unexpected process job request for log action"),
             Err(result) => return result,
         };
-        if let Some(result) = Self::handle_pueue_log(&session_id, params).await {
+        let session_id = request.id.0.clone();
+        if let Some(result) = Self::handle_pueue_log(request.clone()).await {
             return result;
         }
-        if let Some(result) = Self::handle_systemd_log(&session_id, params).await {
+        if let Some(result) = Self::handle_systemd_log(request.clone()).await {
             return result;
         }
         let entry = match Self::get(&session_id) {
@@ -2929,14 +3003,10 @@ impl ProcessTool {
         };
         persist_entry(ctx.db(), &entry).await;
         let output = entry.snapshot_output();
-        let limit = params
-            .get("limit")
-            .and_then(|v| v.as_u64())
-            .and_then(|v| usize::try_from(v).ok())
-            .unwrap_or(DEFAULT_LOG_LIMIT);
-        let start = params
-            .get("offset")
-            .and_then(|v| v.as_u64())
+        let limit = usize::try_from(request.range.limit_bytes).unwrap_or(DEFAULT_LOG_LIMIT).min(DEFAULT_LOG_LIMIT);
+        let start = request
+            .range
+            .offset
             .and_then(|v| usize::try_from(v).ok())
             .unwrap_or_else(|| output.len().saturating_sub(limit));
         let end = output.len().min(start.saturating_add(limit));
@@ -2957,17 +3027,17 @@ impl ProcessTool {
     }
 
     async fn handle_wait(ctx: &ToolContext, params: &Value) -> ToolResult {
-        let session_id = match Self::required_session(params) {
-            Ok(id) => id,
+        let request = match Self::process_job_tool_request(params) {
+            Ok(ProcessJobToolRequest::Wait(request)) => request,
+            Ok(_) => return ToolResult::error("Parsed unexpected process job request for wait action"),
             Err(result) => return result,
         };
+        let session_id = request.id.0.clone();
         if let Some(id) = Self::pueue_id(&session_id) {
-            let timeout = params.get("timeout").and_then(Value::as_u64).map(Duration::from_secs);
-            return Self::pueue_receipt_result(Self::pueue_service().wait(id, timeout).await).await;
+            return Self::pueue_receipt_result(Self::pueue_service().wait(id, request.timeout).await).await;
         }
         if let Some(id) = Self::systemd_id(&session_id) {
-            let timeout = params.get("timeout").and_then(Value::as_u64).map(Duration::from_secs);
-            return Self::systemd_receipt_result(Self::systemd_service().wait(id, timeout).await).await;
+            return Self::systemd_receipt_result(Self::systemd_service().wait(id, request.timeout).await).await;
         }
         let entry = match Self::get(&session_id) {
             Some(entry) => entry,
@@ -2983,7 +3053,7 @@ impl ProcessTool {
                 return ToolResult::error(format!("Unknown process session_id: {session_id}"));
             }
         };
-        let timeout_secs = params.get("timeout").and_then(|v| v.as_u64()).unwrap_or(30);
+        let timeout_secs = request.timeout.unwrap_or(Duration::from_secs(30)).as_secs();
         let deadline = Instant::now() + Duration::from_secs(timeout_secs);
         while !entry.status().is_done() {
             if timeout_secs > 0 && Instant::now() >= deadline {
@@ -3003,10 +3073,12 @@ impl ProcessTool {
     }
 
     async fn handle_kill(params: &Value) -> ToolResult {
-        let session_id = match Self::required_session(params) {
-            Ok(id) => id,
+        let request = match Self::process_job_tool_request(params) {
+            Ok(ProcessJobToolRequest::Kill(request)) => request,
+            Ok(_) => return ToolResult::error("Parsed unexpected process job request for kill action"),
             Err(result) => return result,
         };
+        let session_id = request.id.0.clone();
         if let Some(id) = Self::pueue_id(&session_id) {
             return Self::pueue_receipt_result(Self::pueue_service().kill(id).await).await;
         }
@@ -3031,20 +3103,22 @@ impl ProcessTool {
     }
 
     async fn handle_write(params: &Value, newline: bool) -> ToolResult {
-        let session_id = match Self::required_session(params) {
-            Ok(id) => id,
+        let request = match Self::process_job_tool_request(params) {
+            Ok(ProcessJobToolRequest::WriteStdin(request)) => request,
+            Ok(_) => return ToolResult::error("Parsed unexpected process job request for write_stdin action"),
             Err(result) => return result,
         };
-        let data = params.get("data").and_then(|v| v.as_str()).unwrap_or("");
+        debug_assert_eq!(request.newline, newline);
+        let session_id = request.id.0.clone();
         if let Some(id) = Self::pueue_id(&session_id) {
             return Self::pueue_receipt_result(
-                Self::pueue_service().write_stdin(id, data.as_bytes().to_vec(), newline).await,
+                Self::pueue_service().write_stdin(id, request.data.clone(), request.newline).await,
             )
             .await;
         }
         if let Some(id) = Self::systemd_id(&session_id) {
             return Self::systemd_receipt_result(
-                Self::systemd_service().write_stdin(id, data.as_bytes().to_vec(), newline).await,
+                Self::systemd_service().write_stdin(id, request.data.clone(), request.newline).await,
             )
             .await;
         }
@@ -3059,23 +3133,27 @@ impl ProcessTool {
         let Some(stdin) = stdin.as_mut() else {
             return ToolResult::error(format!("{} has no open stdin", entry.id));
         };
-        if let Err(e) = stdin.write_all(data.as_bytes()).await {
+        if let Err(e) = stdin.write_all(&request.data).await {
             return ToolResult::error(format!("Failed to write stdin for {}: {e}", entry.id));
         }
-        if newline && let Err(e) = stdin.write_all(b"\n").await {
+        if request.newline
+            && let Err(e) = stdin.write_all(b"\n").await
+        {
             return ToolResult::error(format!("Failed to write newline for {}: {e}", entry.id));
         }
         if let Err(e) = stdin.flush().await {
             return ToolResult::error(format!("Failed to flush stdin for {}: {e}", entry.id));
         }
-        ToolResult::text(format!("Wrote {} bytes to {}", data.len() + usize::from(newline), entry.id))
+        ToolResult::text(format!("Wrote {} bytes to {}", request.data.len() + usize::from(request.newline), entry.id))
     }
 
     async fn handle_close(params: &Value) -> ToolResult {
-        let session_id = match Self::required_session(params) {
-            Ok(id) => id,
+        let request = match Self::process_job_tool_request(params) {
+            Ok(ProcessJobToolRequest::CloseStdin(request)) => request,
+            Ok(_) => return ToolResult::error("Parsed unexpected process job request for close_stdin action"),
             Err(result) => return result,
         };
+        let session_id = request.id.0.clone();
         if let Some(id) = Self::pueue_id(&session_id) {
             return Self::pueue_receipt_result(Self::pueue_service().close_stdin(id).await).await;
         }
@@ -3095,20 +3173,14 @@ impl ProcessTool {
     }
 
     async fn handle_adopt(params: &Value) -> ToolResult {
-        let backend = match Self::requested_backend(params) {
-            Ok(backend) => backend,
+        let request = match Self::process_job_tool_request(params) {
+            Ok(ProcessJobToolRequest::Adopt(request)) => request,
+            Ok(_) => return ToolResult::error("Parsed unexpected process job request for adopt action"),
             Err(result) => return result,
         };
-        let request = match Self::adopt_request(params, backend) {
-            Ok(request) => request,
-            Err(result) => return result,
-        };
-        match backend {
+        match request.backend {
             ProcessJobBackendKind::Native => match NativeProcessJobService.adopt(request).await {
-                Ok(receipt) if receipt.error.is_some() => {
-                    ToolResult::error(serde_json::to_string(&receipt).unwrap_or(receipt.summary))
-                }
-                Ok(receipt) => ToolResult::text(serde_json::to_string(&receipt).unwrap_or(receipt.summary)),
+                Ok(receipt) => Self::receipt_result(receipt),
                 Err(error) => ToolResult::error(error.to_string()),
             },
             ProcessJobBackendKind::Pueue => {
@@ -3122,17 +3194,25 @@ impl ProcessTool {
     }
 
     async fn handle_restart(params: &Value) -> ToolResult {
-        let session_id = match Self::required_session(params) {
-            Ok(id) => id,
+        let request = match Self::process_job_tool_request(params) {
+            Ok(ProcessJobToolRequest::Restart(request)) => request,
+            Ok(_) => return ToolResult::error("Parsed unexpected process job request for restart action"),
             Err(result) => return result,
         };
+        let session_id = request.id.0.clone();
         if let Some(id) = Self::pueue_id(&session_id) {
             return Self::pueue_receipt_result(Self::pueue_service().restart(id).await).await;
         }
         if let Some(id) = Self::systemd_id(&session_id) {
             return Self::systemd_receipt_result(Self::systemd_service().restart(id).await).await;
         }
-        ToolResult::error("Native process restart is not supported; start a new native process instead.")
+        Self::receipt_result(ProcessJobReceipt::unsupported(
+            ProcessJobOperation::Restart,
+            Some(request.id),
+            ProcessJobBackendKind::Native,
+            "restart",
+            "native process restart is not supported; start a new native process instead",
+        ))
     }
 }
 
@@ -4186,8 +4266,8 @@ mod tests {
     }
 
     #[test]
-    fn process_start_parser_produces_backend_neutral_request_dto() {
-        let request = ProcessTool::process_job_tool_request(&json!({
+    fn process_parser_produces_backend_neutral_request_dtos_for_all_actions() {
+        let start = ProcessTool::process_job_tool_request(&json!({
             "action": "start",
             "backend": "pueue",
             "program": "cargo",
@@ -4196,8 +4276,7 @@ mod tests {
             "notify_on_complete": true
         }))
         .expect("start request parses");
-
-        match request {
+        match start {
             ProcessJobToolRequest::Start(start) => {
                 assert_eq!(start.backend, ProcessJobBackendKind::Pueue);
                 assert_eq!(start.command_preview, "cargo nextest run");
@@ -4205,6 +4284,107 @@ mod tests {
                 assert_eq!(start.args, vec!["nextest", "run"]);
                 assert!(start.notification_policy.notify_on_complete);
                 assert_eq!(start.metadata.get("group").map(String::as_str), Some("ci"));
+            }
+            other => panic!("unexpected request: {other:?}"),
+        }
+
+        match ProcessTool::process_job_tool_request(
+            &json!({"action": "list", "backend": "systemd", "include_terminal": false}),
+        )
+        .expect("list request parses")
+        {
+            ProcessJobToolRequest::List(request) => {
+                assert_eq!(request.filter.backend, Some(ProcessJobBackendKind::Systemd));
+                assert!(!request.filter.include_terminal);
+            }
+            other => panic!("unexpected request: {other:?}"),
+        }
+
+        match ProcessTool::process_job_tool_request(&json!({"action": "poll", "session_id": "proc_b3_poll"}))
+            .expect("poll request parses")
+        {
+            ProcessJobToolRequest::Poll(request) => assert_eq!(request.id.0, "proc_b3_poll"),
+            other => panic!("unexpected request: {other:?}"),
+        }
+
+        match ProcessTool::process_job_tool_request(
+            &json!({"action": "log", "session_id": "proc_b3_log", "offset": 12, "limit": 34}),
+        )
+        .expect("log request parses")
+        {
+            ProcessJobToolRequest::Log(request) => {
+                assert_eq!(request.id.0, "proc_b3_log");
+                assert_eq!(request.range.offset, Some(12));
+                assert_eq!(request.range.limit_bytes, 34);
+            }
+            other => panic!("unexpected request: {other:?}"),
+        }
+
+        match ProcessTool::process_job_tool_request(
+            &json!({"action": "wait", "session_id": "proc_b3_wait", "timeout": 9}),
+        )
+        .expect("wait request parses")
+        {
+            ProcessJobToolRequest::Wait(request) => {
+                assert_eq!(request.id.0, "proc_b3_wait");
+                assert_eq!(request.timeout, Some(Duration::from_secs(9)));
+            }
+            other => panic!("unexpected request: {other:?}"),
+        }
+
+        for (action, expected_variant) in [("kill", "kill"), ("restart", "restart"), ("close", "close")] {
+            let request =
+                ProcessTool::process_job_tool_request(&json!({"action": action, "session_id": "proc_b3_mutate"}))
+                    .expect("mutation request parses");
+            match (expected_variant, request) {
+                ("kill", ProcessJobToolRequest::Kill(request))
+                | ("restart", ProcessJobToolRequest::Restart(request))
+                | ("close", ProcessJobToolRequest::CloseStdin(request)) => assert_eq!(request.id.0, "proc_b3_mutate"),
+                (_, other) => panic!("unexpected request: {other:?}"),
+            }
+        }
+
+        match ProcessTool::process_job_tool_request(
+            &json!({"action": "write", "session_id": "proc_b3_stdin", "data": "ping"}),
+        )
+        .expect("write request parses")
+        {
+            ProcessJobToolRequest::WriteStdin(request) => {
+                assert_eq!(request.id.0, "proc_b3_stdin");
+                assert_eq!(request.data, b"ping");
+                assert!(!request.newline);
+            }
+            other => panic!("unexpected request: {other:?}"),
+        }
+        match ProcessTool::process_job_tool_request(
+            &json!({"action": "submit", "session_id": "proc_b3_stdin", "data": "pong"}),
+        )
+        .expect("submit request parses")
+        {
+            ProcessJobToolRequest::WriteStdin(request) => {
+                assert_eq!(request.data, b"pong");
+                assert!(request.newline);
+            }
+            other => panic!("unexpected request: {other:?}"),
+        }
+
+        match ProcessTool::process_job_tool_request(
+            &json!({"action": "adopt", "backend": "systemd", "systemd_unit": "clankers-build.service"}),
+        )
+        .expect("adopt request parses")
+        {
+            ProcessJobToolRequest::Adopt(request) => {
+                assert_eq!(request.backend, ProcessJobBackendKind::Systemd);
+                assert_eq!(request.backend_ref.0, "clankers-build.service");
+            }
+            other => panic!("unexpected request: {other:?}"),
+        }
+
+        match ProcessTool::process_job_tool_request(&json!({"action": "gc", "backend": "native"}))
+            .expect("gc request parses")
+        {
+            ProcessJobToolRequest::GarbageCollect(request) => {
+                assert_eq!(request.filter.backend, Some(ProcessJobBackendKind::Native));
             }
             other => panic!("unexpected request: {other:?}"),
         }
