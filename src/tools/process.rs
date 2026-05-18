@@ -4240,6 +4240,72 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn native_process_actions_preserve_default_compatibility() {
+        let tool = ProcessTool::new();
+        let ctx = make_ctx();
+        let started = tool.execute(&ctx, json!({"action": "start", "command": "cat"})).await;
+        assert!(!started.is_error, "{started:?}");
+        let start_envelope = tool_receipt_json(&started);
+        assert_eq!(start_envelope["common"]["operation"], "start");
+        assert_eq!(start_envelope["common"]["backend"], "native");
+        assert!(start_envelope["common"]["backend_ref"].as_str().expect("backend ref").starts_with("pid:"));
+        let id = extract_process_id(&started);
+        assert!(ProcessJobId(id.clone()).is_blake3_native(), "{id}");
+
+        let listed_running = tool.execute(&ctx, json!({"action": "list", "backend": "native"})).await;
+        assert!(!listed_running.is_error, "{listed_running:?}");
+        let listed_running_envelope = tool_receipt_json(&listed_running);
+        assert_eq!(listed_running_envelope["common"]["operation"], "list");
+        assert!(text(&listed_running).contains(&id), "{}", text(&listed_running));
+
+        let wrote = tool.execute(&ctx, json!({"action": "write", "session_id": id, "data": "raw"})).await;
+        assert!(!wrote.is_error, "{wrote:?}");
+        assert!(text(&wrote).contains("Wrote 3 bytes"), "{}", text(&wrote));
+        let id = extract_process_id(&started);
+        let submitted = tool.execute(&ctx, json!({"action": "submit", "session_id": id, "data": "line"})).await;
+        assert!(!submitted.is_error, "{submitted:?}");
+        assert!(text(&submitted).contains("Wrote 5 bytes"), "{}", text(&submitted));
+        let id = extract_process_id(&started);
+        let closed = tool.execute(&ctx, json!({"action": "close", "session_id": id})).await;
+        assert!(!closed.is_error, "{closed:?}");
+        assert!(text(&closed).contains("Closed stdin"), "{}", text(&closed));
+        let id = extract_process_id(&started);
+        let waited = tool.execute(&ctx, json!({"action": "wait", "session_id": id, "timeout": 2})).await;
+        assert!(!waited.is_error, "{waited:?}");
+        assert!(text(&waited).contains("rawline"), "{}", text(&waited));
+
+        let id = extract_process_id(&started);
+        let log = tool.execute(&ctx, json!({"action": "log", "session_id": id, "limit": 10})).await;
+        assert!(!log.is_error, "{log:?}");
+        assert!(text(&log).contains("rawline"), "{}", text(&log));
+
+        let id = extract_process_id(&started);
+        let listed_terminal = tool.execute(&ctx, json!({"action": "list", "backend": "native"})).await;
+        assert!(!listed_terminal.is_error, "{listed_terminal:?}");
+        assert!(text(&listed_terminal).contains(&id), "{}", text(&listed_terminal));
+        let id = extract_process_id(&started);
+        let listed_non_terminal =
+            tool.execute(&ctx, json!({"action": "list", "backend": "native", "include_terminal": false})).await;
+        assert!(!listed_non_terminal.is_error, "{listed_non_terminal:?}");
+        assert!(!text(&listed_non_terminal).contains(&id), "{}", text(&listed_non_terminal));
+    }
+
+    #[tokio::test]
+    async fn native_restart_remains_unsupported_typed_receipt() {
+        let tool = ProcessTool::new();
+        let started = tool.execute(&make_ctx(), json!({"action": "start", "command": "printf restart"})).await;
+        assert!(!started.is_error, "{started:?}");
+        let id = extract_process_id(&started);
+        let restarted = tool.execute(&make_ctx(), json!({"action": "restart", "session_id": id})).await;
+        assert!(restarted.is_error, "{restarted:?}");
+        let envelope = tool_receipt_json(&restarted);
+        assert_eq!(envelope["common"]["operation"], "restart");
+        assert_eq!(envelope["common"]["backend"], "native");
+        assert_eq!(envelope["common"]["status"], serde_json::Value::Null);
+        assert_eq!(envelope["common"]["error"]["code"], "unsupported_action_for_backend");
+    }
+
+    #[tokio::test]
     async fn starts_direct_program_with_args() {
         let tool = ProcessTool::new();
         let started = tool
