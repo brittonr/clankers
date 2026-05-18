@@ -39,7 +39,6 @@ use clankers_runtime::process_jobs::ProcessJobGarbageCollectionFailure;
 use clankers_runtime::process_jobs::ProcessJobGarbageCollectionReceipt;
 use clankers_runtime::process_jobs::ProcessJobId;
 use clankers_runtime::process_jobs::ProcessJobIdentityEnvelope;
-use clankers_runtime::process_jobs::ProcessJobListProjection;
 use clankers_runtime::process_jobs::ProcessJobLogChunk;
 use clankers_runtime::process_jobs::ProcessJobLogCursor;
 use clankers_runtime::process_jobs::ProcessJobLogRange;
@@ -53,7 +52,6 @@ use clankers_runtime::process_jobs::ProcessJobNotificationPolicyEngine;
 use clankers_runtime::process_jobs::ProcessJobNotificationPolicyState;
 use clankers_runtime::process_jobs::ProcessJobOperation;
 use clankers_runtime::process_jobs::ProcessJobOwnerScope;
-use clankers_runtime::process_jobs::ProcessJobProjectionBounds;
 use clankers_runtime::process_jobs::ProcessJobReceipt;
 use clankers_runtime::process_jobs::ProcessJobReleasedLogRef;
 use clankers_runtime::process_jobs::ProcessJobRetentionPolicy;
@@ -65,7 +63,6 @@ use clankers_runtime::process_jobs::ProcessJobToolReceipt;
 use clankers_runtime::process_jobs::ProcessJobToolRequest;
 use clankers_runtime::process_jobs::ProcessJobToolResult;
 use clankers_runtime::process_jobs::StartProcessJobRequest;
-use clankers_runtime::process_jobs::project_process_job_list;
 use serde_json::Value;
 use serde_json::json;
 use tokio::io::AsyncBufReadExt;
@@ -1968,40 +1965,6 @@ fn stored_record_summary(record: &StoredProcessJobRecord) -> ProcessJobSummary {
     }
 }
 
-fn format_process_job_projection(projection: &ProcessJobListProjection) -> String {
-    if projection.total_active == 0 && projection.total_completed == 0 {
-        return "No background processes.".to_string();
-    }
-    let mut lines = vec![format!(
-        "{:<12} {:<8} {:<24} {:<10} {}",
-        "SESSION", "BACKEND", "STATUS", "BUCKET", "COMMAND"
-    )];
-    lines.push("─".repeat(96));
-    for item in projection.active.iter().chain(projection.completed.iter()) {
-        let bucket = match item.lifecycle {
-            clankers_runtime::process_jobs::ProcessJobLifecycleBucket::Active => "active",
-            clankers_runtime::process_jobs::ProcessJobLifecycleBucket::Completed => "completed",
-        };
-        lines.push(format!(
-            "{:<12} {:<8} {:<24} {:<10} {}",
-            item.id.0, item.backend_label, item.status_label, bucket, item.command_preview
-        ));
-    }
-    if projection.truncated_active || projection.truncated_completed {
-        lines.push(format!(
-            "… truncated: showing {}/{} active and {}/{} completed",
-            projection.active.len(),
-            projection.total_active,
-            projection.completed.len(),
-            projection.total_completed
-        ));
-    }
-    lines.join(
-        "
-",
-    )
-}
-
 fn native_reconciliation_status(status: &StoredProcessJobStatus) -> bool {
     matches!(
         status,
@@ -2665,6 +2628,23 @@ impl ProcessTool {
         }
     }
 
+    fn receipt_result(receipt: ProcessJobReceipt) -> ToolResult {
+        let result = match receipt.operation {
+            ProcessJobOperation::Start => ProcessJobToolResult::Start(receipt),
+            ProcessJobOperation::Poll => ProcessJobToolResult::Poll(receipt),
+            ProcessJobOperation::Wait => ProcessJobToolResult::Wait(receipt),
+            ProcessJobOperation::Kill => ProcessJobToolResult::Kill(receipt),
+            ProcessJobOperation::Restart => ProcessJobToolResult::Restart(receipt),
+            ProcessJobOperation::WriteStdin => ProcessJobToolResult::WriteStdin(receipt),
+            ProcessJobOperation::CloseStdin => ProcessJobToolResult::CloseStdin(receipt),
+            ProcessJobOperation::Adopt => ProcessJobToolResult::Adopt(receipt),
+            ProcessJobOperation::List | ProcessJobOperation::Log | ProcessJobOperation::GarbageCollect => {
+                ProcessJobToolResult::Poll(receipt)
+            }
+        };
+        Self::tool_receipt_result(result)
+    }
+
     fn tool_receipt_result(result: ProcessJobToolResult) -> ToolResult {
         let receipt: ProcessJobToolReceipt = result.into_receipt();
         let payload = serde_json::to_string(&receipt).unwrap_or(receipt.common.summary.clone());
@@ -2677,20 +2657,14 @@ impl ProcessTool {
 
     async fn pueue_receipt_result(result: Result<ProcessJobReceipt, RuntimeError>) -> ToolResult {
         match result {
-            Ok(receipt) if receipt.error.is_some() => {
-                ToolResult::error(serde_json::to_string(&receipt).unwrap_or(receipt.summary))
-            }
-            Ok(receipt) => ToolResult::text(serde_json::to_string(&receipt).unwrap_or(receipt.summary)),
+            Ok(receipt) => Self::receipt_result(receipt),
             Err(error) => ToolResult::error(error.to_string()),
         }
     }
 
     async fn systemd_receipt_result(result: Result<ProcessJobReceipt, RuntimeError>) -> ToolResult {
         match result {
-            Ok(receipt) if receipt.error.is_some() => {
-                ToolResult::error(serde_json::to_string(&receipt).unwrap_or(receipt.summary))
-            }
-            Ok(receipt) => ToolResult::text(serde_json::to_string(&receipt).unwrap_or(receipt.summary)),
+            Ok(receipt) => Self::receipt_result(receipt),
             Err(error) => ToolResult::error(error.to_string()),
         }
     }
@@ -2705,7 +2679,7 @@ impl ProcessTool {
             limit_bytes: limit,
         };
         Some(match Self::pueue_service().log(id, range).await {
-            Ok(chunk) => ToolResult::text(serde_json::to_string(&chunk).unwrap_or(chunk.text)),
+            Ok(chunk) => Self::tool_receipt_result(ProcessJobToolResult::Log(chunk)),
             Err(error) => ToolResult::error(error.to_string()),
         })
     }
@@ -2720,7 +2694,7 @@ impl ProcessTool {
             limit_bytes: limit,
         };
         Some(match Self::systemd_service().log(id, range).await {
-            Ok(chunk) => ToolResult::text(serde_json::to_string(&chunk).unwrap_or(chunk.text)),
+            Ok(chunk) => Self::tool_receipt_result(ProcessJobToolResult::Log(chunk)),
             Err(error) => ToolResult::error(error.to_string()),
         })
     }
@@ -2797,10 +2771,20 @@ impl ProcessTool {
         spawn_reader(entry.clone(), "stderr", stderr);
         spawn_waiter(entry.clone(), child, pid, kill_rx, ctx.db().cloned());
 
-        ToolResult::text(format!(
-            "Started background process {id} (pid: {})",
-            pid.map(|p| p.to_string()).unwrap_or_else(|| "unknown".to_string())
-        ))
+        let receipt = ProcessJobReceipt {
+            operation: ProcessJobOperation::Start,
+            id: Some(ProcessJobId(id.clone())),
+            backend: Some(ProcessJobBackendKind::Native),
+            status: Some(ProcessJobStatus::Running),
+            backend_ref: pid.map(|pid| BackendRef(format!("pid:{pid}"))),
+            log_refs: Vec::new(),
+            summary: format!(
+                "Started background process {id} (pid: {})",
+                pid.map(|p| p.to_string()).unwrap_or_else(|| "unknown".to_string())
+            ),
+            error: None,
+        };
+        Self::receipt_result(receipt)
     }
 
     async fn handle_list(ctx: &ToolContext, params: &Value) -> ToolResult {
@@ -2860,14 +2844,13 @@ impl ProcessTool {
                 Err(error) => tracing::debug!("systemd process projection unavailable: {error}"),
             }
         }
-        let projection = project_process_job_list(summaries, ProcessJobProjectionBounds::default());
-        ToolResult::text(format_process_job_projection(&projection))
+        Self::tool_receipt_result(ProcessJobToolResult::List(summaries))
     }
 
     async fn handle_gc(ctx: &ToolContext, params: &Value) -> ToolResult {
         let policy = process_job_retention_policy(params);
         let receipt = apply_process_job_retention(ctx.db(), policy, retention_log_dir(params)).await;
-        ToolResult::text(serde_json::to_string(&receipt).unwrap_or(receipt.summary))
+        Self::tool_receipt_result(ProcessJobToolResult::GarbageCollect(receipt))
     }
 
     async fn handle_poll(ctx: &ToolContext, params: &Value) -> ToolResult {
@@ -3303,10 +3286,20 @@ mod tests {
 
     fn extract_process_id(result: &ToolResult) -> String {
         let text = text(result);
+        if let Ok(payload) = serde_json::from_str::<serde_json::Value>(&text)
+            && let Some(id) =
+                payload.get("common").and_then(|common| common.get("id")).and_then(serde_json::Value::as_str)
+        {
+            return id.to_string();
+        }
         text.split_whitespace()
             .find(|word| word.starts_with("proc_"))
             .expect("result contains process id")
             .to_string()
+    }
+
+    fn tool_receipt_json(result: &ToolResult) -> serde_json::Value {
+        serde_json::from_str(&text(result)).expect("tool result is process-job receipt envelope json")
     }
 
     fn native_start_request(command: &str) -> StartProcessJobRequest {
@@ -3948,7 +3941,9 @@ mod tests {
             )
             .await;
         assert!(!result.is_error, "{result:?}");
-        let payload: serde_json::Value = serde_json::from_str(&text(&result)).expect("gc json");
+        let envelope: serde_json::Value = serde_json::from_str(&text(&result)).expect("gc json envelope");
+        assert_eq!(envelope["common"]["operation"], "garbage_collect");
+        let payload = &envelope["payload"]["data"]["receipt"];
         assert_eq!(payload["removed_records"][0], "proc_gc_expired");
         assert_eq!(payload["removed_log_bytes"], 12);
         assert_eq!(payload["skipped_active_jobs"][0], "proc_gc_active");
@@ -3983,6 +3978,9 @@ mod tests {
 
         let listed = tool.execute(&ctx, json!({"action": "list", "backend": "native"})).await;
         assert!(!listed.is_error, "{listed:?}");
+        let envelope = tool_receipt_json(&listed);
+        assert_eq!(envelope["common"]["operation"], "list");
+        assert_eq!(envelope["payload"]["kind"], "list");
         assert!(db.async_process_jobs().get("proc_list_gc_expired").await.expect("db read").is_none());
         assert!(!text(&listed).contains("proc_list_gc_expired"), "{}", text(&listed));
     }
@@ -4033,8 +4031,8 @@ mod tests {
         assert!(!listed.is_error, "{listed:?}");
         let listed_text = text(&listed);
         assert!(listed_text.contains("proc_reattached"), "{listed_text}");
-        assert!(listed_text.contains("reattached-log-incomplete"), "{listed_text}");
-        assert!(listed_text.contains("lost-after-restart"), "{listed_text}");
+        assert!(listed_text.contains("reattached_log_incomplete"), "{listed_text}");
+        assert!(listed_text.contains("lost_after_restart"), "{listed_text}");
 
         let reattached = db
             .async_process_jobs()
@@ -4129,7 +4127,7 @@ mod tests {
         assert!(!listed_after_loss.is_error, "{listed_after_loss:?}");
         let lost_text = text(&listed_after_loss);
         assert!(lost_text.contains(&stable_id), "{lost_text}");
-        assert!(lost_text.contains("lost-after-restart"), "{lost_text}");
+        assert!(lost_text.contains("lost_after_restart"), "{lost_text}");
 
         let lost = restarted_db
             .async_process_jobs()
@@ -4151,6 +4149,9 @@ mod tests {
         let tool = ProcessTool::new();
         let started = tool.execute(&make_ctx(), json!({"action": "start", "command": "printf hello"})).await;
         assert!(!started.is_error, "{started:?}");
+        let envelope = tool_receipt_json(&started);
+        assert_eq!(envelope["common"]["operation"], "start");
+        assert_eq!(envelope["common"]["backend"], "native");
         let id = extract_process_id(&started);
         assert!(ProcessJobId(id.clone()).is_blake3_native(), "{id}");
         let waited = tool.execute(&make_ctx(), json!({"action": "wait", "session_id": id, "timeout": 2})).await;
