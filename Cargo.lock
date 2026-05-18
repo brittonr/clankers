@@ -1559,6 +1559,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "clankers-adapters"
+version = "0.1.0"
+dependencies = [
+ "clanker-message",
+ "clankers-engine",
+ "clankers-engine-host",
+ "clankers-tool-host",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.18",
+]
+
+[[package]]
 name = "clankers-agent"
 version = "0.1.0"
 dependencies = [

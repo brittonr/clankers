@@ -11,6 +11,7 @@ The supported embedding surface is the small reducer/host layer:
 | `clankers-engine` | Pure turn-state reducer for accepted model/tool work | `EngineState`, `EngineInput`, `EnginePromptSubmission`, `EngineOutcome`, `EngineEffect`, `EngineModelRequest`, `EngineModelResponse`, `EngineTerminalFailure`, `EngineToolCall`, `reduce` |
 | `clankers-engine-host` | Async effect interpreter that drives the reducer through caller adapters | `EngineRunSeed`, `HostAdapters`, `run_engine_turn`, `ModelHost`, `ModelHostOutcome`, `RetrySleeper`, `EngineEventSink`, `CancellationSource`, `UsageObserver`, stream accumulator types, runtime input helpers |
 | `clankers-tool-host` | Provider-neutral tool execution contracts and output truncation | `ToolExecutor`, `ToolHostOutcome`, `ToolOutputAccumulator`, `ToolTruncationLimits`, `ToolTruncationMetadata`, `ToolCatalog`, `CapabilityChecker`, `ToolHook` |
+| `clankers-adapters` | Shell-free reusable adapter bricks, embedded tool catalog DTOs, and capability-pack presets | `MemoryEventSink`, `AtomicCancellationSource`, `NoopRetrySleeper`, `CollectingUsageObserver`, `ScriptedModelHost`, `ScriptedToolExecutor`, `EmbeddedToolCatalog`, `CapabilityPack` |
 | `clanker-message` | Shared message/content/tool/usage data types | `Content`, `StopReason`, `ToolDefinition`, `ThinkingConfig`, `Usage`, streaming/content delta types |
 | `clankers-core` | Optional prompt-lifecycle reducer for hosts that want Clankers-style prompt/follow-up state before work reaches the engine | `CoreState`, `CoreInput`, `CoreOutcome`, `CoreEffect`, `reduce` |
 
@@ -26,6 +27,9 @@ The generic embedding path does **not** require these Clankers shell concerns:
 - session database ownership, search indexes, or conversation storage;
 - prompt assembly, skill loading, agent definitions, or system-prompt templates;
 - plugin supervision, built-in tool bundles, Matrix, iroh/P2P, or process monitoring;
+- MCP, ACP, and daemon attach protocols as generic SDK dependencies.
+
+Daemon, MCP, and ACP integrations remain supported as **application-edge** surfaces when a product wants a process boundary or existing Clankers shell behavior. They are not imported by the reusable embedded SDK crates or recipes.
 - Tokio runtime handles, network clients, shell-generated message IDs, wall-clock timestamps, or global singleton service lookup in generic SDK APIs.
 
 Concrete providers, tools, storage, prompts, events, cancellation sources, and runtime choices belong at the embedder/application edge.
@@ -67,7 +71,7 @@ let report = run_engine_turn(
 ).await;
 ```
 
-The checked-in consumer fixture under `examples/embedded-agent-sdk/` is the executable form of this sketch. It must stay outside the workspace crate graph and depend only on SDK crates plus application-owned executor/test helpers.
+The checked-in consumer fixture under `examples/embedded-agent-sdk/` is the executable form of this sketch. `examples/embedded-minimal-kit/` uses the reusable adapter bricks for the smallest product kit, and `examples/embedded-tool-kit/` covers successful tool execution plus missing-tool, tool-error, capability-denial, and truncation paths. These examples must stay outside the workspace crate graph and depend only on SDK crates plus application-owned executor/test helpers.
 
 ## Adapter contracts
 
@@ -84,6 +88,14 @@ The checked-in consumer fixture under `examples/embedded-agent-sdk/` is the exec
 | Transcript conversion | Host code, not a runner trait | Convert persisted or shell-native messages into `EngineMessage` before submission | Map user/assistant/tool content into `EngineMessage` and `clanker_message::Content` | Reject unsupported shell-only message variants at the application edge; `clankers-engine` must not learn `AgentMessage` |
 
 The example and validation bundle must exercise successful model responses, retryable model failures, non-retryable model failures, streamed deltas, successful tools, tool errors, missing tools, capability denial, cancellation, usage observations, and event-sink diagnostics.
+
+## Composition kits, catalogs, and capability packs
+
+`clankers-adapters` provides boring reusable bricks for the common seams: in-memory event capture, atomic cancellation, no-op retry sleeping, usage collection, scripted/fake model responses, scripted tool execution, typed embedded tool catalogs, catalog-backed tool execution, and capability-pack presets. Each brick is replaceable by an app-owned implementation of the same host/tool trait; products should use these as defaults or tests, not as a reason to couple application policy back into SDK crates.
+
+Declarative tool catalogs are parser-neutral DTOs. JSON is supported by the current serde model, but public semantics are the Rust data model: tool name, description, runtime kind, capabilities, approval policy, redaction policy, and input schema. Validation is fail-closed for duplicate names, missing descriptions, unknown runtime kinds, unsafe capabilities without explicit per-call approval, and secret-adjacent tools without redaction. Mutating, shell, network, raw-log, and secret-adjacent capabilities are explicit opt-ins.
+
+Capability packs are named snapshots, not open-ended role expansion. `read-only`, `tool-user`, and `operator` preserve exact capability sets under tests so later additions are intentional and reviewed.
 
 ## Adapter-only modular coupling rules
 
@@ -104,8 +116,15 @@ Current SDK crates are intended to work with their default features for the mini
 - `clankers-engine`: no optional features; depends on `clanker-message` and `serde_json`.
 - `clankers-engine-host`: no optional features; depends on `clankers-engine`, `clankers-tool-host`, `clanker-message`, `serde`, `serde_json`, and `thiserror`.
 - `clankers-tool-host`: no optional features; depends on `clankers-engine`, `clanker-message`, `serde`, `serde_json`, and `thiserror`.
+- `clankers-adapters`: no optional features; depends only on SDK crates plus `serde`, `serde_json`, and `thiserror` for DTO validation and reusable test/product bricks.
 - `clanker-message`: default crate features are acceptable for embedding; it owns shared content/usage/message data, not application shells.
 - `clankers-core`: optional for hosts that want prompt lifecycle/follow-up reduction before engine submission; not required by the minimal engine-host example.
+
+## Product embedding crate guidance
+
+- **Green**: `clanker-message`, `clankers-engine`, `clankers-engine-host`, `clankers-tool-host`, and `clankers-adapters` are the checked product-embedding crates. `clankers-core` is green only for hosts that want prompt lifecycle reduction before an engine turn.
+- **Yellow**: app-edge crates such as daemon, MCP, ACP, runtime extension services, provider adapters, storage, or plugin boundaries may be composed by a product, but only behind a product-owned integration layer and not as transitive dependencies of generic SDK crates.
+- **Red**: `clankers-agent`, `clankers-controller`, `clankers-provider`, `clanker-router`, `clankers-db`, `clankers-protocol`, `clankers-tui`, prompt/skill bundles, Matrix, iroh/P2P, ratatui, and crossterm are not generic product SDK dependencies.
 
 The minimal embedding path must not require features that pull in daemon, TUI, provider discovery, database, prompt assembly, plugin supervision, built-in tools, Matrix, iroh, ratatui, or crossterm. Any future optional SDK feature must be documented here and validated by the feature/default-policy checker before it is advertised.
 
