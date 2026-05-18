@@ -9,6 +9,7 @@ readonly EXAMPLE_MANIFEST="examples/embedded-agent-sdk/Cargo.toml"
 readonly MINIMAL_KIT_MANIFEST="examples/embedded-minimal-kit/Cargo.toml"
 readonly TOOL_KIT_MANIFEST="examples/embedded-tool-kit/Cargo.toml"
 readonly PROVIDER_ADAPTER_MANIFEST="examples/embedded-provider-adapter/Cargo.toml"
+readonly SESSION_STORE_MANIFEST="examples/embedded-session-store/Cargo.toml"
 readonly AGENT_TURN_TEST_FILTER="turn::tests::"
 
 run_step() {
@@ -35,6 +36,7 @@ run_cargo_step run --locked --manifest-path "${EXAMPLE_MANIFEST}"
 run_cargo_step run --locked --manifest-path "${MINIMAL_KIT_MANIFEST}"
 run_cargo_step run --locked --manifest-path "${TOOL_KIT_MANIFEST}"
 run_cargo_step run --locked --manifest-path "${PROVIDER_ADAPTER_MANIFEST}"
+run_cargo_step run --locked --manifest-path "${SESSION_STORE_MANIFEST}"
 run_cargo_step test -p clankers-adapters --lib
 run_cargo_step test -p clankers-adapters --lib replaceable
 run_cargo_step test -p clankers-adapters --lib tool_catalog_metadata

@@ -53,6 +53,7 @@ Support labels:
 | `embedded-agent-sdk example` | `example` | example | supported | `examples/embedded-agent-sdk/Cargo.toml` |
 | `embedded-minimal-kit example` | `example` | example | supported | `examples/embedded-minimal-kit/Cargo.toml` |
 | `embedded-provider-adapter example` | `example` | example | supported | `examples/embedded-provider-adapter/Cargo.toml` |
+| `embedded-session-store example` | `example` | example | supported | `examples/embedded-session-store/Cargo.toml` |
 | `embedded-tool-kit example` | `example` | example | supported | `examples/embedded-tool-kit/Cargo.toml` |
 | `ApprovalPolicy` | `clankers-adapters` | enum | supported | `crates/clankers-adapters/src/lib.rs` |
 | `AtomicCancellationSource` | `clankers-adapters` | struct | supported | `crates/clankers-adapters/src/lib.rs` |

@@ -16,6 +16,7 @@ const FORBIDDEN: &[&str] = &[
     "clankers-provider",
     "clanker-router",
     "clankers-db",
+    "clankers-session",
     "clankers-protocol",
     "clankers-tui",
     "clankers-prompts",

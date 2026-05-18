@@ -71,7 +71,7 @@ let report = run_engine_turn(
 ).await;
 ```
 
-The checked-in consumer fixture under `examples/embedded-agent-sdk/` is the executable form of this sketch. `examples/embedded-minimal-kit/` uses the reusable adapter bricks for the smallest product kit, `examples/embedded-tool-kit/` covers successful tool execution plus missing-tool, tool-error, capability-denial, and truncation paths, and `examples/embedded-provider-adapter/` shows a product-owned `ModelHost` converting `EngineModelRequest` into local provider IO without importing `clankers-provider`. These examples must stay outside the workspace crate graph and depend only on SDK crates plus application-owned executor/test helpers.
+The checked-in consumer fixture under `examples/embedded-agent-sdk/` is the executable form of this sketch. `examples/embedded-minimal-kit/` uses the reusable adapter bricks for the smallest product kit, `examples/embedded-tool-kit/` covers successful tool execution plus missing-tool, tool-error, capability-denial, and truncation paths, `examples/embedded-provider-adapter/` shows a product-owned `ModelHost` converting `EngineModelRequest` into local provider IO without importing `clankers-provider`, and `examples/embedded-session-store/` shows host-owned session persistence with product DTOs, an in-memory product store, restored-history model-request assertions, and missing-session fail-closed behavior without importing Clankers storage/session shells. These examples must stay outside the workspace crate graph and depend only on SDK crates plus application-owned executor/test helpers.
 
 ## Adapter contracts
 
@@ -123,7 +123,7 @@ Current SDK crates are intended to work with their default features for the mini
 ## Product embedding crate guidance
 
 - **Green**: `clanker-message`, `clankers-engine`, `clankers-engine-host`, `clankers-tool-host`, and `clankers-adapters` are the checked product-embedding crates. `clankers-core` is green only for hosts that want prompt lifecycle reduction before an engine turn.
-- **Yellow**: app-edge crates such as daemon, MCP, ACP, runtime extension services, provider adapters, storage, or plugin boundaries may be composed by a product, but only behind a product-owned integration layer and not as transitive dependencies of generic SDK crates.
+- **Yellow**: app-edge crates such as daemon, MCP, ACP, runtime extension services, provider adapters, storage, or plugin boundaries may be composed by a product, but only behind a product-owned integration layer and not as transitive dependencies of generic SDK crates. Product-owned session/message DTOs and storage schemas are yellow app-edge concerns unless a later OpenSpec promotes a reusable storage API after multiple products converge on the same shape.
 - **Red**: `clankers-agent`, `clankers-controller`, `clankers-provider`, `clanker-router`, `clankers-db`, `clankers-protocol`, `clankers-tui`, prompt/skill bundles, Matrix, iroh/P2P, ratatui, and crossterm are not generic product SDK dependencies.
 
 The minimal embedding path must not require features that pull in daemon, TUI, provider discovery, database, prompt assembly, plugin supervision, built-in tools, Matrix, iroh, ratatui, or crossterm. Any future optional SDK feature must be documented here and validated by the feature/default-policy checker before it is advertised.
@@ -155,7 +155,7 @@ That bundle must prove:
 - public API inventory is fresh;
 - stale docs fail the checker;
 - `examples/embedded-agent-sdk/` runs positive and negative adapter paths;
-- executable kit examples cover minimal adapter bricks, tool catalogs, and product-owned provider adapter conversion;
+- executable kit examples cover minimal adapter bricks, tool catalogs, product-owned provider adapter conversion, and host-owned session persistence/resume;
 - example dependency graph excludes Clankers shell/runtime crates and UI/network crates listed in the OpenSpec change;
 - feature/default policy matches manifests and a minimal example build;
 - generic SDK crates reject provider/router, daemon/TUI, database, networking, timestamp, shell-generated ID, runtime-handle, provider-shaped request/response, hidden-global-service, and concrete Clankers runtime leakage;

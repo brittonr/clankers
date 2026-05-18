@@ -14,6 +14,8 @@ use serde_json::Value;
 
 const EXAMPLE_MANIFEST: &str = "examples/embedded-agent-sdk/Cargo.toml";
 const EXAMPLE_PACKAGE: &str = "embedded-agent-sdk-example";
+const SESSION_STORE_MANIFEST: &str = "examples/embedded-session-store/Cargo.toml";
+const SESSION_STORE_PACKAGE: &str = "embedded-session-store-example";
 const GUIDE_PATH: &str = "docs/src/tutorials/embedded-agent-sdk.md";
 const SUCCESS_EXIT: i32 = 0;
 const ERROR_EXIT: i32 = 1;
@@ -28,12 +30,23 @@ const REQUIRED_DIRECT_DEPS: &[&str] = &[
 
 const ALLOWED_DIRECT_DEPS: &[&str] = REQUIRED_DIRECT_DEPS;
 
+const SESSION_STORE_REQUIRED_DIRECT_DEPS: &[&str] = &[
+    "clanker-message",
+    "clankers-adapters",
+    "clankers-engine",
+    "clankers-engine-host",
+    "serde_json",
+];
+
+const SESSION_STORE_ALLOWED_DIRECT_DEPS: &[&str] = SESSION_STORE_REQUIRED_DIRECT_DEPS;
+
 const FORBIDDEN_GRAPH_CRATES: &[&str] = &[
     "clankers-agent",
     "clankers-controller",
     "clankers-provider",
     "clanker-router",
     "clankers-db",
+    "clankers-session",
     "clankers-protocol",
     "clankers-tui",
     "clankers-prompts",
@@ -74,7 +87,7 @@ fn command_stdout(command: &mut Command, label: &str) -> Result<String, String> 
     String::from_utf8(output.stdout).map_err(|error| format!("{label} emitted non-UTF8 stdout: {error}"))
 }
 
-fn cargo_metadata() -> Result<Value, String> {
+fn cargo_metadata(manifest: &str, label: &str) -> Result<Value, String> {
     let stdout = command_stdout(
         Command::new("cargo")
             .arg("metadata")
@@ -82,21 +95,21 @@ fn cargo_metadata() -> Result<Value, String> {
             .arg("1")
             .arg("--locked")
             .arg("--manifest-path")
-            .arg(EXAMPLE_MANIFEST),
-        "cargo metadata for embedded SDK example",
+            .arg(manifest),
+        label,
     )?;
     serde_json::from_str(&stdout).map_err(|error| format!("failed to parse cargo metadata JSON: {error}"))
 }
 
-fn cargo_check_example() -> Result<(), String> {
+fn cargo_check_example(manifest: &str, label: &str) -> Result<(), String> {
     command_stdout(
         Command::new("cargo")
             .arg("check")
             .arg("--quiet")
             .arg("--locked")
             .arg("--manifest-path")
-            .arg(EXAMPLE_MANIFEST),
-        "cargo check for embedded SDK example",
+            .arg(manifest),
+        label,
     )?;
     Ok(())
 }
@@ -117,19 +130,19 @@ fn package_names(metadata: &Value) -> Result<BTreeSet<String>, String> {
     Ok(names)
 }
 
-fn example_direct_deps(metadata: &Value) -> Result<BTreeSet<String>, String> {
+fn example_direct_deps(metadata: &Value, package_name: &str) -> Result<BTreeSet<String>, String> {
     let packages = metadata
         .get("packages")
         .and_then(Value::as_array)
         .ok_or_else(|| "cargo metadata JSON missing packages array".to_string())?;
     let package = packages
         .iter()
-        .find(|package| package.get("name").and_then(Value::as_str) == Some(EXAMPLE_PACKAGE))
-        .ok_or_else(|| format!("cargo metadata missing package {EXAMPLE_PACKAGE}"))?;
+        .find(|package| package.get("name").and_then(Value::as_str) == Some(package_name))
+        .ok_or_else(|| format!("cargo metadata missing package {package_name}"))?;
     let deps = package
         .get("dependencies")
         .and_then(Value::as_array)
-        .ok_or_else(|| format!("package {EXAMPLE_PACKAGE} missing dependencies array"))?;
+        .ok_or_else(|| format!("package {package_name} missing dependencies array"))?;
     let mut names = BTreeSet::new();
     for dep in deps {
         let name = dep
@@ -142,28 +155,34 @@ fn example_direct_deps(metadata: &Value) -> Result<BTreeSet<String>, String> {
     Ok(names)
 }
 
-fn validate_standalone_manifest(errors: &mut Vec<String>) {
-    match read_text(EXAMPLE_MANIFEST) {
+fn validate_standalone_manifest(errors: &mut Vec<String>, manifest_path: &str) {
+    match read_text(manifest_path) {
         Ok(text) => {
             if !text.contains("[workspace]") {
-                errors.push(format!("{EXAMPLE_MANIFEST} must declare [workspace] so it stays standalone"));
+                errors.push(format!("{manifest_path} must declare [workspace] so it stays standalone"));
             }
         }
         Err(error) => errors.push(error),
     }
 }
 
-fn validate_direct_deps(errors: &mut Vec<String>, direct_deps: &BTreeSet<String>) {
-    for required in REQUIRED_DIRECT_DEPS {
+fn validate_direct_deps(
+    errors: &mut Vec<String>,
+    direct_deps: &BTreeSet<String>,
+    required_deps: &[&str],
+    allowed_deps: &[&str],
+    label: &str,
+) {
+    for required in required_deps {
         if !direct_deps.contains(*required) {
-            errors.push(format!("example missing required direct dependency `{required}`"));
+            errors.push(format!("{label} missing required direct dependency `{required}`"));
         }
     }
 
-    let allowed: BTreeSet<&str> = ALLOWED_DIRECT_DEPS.iter().copied().collect();
+    let allowed: BTreeSet<&str> = allowed_deps.iter().copied().collect();
     for dep in direct_deps {
         if !allowed.contains(dep.as_str()) {
-            errors.push(format!("example has undocumented direct dependency `{dep}`"));
+            errors.push(format!("{label} has undocumented direct dependency `{dep}`"));
         }
     }
 }
@@ -209,20 +228,33 @@ fn has_features_section(manifest: &str) -> bool {
 }
 
 fn run() -> Result<CheckReport, String> {
-    let metadata = cargo_metadata()?;
-    cargo_check_example()?;
+    let metadata = cargo_metadata(EXAMPLE_MANIFEST, "cargo metadata for embedded SDK example")?;
+    cargo_check_example(EXAMPLE_MANIFEST, "cargo check for embedded SDK example")?;
+    let session_metadata = cargo_metadata(SESSION_STORE_MANIFEST, "cargo metadata for embedded session-store example")?;
+    cargo_check_example(SESSION_STORE_MANIFEST, "cargo check for embedded session-store example")?;
 
     let names = package_names(&metadata)?;
-    let direct_deps = example_direct_deps(&metadata)?;
+    let direct_deps = example_direct_deps(&metadata, EXAMPLE_PACKAGE)?;
+    let session_names = package_names(&session_metadata)?;
+    let session_direct_deps = example_direct_deps(&session_metadata, SESSION_STORE_PACKAGE)?;
     let mut errors = Vec::new();
-    validate_standalone_manifest(&mut errors);
-    validate_direct_deps(&mut errors, &direct_deps);
+    validate_standalone_manifest(&mut errors, EXAMPLE_MANIFEST);
+    validate_direct_deps(&mut errors, &direct_deps, REQUIRED_DIRECT_DEPS, ALLOWED_DIRECT_DEPS, EXAMPLE_PACKAGE);
     validate_forbidden_graph(&mut errors, &names);
+    validate_standalone_manifest(&mut errors, SESSION_STORE_MANIFEST);
+    validate_direct_deps(
+        &mut errors,
+        &session_direct_deps,
+        SESSION_STORE_REQUIRED_DIRECT_DEPS,
+        SESSION_STORE_ALLOWED_DIRECT_DEPS,
+        SESSION_STORE_PACKAGE,
+    );
+    validate_forbidden_graph(&mut errors, &session_names);
     validate_feature_policy(&mut errors);
 
     Ok(CheckReport {
         errors,
-        package_count: names.len(),
+        package_count: names.len() + session_names.len(),
     })
 }
 
