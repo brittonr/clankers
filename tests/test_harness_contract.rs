@@ -65,17 +65,50 @@ fn test_harness_dry_run_receipts_cover_representative_modes() {
     ];
 
     for case in cases {
-        let receipt = run_harness_dry_run(&case);
-        assert_receipt_contract(&case, &receipt);
+        let receipt = run_harness_dry_run(&case, &format!("contract-{}", case.name));
+        assert_receipt_contract(&case, &receipt, &format!("contract-{}", case.name));
     }
 }
 
-fn run_harness_dry_run(case: &HarnessCase) -> tempfile::TempDir {
+#[test]
+fn test_harness_stable_receipts_point_to_latest_completed_run() {
+    let case = HarnessCase {
+        name: "quick",
+        args: &["quick"],
+        expected_steps: &["cargo check tests", "cargo nextest workspace"],
+        expected_commands: &["cargo check --tests", "cargo nextest run --workspace --no-fail-fast"],
+    };
     let receipt_dir = tempfile::tempdir().expect("receipt tempdir should be creatable");
+
+    run_harness_dry_run_in(&case, receipt_dir.path(), "first-run");
+    let first_run_json_path = receipt_dir.path().join("runs/first-run/results.json");
+    assert!(first_run_json_path.is_file(), "first run primary receipt should exist");
+
+    run_harness_dry_run_in(&case, receipt_dir.path(), "second-run");
+
+    let stable_json: Value = serde_json::from_str(
+        &std::fs::read_to_string(receipt_dir.path().join("results.json"))
+            .expect("stable results.json should be readable"),
+    )
+    .expect("stable results.json should be valid JSON");
+    assert_eq!(stable_json["run_id"], "second-run");
+    assert_eq!(stable_json["run_dir"], receipt_dir.path().join("runs/second-run").to_string_lossy().as_ref());
+    assert!(first_run_json_path.is_file(), "stable copy must not remove older run receipt");
+    assert!(receipt_dir.path().join("runs/second-run/logs/cargo_check_tests.log").is_file());
+}
+
+fn run_harness_dry_run(case: &HarnessCase, run_id: &str) -> tempfile::TempDir {
+    let receipt_dir = tempfile::tempdir().expect("receipt tempdir should be creatable");
+    run_harness_dry_run_in(case, receipt_dir.path(), run_id);
+    receipt_dir
+}
+
+fn run_harness_dry_run_in(case: &HarnessCase, receipt_dir: &Path, run_id: &str) {
     let output = Command::new("bash")
         .current_dir(repo_root())
         .env("CLANKERS_TEST_DRY_RUN", "1")
-        .env("CLANKERS_TEST_RESULT_DIR", receipt_dir.path())
+        .env("CLANKERS_TEST_RESULT_DIR", receipt_dir)
+        .env("CLANKERS_TEST_RUN_ID", run_id)
         .args(["scripts/test-harness.sh"])
         .args(case.args)
         .output()
@@ -88,18 +121,26 @@ fn run_harness_dry_run(case: &HarnessCase) -> tempfile::TempDir {
         String::from_utf8_lossy(&output.stdout),
         String::from_utf8_lossy(&output.stderr)
     );
-    receipt_dir
 }
 
-fn assert_receipt_contract(case: &HarnessCase, receipt_dir: &tempfile::TempDir) {
+fn assert_receipt_contract(case: &HarnessCase, receipt_dir: &tempfile::TempDir, run_id: &str) {
     let result_path = receipt_dir.path().join("results.json");
     let summary_path = receipt_dir.path().join("summary.md");
     let junit_path = receipt_dir.path().join("junit.xml");
-    assert!(result_path.is_file(), "{} should write results.json", case.name);
-    assert!(summary_path.is_file(), "{} should write summary.md", case.name);
-    assert!(junit_path.is_file(), "{} should write junit.xml", case.name);
+    let run_dir = receipt_dir.path().join("runs").join(run_id);
+    let run_result_path = run_dir.join("results.json");
+    let run_summary_path = run_dir.join("summary.md");
+    let run_junit_path = run_dir.join("junit.xml");
+    assert!(result_path.is_file(), "{} should write stable results.json", case.name);
+    assert!(summary_path.is_file(), "{} should write stable summary.md", case.name);
+    assert!(junit_path.is_file(), "{} should write stable junit.xml", case.name);
+    assert!(run_result_path.is_file(), "{} should write run-scoped results.json", case.name);
+    assert!(run_summary_path.is_file(), "{} should write run-scoped summary.md", case.name);
+    assert!(run_junit_path.is_file(), "{} should write run-scoped junit.xml", case.name);
 
     let results = std::fs::read_to_string(&result_path).expect("results.json should be readable");
+    let run_results = std::fs::read_to_string(&run_result_path).expect("run results.json should be readable");
+    assert_eq!(results, run_results, "stable results should copy completed run results");
     let summary = std::fs::read_to_string(&summary_path).expect("summary.md should be readable");
     let junit = std::fs::read_to_string(&junit_path).expect("junit.xml should be readable");
     let json: Value = serde_json::from_str(&results).expect("results.json should be valid JSON");
@@ -110,8 +151,12 @@ fn assert_receipt_contract(case: &HarnessCase, receipt_dir: &tempfile::TempDir) 
     assert_eq!(json["failed"], 0, "{} dry-run should not fail", case.name);
     assert_eq!(json["skipped"], case.expected_steps.len(), "{} skipped count", case.name);
     assert_eq!(json["mode"], case.args[0], "{} mode field", case.name);
+    assert_eq!(json["run_id"], run_id, "{} run_id field", case.name);
+    assert_eq!(json["run_dir"], run_dir.to_string_lossy().as_ref(), "{} run_dir field", case.name);
 
     assert!(summary.contains("# clankers test harness summary"));
+    assert!(summary.contains(&format!("- run_id: `{run_id}`")));
+    assert!(summary.contains(&format!("- run_dir: `{}`", run_dir.to_string_lossy())));
     assert!(summary.contains("- failed: 0"));
     assert!(junit.contains("<testsuites>"));
     assert!(junit.contains("<testsuite"));
@@ -129,6 +174,11 @@ fn assert_receipt_contract(case: &HarnessCase, receipt_dir: &tempfile::TempDir) 
             case.name
         );
         let log = step["log"].as_str().expect("step log should be a string");
+        assert!(
+            Path::new(log).starts_with(run_dir.join("logs")),
+            "{} step log should be under run-scoped log dir: {log}",
+            case.name
+        );
         assert!(Path::new(log).is_file(), "{} step log should exist: {log}", case.name);
         assert!(
             std::fs::read_to_string(log).expect("step log should be readable").contains("DRY RUN:"),

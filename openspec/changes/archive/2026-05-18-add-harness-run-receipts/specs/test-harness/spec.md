@@ -1,10 +1,4 @@
-# test-harness Specification
-
-## Purpose
-
-Define the receipt, dry-run, and regression-test contract for Clankers' canonical local test harness.
-
-## Requirements
+## MODIFIED Requirements
 
 ### Requirement: Harness Receipt Contract
 
@@ -31,4 +25,3 @@ The test harness SHALL emit machine-readable and human-readable receipts whose s
 - THEN the primary artifacts SHALL be stored under `runs/<run-id>/`
 - AND stable top-level compatibility artifacts SHALL identify the same `run_id` and `run_dir` after completion
 - AND per-step logs SHALL be stored under the run-scoped log directory
-

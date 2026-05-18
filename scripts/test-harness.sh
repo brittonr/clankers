@@ -21,11 +21,24 @@ if [[ $# -gt 0 ]]; then
 fi
 
 RESULT_DIR="${CLANKERS_TEST_RESULT_DIR:-target/test-harness}"
-SUMMARY_MD="$RESULT_DIR/summary.md"
-RESULTS_JSON="$RESULT_DIR/results.json"
-JUNIT_XML="$RESULT_DIR/junit.xml"
-LOG_DIR="$RESULT_DIR/logs"
 DRY_RUN="${CLANKERS_TEST_DRY_RUN:-0}"
+RUN_ID="${CLANKERS_TEST_RUN_ID:-$(date -u +%Y%m%dT%H%M%SZ)-$$}"
+
+case "$RUN_ID" in
+    *[!A-Za-z0-9_.-]*|"")
+        echo "error: CLANKERS_TEST_RUN_ID must contain only A-Z, a-z, 0-9, dot, underscore, or dash" >&2
+        exit 2
+        ;;
+esac
+
+RUN_DIR="$RESULT_DIR/runs/$RUN_ID"
+SUMMARY_MD="$RUN_DIR/summary.md"
+RESULTS_JSON="$RUN_DIR/results.json"
+JUNIT_XML="$RUN_DIR/junit.xml"
+LOG_DIR="$RUN_DIR/logs"
+COMPAT_SUMMARY_MD="$RESULT_DIR/summary.md"
+COMPAT_RESULTS_JSON="$RESULT_DIR/results.json"
+COMPAT_JUNIT_XML="$RESULT_DIR/junit.xml"
 
 mkdir -p "$LOG_DIR"
 
@@ -201,8 +214,9 @@ run_live_selector() {
 }
 
 write_reports() {
-    local finished_at items_json
+    local finished_at items_json run_dir_json
     finished_at="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+    run_dir_json="$(printf '%s' "$RUN_DIR" | json_escape)"
     if [[ ${#RESULT_ITEMS[@]} -eq 0 ]]; then
         items_json="[]"
     else
@@ -212,6 +226,8 @@ write_reports() {
     cat > "$RESULTS_JSON" <<JSON
 {
   "mode": "$MODE",
+  "run_id": "$RUN_ID",
+  "run_dir": $run_dir_json,
   "started_at": "$STARTED_AT",
   "finished_at": "$finished_at",
   "passed": $PASS_COUNT,
@@ -225,6 +241,8 @@ JSON
         echo "# clankers test harness summary"
         echo
         echo "- mode: \`$MODE\`"
+        echo "- run_id: \`$RUN_ID\`"
+        echo "- run_dir: \`$RUN_DIR\`"
         echo "- started: \`$STARTED_AT\`"
         echo "- finished: \`$finished_at\`"
         echo "- passed: $PASS_COUNT"
@@ -280,9 +298,18 @@ PY
         printf '</testsuites>\n'
     } > "$JUNIT_XML"
 
+    cp "$SUMMARY_MD" "$COMPAT_SUMMARY_MD"
+    cp "$RESULTS_JSON" "$COMPAT_RESULTS_JSON"
+    cp "$JUNIT_XML" "$COMPAT_JUNIT_XML"
+
+    echo "run_id:  $RUN_ID"
+    echo "run_dir: $RUN_DIR"
     echo "summary: $SUMMARY_MD"
     echo "json:    $RESULTS_JSON"
     echo "junit:   $JUNIT_XML"
+    echo "latest summary: $COMPAT_SUMMARY_MD"
+    echo "latest json:    $COMPAT_RESULTS_JSON"
+    echo "latest junit:   $COMPAT_JUNIT_XML"
 }
 
 main() {
