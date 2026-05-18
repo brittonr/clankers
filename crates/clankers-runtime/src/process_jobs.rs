@@ -1180,6 +1180,44 @@ impl AdoptProcessJobRequest {
     }
 }
 
+/// Fields every process/job receipt surface carries, independent of operation payload.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ProcessJobReceiptCommon {
+    pub operation: ProcessJobOperation,
+    pub id: Option<ProcessJobId>,
+    pub backend: Option<ProcessJobBackendKind>,
+    pub status: Option<ProcessJobStatus>,
+    pub backend_ref: Option<BackendRef>,
+    pub summary: String,
+    pub error: Option<ProcessJobError>,
+}
+
+/// Operation-specific receipt payloads layered behind a stable common envelope.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case", tag = "kind", content = "data")]
+pub enum ProcessJobReceiptPayload {
+    None,
+    State {
+        log_refs: Vec<ProcessJobLogRef>,
+    },
+    List {
+        jobs: Vec<ProcessJobSummary>,
+    },
+    Log {
+        chunk: ProcessJobLogChunk,
+    },
+    GarbageCollect {
+        receipt: ProcessJobGarbageCollectionReceipt,
+    },
+}
+
+/// Stable receipt envelope for all process/job operations.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ProcessJobToolReceipt {
+    pub common: ProcessJobReceiptCommon,
+    pub payload: ProcessJobReceiptPayload,
+}
+
 /// Shared receipt for mutations and state transitions.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ProcessJobReceipt {
@@ -1194,6 +1232,34 @@ pub struct ProcessJobReceipt {
 }
 
 impl ProcessJobReceipt {
+    #[must_use]
+    pub fn common(&self) -> ProcessJobReceiptCommon {
+        ProcessJobReceiptCommon {
+            operation: self.operation,
+            id: self.id.clone(),
+            backend: self.backend,
+            status: self.status.clone(),
+            backend_ref: self.backend_ref.clone(),
+            summary: self.summary.clone(),
+            error: self.error.clone(),
+        }
+    }
+
+    #[must_use]
+    pub fn state_payload(&self) -> ProcessJobReceiptPayload {
+        ProcessJobReceiptPayload::State {
+            log_refs: self.log_refs.clone(),
+        }
+    }
+
+    #[must_use]
+    pub fn into_tool_receipt(self) -> ProcessJobToolReceipt {
+        ProcessJobToolReceipt {
+            common: self.common(),
+            payload: self.state_payload(),
+        }
+    }
+
     #[must_use]
     pub fn permission_denied(
         operation: ProcessJobOperation,
@@ -1265,6 +1331,58 @@ pub enum ProcessJobToolResult {
     CloseStdin(ProcessJobReceipt),
     Adopt(ProcessJobReceipt),
     GarbageCollect(ProcessJobGarbageCollectionReceipt),
+}
+
+impl ProcessJobToolResult {
+    #[must_use]
+    pub fn into_receipt(self) -> ProcessJobToolReceipt {
+        match self {
+            Self::Start(receipt)
+            | Self::Poll(receipt)
+            | Self::Wait(receipt)
+            | Self::Kill(receipt)
+            | Self::Restart(receipt)
+            | Self::WriteStdin(receipt)
+            | Self::CloseStdin(receipt)
+            | Self::Adopt(receipt) => receipt.into_tool_receipt(),
+            Self::List(jobs) => ProcessJobToolReceipt {
+                common: ProcessJobReceiptCommon {
+                    operation: ProcessJobOperation::List,
+                    id: None,
+                    backend: None,
+                    status: None,
+                    backend_ref: None,
+                    summary: format!("Listed {} process jobs", jobs.len()),
+                    error: None,
+                },
+                payload: ProcessJobReceiptPayload::List { jobs },
+            },
+            Self::Log(chunk) => ProcessJobToolReceipt {
+                common: ProcessJobReceiptCommon {
+                    operation: ProcessJobOperation::Log,
+                    id: Some(chunk.id.clone()),
+                    backend: None,
+                    status: None,
+                    backend_ref: None,
+                    summary: format!("Read {} bytes of process job log", chunk.text.len()),
+                    error: None,
+                },
+                payload: ProcessJobReceiptPayload::Log { chunk },
+            },
+            Self::GarbageCollect(receipt) => ProcessJobToolReceipt {
+                common: ProcessJobReceiptCommon {
+                    operation: ProcessJobOperation::GarbageCollect,
+                    id: None,
+                    backend: None,
+                    status: None,
+                    backend_ref: None,
+                    summary: receipt.summary.clone(),
+                    error: None,
+                },
+                payload: ProcessJobReceiptPayload::GarbageCollect { receipt },
+            },
+        }
+    }
 }
 
 /// Backend result after accepting a start request.
@@ -1606,6 +1724,42 @@ mod tests {
         });
 
         assert_eq!(request.operation(), ProcessJobOperation::WriteStdin);
+    }
+
+    #[test]
+    fn process_job_tool_receipt_envelope_keeps_common_fields_and_payloads_separate() {
+        let receipt = ProcessJobReceipt {
+            operation: ProcessJobOperation::Start,
+            id: Some(ProcessJobId::legacy("proc_1")),
+            backend: Some(ProcessJobBackendKind::Native),
+            status: Some(ProcessJobStatus::Running),
+            backend_ref: Some(BackendRef("pid:123".to_string())),
+            log_refs: vec![ProcessJobLogRef {
+                stream: ProcessJobStream::Combined,
+                reference: "native:proc_1/combined.log".to_string(),
+                retained_until: None,
+                max_bytes: Some(1024),
+            }],
+            summary: "started".to_string(),
+            error: None,
+        };
+
+        let envelope = ProcessJobToolResult::Start(receipt).into_receipt();
+        assert_eq!(envelope.common.operation, ProcessJobOperation::Start);
+        assert_eq!(envelope.common.backend_ref, Some(BackendRef("pid:123".to_string())));
+        match envelope.payload {
+            ProcessJobReceiptPayload::State { log_refs } => {
+                assert_eq!(log_refs.len(), 1);
+                assert_eq!(log_refs[0].reference, "native:proc_1/combined.log");
+            }
+            other => panic!("unexpected payload: {other:?}"),
+        }
+
+        let serialized = serde_json::to_value(ProcessJobToolResult::List(Vec::new()).into_receipt())
+            .expect("receipt envelope serializes");
+        assert_eq!(serialized["common"]["operation"], "list");
+        assert_eq!(serialized["payload"]["kind"], "list");
+        assert!(serialized["payload"]["data"]["jobs"].as_array().is_some());
     }
 
     #[test]

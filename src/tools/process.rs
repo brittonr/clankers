@@ -61,6 +61,9 @@ use clankers_runtime::process_jobs::ProcessJobService;
 use clankers_runtime::process_jobs::ProcessJobStatus;
 use clankers_runtime::process_jobs::ProcessJobStream;
 use clankers_runtime::process_jobs::ProcessJobSummary;
+use clankers_runtime::process_jobs::ProcessJobToolReceipt;
+use clankers_runtime::process_jobs::ProcessJobToolRequest;
+use clankers_runtime::process_jobs::ProcessJobToolResult;
 use clankers_runtime::process_jobs::StartProcessJobRequest;
 use clankers_runtime::process_jobs::project_process_job_list;
 use serde_json::Value;
@@ -2584,29 +2587,6 @@ impl ProcessTool {
             .map_err(|e| ToolResult::error(format!("Failed to spawn direct background process: {e}")))
     }
 
-    fn start_spec(params: &Value) -> Result<(String, tokio::process::Child), ToolResult> {
-        let command = params.get("command").and_then(|v| v.as_str()).filter(|s| !s.trim().is_empty());
-        let program = params.get("program").and_then(|v| v.as_str()).filter(|s| !s.trim().is_empty());
-        match (command, program) {
-            (Some(_), Some(_)) => Err(ToolResult::error("Provide either 'command' or 'program', not both.")),
-            (Some(command), None) => {
-                if let Some(reason) = crate::tools::bash::check_dangerous(command) {
-                    return Err(ToolResult::error(format!(
-                        "Dangerous command blocked ({reason}): {command}\nUse foreground bash with interactive confirmation or ask the user for guidance."
-                    )));
-                }
-                let child = Self::spawn_shell_command(command)?;
-                Ok((command.to_string(), child))
-            }
-            (None, Some(program)) => {
-                let args = Self::parse_args(params)?;
-                let child = Self::spawn_direct(program, &args)?;
-                Ok((format_direct_command(program, &args), child))
-            }
-            (None, None) => Err(ToolResult::error("Missing required parameter: command or program")),
-        }
-    }
-
     fn requested_backend(params: &Value) -> Result<ProcessJobBackendKind, ToolResult> {
         match params.get("backend").and_then(Value::as_str).unwrap_or("native") {
             "native" => Ok(ProcessJobBackendKind::Native),
@@ -2708,26 +2688,25 @@ impl ProcessTool {
         })
     }
 
-    async fn handle_pueue_start(params: &Value) -> ToolResult {
-        let request = match Self::start_request(params, ProcessJobBackendKind::Pueue) {
-            Ok(request) => request,
-            Err(result) => return result,
-        };
-        match Self::pueue_service().start(request).await {
-            Ok(receipt) if receipt.error.is_some() => {
-                ToolResult::error(serde_json::to_string(&receipt).unwrap_or(receipt.summary))
+    fn process_job_tool_request(params: &Value) -> Result<ProcessJobToolRequest, ToolResult> {
+        let action = params.get("action").and_then(Value::as_str).unwrap_or("start");
+        match action {
+            "start" => {
+                let backend = Self::requested_backend(params)?;
+                Self::start_request(params, backend).map(ProcessJobToolRequest::Start)
             }
-            Ok(receipt) => ToolResult::text(serde_json::to_string(&receipt).unwrap_or(receipt.summary)),
-            Err(error) => ToolResult::error(error.to_string()),
+            other => Err(ToolResult::error(format!("process job DTO parser does not yet handle action '{other}'"))),
         }
     }
 
-    async fn handle_systemd_start(params: &Value) -> ToolResult {
-        let request = match Self::start_request(params, ProcessJobBackendKind::Systemd) {
-            Ok(request) => request,
-            Err(result) => return result,
-        };
-        Self::systemd_receipt_result(Self::systemd_service().start(request).await).await
+    fn tool_receipt_result(result: ProcessJobToolResult) -> ToolResult {
+        let receipt: ProcessJobToolReceipt = result.into_receipt();
+        let payload = serde_json::to_string(&receipt).unwrap_or(receipt.common.summary.clone());
+        if receipt.common.error.is_some() {
+            ToolResult::error(payload)
+        } else {
+            ToolResult::text(payload)
+        }
     }
 
     async fn pueue_receipt_result(result: Result<ProcessJobReceipt, RuntimeError>) -> ToolResult {
@@ -2781,15 +2760,23 @@ impl ProcessTool {
     }
 
     async fn handle_start(&self, ctx: &ToolContext, params: &Value) -> ToolResult {
-        let backend = match Self::requested_backend(params) {
-            Ok(backend) => backend,
+        let request = match Self::process_job_tool_request(params) {
+            Ok(ProcessJobToolRequest::Start(request)) => request,
+            Ok(_) => return ToolResult::error("Parsed unexpected process job request for start action"),
             Err(result) => return result,
         };
+        let backend = request.backend;
         if backend == ProcessJobBackendKind::Pueue {
-            return Self::handle_pueue_start(params).await;
+            return match Self::pueue_service().start(request).await {
+                Ok(receipt) => Self::tool_receipt_result(ProcessJobToolResult::Start(receipt)),
+                Err(error) => ToolResult::error(error.to_string()),
+            };
         }
         if backend == ProcessJobBackendKind::Systemd {
-            return Self::handle_systemd_start(params).await;
+            return match Self::systemd_service().start(request).await {
+                Ok(receipt) => Self::tool_receipt_result(ProcessJobToolResult::Start(receipt)),
+                Err(error) => ToolResult::error(error.to_string()),
+            };
         }
         let admission = match Self::reserve_native_start() {
             Ok(admission) => admission,
@@ -2800,14 +2787,9 @@ impl ProcessTool {
             }
         };
 
-        let request = match Self::start_request(params, ProcessJobBackendKind::Native) {
-            Ok(request) => request,
-            Err(result) => return result,
-        };
-
-        let (display_command, mut child) = match Self::start_spec(params) {
+        let (display_command, mut child) = match spawn_from_start_request(&request) {
             Ok(spec) => spec,
-            Err(result) => return result,
+            Err(error) => return ToolResult::error(error.to_string()),
         };
         let pid = child.id();
         let stdin = child.stdin.take();
@@ -4234,6 +4216,31 @@ mod tests {
             .await;
         assert!(result.is_error);
         assert!(text(&result).contains("either 'command' or 'program'"), "{}", text(&result));
+    }
+
+    #[test]
+    fn process_start_parser_produces_backend_neutral_request_dto() {
+        let request = ProcessTool::process_job_tool_request(&json!({
+            "action": "start",
+            "backend": "pueue",
+            "program": "cargo",
+            "args": ["nextest", "run"],
+            "group": "ci",
+            "notify_on_complete": true
+        }))
+        .expect("start request parses");
+
+        match request {
+            ProcessJobToolRequest::Start(start) => {
+                assert_eq!(start.backend, ProcessJobBackendKind::Pueue);
+                assert_eq!(start.command_preview, "cargo nextest run");
+                assert_eq!(start.program.as_deref(), Some("cargo"));
+                assert_eq!(start.args, vec!["nextest", "run"]);
+                assert!(start.notification_policy.notify_on_complete);
+                assert_eq!(start.metadata.get("group").map(String::as_str), Some("ci"));
+            }
+            other => panic!("unexpected request: {other:?}"),
+        }
     }
 
     #[tokio::test]

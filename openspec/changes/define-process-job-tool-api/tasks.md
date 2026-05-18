@@ -1,7 +1,7 @@
 ## Phase 1: API contract
 
 - [x] [serial] [covers=process-job-tool-api.requests.start-options] Define backend-neutral request DTOs for start/list/poll/log/wait/kill/restart/stdin/close/profile/adopt/GC. Evidence: `cargo test -p clankers-runtime process_jobs` passed at 2026-05-18T02:08:29Z.
-- [ ] [parallel] [covers=process-job-tool-api.receipts.common-shape] Define common receipt/error DTO fields and operation-specific payloads.
+- [x] [parallel] [covers=process-job-tool-api.receipts.common-shape] Define common receipt/error DTO fields and operation-specific payloads. Evidence: `cargo test -p clankers-runtime process_jobs` passed at 2026-05-18T02:28:54Z with `ProcessJobToolReceipt` common/payload envelope coverage.
 - [x] [parallel] [covers=process-job-tool-api.identity.blake3-native] Define canonical BLAKE3 `ProcessJobId` envelope, digest encoding, legacy projection behavior, and backend-ref separation. Evidence: BLAKE3 fixture test in `clankers-runtime::process_jobs` passed at 2026-05-18T02:08:29Z.
 - [x] [parallel] [covers=process-job-tool-api.compat.native-default] Inventory existing `process` parameters and map them into the new request DTOs without changing default native behavior. Evidence: `cargo test -p clankers --lib process:: -- --nocapture --test-threads=1` passed at 2026-05-18T02:08:29Z.
 
