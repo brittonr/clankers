@@ -1581,6 +1581,7 @@ dependencies = [
  "clanker-message",
  "clanker-router",
  "clanker-tui-types",
+ "clankers-adapters",
  "clankers-config",
  "clankers-core",
  "clankers-db",

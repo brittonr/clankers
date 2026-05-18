@@ -487,6 +487,100 @@ mod tests {
             && case.model_result == MatrixModelResultClass::Stop));
     }
 
+    #[tokio::test]
+    async fn embedded_batch_adapter_dogfoods_product_kit_without_shell_runtime() {
+        let catalog = clankers_adapters::EmbeddedToolCatalog {
+            tools: vec![clankers_adapters::EmbeddedToolMetadata {
+                name: "product_context".to_string(),
+                description: "Read product-owned context for an embedded turn".to_string(),
+                runtime: clankers_adapters::EmbeddedToolRuntime::ProductOwned,
+                capabilities: vec![clankers_adapters::EmbeddedCapability::Read],
+                approval: clankers_adapters::ApprovalPolicy::Never,
+                redaction: clankers_adapters::RedactionPolicy::None,
+                input_schema: json!({
+                    "type": "object",
+                    "properties": {"topic": {"type": "string"}},
+                    "required": ["topic"]
+                }),
+            }],
+        };
+        catalog.validate().expect("dogfood catalog should be embedding-safe");
+        let tool_defs = catalog
+            .tools
+            .iter()
+            .map(|tool| clanker_message::ToolDefinition {
+                name: tool.name.clone(),
+                description: tool.description.clone(),
+                input_schema: tool.input_schema.clone(),
+            })
+            .collect();
+        let submit_outcome = clankers_engine::reduce(
+            &EngineState::new(),
+            &EngineInput::submit_user_prompt(clankers_engine::EnginePromptSubmission {
+                messages: engine_messages_from_agent_messages(&[make_user_message()]),
+                model: "embedded-product-model".to_string(),
+                system_prompt: "Answer using product-owned context only.".to_string(),
+                max_tokens: Some(256),
+                temperature: None,
+                thinking: None,
+                tools: tool_defs,
+                no_cache: true,
+                cache_ttl: None,
+                session_id: "embedded-product-dogfood".to_string(),
+                model_request_slot_budget: 3,
+            }),
+        );
+        assert!(submit_outcome.rejection.is_none());
+
+        let mut model_host = clankers_adapters::ScriptedModelHost::new([
+            clankers_adapters::ScriptedModelHost::tool_request(
+                "call-product-context",
+                "product_context",
+                json!({"topic":"embedding-readiness"}),
+            ),
+            clankers_adapters::ScriptedModelHost::completed_text_with_usage(
+                "Product embedding path is wired through the reusable kit.",
+                clanker_message::Usage {
+                    input_tokens: 7,
+                    output_tokens: 11,
+                    cache_creation_input_tokens: 0,
+                    cache_read_input_tokens: 0,
+                },
+            ),
+        ]);
+        let mut tool_host = clankers_adapters::CatalogToolExecutor::new(catalog).with_outcome(
+            "product_context",
+            clankers_adapters::ScriptedToolExecutor::text_success("context: controlled internal product embedding"),
+        );
+        let mut retry_sleeper = clankers_adapters::NoopRetrySleeper::default();
+        let mut event_sink = clankers_adapters::MemoryEventSink::default();
+        let mut cancellation = clankers_adapters::AtomicCancellationSource::default();
+        let mut usage_observer = clankers_adapters::CollectingUsageObserver::default();
+
+        let report = run_engine_turn(EngineRunSeed::new(EngineState::new(), submit_outcome), HostAdapters {
+            model: &mut model_host,
+            tools: &mut tool_host,
+            retry_sleeper: &mut retry_sleeper,
+            event_sink: &mut event_sink,
+            cancellation: &mut cancellation,
+            usage_observer: &mut usage_observer,
+        })
+        .await;
+
+        assert!(matches!(report.final_state.phase, EngineTurnPhase::Finished));
+        assert!(report.adapter_diagnostics.is_empty());
+        assert_eq!(model_host.requests().len(), 2);
+        assert!(event_sink.events().iter().any(|event| matches!(event, clankers_engine::EngineEvent::TurnFinished {
+            stop_reason: StopReason::Stop
+        })));
+        assert_eq!(usage_observer.observations().len(), 1);
+        assert!(SHELL_ADAPTER_PARITY_CASES.iter().any(|case| {
+            case.id == "SAPM-003-embedded-batch-user-filter-missing-tool"
+                && case.entrypoint == MatrixEntrypoint::EmbeddedBatchAdapter
+                && case.event_translation == MatrixEventTranslation::EmbeddedSemantic
+        }));
+    }
+
     #[test]
     fn shell_adapter_parity_matrix_evidence_is_present_and_source_bounded() {
         let unsupported_shell_paths = ["daemon socket", "database store", "oauth", "plugin runtime"];
