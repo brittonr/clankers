@@ -38,6 +38,7 @@ use clankers_runtime::process_jobs::ProcessJobFilter;
 use clankers_runtime::process_jobs::ProcessJobGarbageCollectionFailure;
 use clankers_runtime::process_jobs::ProcessJobGarbageCollectionReceipt;
 use clankers_runtime::process_jobs::ProcessJobId;
+use clankers_runtime::process_jobs::ProcessJobIdentityEnvelope;
 use clankers_runtime::process_jobs::ProcessJobListProjection;
 use clankers_runtime::process_jobs::ProcessJobLogChunk;
 use clankers_runtime::process_jobs::ProcessJobLogCursor;
@@ -398,9 +399,10 @@ impl ProcessJobService for NativeProcessJobService {
             RuntimeError::InvalidTool("failed to capture stderr from native background process".to_string())
         })?;
         let (kill_tx, kill_rx) = oneshot::channel();
-        let id = ProcessTool::next_id();
+        let id = ProcessTool::next_native_job_id(&request);
+        let id_string = id.0.clone();
         let entry = Arc::new(ProcessEntry::new(
-            id.clone(),
+            id_string.clone(),
             display_command,
             stdin,
             kill_tx,
@@ -412,17 +414,18 @@ impl ProcessJobService for NativeProcessJobService {
         admission.release();
         spawn_reader(entry.clone(), "stdout", stdout);
         spawn_reader(entry, "stderr", stderr);
-        spawn_waiter(ProcessTool::get(&id).expect("inserted native process entry"), child, pid, kill_rx, None);
+        spawn_waiter(ProcessTool::get(&id_string).expect("inserted native process entry"), child, pid, kill_rx, None);
 
         Ok(ProcessJobReceipt {
             operation: ProcessJobOperation::Start,
-            id: Some(ProcessJobId(id.clone())),
+            id: Some(id.clone()),
             backend: Some(ProcessJobBackendKind::Native),
             status: Some(ProcessJobStatus::Running),
             backend_ref,
             log_refs: Vec::new(),
             summary: format!(
-                "Started background process {id} (pid: {})",
+                "Started background process {} (pid: {})",
+                id.0,
                 pid.map(|p| p.to_string()).unwrap_or_else(|| "unknown".to_string())
             ),
             error: None,
@@ -2439,10 +2442,11 @@ impl ProcessTool {
         self
     }
 
-    fn next_id() -> String {
+    fn next_native_job_id(request: &StartProcessJobRequest) -> ProcessJobId {
         let mut registry = REGISTRY.lock().expect("process registry lock poisoned");
         registry.next_id += 1;
-        format!("proc_{}", registry.next_id)
+        let request_nonce = format!("native:{}", registry.next_id);
+        ProcessJobIdentityEnvelope::for_start_request(request, request_nonce).derive_id()
     }
 
     fn insert(entry: Arc<ProcessEntry>) {
@@ -2796,6 +2800,11 @@ impl ProcessTool {
             }
         };
 
+        let request = match Self::start_request(params, ProcessJobBackendKind::Native) {
+            Ok(request) => request,
+            Err(result) => return result,
+        };
+
         let (display_command, mut child) = match Self::start_spec(params) {
             Ok(spec) => spec,
             Err(result) => return result,
@@ -2816,12 +2825,9 @@ impl ProcessTool {
                 return ToolResult::error("Failed to capture stderr from background process");
             }
         };
-        let notification_policy = match Self::notification_policy(params) {
-            Ok(policy) => policy,
-            Err(result) => return result,
-        };
+        let notification_policy = request.notification_policy.clone();
         let (kill_tx, kill_rx) = oneshot::channel();
-        let id = Self::next_id();
+        let id = Self::next_native_job_id(&request).0;
         let entry =
             Arc::new(ProcessEntry::new(id.clone(), display_command.clone(), stdin, kill_tx, pid, notification_policy));
         Self::insert(entry.clone());
@@ -4198,6 +4204,7 @@ mod tests {
         let started = tool.execute(&make_ctx(), json!({"action": "start", "command": "printf hello"})).await;
         assert!(!started.is_error, "{started:?}");
         let id = extract_process_id(&started);
+        assert!(ProcessJobId(id.clone()).is_blake3_native(), "{id}");
         let waited = tool.execute(&make_ctx(), json!({"action": "wait", "session_id": id, "timeout": 2})).await;
         assert!(!waited.is_error, "{waited:?}");
         assert!(text(&waited).contains("hello"), "{}", text(&waited));

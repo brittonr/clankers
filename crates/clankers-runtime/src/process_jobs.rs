@@ -23,6 +23,143 @@ use crate::RuntimeError;
 #[serde(transparent)]
 pub struct ProcessJobId(pub String);
 
+pub const PROCESS_JOB_ID_PREFIX: &str = "proc_b3_";
+pub const PROCESS_JOB_IDENTITY_DOMAIN: &str = "clankers.process-job.identity";
+pub const PROCESS_JOB_IDENTITY_VERSION: u8 = 1;
+
+/// Canonical, versioned input envelope for BLAKE3-native public process/job ids.
+///
+/// Backend-owned locators such as PIDs, pueue task ids, and systemd unit names do
+/// not belong in this envelope. They are carried separately by [`BackendRef`].
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ProcessJobIdentityEnvelope {
+    pub version: u8,
+    pub domain: String,
+    pub backend: ProcessJobBackendKind,
+    pub owner: ProcessJobOwnerScope,
+    pub command_preview: String,
+    pub cwd: ProcessJobCwd,
+    pub profile: Option<String>,
+    pub request_nonce: String,
+    #[serde(default)]
+    pub metadata: BTreeMap<String, String>,
+}
+
+impl ProcessJobIdentityEnvelope {
+    #[must_use]
+    pub fn for_start_request(request: &StartProcessJobRequest, request_nonce: impl Into<String>) -> Self {
+        Self {
+            version: PROCESS_JOB_IDENTITY_VERSION,
+            domain: PROCESS_JOB_IDENTITY_DOMAIN.to_string(),
+            backend: request.backend,
+            owner: request.owner.clone(),
+            command_preview: request.command_preview.clone(),
+            cwd: request.cwd.clone(),
+            profile: request.metadata.get("profile").cloned(),
+            request_nonce: request_nonce.into(),
+            metadata: public_identity_metadata(&request.metadata),
+        }
+    }
+
+    #[must_use]
+    pub fn canonical_bytes(&self) -> Vec<u8> {
+        let mut fields = Vec::new();
+        fields.push(("version".to_string(), self.version.to_string()));
+        fields.push(("domain".to_string(), self.domain.clone()));
+        fields.push(("backend".to_string(), self.backend.label().to_string()));
+        fields.push(("owner.kind".to_string(), owner_kind(&self.owner).to_string()));
+        fields.push(("owner.value".to_string(), owner_value(&self.owner).unwrap_or_default()));
+        fields.push(("command_preview".to_string(), self.command_preview.clone()));
+        fields.push(("cwd.kind".to_string(), cwd_kind(&self.cwd).to_string()));
+        fields.push(("cwd.path".to_string(), cwd_path(&self.cwd).unwrap_or_default()));
+        fields.push(("profile".to_string(), self.profile.clone().unwrap_or_default()));
+        fields.push(("request_nonce".to_string(), self.request_nonce.clone()));
+        for (key, value) in &self.metadata {
+            fields.push((format!("metadata.{key}"), value.clone()));
+        }
+        fields.sort_by(|left, right| left.0.cmp(&right.0));
+
+        let mut canonical = Vec::new();
+        canonical.extend_from_slice(b"clankers-process-job-identity-v1\n");
+        for (key, value) in fields {
+            canonical.extend_from_slice(key.len().to_string().as_bytes());
+            canonical.push(b':');
+            canonical.extend_from_slice(key.as_bytes());
+            canonical.push(b'=');
+            canonical.extend_from_slice(value.len().to_string().as_bytes());
+            canonical.push(b':');
+            canonical.extend_from_slice(value.as_bytes());
+            canonical.push(b'\n');
+        }
+        canonical
+    }
+
+    #[must_use]
+    pub fn derive_id(&self) -> ProcessJobId {
+        let hash = blake3::hash(&self.canonical_bytes());
+        ProcessJobId(format!("{PROCESS_JOB_ID_PREFIX}{}", hash.to_hex()))
+    }
+}
+
+impl ProcessJobId {
+    #[must_use]
+    pub fn from_identity_envelope(envelope: &ProcessJobIdentityEnvelope) -> Self {
+        envelope.derive_id()
+    }
+
+    #[must_use]
+    pub fn is_blake3_native(&self) -> bool {
+        self.0
+            .strip_prefix(PROCESS_JOB_ID_PREFIX)
+            .is_some_and(|digest| digest.len() == 64 && digest.chars().all(|ch| ch.is_ascii_hexdigit()))
+    }
+
+    #[must_use]
+    pub fn legacy(raw: impl Into<String>) -> Self {
+        Self(raw.into())
+    }
+}
+
+fn public_identity_metadata(metadata: &BTreeMap<String, String>) -> BTreeMap<String, String> {
+    metadata
+        .iter()
+        .filter(|(key, _)| key.starts_with("identity.") || key.as_str() == "profile")
+        .map(|(key, value)| (key.clone(), value.clone()))
+        .collect()
+}
+
+fn owner_kind(owner: &ProcessJobOwnerScope) -> &'static str {
+    match owner {
+        ProcessJobOwnerScope::Session(_) => "session",
+        ProcessJobOwnerScope::Workspace(_) => "workspace",
+        ProcessJobOwnerScope::User(_) => "user",
+        ProcessJobOwnerScope::DaemonGlobal => "daemon_global",
+    }
+}
+
+fn owner_value(owner: &ProcessJobOwnerScope) -> Option<String> {
+    match owner {
+        ProcessJobOwnerScope::Session(value)
+        | ProcessJobOwnerScope::Workspace(value)
+        | ProcessJobOwnerScope::User(value) => Some(value.clone()),
+        ProcessJobOwnerScope::DaemonGlobal => None,
+    }
+}
+
+fn cwd_kind(cwd: &ProcessJobCwd) -> &'static str {
+    match cwd {
+        ProcessJobCwd::Inherited => "inherited",
+        ProcessJobCwd::Explicit(_) => "explicit",
+    }
+}
+
+fn cwd_path(cwd: &ProcessJobCwd) -> Option<String> {
+    match cwd {
+        ProcessJobCwd::Inherited => None,
+        ProcessJobCwd::Explicit(path) => Some(path.to_string_lossy().into_owned()),
+    }
+}
+
 /// Backend-owned reference, such as a PID/process-group, pueue task id, or systemd unit name.
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 #[serde(transparent)]
@@ -535,6 +672,90 @@ pub struct StartProcessJobRequest {
     pub resource_policy: ProcessJobResourcePolicy,
     pub notification_policy: ProcessJobNotificationPolicy,
     pub metadata: BTreeMap<String, String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ListProcessJobsRequest {
+    pub filter: ProcessJobFilter,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PollProcessJobRequest {
+    pub id: ProcessJobId,
+    pub cursor: Option<ProcessJobLogCursor>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ReadProcessJobLogRequest {
+    pub id: ProcessJobId,
+    pub range: ProcessJobLogRange,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct WaitProcessJobRequest {
+    pub id: ProcessJobId,
+    pub timeout: Option<Duration>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct MutateProcessJobRequest {
+    pub id: ProcessJobId,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct WriteProcessJobStdinRequest {
+    pub id: ProcessJobId,
+    pub data: Vec<u8>,
+    pub newline: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct StartProcessJobProfileRequest {
+    pub profile: String,
+    pub owner: ProcessJobOwnerScope,
+    pub metadata: BTreeMap<String, String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct GarbageCollectProcessJobsRequest {
+    pub filter: ProcessJobFilter,
+}
+
+/// Backend-neutral public request vocabulary for process/job tool actions.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case", tag = "action", content = "request")]
+pub enum ProcessJobToolRequest {
+    Start(StartProcessJobRequest),
+    List(ListProcessJobsRequest),
+    Poll(PollProcessJobRequest),
+    Log(ReadProcessJobLogRequest),
+    Wait(WaitProcessJobRequest),
+    Kill(MutateProcessJobRequest),
+    Restart(MutateProcessJobRequest),
+    WriteStdin(WriteProcessJobStdinRequest),
+    CloseStdin(MutateProcessJobRequest),
+    StartProfile(StartProcessJobProfileRequest),
+    Adopt(AdoptProcessJobRequest),
+    GarbageCollect(GarbageCollectProcessJobsRequest),
+}
+
+impl ProcessJobToolRequest {
+    #[must_use]
+    pub fn operation(&self) -> ProcessJobOperation {
+        match self {
+            Self::Start(_) | Self::StartProfile(_) => ProcessJobOperation::Start,
+            Self::List(_) => ProcessJobOperation::List,
+            Self::Poll(_) => ProcessJobOperation::Poll,
+            Self::Log(_) => ProcessJobOperation::Log,
+            Self::Wait(_) => ProcessJobOperation::Wait,
+            Self::Kill(_) => ProcessJobOperation::Kill,
+            Self::Restart(_) => ProcessJobOperation::Restart,
+            Self::WriteStdin(_) => ProcessJobOperation::WriteStdin,
+            Self::CloseStdin(_) => ProcessJobOperation::CloseStdin,
+            Self::Adopt(_) => ProcessJobOperation::Adopt,
+            Self::GarbageCollect(_) => ProcessJobOperation::GarbageCollect,
+        }
+    }
 }
 
 /// Alias used by config/profile parsing code that resolves named jobs before dispatch.
@@ -1337,6 +1558,54 @@ mod tests {
             max_cpu_quota_percent: Some(100),
             allowed_env_prefixes: vec!["APP_".to_string()],
         }
+    }
+
+    #[test]
+    fn blake3_process_job_identity_fixture_is_canonical_and_backend_ref_free() {
+        let request = StartProcessJobRequest {
+            backend: ProcessJobBackendKind::Native,
+            command_preview: "cargo nextest run".to_string(),
+            program: Some("cargo".to_string()),
+            args: vec!["nextest".to_string(), "run".to_string()],
+            shell_command: None,
+            cwd: ProcessJobCwd::Explicit(PathBuf::from("/repo")),
+            owner: ProcessJobOwnerScope::Workspace("repo".to_string()),
+            resource_policy: ProcessJobResourcePolicy::default(),
+            notification_policy: ProcessJobNotificationPolicy::default(),
+            metadata: BTreeMap::from([
+                ("profile".to_string(), "verify".to_string()),
+                ("identity.intent".to_string(), "ci".to_string()),
+                ("env:APP_SECRET".to_string(), "must-not-enter-id".to_string()),
+            ]),
+        };
+        let envelope = ProcessJobIdentityEnvelope::for_start_request(&request, "native:42");
+        let canonical = String::from_utf8(envelope.canonical_bytes()).expect("canonical bytes are utf8 fixture");
+
+        assert!(canonical.starts_with("clankers-process-job-identity-v1\n"));
+        assert!(canonical.contains("7:backend=6:native\n"));
+        assert!(canonical.contains("8:cwd.path=5:/repo\n"));
+        assert!(canonical.contains("16:metadata.profile=6:verify\n"));
+        assert!(canonical.contains("24:metadata.identity.intent=2:ci\n"));
+        assert!(!canonical.contains("pid:"));
+        assert!(!canonical.contains("pueue:"));
+        assert!(!canonical.contains("systemd:"));
+        assert!(!canonical.contains("must-not-enter-id"));
+
+        let id = envelope.derive_id();
+        assert_eq!(id.0, "proc_b3_115e5d8781a631cd008255939c0446e4d96d6661b5435a093a534672c17b4f40");
+        assert!(id.is_blake3_native());
+        assert!(!ProcessJobId::legacy("proc_1").is_blake3_native());
+    }
+
+    #[test]
+    fn process_job_tool_request_maps_to_operation_vocabulary() {
+        let request = ProcessJobToolRequest::WriteStdin(WriteProcessJobStdinRequest {
+            id: ProcessJobId::legacy("proc_1"),
+            data: b"hello".to_vec(),
+            newline: true,
+        });
+
+        assert_eq!(request.operation(), ProcessJobOperation::WriteStdin);
     }
 
     #[test]
