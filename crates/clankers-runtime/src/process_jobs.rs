@@ -971,7 +971,10 @@ pub struct ProcessJobGarbageCollectionFailure {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ProcessJobGarbageCollectionReceipt {
     pub operation: ProcessJobOperation,
+    pub removed_metadata_count: usize,
     pub removed_records: Vec<ProcessJobId>,
+    pub tombstoned_records: Vec<ProcessJobId>,
+    pub deleted_native_log_files: usize,
     pub removed_log_bytes: u64,
     pub skipped_active_jobs: Vec<ProcessJobId>,
     pub released_log_refs: Vec<ProcessJobReleasedLogRef>,
@@ -984,19 +987,28 @@ impl ProcessJobGarbageCollectionReceipt {
     pub fn empty() -> Self {
         Self {
             operation: ProcessJobOperation::GarbageCollect,
+            removed_metadata_count: 0,
             removed_records: Vec::new(),
+            tombstoned_records: Vec::new(),
+            deleted_native_log_files: 0,
             removed_log_bytes: 0,
             skipped_active_jobs: Vec::new(),
             released_log_refs: Vec::new(),
             failures: Vec::new(),
-            summary: "process job GC removed 0 records, 0 log bytes, skipped 0 active jobs, 0 failures".to_string(),
+            summary:
+                "process job GC removed 0 metadata records, tombstoned 0 records, deleted 0 native log files, released 0 backend log refs, skipped 0 active jobs, 0 failures"
+                    .to_string(),
         }
     }
 
     pub fn refresh_summary(&mut self) {
+        self.removed_metadata_count = self.removed_records.len();
         self.summary = format!(
-            "process job GC removed {} records, {} log bytes, skipped {} active jobs, {} failures",
-            self.removed_records.len(),
+            "process job GC removed {} metadata records, tombstoned {} records, deleted {} native log files, released {} backend log refs, reclaimed {} log bytes, skipped {} active jobs, {} failures",
+            self.removed_metadata_count,
+            self.tombstoned_records.len(),
+            self.deleted_native_log_files,
+            self.released_log_refs.len(),
             self.removed_log_bytes,
             self.skipped_active_jobs.len(),
             self.failures.len()
@@ -2203,7 +2215,10 @@ pub trait ProcessJobService: Send + Sync {
     ) -> Result<ProcessJobReceipt, RuntimeError>;
     async fn close_stdin(&self, id: ProcessJobId) -> Result<ProcessJobReceipt, RuntimeError>;
     async fn adopt(&self, request: AdoptProcessJobRequest) -> Result<ProcessJobReceipt, RuntimeError>;
-    async fn garbage_collect(&self, filter: ProcessJobFilter) -> Result<ProcessJobReceipt, RuntimeError>;
+    async fn garbage_collect(
+        &self,
+        filter: ProcessJobFilter,
+    ) -> Result<ProcessJobGarbageCollectionReceipt, RuntimeError>;
     async fn reconcile_startup(&self) -> Result<ProcessJobReconciliationReport, RuntimeError> {
         Ok(ProcessJobReconciliationReport::default())
     }
@@ -4075,9 +4090,27 @@ mod tests {
             truncated: false,
         })
         .into_receipt();
+        let gc_receipt = ProcessJobToolResult::GarbageCollect(ProcessJobGarbageCollectionReceipt {
+            operation: ProcessJobOperation::GarbageCollect,
+            removed_metadata_count: 1,
+            removed_records: vec![id.clone()],
+            tombstoned_records: Vec::new(),
+            deleted_native_log_files: 1,
+            removed_log_bytes: 2,
+            released_log_refs: vec![ProcessJobReleasedLogRef {
+                id: id.clone(),
+                backend: ProcessJobBackendKind::Native,
+                reference: "native:proc_b3_115/combined.log".to_string(),
+                bytes: 2,
+            }],
+            skipped_active_jobs: Vec::new(),
+            failures: Vec::new(),
+            summary: "process job GC removed 1 metadata records, tombstoned 0 records, deleted 1 native log files, released 1 backend log refs, reclaimed 2 log bytes, skipped 0 active jobs, 0 failures".to_string(),
+        })
+        .into_receipt();
         let error_receipt = ProcessJobReceipt::unsupported(
             ProcessJobOperation::WriteStdin,
-            Some(id),
+            Some(id.clone()),
             ProcessJobBackendKind::Pueue,
             "write_stdin",
             "stdin is not supported by pueue backend",
@@ -4158,6 +4191,42 @@ mod tests {
                         }
                     },
                     "payload": {"kind": "state", "data": {"log_refs": []}}
+                }),
+            ),
+            (
+                gc_receipt,
+                serde_json::json!({
+                    "common": {
+                        "operation": "garbage_collect",
+                        "id": null,
+                        "backend": null,
+                        "status": null,
+                        "backend_ref": null,
+                        "summary": "process job GC removed 1 metadata records, tombstoned 0 records, deleted 1 native log files, released 1 backend log refs, reclaimed 2 log bytes, skipped 0 active jobs, 0 failures",
+                        "error": null
+                    },
+                    "payload": {
+                        "kind": "garbage_collect",
+                        "data": {
+                            "receipt": {
+                                "operation": "garbage_collect",
+                                "removed_metadata_count": 1,
+                                "removed_records": ["proc_b3_115e5d8781a631cd008255939c0446e4d96d6661b5435a093a534672c17b4f40"],
+                                "tombstoned_records": [],
+                                "deleted_native_log_files": 1,
+                                "removed_log_bytes": 2,
+                                "released_log_refs": [{
+                                    "id": "proc_b3_115e5d8781a631cd008255939c0446e4d96d6661b5435a093a534672c17b4f40",
+                                    "backend": "native",
+                                    "reference": "native:proc_b3_115/combined.log",
+                                    "bytes": 2
+                                }],
+                                "skipped_active_jobs": [],
+                                "failures": [],
+                                "summary": "process job GC removed 1 metadata records, tombstoned 0 records, deleted 1 native log files, released 1 backend log refs, reclaimed 2 log bytes, skipped 0 active jobs, 0 failures"
+                            }
+                        }
+                    }
                 }),
             ),
         ];

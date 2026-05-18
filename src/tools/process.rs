@@ -102,6 +102,21 @@ fn unsupported_backend_receipt(
     ProcessJobBackendCapabilities::for_backend(backend).unsupported_receipt(operation, id, message)
 }
 
+fn unsupported_gc_receipt(
+    backend: ProcessJobBackendKind,
+    message: impl Into<String>,
+) -> ProcessJobGarbageCollectionReceipt {
+    let message = message.into();
+    let mut receipt = ProcessJobGarbageCollectionReceipt::empty();
+    receipt.failures.push(ProcessJobGarbageCollectionFailure {
+        id: None,
+        reference: Some(backend.label().to_string()),
+        message,
+    });
+    receipt.refresh_summary();
+    receipt
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 struct NativeAdmissionDecision {
     accepted: bool,
@@ -648,10 +663,11 @@ impl ProcessJobService for NativeProcessJobService {
         })
     }
 
-    async fn garbage_collect(&self, _filter: ProcessJobFilter) -> Result<ProcessJobReceipt, RuntimeError> {
-        Ok(unsupported_backend_receipt(
-            ProcessJobOperation::GarbageCollect,
-            None,
+    async fn garbage_collect(
+        &self,
+        _filter: ProcessJobFilter,
+    ) -> Result<ProcessJobGarbageCollectionReceipt, RuntimeError> {
+        Ok(unsupported_gc_receipt(
             ProcessJobBackendKind::Native,
             "native process garbage collection is not implemented yet",
         ))
@@ -954,10 +970,11 @@ impl<R: PueueRunner> ProcessJobService for PueueProcessJobService<R> {
         )
     }
 
-    async fn garbage_collect(&self, _filter: ProcessJobFilter) -> Result<ProcessJobReceipt, RuntimeError> {
-        Ok(unsupported_backend_receipt(
-            ProcessJobOperation::GarbageCollect,
-            None,
+    async fn garbage_collect(
+        &self,
+        _filter: ProcessJobFilter,
+    ) -> Result<ProcessJobGarbageCollectionReceipt, RuntimeError> {
+        Ok(unsupported_gc_receipt(
             ProcessJobBackendKind::Pueue,
             "pueue retention is owned by pueue cleanup policies for now",
         ))
@@ -1487,10 +1504,11 @@ impl<R: SystemdRunner> ProcessJobService for SystemdProcessJobService<R> {
         ))
     }
 
-    async fn garbage_collect(&self, _filter: ProcessJobFilter) -> Result<ProcessJobReceipt, RuntimeError> {
-        Ok(unsupported_backend_receipt(
-            ProcessJobOperation::GarbageCollect,
-            None,
+    async fn garbage_collect(
+        &self,
+        _filter: ProcessJobFilter,
+    ) -> Result<ProcessJobGarbageCollectionReceipt, RuntimeError> {
+        Ok(unsupported_gc_receipt(
             ProcessJobBackendKind::Systemd,
             "systemd transient-unit retention is delegated to systemd --collect for now",
         ))
@@ -2239,7 +2257,9 @@ async fn apply_process_job_retention(
             });
             if let Some(path) = safe_native_log_path(log_dir.as_ref(), &log_ref.reference) {
                 match std::fs::remove_file(&path) {
-                    Ok(()) => {}
+                    Ok(()) => {
+                        receipt.deleted_native_log_files = receipt.deleted_native_log_files.saturating_add(1);
+                    }
                     Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
                     Err(error) => receipt.failures.push(ProcessJobGarbageCollectionFailure {
                         id: Some(ProcessJobId(record.id.clone())),
@@ -4109,8 +4129,12 @@ mod tests {
         let envelope: serde_json::Value = serde_json::from_str(&text(&result)).expect("gc json envelope");
         assert_eq!(envelope["common"]["operation"], "garbage_collect");
         let payload = &envelope["payload"]["data"]["receipt"];
+        assert_eq!(payload["removed_metadata_count"], 1);
         assert_eq!(payload["removed_records"][0], "proc_gc_expired");
+        assert_eq!(payload["tombstoned_records"].as_array().expect("tombstones").len(), 0);
+        assert_eq!(payload["deleted_native_log_files"], 1);
         assert_eq!(payload["removed_log_bytes"], 12);
+        assert_eq!(payload["released_log_refs"].as_array().expect("released refs").len(), 1);
         assert_eq!(payload["skipped_active_jobs"][0], "proc_gc_active");
         assert!(payload["failures"].as_array().expect("failures").is_empty(), "{payload}");
         assert!(db.async_process_jobs().get("proc_gc_expired").await.expect("db read").is_none());
