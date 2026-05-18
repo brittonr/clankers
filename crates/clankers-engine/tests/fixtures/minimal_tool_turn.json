@@ -1,0 +1,71 @@
+{
+  "name": "minimal-tool-turn",
+  "session_id": "deterministic-session-001",
+  "model": "deterministic-model",
+  "system_prompt": "You are a deterministic replay fixture.",
+  "max_tokens": 256,
+  "user": "Read the deterministic fixture target.",
+  "tool": {
+    "name": "deterministic_read",
+    "description": "Return fixture-owned text for a path.",
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "path": { "type": "string" }
+      },
+      "required": ["path"]
+    }
+  },
+  "provider_script": [
+    {
+      "expect_request_id": "model-request-1",
+      "expect_message_roles": ["user"],
+      "expect_session_id": "deterministic-session-001",
+      "response": {
+        "stop_reason": "tool_use",
+        "content": [
+          {
+            "type": "ToolUse",
+            "id": "tool-call-001",
+            "name": "deterministic_read",
+            "input": { "path": "fixtures/answer.txt" }
+          }
+        ]
+      }
+    },
+    {
+      "expect_request_id": "model-request-2",
+      "expect_message_roles": ["user", "assistant", "tool"],
+      "expect_session_id": "deterministic-session-001",
+      "response": {
+        "stop_reason": "stop",
+        "content": [
+          {
+            "type": "Text",
+            "text": "The deterministic fixture target says: fixture-ok."
+          }
+        ]
+      }
+    }
+  ],
+  "tool_script": {
+    "tool-call-001": {
+      "name": "deterministic_read",
+      "input": { "path": "fixtures/answer.txt" },
+      "result": [
+        {
+          "type": "Text",
+          "text": "fixture-ok"
+        }
+      ],
+      "is_error": false
+    }
+  },
+  "expected_hashes": {
+    "transcript": "9b50fecd4179949af59e967ea8818b1b3f309227ed6e87bc0d2a4a602185b480",
+    "events": "7c73999419b77f53ff39a09f43b55f197862c660b7b2dd941b17d06d69b4dd36",
+    "provider_requests": "1c93eb6887c118b0373d3c34a7d6b47a2b495f4c7c5e1da2bcda4fe65f2fc359",
+    "tool_results": "45c66186352c425d9a2826eae32011a35eaeb7f89ad0d5f8f4133f6ba883036f",
+    "receipt": "0106065d2ce2711f3c4287d62dae11318bd5e3febc9945f99df731e6c236e319"
+  }
+}

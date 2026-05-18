@@ -41,6 +41,14 @@ fn test_harness_dry_run_receipts_cover_representative_modes() {
             ],
         },
         HarnessCase {
+            name: "deterministic",
+            args: &["deterministic"],
+            expected_steps: &["deterministic turn replay"],
+            expected_commands: &[
+                "cargo nextest run -p clankers-engine --test deterministic_turn_replay --no-fail-fast",
+            ],
+        },
+        HarnessCase {
             name: "e2e-api",
             args: &["e2e", "api"],
             expected_steps: &["e2e api"],
@@ -95,6 +103,7 @@ fn test_harness_list_mode_documents_profiles_selectors_env_and_receipts() {
         "`quick`",
         "`package <crate> [filter...]`",
         "`full`",
+        "`deterministic`",
         "`e2e [fake|deterministic|fast|api|all|test-name]`",
         "`live [local-model|aspen2-qwen36|all]`",
         "`vm [all|core|module|smoke|check-name]`",
@@ -102,6 +111,9 @@ fn test_harness_list_mode_documents_profiles_selectors_env_and_receipts() {
         "`list`",
         "## Selectors",
         "E2E selectors",
+        "Deterministic profile",
+        "scripted provider/tool fixtures",
+        "no live credentials",
         "Live selectors",
         "VM selectors",
         "vm-smoke",

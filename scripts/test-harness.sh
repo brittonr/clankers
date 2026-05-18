@@ -5,6 +5,7 @@
 #   ./scripts/test-harness.sh quick
 #   ./scripts/test-harness.sh package <crate> [filter...]
 #   ./scripts/test-harness.sh full
+#   ./scripts/test-harness.sh deterministic
 #   ./scripts/test-harness.sh e2e [fake|deterministic|fast|api|all|test-name]
 #   ./scripts/test-harness.sh live [local-model|aspen2-qwen36|all]
 #   ./scripts/test-harness.sh vm [all|core|module|smoke|check-name]
@@ -80,6 +81,7 @@ list_profiles() {
 - `quick`: cargo check plus workspace nextest.
 - `package <crate> [filter...]`: package-scoped cargo check plus nextest.
 - `full`: fmt, check, workspace nextest, clippy, repo verify, and tigerstyle.
+- `deterministic`: credential-free deterministic engine replay fixtures.
 - `e2e [fake|deterministic|fast|api|all|test-name]`: readiness E2E gates or legacy E2E selector.
 - `live [local-model|aspen2-qwen36|all]`: opt-in live local-model readiness.
 - `vm [all|core|module|smoke|check-name]`: opt-in NixOS VM readiness.
@@ -90,6 +92,7 @@ list_profiles() {
 ## Selectors
 
 - E2E selectors: `fake`, `deterministic`, `fast`, `api`, `all`, or a legacy test name.
+- Deterministic profile: `clankers-engine` replay equivalence tests with scripted provider/tool fixtures and no live credentials.
 - Live selectors: `local-model`, `aspen2-qwen36`, `all`.
 - VM selectors: `all`, `core`, `module`, `smoke`.
 - VM checks: `vm-smoke`, `vm-remote-daemon`, `vm-session-recovery`, `vm-plugin-runtime`, `vm-module-daemon`, `vm-module-router`, `vm-module-integration`.
@@ -380,6 +383,9 @@ main() {
             run_step "cargo clippy" cargo clippy --workspace --all-targets -- -D warnings
             run_step "repo verify" ./scripts/verify.sh
             run_step "tigerstyle" ./xtask/tigerstyle.sh
+            ;;
+        deterministic)
+            run_step "deterministic turn replay" cargo nextest run -p clankers-engine --test deterministic_turn_replay --no-fail-fast
             ;;
         e2e)
             local selector="${1:-fake}"

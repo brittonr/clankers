@@ -1,0 +1,72 @@
+{
+  "name": "tool-failure-turn",
+  "session_id": "deterministic-session-002",
+  "model": "deterministic-model",
+  "system_prompt": "You are a deterministic replay fixture.",
+  "max_tokens": 256,
+  "user": "Read a missing deterministic fixture target.",
+  "tool": {
+    "name": "deterministic_read",
+    "description": "Return fixture-owned text for a path.",
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "path": { "type": "string" }
+      },
+      "required": ["path"]
+    }
+  },
+  "provider_script": [
+    {
+      "expect_request_id": "model-request-1",
+      "expect_message_roles": ["user"],
+      "expect_session_id": "deterministic-session-002",
+      "response": {
+        "stop_reason": "tool_use",
+        "content": [
+          {
+            "type": "ToolUse",
+            "id": "tool-call-failure-001",
+            "name": "deterministic_read",
+            "input": { "path": "fixtures/missing.txt" }
+          }
+        ]
+      }
+    },
+    {
+      "expect_request_id": "model-request-2",
+      "expect_message_roles": ["user", "assistant", "tool"],
+      "expect_session_id": "deterministic-session-002",
+      "response": {
+        "stop_reason": "stop",
+        "content": [
+          {
+            "type": "Text",
+            "text": "The deterministic fixture target was missing and the tool failure was handled."
+          }
+        ]
+      }
+    }
+  ],
+  "tool_script": {
+    "tool-call-failure-001": {
+      "name": "deterministic_read",
+      "input": { "path": "fixtures/missing.txt" },
+      "result": [
+        {
+          "type": "Text",
+          "text": "fixture missing: fixtures/missing.txt"
+        }
+      ],
+      "error": "fixture missing: fixtures/missing.txt",
+      "is_error": true
+    }
+  },
+  "expected_hashes": {
+    "transcript": "6d0d57cb47fc4d3804bc178e023b423fcbc6dd2958f49b77885ece9b5f1153e4",
+    "events": "cc7c0371a7774b1cbffbbcf3d17ca78ee52b0efd3b0ab697985d70eb79c9e099",
+    "provider_requests": "d3082dd801ae07a1bc7763adbf49f8b500da4343bf3077c733fdea19dc259f6f",
+    "tool_results": "204ee2dec40d17ca9c29c01661b00333d973e1ca8f8fdcf279986724eaf288d8",
+    "receipt": "c6f9d3d61930ed3fe83e82d4c9318a8db50577cf6dc34860ec504874b41c3b1d"
+  }
+}

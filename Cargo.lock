@@ -1698,6 +1698,7 @@ dependencies = [
 name = "clankers-engine"
 version = "0.1.0"
 dependencies = [
+ "blake3",
  "chrono",
  "clanker-message",
  "serde_json",
