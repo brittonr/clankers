@@ -2,7 +2,7 @@
 
 - [x] [serial] [covers=process-job-reconciliation-state-machine.states.vocabulary] Define reconciliation states, log-degradation states, and transition rules. ✅ 24m (started: 2026-05-18T05:48:00Z → completed: 2026-05-18T06:12:02Z; evidence: `cargo test -p clankers-runtime reconciliation --lib`, `cargo check -p clankers-runtime --tests`)
 - [x] [parallel] [covers=process-job-reconciliation-state-machine.identity.pid-reuse] Define native PID/process-group identity checks and fail-closed behavior. ✅ 25m (started: 2026-05-18T05:48:00Z → completed: 2026-05-18T06:13:00Z; evidence: `native_identity_reconciliation_fails_closed_on_pid_reuse_or_ambiguous_identity` in `cargo test -p clankers-runtime reconciliation --lib`)
-- [ ] [parallel] [covers=process-job-reconciliation-state-machine.backends.external] Define pueue/systemd backend ref reconciliation contracts.
+- [x] [parallel] [covers=process-job-reconciliation-state-machine.backends.external] Define pueue/systemd backend ref reconciliation contracts. ✅ 2m (started: 2026-05-18T06:13:00Z → completed: 2026-05-18T06:15:21Z; evidence: `external_backend_reconciliation_*` in `cargo test -p clankers-runtime reconciliation --lib`, `cargo check -p clankers-runtime --tests`)
 
 ## Phase 2: Service integration
 
