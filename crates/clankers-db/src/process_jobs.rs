@@ -286,19 +286,13 @@ fn decode_supported_record(bytes: &[u8]) -> Result<Option<StoredProcessJobRecord
 
 #[must_use]
 pub fn redact_command_preview(command: &str) -> String {
+    if contains_secret_marker(&command.to_ascii_lowercase()) {
+        return REDACTED.to_string();
+    }
+
     let mut redacted = Vec::new();
     for token in command.split_whitespace() {
-        let lower = token.to_ascii_lowercase();
-        let should_redact = lower.contains("token=")
-            || lower.contains("password=")
-            || lower.contains("secret=")
-            || lower.contains("authorization=")
-            || lower.contains("api_key=")
-            || lower.contains("apikey=")
-            || lower.starts_with("bearer");
-        if should_redact {
-            redacted.push(REDACTED.to_string());
-        } else if token.len() > MAX_COMMAND_PREVIEW_LEN {
+        if token.len() > MAX_COMMAND_PREVIEW_LEN {
             redacted.push(format!("{}…", &token[..MAX_COMMAND_PREVIEW_LEN]));
         } else {
             redacted.push(token.to_string());
@@ -317,13 +311,9 @@ pub fn redact_metadata(metadata: &BTreeMap<String, String>) -> BTreeMap<String, 
     metadata
         .iter()
         .map(|(key, value)| {
-            let lower = key.to_ascii_lowercase();
-            let value = if lower.contains("token")
-                || lower.contains("secret")
-                || lower.contains("password")
-                || lower.contains("credential")
-                || lower.contains("authorization")
-            {
+            let lower_key = key.to_ascii_lowercase();
+            let lower_value = value.to_ascii_lowercase();
+            let value = if contains_secret_marker(&lower_key) || contains_secret_marker(&lower_value) {
                 REDACTED.to_string()
             } else {
                 value.clone()
@@ -331,6 +321,23 @@ pub fn redact_metadata(metadata: &BTreeMap<String, String>) -> BTreeMap<String, 
             (key.clone(), value)
         })
         .collect()
+}
+
+fn contains_secret_marker(text: &str) -> bool {
+    [
+        "authorization",
+        "bearer ",
+        "bearer:",
+        "authorization:",
+        "token",
+        "secret",
+        "password",
+        "credential",
+        "api_key",
+        "apikey",
+    ]
+    .iter()
+    .any(|marker| text.contains(marker))
 }
 
 #[cfg(test)]
@@ -352,14 +359,44 @@ mod tests {
         );
         record.safe_metadata.insert("api_token".to_string(), "secret-value".to_string());
         record.safe_metadata.insert("profile".to_string(), "build".to_string());
+        record.safe_metadata.insert("header".to_string(), "Authorization: Bearer raw-token".to_string());
         store.upsert(&record)?;
 
         let stored = store.get("proc_1")?.expect("record exists");
         assert_eq!(stored.id, "proc_1");
         assert_eq!(stored.safe_metadata.get("api_token").map(String::as_str), Some(REDACTED));
+        assert_eq!(stored.safe_metadata.get("header").map(String::as_str), Some(REDACTED));
         assert_eq!(stored.safe_metadata.get("profile").map(String::as_str), Some("build"));
         assert!(!stored.command_preview.contains("secret"));
         assert!(!stored.command_preview.contains("token=abc"));
+        Ok(())
+    }
+
+    #[test]
+    fn process_job_record_serialized_redb_bytes_exclude_raw_secrets() -> Result<()> {
+        let db = test_db()?;
+        let store = db.process_jobs();
+        let mut record = StoredProcessJobRecord::new_native(
+            "proc_secret_bytes",
+            "curl --header Authorization:Bearer --token raw-token",
+            StoredProcessJobOwnerScope::DaemonGlobal,
+        );
+        record.safe_metadata.insert("argv".to_string(), "--token raw-token".to_string());
+        record.safe_metadata.insert("env".to_string(), "PASSWORD=hunter2".to_string());
+        record.safe_metadata.insert("header".to_string(), "Authorization: Bearer raw-token".to_string());
+        record.safe_metadata.insert("label".to_string(), "safe-build".to_string());
+        store.upsert(&record)?;
+
+        let tx = db.begin_read()?;
+        let table = tx.open_table(TABLE).map_err(db_err)?;
+        let raw = table.get("proc_secret_bytes").map_err(db_err)?.expect("raw record exists");
+        let serialized = String::from_utf8(raw.value().to_vec()).expect("record json is utf8");
+
+        assert!(!serialized.contains("raw-token"), "{serialized}");
+        assert!(!serialized.contains("hunter2"), "{serialized}");
+        assert!(!serialized.contains("Authorization: Bearer"), "{serialized}");
+        assert!(serialized.contains(REDACTED), "{serialized}");
+        assert!(serialized.contains("safe-build"), "{serialized}");
         Ok(())
     }
 

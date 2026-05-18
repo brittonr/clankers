@@ -26,6 +26,10 @@ pub struct ProcessJobId(pub String);
 pub const PROCESS_JOB_ID_PREFIX: &str = "proc_b3_";
 pub const PROCESS_JOB_IDENTITY_DOMAIN: &str = "clankers.process-job.identity";
 pub const PROCESS_JOB_IDENTITY_VERSION: u8 = 1;
+pub const PROCESS_JOB_REDACTED: &str = "[REDACTED]";
+pub const PROCESS_JOB_MAX_SAFE_PREVIEW_CHARS: usize = 160;
+pub const PROCESS_JOB_MAX_SAFE_EXCERPT_CHARS: usize = 512;
+pub const PROCESS_JOB_MAX_SAFE_METADATA_VALUE_CHARS: usize = 128;
 
 /// Canonical, versioned input envelope for BLAKE3-native public process/job ids.
 ///
@@ -48,16 +52,17 @@ pub struct ProcessJobIdentityEnvelope {
 impl ProcessJobIdentityEnvelope {
     #[must_use]
     pub fn for_start_request(request: &StartProcessJobRequest, request_nonce: impl Into<String>) -> Self {
+        let redaction = ProcessJobRedactionPolicy::default();
         Self {
             version: PROCESS_JOB_IDENTITY_VERSION,
             domain: PROCESS_JOB_IDENTITY_DOMAIN.to_string(),
             backend: request.backend,
             owner: request.owner.clone(),
-            command_preview: request.command_preview.clone(),
+            command_preview: redaction.safe_command_preview(&request.command_preview),
             cwd: request.cwd.clone(),
             profile: request.metadata.get("profile").cloned(),
             request_nonce: request_nonce.into(),
-            metadata: public_identity_metadata(&request.metadata),
+            metadata: redaction.safe_identity_metadata(&request.metadata),
         }
     }
 
@@ -120,13 +125,122 @@ impl ProcessJobId {
     }
 }
 
-fn public_identity_metadata(metadata: &BTreeMap<String, String>) -> BTreeMap<String, String> {
-    metadata
-        .iter()
-        .filter(|(key, _)| key.starts_with("identity.") || key.as_str() == "profile")
-        .map(|(key, value)| (key.clone(), value.clone()))
-        .collect()
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ProcessJobRedactionPolicy {
+    pub max_preview_chars: usize,
+    pub max_excerpt_chars: usize,
+    pub max_metadata_value_chars: usize,
 }
+
+impl Default for ProcessJobRedactionPolicy {
+    fn default() -> Self {
+        Self {
+            max_preview_chars: PROCESS_JOB_MAX_SAFE_PREVIEW_CHARS,
+            max_excerpt_chars: PROCESS_JOB_MAX_SAFE_EXCERPT_CHARS,
+            max_metadata_value_chars: PROCESS_JOB_MAX_SAFE_METADATA_VALUE_CHARS,
+        }
+    }
+}
+
+impl ProcessJobRedactionPolicy {
+    #[must_use]
+    pub fn safe_command_preview(&self, raw: &str) -> String {
+        self.safe_text(raw, self.max_preview_chars)
+    }
+
+    #[must_use]
+    pub fn safe_log_excerpt(&self, raw: &str) -> String {
+        self.safe_text(raw, self.max_excerpt_chars)
+    }
+
+    #[must_use]
+    pub fn safe_metadata_value(&self, key: &str, value: &str) -> String {
+        if is_sensitive_process_job_key(key) || contains_sensitive_process_job_marker(value) {
+            PROCESS_JOB_REDACTED.to_string()
+        } else {
+            bound_chars(value, self.max_metadata_value_chars)
+        }
+    }
+
+    #[must_use]
+    pub fn safe_identity_metadata(&self, metadata: &BTreeMap<String, String>) -> BTreeMap<String, String> {
+        metadata
+            .iter()
+            .filter(|(key, _)| key.starts_with("identity.") || key.as_str() == "profile")
+            .map(|(key, value)| (key.clone(), self.safe_metadata_value(key, value)))
+            .collect()
+    }
+
+    #[must_use]
+    pub fn safe_notification_decision(
+        &self,
+        mut decision: ProcessJobNotificationDecision,
+    ) -> ProcessJobNotificationDecision {
+        decision.summary = self.safe_log_excerpt(&decision.summary);
+        decision.log_excerpt = decision.log_excerpt.as_deref().map(|excerpt| self.safe_log_excerpt(excerpt));
+        if let ProcessJobNotificationKind::WatchPattern { pattern, .. } = &mut decision.kind {
+            *pattern = self.safe_command_preview(pattern);
+        }
+        decision
+    }
+
+    #[must_use]
+    pub fn safe_notification_event(&self, mut event: ProcessJobNotificationEvent) -> ProcessJobNotificationEvent {
+        event.summary = self.safe_log_excerpt(&event.summary);
+        event.log_excerpt = event.log_excerpt.as_deref().map(|excerpt| self.safe_log_excerpt(excerpt));
+        if let ProcessJobNotificationKind::WatchPattern { pattern, .. } = &mut event.kind {
+            *pattern = self.safe_command_preview(pattern);
+        }
+        event
+    }
+
+    fn safe_text(&self, raw: &str, max_chars: usize) -> String {
+        let trimmed = raw.trim();
+        if trimmed.is_empty() {
+            return String::new();
+        }
+        if contains_sensitive_process_job_marker(trimmed) {
+            return PROCESS_JOB_REDACTED.to_string();
+        }
+        bound_chars(trimmed, max_chars)
+    }
+}
+
+fn is_sensitive_process_job_key(key: &str) -> bool {
+    let lowered = key.to_ascii_lowercase();
+    PROCESS_JOB_SENSITIVE_MARKERS.iter().any(|marker| lowered.contains(marker))
+}
+
+fn contains_sensitive_process_job_marker(text: &str) -> bool {
+    let lowered = text.to_ascii_lowercase();
+    PROCESS_JOB_SENSITIVE_MARKERS.iter().any(|marker| lowered.contains(marker))
+}
+
+fn bound_chars(value: &str, max_chars: usize) -> String {
+    let mut bounded = String::new();
+    for (index, ch) in value.chars().enumerate() {
+        if index >= max_chars {
+            bounded.push('…');
+            return bounded;
+        }
+        bounded.push(ch);
+    }
+    bounded
+}
+
+const PROCESS_JOB_SENSITIVE_MARKERS: &[&str] = &[
+    "authorization",
+    "bearer ",
+    "cookie",
+    "password",
+    "passwd",
+    "secret",
+    "token",
+    "api_key",
+    "apikey",
+    "access_key",
+    "credential",
+];
 
 fn owner_kind(owner: &ProcessJobOwnerScope) -> &'static str {
     match owner {
@@ -273,6 +387,7 @@ pub struct ProcessJobCallerScope {
 pub struct ProcessJobCapabilitySet {
     pub observe: bool,
     pub read_logs: bool,
+    pub read_raw_logs: bool,
     pub start: bool,
     pub mutate: bool,
     pub stdin: bool,
@@ -284,7 +399,25 @@ impl ProcessJobCapabilitySet {
     pub fn observe_only() -> Self {
         Self {
             observe: true,
+            ..Self::default()
+        }
+    }
+
+    #[must_use]
+    pub fn bounded_log_reader() -> Self {
+        Self {
+            observe: true,
             read_logs: true,
+            ..Self::default()
+        }
+    }
+
+    #[must_use]
+    pub fn raw_log_reader() -> Self {
+        Self {
+            observe: true,
+            read_logs: true,
+            read_raw_logs: true,
             ..Self::default()
         }
     }
@@ -294,6 +427,7 @@ impl ProcessJobCapabilitySet {
         Self {
             observe: true,
             read_logs: true,
+            read_raw_logs: true,
             start: true,
             mutate: true,
             stdin: true,
@@ -302,10 +436,15 @@ impl ProcessJobCapabilitySet {
     }
 
     #[must_use]
+    pub fn allows_log_access(&self, raw: bool) -> bool {
+        self.observe && self.read_logs && (!raw || self.read_raw_logs)
+    }
+
+    #[must_use]
     pub fn allows_operation(&self, operation: ProcessJobOperation, backend: ProcessJobBackendKind) -> bool {
         match operation {
             ProcessJobOperation::List | ProcessJobOperation::Poll => self.observe,
-            ProcessJobOperation::Log => self.observe && self.read_logs,
+            ProcessJobOperation::Log => self.allows_log_access(false),
             ProcessJobOperation::Start => {
                 self.start && (backend == ProcessJobBackendKind::Native || self.select_backend)
             }
@@ -622,11 +761,13 @@ impl ProcessJobNotificationPolicyEngine for DefaultProcessJobNotificationPolicyE
         let mut decisions = Vec::new();
         if observation.status.is_terminal() && policy.notify_on_complete && !state.completion_sent {
             state.completion_sent = true;
-            decisions.push(ProcessJobNotificationDecision {
-                kind: ProcessJobNotificationKind::Completion,
-                summary: format!("process job reached terminal status: {:?}", observation.status),
-                log_excerpt: observation.line.clone(),
-            });
+            decisions.push(ProcessJobRedactionPolicy::default().safe_notification_decision(
+                ProcessJobNotificationDecision {
+                    kind: ProcessJobNotificationKind::Completion,
+                    summary: format!("process job reached terminal status: {:?}", observation.status),
+                    log_excerpt: observation.line.clone(),
+                },
+            ));
         }
 
         let Some(line) = observation.line else {
@@ -656,14 +797,16 @@ impl ProcessJobNotificationPolicyEngine for DefaultProcessJobNotificationPolicyE
             }
             watch_state.last_delivered_tick = Some(observation.tick);
             watch_state.suppressed_matches = 0;
-            decisions.push(ProcessJobNotificationDecision {
-                kind: ProcessJobNotificationKind::WatchPattern {
-                    pattern_index,
-                    pattern: pattern.clone(),
+            decisions.push(ProcessJobRedactionPolicy::default().safe_notification_decision(
+                ProcessJobNotificationDecision {
+                    kind: ProcessJobNotificationKind::WatchPattern {
+                        pattern_index,
+                        pattern: pattern.clone(),
+                    },
+                    summary: format!("process job matched readiness pattern {pattern_index}: {pattern}"),
+                    log_excerpt: Some(line.clone()),
                 },
-                summary: format!("process job matched readiness pattern {pattern_index}: {pattern}"),
-                log_excerpt: Some(line.clone()),
-            });
+            ));
         }
         decisions
     }
@@ -708,6 +851,8 @@ pub struct PollProcessJobRequest {
 pub struct ReadProcessJobLogRequest {
     pub id: ProcessJobId,
     pub range: ProcessJobLogRange,
+    #[serde(default)]
+    pub raw: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -1751,6 +1896,7 @@ pub async fn persist_and_deliver_notification(
     sink: &dyn ProcessJobNotificationSink,
     event: ProcessJobNotificationEvent,
 ) -> Result<(), RuntimeError> {
+    let event = ProcessJobRedactionPolicy::default().safe_notification_event(event);
     store.record_notification(event.clone()).await?;
     sink.deliver(event).await
 }
@@ -1949,6 +2095,56 @@ mod tests {
         let id = envelope.derive_id();
         assert_eq!(id.0, "proc_b3_115e5d8781a631cd008255939c0446e4d96d6661b5435a093a534672c17b4f40");
         assert!(id.is_blake3_native());
+    }
+
+    #[test]
+    fn redaction_policy_bounds_previews_and_redacts_sensitive_metadata() {
+        let redaction = ProcessJobRedactionPolicy {
+            max_preview_chars: 12,
+            max_excerpt_chars: 16,
+            max_metadata_value_chars: 8,
+        };
+        let safe = "cargo nextest run --workspace";
+        let secret_command = "curl -H 'Authorization: Bearer shh' https://example.invalid";
+        let metadata = BTreeMap::from([
+            ("profile".to_string(), "verification-profile".to_string()),
+            ("identity.intent".to_string(), "ci".to_string()),
+            ("identity.token".to_string(), "raw-token".to_string()),
+            ("headers.Authorization".to_string(), "Bearer raw-token".to_string()),
+        ]);
+
+        let projected = redaction.safe_identity_metadata(&metadata);
+
+        assert_eq!(redaction.safe_command_preview(safe), "cargo nextes…");
+        assert_eq!(redaction.safe_command_preview(secret_command), PROCESS_JOB_REDACTED);
+        assert_eq!(redaction.safe_log_excerpt("ready with password=hunter2"), PROCESS_JOB_REDACTED);
+        assert_eq!(projected.get("profile").map(String::as_str), Some("verifica…"));
+        assert_eq!(projected.get("identity.intent").map(String::as_str), Some("ci"));
+        assert_eq!(projected.get("identity.token").map(String::as_str), Some(PROCESS_JOB_REDACTED));
+        assert!(!projected.contains_key("headers.Authorization"));
+    }
+
+    #[test]
+    fn identity_envelope_redacts_command_preview_before_canonicalization() {
+        let request = StartProcessJobRequest {
+            backend: ProcessJobBackendKind::Native,
+            command_preview: "run --token raw-token".to_string(),
+            program: Some("run".to_string()),
+            args: vec!["--token".to_string(), "raw-token".to_string()],
+            shell_command: None,
+            cwd: ProcessJobCwd::Inherited,
+            owner: ProcessJobOwnerScope::DaemonGlobal,
+            resource_policy: ProcessJobResourcePolicy::default(),
+            notification_policy: ProcessJobNotificationPolicy::default(),
+            metadata: BTreeMap::from([("identity.token".to_string(), "raw-token".to_string())]),
+        };
+
+        let canonical =
+            String::from_utf8(ProcessJobIdentityEnvelope::for_start_request(&request, "nonce").canonical_bytes())
+                .expect("canonical bytes are utf8 fixture");
+
+        assert!(!canonical.contains("raw-token"));
+        assert!(canonical.contains(PROCESS_JOB_REDACTED));
     }
 
     #[test]
@@ -2357,6 +2553,56 @@ mod tests {
         assert_eq!(first.len(), 1);
         assert_eq!(first[0].kind, ProcessJobNotificationKind::Completion);
         assert!(second.is_empty(), "completion notification is one-shot");
+    }
+
+    #[tokio::test]
+    async fn notification_decisions_and_persistence_redact_secret_excerpts() {
+        let engine = DefaultProcessJobNotificationPolicyEngine;
+        let policy = ProcessJobNotificationPolicy {
+            notify_on_complete: true,
+            watch_patterns: vec!["Authorization".to_string()],
+        };
+        let mut state = ProcessJobNotificationPolicyState::default();
+        let completion = engine
+            .evaluate(&policy, &mut state, ProcessJobNotificationObservation {
+                status: ProcessJobStatus::Succeeded { exit_code: Some(0) },
+                line: Some("finished with token=raw-token".to_string()),
+                tick: 1,
+            })
+            .await;
+        let watch = engine
+            .evaluate(&policy, &mut state, ProcessJobNotificationObservation {
+                status: ProcessJobStatus::Running,
+                line: Some("Authorization: Bearer raw-token".to_string()),
+                tick: PROCESS_JOB_WATCH_RATE_LIMIT_TICKS + 2,
+            })
+            .await;
+
+        assert_eq!(completion[0].log_excerpt.as_deref(), Some(PROCESS_JOB_REDACTED));
+        assert_eq!(watch[0].log_excerpt.as_deref(), Some(PROCESS_JOB_REDACTED));
+        assert!(matches!(
+            &watch[0].kind,
+            ProcessJobNotificationKind::WatchPattern { pattern, .. } if pattern == PROCESS_JOB_REDACTED
+        ));
+
+        let store = FakeStore::default();
+        let sink = FakeSink::default();
+        let mut event = notification_event("evt_secret", ProcessJobOwnerScope::DaemonGlobal);
+        event.summary = "done token=raw-token".to_string();
+        event.log_excerpt = Some("password=hunter2".to_string());
+        persist_and_deliver_notification(&store, &sink, event)
+            .await
+            .expect("redacted event persists and delivers");
+
+        let persisted = store
+            .notifications
+            .lock()
+            .expect("fake notification lock poisoned")
+            .first()
+            .cloned()
+            .expect("notification persisted");
+        assert_eq!(persisted.summary, PROCESS_JOB_REDACTED);
+        assert_eq!(persisted.log_excerpt.as_deref(), Some(PROCESS_JOB_REDACTED));
     }
 
     #[tokio::test]
@@ -2818,7 +3064,18 @@ mod tests {
         };
 
         assert!(observer.can_access(&owner, ProcessJobOperation::List, ProcessJobBackendKind::Native));
-        assert!(observer.can_access(&owner, ProcessJobOperation::Log, ProcessJobBackendKind::Native));
+        assert!(!observer.can_access(&owner, ProcessJobOperation::Log, ProcessJobBackendKind::Native));
+        assert!(!observer.capabilities.allows_log_access(false));
+        assert!(!observer.capabilities.allows_log_access(true));
+        let bounded_log_reader = ProcessJobCallerScope {
+            session_id: Some("sess-a".to_string()),
+            capabilities: ProcessJobCapabilitySet::bounded_log_reader(),
+            ..ProcessJobCallerScope::default()
+        };
+        assert!(bounded_log_reader.can_access(&owner, ProcessJobOperation::Log, ProcessJobBackendKind::Native));
+        assert!(bounded_log_reader.capabilities.allows_log_access(false));
+        assert!(!bounded_log_reader.capabilities.allows_log_access(true));
+        assert!(ProcessJobCapabilitySet::raw_log_reader().allows_log_access(true));
         assert!(!observer.can_access(&owner, ProcessJobOperation::Kill, ProcessJobBackendKind::Native));
         assert!(!observer.can_access(&owner, ProcessJobOperation::WriteStdin, ProcessJobBackendKind::Native));
         assert!(!other_session.can_access(&owner, ProcessJobOperation::Kill, ProcessJobBackendKind::Native));
@@ -2890,6 +3147,7 @@ mod tests {
                 offset: Some(7),
                 limit_bytes: 1024,
             },
+            raw: false,
         });
         let write = ProcessJobToolRequest::WriteStdin(WriteProcessJobStdinRequest {
             id: id.clone(),
@@ -2937,7 +3195,8 @@ mod tests {
                     "action": "log",
                     "request": {
                         "id": "proc_b3_115e5d8781a631cd008255939c0446e4d96d6661b5435a093a534672c17b4f40",
-                        "range": {"stream": "combined", "offset": 7, "limit_bytes": 1024}
+                        "range": {"stream": "combined", "offset": 7, "limit_bytes": 1024},
+                        "raw": false
                     }
                 }),
             ),

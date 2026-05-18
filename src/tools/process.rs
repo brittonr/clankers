@@ -58,6 +58,7 @@ use clankers_runtime::process_jobs::ProcessJobNotificationPolicyState;
 use clankers_runtime::process_jobs::ProcessJobOperation;
 use clankers_runtime::process_jobs::ProcessJobOwnerScope;
 use clankers_runtime::process_jobs::ProcessJobReceipt;
+use clankers_runtime::process_jobs::ProcessJobRedactionPolicy;
 use clankers_runtime::process_jobs::ProcessJobReleasedLogRef;
 use clankers_runtime::process_jobs::ProcessJobRetentionPolicy;
 use clankers_runtime::process_jobs::ProcessJobService;
@@ -376,7 +377,7 @@ impl ProcessEntry {
             backend_ref: self.backend_ref.clone(),
             owner: clankers_runtime::process_jobs::ProcessJobOwnerScope::DaemonGlobal,
             status: status_to_job_status(&self.status()),
-            command_preview: self.command.chars().take(MAX_COMMAND_PREVIEW_LEN).collect(),
+            command_preview: ProcessJobRedactionPolicy::default().safe_command_preview(&self.command),
             cwd: clankers_runtime::process_jobs::ProcessJobCwd::Inherited,
             started_at: Some(self.started_at_wall),
             updated_at: Utc::now(),
@@ -477,7 +478,7 @@ impl ProcessJobService for NativeProcessJobService {
             summary: if output.is_empty() {
                 "No new output.".to_string()
             } else {
-                output.join("\n")
+                ProcessJobRedactionPolicy::default().safe_log_excerpt(&output.join("\n"))
             },
             error: None,
         })
@@ -524,7 +525,7 @@ impl ProcessJobService for NativeProcessJobService {
         let mut summary = format!("{} finished with status: {}", entry.id, entry.status().label());
         if !output.is_empty() {
             summary.push('\n');
-            summary.push_str(&output.join("\n"));
+            summary.push_str(&ProcessJobRedactionPolicy::default().safe_log_excerpt(&output.join("\n")));
         }
         Ok(native_receipt(ProcessJobOperation::Wait, &entry, summary))
     }
@@ -1819,7 +1820,7 @@ fn stored_record_from_entry(entry: &ProcessEntry) -> StoredProcessJobRecord {
         id: entry.id.clone(),
         backend: StoredProcessJobBackendKind::Native,
         backend_ref: entry.backend_ref.as_ref().map(|backend_ref| backend_ref.0.clone()),
-        command_preview: entry.command.chars().take(MAX_COMMAND_PREVIEW_LEN).collect(),
+        command_preview: ProcessJobRedactionPolicy::default().safe_command_preview(&entry.command),
         cwd: StoredProcessJobCwd::Inherited,
         owner: StoredProcessJobOwnerScope::DaemonGlobal,
         status: stored_status_from_process(&entry.status()),
@@ -2602,10 +2603,12 @@ impl ProcessTool {
             (None, None) => return Err(ToolResult::error("Missing required parameter: command or program")),
             (Some(_), Some(_)) => unreachable!(),
         };
+        let redaction = ProcessJobRedactionPolicy::default();
+        let command_preview = redaction.safe_command_preview(&command_preview);
         let mut metadata = std::collections::BTreeMap::new();
         for key in ["group", "label", "systemd_unit", "systemd_scope"] {
             if let Some(value) = params.get(key).and_then(Value::as_str).filter(|value| !value.is_empty()) {
-                metadata.insert(key.to_string(), value.to_string());
+                metadata.insert(key.to_string(), redaction.safe_metadata_value(key, value));
             }
         }
         Ok(StartProcessJobRequest {
@@ -2662,6 +2665,7 @@ impl ProcessTool {
             "log" => Ok(ProcessJobToolRequest::Log(ReadProcessJobLogRequest {
                 id: ProcessJobId(Self::required_session(params)?),
                 range: Self::process_job_log_range(params),
+                raw: params.get("raw").and_then(Value::as_bool).unwrap_or(false),
             })),
             "wait" => Ok(ProcessJobToolRequest::Wait(WaitProcessJobRequest {
                 id: ProcessJobId(Self::required_session(params)?),
@@ -3896,6 +3900,32 @@ mod tests {
         assert!(waited.summary.contains("service-ok"), "{}", waited.summary);
     }
 
+    #[tokio::test]
+    async fn native_process_job_service_redacts_receipts_and_persisted_metadata() {
+        let db = clankers_db::Db::in_memory().expect("db opens");
+        let ctx = make_ctx_with_db(db.clone());
+        let tool = ProcessTool::new();
+        let started = tool
+            .execute(
+                &ctx,
+                json!({"action": "start", "command": "printf 'token=raw-token\n'", "label": "Authorization: Bearer raw-token"}),
+            )
+            .await;
+        assert!(!started.is_error, "{started:?}");
+        let id = extract_process_id(&started);
+        let waited = tool.execute(&ctx, json!({"action": "wait", "session_id": id, "timeout": 2})).await;
+        let waited_text = text(&waited);
+        assert!(!waited.is_error, "{waited:?}");
+        assert!(waited_text.contains("[REDACTED]"), "{waited_text}");
+        assert!(!waited_text.contains("raw-token"), "{waited_text}");
+
+        let stored = db.async_process_jobs().get(id).await.expect("db read").expect("record stored");
+        let serialized = serde_json::to_string(&stored).expect("stored record serializes");
+        assert!(!serialized.contains("raw-token"), "{serialized}");
+        assert!(!serialized.contains("Authorization: Bearer"), "{serialized}");
+        assert!(serialized.contains("[REDACTED]"), "{serialized}");
+    }
+
     #[test]
     fn native_admission_limit_rejects_at_capacity_with_typed_receipt() {
         let accepted = native_admission_decision(MAX_NATIVE_ACTIVE_PROCESS_JOBS - 1, MAX_NATIVE_ACTIVE_PROCESS_JOBS);
@@ -4384,7 +4414,15 @@ mod tests {
                 assert_eq!(request.id.0, "proc_b3_log");
                 assert_eq!(request.range.offset, Some(12));
                 assert_eq!(request.range.limit_bytes, 34);
+                assert!(!request.raw);
             }
+            other => panic!("unexpected request: {other:?}"),
+        }
+
+        match ProcessTool::process_job_tool_request(&json!({"action": "log", "session_id": "proc_b3_log", "raw": true}))
+            .expect("raw log request parses")
+        {
+            ProcessJobToolRequest::Log(request) => assert!(request.raw),
             other => panic!("unexpected request: {other:?}"),
         }
 
