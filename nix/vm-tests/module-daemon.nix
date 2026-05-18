@@ -75,6 +75,15 @@ pkgs.testers.runNixOSTest {
     assert job_owner == "clankers:clankers 750", f"bad job dir ownership/mode: {job_owner}"
     assert log_owner == "clankers:clankers 750", f"bad log dir ownership/mode: {log_owner}"
 
+    # Verify the daemon user can materialize durable registry/log files
+    # at the paths exported to the process runtime.  This catches tmpfiles,
+    # ownership, and service-directory drift before attempting live jobs.
+    machine.succeed(
+        "su -s /bin/sh clankers -c "
+        "'touch /var/lib/clankers/process-jobs/vm-registry-smoke.redb "
+        "/var/log/clankers/process-jobs/vm-log-smoke.log'"
+    )
+
     # ── Phase 4: Service starts ──────────────────────────────────────
     # The daemon takes a moment to bind its iroh endpoint; wait for
     # the unit to reach active state (or at least be started).
@@ -110,8 +119,11 @@ pkgs.testers.runNixOSTest {
     assert "CLANKERS_PROCESS_JOBS_ENABLED=1" in env_props, env_props
     assert "CLANKERS_PROCESS_JOB_DEFAULT_BACKEND=native" in env_props, env_props
     assert "CLANKERS_PROCESS_JOB_DB=/var/lib/clankers/process-jobs/process-jobs.redb" in env_props, env_props
+    assert "CLANKERS_PROCESS_JOB_REGISTRY_DIR=/var/lib/clankers/process-jobs" in env_props, env_props
     assert "CLANKERS_PROCESS_JOB_LOG_DIR=/var/log/clankers/process-jobs" in env_props, env_props
     assert "CLANKERS_PROCESS_JOB_RETENTION_MAX_AGE_DAYS=7" in env_props, env_props
+    assert "CLANKERS_PROCESS_JOB_RETENTION_MAX_RECORDS=250" in env_props, env_props
+    assert "CLANKERS_PROCESS_JOB_RETENTION_MAX_LOG_BYTES=10485760" in env_props, env_props
 
     # ── Phase 7: Environment file loaded ─────────────────────────────
     env_file_prop = machine.succeed(
@@ -132,6 +144,25 @@ pkgs.testers.runNixOSTest {
     machine.sleep(8)  # RestartSec=5 + buffer
     machine.wait_for_unit("clankers-daemon.service", timeout=30)
     machine.log("Service restarted after SIGKILL")
+
+    # Restart through the regular systemd path and verify durable
+    # process registry/log artifacts and journal status remain inspectable.
+    machine.succeed("systemctl restart clankers-daemon.service")
+    machine.wait_for_unit("clankers-daemon.service", timeout=30)
+    machine.succeed("test -f /var/lib/clankers/process-jobs/vm-registry-smoke.redb")
+    machine.succeed("test -f /var/log/clankers/process-jobs/vm-log-smoke.log")
+    machine.succeed("journalctl -u clankers-daemon.service --no-pager -n 80")
+    post_restart_props = machine.succeed(
+        "systemctl show clankers-daemon.service "
+        "--property=Environment,ReadWritePaths,NoNewPrivileges,PrivateTmp,ProtectSystem"
+    )
+    assert "CLANKERS_PROCESS_JOBS_ENABLED=1" in post_restart_props, post_restart_props
+    assert "/var/lib/clankers/process-jobs" in post_restart_props, post_restart_props
+    assert "/var/log/clankers/process-jobs" in post_restart_props, post_restart_props
+    assert "NoNewPrivileges=yes" in post_restart_props, post_restart_props
+    assert "PrivateTmp=yes" in post_restart_props, post_restart_props
+    assert "ProtectSystem=strict" in post_restart_props, post_restart_props
+    machine.log("Service restart preserved process persistence status/log paths")
 
     # ── Phase 7: Clean stop ──────────────────────────────────────────
     machine.succeed("systemctl stop clankers-daemon.service")
