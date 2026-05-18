@@ -33,6 +33,7 @@ use clankers_runtime::process_jobs::GarbageCollectProcessJobsRequest;
 use clankers_runtime::process_jobs::ListProcessJobsRequest;
 use clankers_runtime::process_jobs::MutateProcessJobRequest;
 use clankers_runtime::process_jobs::PollProcessJobRequest;
+use clankers_runtime::process_jobs::ProcessJobBackendCapabilities;
 use clankers_runtime::process_jobs::ProcessJobBackendKind;
 use clankers_runtime::process_jobs::ProcessJobCwd;
 use clankers_runtime::process_jobs::ProcessJobError;
@@ -90,6 +91,15 @@ const MAX_COMMAND_PREVIEW_LEN: usize = 200;
 const MAX_NATIVE_ACTIVE_PROCESS_JOBS: usize = 32;
 const NATIVE_KILL_GRACE: Duration = Duration::from_secs(2);
 const ADOPTED_NATIVE_ID_PREFIX: &str = "native_pid_";
+
+fn unsupported_backend_receipt(
+    operation: ProcessJobOperation,
+    id: Option<ProcessJobId>,
+    backend: ProcessJobBackendKind,
+    message: impl Into<String>,
+) -> ProcessJobReceipt {
+    ProcessJobBackendCapabilities::for_backend(backend).unsupported_receipt(operation, id, message)
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 struct NativeAdmissionDecision {
@@ -383,11 +393,10 @@ pub struct NativeProcessJobService;
 impl ProcessJobService for NativeProcessJobService {
     async fn start(&self, request: StartProcessJobRequest) -> Result<ProcessJobReceipt, RuntimeError> {
         if request.backend != ProcessJobBackendKind::Native {
-            return Ok(ProcessJobReceipt::unsupported(
+            return Ok(unsupported_backend_receipt(
                 ProcessJobOperation::Start,
                 None,
                 request.backend,
-                "start",
                 "current process tool default service supports only native backend",
             ));
         }
@@ -540,11 +549,10 @@ impl ProcessJobService for NativeProcessJobService {
     }
 
     async fn restart(&self, id: ProcessJobId) -> Result<ProcessJobReceipt, RuntimeError> {
-        Ok(ProcessJobReceipt::unsupported(
+        Ok(unsupported_backend_receipt(
             ProcessJobOperation::Restart,
             Some(id),
             ProcessJobBackendKind::Native,
-            "restart",
             "native process restart is not implemented yet",
         ))
     }
@@ -588,11 +596,10 @@ impl ProcessJobService for NativeProcessJobService {
 
     async fn adopt(&self, request: AdoptProcessJobRequest) -> Result<ProcessJobReceipt, RuntimeError> {
         if request.backend != ProcessJobBackendKind::Native {
-            return Ok(ProcessJobReceipt::unsupported(
+            return Ok(unsupported_backend_receipt(
                 ProcessJobOperation::Adopt,
                 None,
                 request.backend,
-                "adopt",
                 "native process service only supports native adoption requests",
             ));
         }
@@ -620,6 +627,7 @@ impl ProcessJobService for NativeProcessJobService {
                     id: None,
                     backend: Some(ProcessJobBackendKind::Native),
                     action: Some("adopt".to_string()),
+                    capability_detail: None,
                     message: format!("native pid {pid} is not signalable"),
                 }),
             });
@@ -640,11 +648,10 @@ impl ProcessJobService for NativeProcessJobService {
     }
 
     async fn garbage_collect(&self, _filter: ProcessJobFilter) -> Result<ProcessJobReceipt, RuntimeError> {
-        Ok(ProcessJobReceipt::unsupported(
+        Ok(unsupported_backend_receipt(
             ProcessJobOperation::GarbageCollect,
             None,
             ProcessJobBackendKind::Native,
-            "garbage_collect",
             "native process garbage collection is not implemented yet",
         ))
     }
@@ -738,11 +745,10 @@ impl<R: PueueRunner> PueueProcessJobService<R> {
 impl<R: PueueRunner> ProcessJobService for PueueProcessJobService<R> {
     async fn start(&self, request: StartProcessJobRequest) -> Result<ProcessJobReceipt, RuntimeError> {
         if request.backend != ProcessJobBackendKind::Pueue {
-            return Ok(ProcessJobReceipt::unsupported(
+            return Ok(unsupported_backend_receipt(
                 ProcessJobOperation::Start,
                 None,
                 request.backend,
-                "start",
                 "pueue process service only supports pueue backend requests",
             ));
         }
@@ -895,32 +901,29 @@ impl<R: PueueRunner> ProcessJobService for PueueProcessJobService<R> {
         _data: Vec<u8>,
         _newline: bool,
     ) -> Result<ProcessJobReceipt, RuntimeError> {
-        Ok(ProcessJobReceipt::unsupported(
+        Ok(unsupported_backend_receipt(
             ProcessJobOperation::WriteStdin,
             Some(id),
             ProcessJobBackendKind::Pueue,
-            "write_stdin",
             "pueue backend stdin mutation is not supported by the process tool",
         ))
     }
 
     async fn close_stdin(&self, id: ProcessJobId) -> Result<ProcessJobReceipt, RuntimeError> {
-        Ok(ProcessJobReceipt::unsupported(
+        Ok(unsupported_backend_receipt(
             ProcessJobOperation::CloseStdin,
             Some(id),
             ProcessJobBackendKind::Pueue,
-            "close_stdin",
             "pueue backend stdin close is not supported by the process tool",
         ))
     }
 
     async fn adopt(&self, request: AdoptProcessJobRequest) -> Result<ProcessJobReceipt, RuntimeError> {
         if request.backend != ProcessJobBackendKind::Pueue {
-            return Ok(ProcessJobReceipt::unsupported(
+            return Ok(unsupported_backend_receipt(
                 ProcessJobOperation::Adopt,
                 None,
                 request.backend,
-                "adopt",
                 "pueue process service only supports pueue adoption requests",
             ));
         }
@@ -951,11 +954,10 @@ impl<R: PueueRunner> ProcessJobService for PueueProcessJobService<R> {
     }
 
     async fn garbage_collect(&self, _filter: ProcessJobFilter) -> Result<ProcessJobReceipt, RuntimeError> {
-        Ok(ProcessJobReceipt::unsupported(
+        Ok(unsupported_backend_receipt(
             ProcessJobOperation::GarbageCollect,
             None,
             ProcessJobBackendKind::Pueue,
-            "garbage_collect",
             "pueue retention is owned by pueue cleanup policies for now",
         ))
     }
@@ -1269,11 +1271,10 @@ impl<R: SystemdRunner> SystemdProcessJobService<R> {
 impl<R: SystemdRunner> ProcessJobService for SystemdProcessJobService<R> {
     async fn start(&self, request: StartProcessJobRequest) -> Result<ProcessJobReceipt, RuntimeError> {
         if request.backend != ProcessJobBackendKind::Systemd {
-            return Ok(ProcessJobReceipt::unsupported(
+            return Ok(unsupported_backend_receipt(
                 ProcessJobOperation::Start,
                 None,
                 request.backend,
-                "start",
                 "systemd process service only supports systemd backend requests",
             ));
         }
@@ -1440,32 +1441,29 @@ impl<R: SystemdRunner> ProcessJobService for SystemdProcessJobService<R> {
         _data: Vec<u8>,
         _newline: bool,
     ) -> Result<ProcessJobReceipt, RuntimeError> {
-        Ok(ProcessJobReceipt::unsupported(
+        Ok(unsupported_backend_receipt(
             ProcessJobOperation::WriteStdin,
             Some(id),
             ProcessJobBackendKind::Systemd,
-            "write_stdin",
             "systemd backend stdin mutation is not supported by the process tool",
         ))
     }
 
     async fn close_stdin(&self, id: ProcessJobId) -> Result<ProcessJobReceipt, RuntimeError> {
-        Ok(ProcessJobReceipt::unsupported(
+        Ok(unsupported_backend_receipt(
             ProcessJobOperation::CloseStdin,
             Some(id),
             ProcessJobBackendKind::Systemd,
-            "close_stdin",
             "systemd backend stdin close is not supported by the process tool",
         ))
     }
 
     async fn adopt(&self, request: AdoptProcessJobRequest) -> Result<ProcessJobReceipt, RuntimeError> {
         if request.backend != ProcessJobBackendKind::Systemd {
-            return Ok(ProcessJobReceipt::unsupported(
+            return Ok(unsupported_backend_receipt(
                 ProcessJobOperation::Adopt,
                 None,
                 request.backend,
-                "adopt",
                 "systemd process service only supports systemd adoption requests",
             ));
         }
@@ -1489,11 +1487,10 @@ impl<R: SystemdRunner> ProcessJobService for SystemdProcessJobService<R> {
     }
 
     async fn garbage_collect(&self, _filter: ProcessJobFilter) -> Result<ProcessJobReceipt, RuntimeError> {
-        Ok(ProcessJobReceipt::unsupported(
+        Ok(unsupported_backend_receipt(
             ProcessJobOperation::GarbageCollect,
             None,
             ProcessJobBackendKind::Systemd,
-            "garbage_collect",
             "systemd transient-unit retention is delegated to systemd --collect for now",
         ))
     }
@@ -2426,6 +2423,7 @@ impl ProcessTool {
                 id: None,
                 backend: Some(ProcessJobBackendKind::Native),
                 action: Some("start".to_string()),
+                capability_detail: None,
                 message: summary,
             }),
         }
@@ -3206,11 +3204,10 @@ impl ProcessTool {
         if let Some(id) = Self::systemd_id(&session_id) {
             return Self::systemd_receipt_result(Self::systemd_service().restart(id).await).await;
         }
-        Self::receipt_result(ProcessJobReceipt::unsupported(
+        Self::receipt_result(unsupported_backend_receipt(
             ProcessJobOperation::Restart,
             Some(request.id),
             ProcessJobBackendKind::Native,
-            "restart",
             "native process restart is not supported; start a new native process instead",
         ))
     }
@@ -3551,7 +3548,9 @@ mod tests {
             .write_stdin(ProcessJobId("pueue_42".to_string()), b"input".to_vec(), true)
             .await
             .expect("stdin receipt succeeds");
-        assert_eq!(stdin.error.expect("unsupported receipt").code, ProcessJobErrorCode::UnsupportedActionForBackend);
+        let stdin_error = stdin.error.expect("unsupported receipt");
+        assert_eq!(stdin_error.code, ProcessJobErrorCode::UnsupportedActionForBackend);
+        assert_eq!(stdin_error.capability_detail.as_deref(), Some("stdin requires stdin support"));
 
         let calls = runner.calls();
         assert!(calls.iter().any(|call| call == &["--version"]));
@@ -3760,7 +3759,9 @@ mod tests {
             .write_stdin(ProcessJobId("systemd_clankers-build.service".to_string()), b"input".to_vec(), true)
             .await
             .expect("stdin receipt succeeds");
-        assert_eq!(stdin.error.expect("unsupported receipt").code, ProcessJobErrorCode::UnsupportedActionForBackend);
+        let stdin_error = stdin.error.expect("unsupported receipt");
+        assert_eq!(stdin_error.code, ProcessJobErrorCode::UnsupportedActionForBackend);
+        assert_eq!(stdin_error.capability_detail.as_deref(), Some("stdin requires stdin support"));
 
         let calls = runner.calls();
         assert!(calls.iter().any(|(program, args)| program == "systemd-run"
@@ -4303,6 +4304,7 @@ mod tests {
         assert_eq!(envelope["common"]["backend"], "native");
         assert_eq!(envelope["common"]["status"], serde_json::Value::Null);
         assert_eq!(envelope["common"]["error"]["code"], "unsupported_action_for_backend");
+        assert_eq!(envelope["common"]["error"]["capability_detail"], "restart requires restart support");
     }
 
     #[tokio::test]
