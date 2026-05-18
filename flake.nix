@@ -26,9 +26,14 @@
       url = "github:brittonr/ratcore";
       flake = false;
     };
+
+    ucan-src = {
+      url = "git+ssh://git@github.com/OnixResearch/ucan.git";
+      flake = false;
+    };
   };
 
-  outputs = { self, nixpkgs, unit2nix, rust-overlay, flake-utils, subwayrat-src, ratcore-src, ... }:
+  outputs = { self, nixpkgs, unit2nix, rust-overlay, flake-utils, subwayrat-src, ratcore-src, ucan-src, ... }:
     {
       nixosModules = {
         clankers-daemon = import ./nix/modules/clankers-daemon.nix;
@@ -69,6 +74,7 @@
           externalSources = {
             "../subwayrat" = subwayrat-src;
             "../ratcore" = ratcore-src;
+            "../ucan" = ucan-src;
           };
           buildRustCrateForPkgs = pkgs: pkgs.buildRustCrate.override {
             cargo = rustToolchain;
@@ -104,6 +110,7 @@
           externalSources = {
             "../subwayrat" = subwayrat-src;
             "../ratcore" = ratcore-src;
+            "../ucan" = ucan-src;
           };
           extraCrateOverrides = {
             aws-lc-rs = attrs: {
@@ -129,6 +136,7 @@
           externalSources = {
             "../subwayrat" = subwayrat-src;
             "../ratcore" = ratcore-src;
+            "../ucan" = ucan-src;
           };
           buildRustCrateForPkgs = pkgs: pkgs.buildRustCrate.override {
             cargo = rustToolchain;

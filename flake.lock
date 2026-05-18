@@ -78,6 +78,7 @@
         "ratcore-src": "ratcore-src",
         "rust-overlay": "rust-overlay",
         "subwayrat-src": "subwayrat-src",
+        "ucan-src": "ucan-src",
         "unit2nix": "unit2nix"
       }
     },
@@ -130,6 +131,22 @@
         "owner": "nix-systems",
         "repo": "default",
         "type": "github"
+      }
+    },
+    "ucan-src": {
+      "flake": false,
+      "locked": {
+        "lastModified": 1778101697,
+        "narHash": "sha256-Hn0sK7y/lnGNKWxGuqiPOlqni4OTfh+aqhMxXNZ0oTI=",
+        "ref": "refs/heads/main",
+        "rev": "ad61b53e89fa45f9bf7d313ce14c45de645bf53d",
+        "revCount": 85,
+        "type": "git",
+        "url": "ssh://git@github.com/OnixResearch/ucan.git"
+      },
+      "original": {
+        "type": "git",
+        "url": "ssh://git@github.com/OnixResearch/ucan.git"
       }
     },
     "unit2nix": {
