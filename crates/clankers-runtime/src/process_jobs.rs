@@ -1757,7 +1757,68 @@ mod tests {
         let id = envelope.derive_id();
         assert_eq!(id.0, "proc_b3_115e5d8781a631cd008255939c0446e4d96d6661b5435a093a534672c17b4f40");
         assert!(id.is_blake3_native());
-        assert!(!ProcessJobId::legacy("proc_1").is_blake3_native());
+    }
+
+    #[test]
+    fn blake3_process_job_identity_fixtures_cover_backend_kinds_and_legacy_ids() {
+        let request_for_backend = |backend| StartProcessJobRequest {
+            backend,
+            command_preview: "cargo nextest run".to_string(),
+            program: Some("cargo".to_string()),
+            args: vec!["nextest".to_string(), "run".to_string()],
+            shell_command: None,
+            cwd: ProcessJobCwd::Explicit(PathBuf::from("/repo")),
+            owner: ProcessJobOwnerScope::Workspace("repo".to_string()),
+            resource_policy: ProcessJobResourcePolicy::default(),
+            notification_policy: ProcessJobNotificationPolicy::default(),
+            metadata: BTreeMap::from([
+                ("profile".to_string(), "verify".to_string()),
+                ("identity.intent".to_string(), "ci".to_string()),
+                ("env:APP_SECRET".to_string(), "must-not-enter-id".to_string()),
+            ]),
+        };
+        let fixtures = [
+            (
+                ProcessJobBackendKind::Native,
+                "native:42",
+                "proc_b3_115e5d8781a631cd008255939c0446e4d96d6661b5435a093a534672c17b4f40",
+            ),
+            (
+                ProcessJobBackendKind::Pueue,
+                "start-seq:42",
+                "proc_b3_f5e9b858d40fe65de880e52b9adb20aa7cd2b2a08bcaeb1709cd71c86037a668",
+            ),
+            (
+                ProcessJobBackendKind::Systemd,
+                "start-seq:42",
+                "proc_b3_870a94dc2c0343c549a9d14bc258b37fdb372c1e17def29a4f1946eb2f0c2406",
+            ),
+        ];
+
+        for (backend, nonce, expected_id) in fixtures {
+            let request = request_for_backend(backend);
+            let envelope = ProcessJobIdentityEnvelope::for_start_request(&request, nonce);
+            let canonical = String::from_utf8(envelope.canonical_bytes()).expect("canonical bytes are utf8 fixture");
+            let id = envelope.derive_id();
+
+            assert_eq!(id.0, expected_id, "{backend:?} fixture drifted");
+            assert!(id.is_blake3_native(), "{backend:?} id must be BLAKE3-native");
+            assert!(canonical.contains(&format!("7:backend={}:{}\n", backend.label().len(), backend.label())));
+            assert!(!canonical.contains("pid:"), "backend PID locator must stay out of public identity");
+            assert!(!canonical.contains("pueue:"), "pueue task locator must stay out of public identity");
+            assert!(!canonical.contains("systemd:"), "systemd unit locator must stay out of public identity");
+            assert!(!canonical.contains("must-not-enter-id"), "secret metadata must stay out of public identity");
+        }
+
+        for legacy_id in [
+            "proc_1",
+            "pueue_42",
+            "systemd_clankers-build.service",
+            "native_pid_1234",
+        ] {
+            assert!(!ProcessJobId::legacy(legacy_id).is_blake3_native(), "{legacy_id} must remain a legacy projection");
+        }
+        assert!(!ProcessJobId::legacy("proc_b3_not-a-64-byte-digest").is_blake3_native());
     }
 
     #[test]
