@@ -1,0 +1,19 @@
+## Phase 1: API contract
+
+- [ ] [serial] [covers=process-job-tool-api.requests.start-options] Define backend-neutral request DTOs for start/list/poll/log/wait/kill/restart/stdin/close/profile/adopt/GC.
+- [ ] [parallel] [covers=process-job-tool-api.receipts.common-shape] Define common receipt/error DTO fields and operation-specific payloads.
+- [ ] [parallel] [covers=process-job-tool-api.identity.blake3-native] Define canonical BLAKE3 `ProcessJobId` envelope, digest encoding, legacy projection behavior, and backend-ref separation.
+- [ ] [parallel] [covers=process-job-tool-api.compat.native-default] Inventory existing `process` parameters and map them into the new request DTOs without changing default native behavior.
+
+## Phase 2: Parser and projection seams
+
+- [ ] [serial] [depends:phase-1] Refactor `process` parser to produce request DTOs and call `ProcessJobService` rather than concrete backend/storage code.
+- [ ] [parallel] [covers=process-job-tool-api.errors.unsupported-action] Add typed unsupported-action/backend-unavailable/capability-denied error receipts.
+- [ ] [parallel] [covers=process-job-tool-api.receipts.projection] Add projection adapters for agent text, TUI/process panel data, and daemon/remote event payloads.
+
+## Phase 3: Verification
+
+- [ ] [serial] [depends:phase-2] Add golden request/receipt serialization tests.
+- [ ] [serial] [depends:phase-2] Add deterministic BLAKE3 identity fixture tests covering native, pueue, systemd, and legacy/sequential ID projection.
+- [ ] [serial] [depends:phase-2] Add native compatibility tests for current process actions and defaults.
+- [ ] [serial] [depends:phase-2] Run focused process tool tests, DTO tests, `openspec validate define-process-job-tool-api --strict --json`, and `git diff --check`.
