@@ -1041,24 +1041,7 @@ fn pueue_log_refs(id: &ProcessJobId) -> Vec<ProcessJobLogRef> {
 }
 
 fn pueue_backend_unavailable(operation: ProcessJobOperation, reason: impl Into<String>) -> ProcessJobReceipt {
-    let reason = reason.into();
-    ProcessJobReceipt {
-        operation,
-        id: None,
-        backend: Some(ProcessJobBackendKind::Pueue),
-        status: Some(ProcessJobStatus::BackendUnavailable { reason: reason.clone() }),
-        backend_ref: None,
-        log_refs: Vec::new(),
-        summary: reason.clone(),
-        error: Some(ProcessJobError {
-            code: ProcessJobErrorCode::BackendUnavailable,
-            operation,
-            id: None,
-            backend: Some(ProcessJobBackendKind::Pueue),
-            action: Some(format!("{:?}", operation).to_ascii_lowercase()),
-            message: reason,
-        }),
-    }
+    ProcessJobReceipt::backend_unavailable(operation, ProcessJobBackendKind::Pueue, reason)
 }
 
 fn parse_pueue_tasks(raw: &str) -> Vec<PueueTaskProjection> {
@@ -1622,24 +1605,7 @@ fn systemd_log_refs(unit: &str) -> Vec<ProcessJobLogRef> {
 }
 
 fn systemd_backend_unavailable(operation: ProcessJobOperation, reason: impl Into<String>) -> ProcessJobReceipt {
-    let reason = reason.into();
-    ProcessJobReceipt {
-        operation,
-        id: None,
-        backend: Some(ProcessJobBackendKind::Systemd),
-        status: Some(ProcessJobStatus::BackendUnavailable { reason: reason.clone() }),
-        backend_ref: None,
-        log_refs: Vec::new(),
-        summary: reason.clone(),
-        error: Some(ProcessJobError {
-            code: ProcessJobErrorCode::BackendUnavailable,
-            operation,
-            id: None,
-            backend: Some(ProcessJobBackendKind::Systemd),
-            action: Some(format!("{:?}", operation).to_ascii_lowercase()),
-            message: reason,
-        }),
-    }
+    ProcessJobReceipt::backend_unavailable(operation, ProcessJobBackendKind::Systemd, reason)
 }
 
 fn parse_systemd_show(raw: &str, fallback_unit: &str) -> SystemdUnitProjection {

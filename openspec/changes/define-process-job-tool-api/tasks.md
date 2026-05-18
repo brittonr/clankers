@@ -8,7 +8,7 @@
 ## Phase 2: Parser and projection seams
 
 - [ ] [serial] [depends:phase-1] Refactor `process` parser to produce request DTOs and call `ProcessJobService` rather than concrete backend/storage code.
-- [ ] [parallel] [covers=process-job-tool-api.errors.unsupported-action] Add typed unsupported-action/backend-unavailable/capability-denied error receipts.
+- [x] [parallel] [covers=process-job-tool-api.errors.unsupported-action] Add typed unsupported-action/backend-unavailable/capability-denied error receipts. Evidence: `cargo test -p clankers-runtime process_jobs -- --nocapture` and `cargo test -p clankers --lib process:: -- --nocapture --test-threads=1` passed at 2026-05-18T02:39:09Z.
 - [ ] [parallel] [covers=process-job-tool-api.receipts.projection] Add projection adapters for agent text, TUI/process panel data, and daemon/remote event payloads.
 
 ## Phase 3: Verification

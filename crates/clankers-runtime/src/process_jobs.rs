@@ -197,6 +197,25 @@ pub enum ProcessJobOperation {
     GarbageCollect,
 }
 
+impl ProcessJobOperation {
+    #[must_use]
+    pub const fn action_name(self) -> &'static str {
+        match self {
+            Self::Start => "start",
+            Self::List => "list",
+            Self::Poll => "poll",
+            Self::Log => "log",
+            Self::Wait => "wait",
+            Self::Kill => "kill",
+            Self::Restart => "restart",
+            Self::WriteStdin => "write_stdin",
+            Self::CloseStdin => "close_stdin",
+            Self::Adopt => "adopt",
+            Self::GarbageCollect => "garbage_collect",
+        }
+    }
+}
+
 /// Shared status vocabulary for native processes and durable queue/supervisor jobs.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case", tag = "state")]
@@ -1288,6 +1307,32 @@ impl ProcessJobReceipt {
     }
 
     #[must_use]
+    pub fn backend_unavailable(
+        operation: ProcessJobOperation,
+        backend: ProcessJobBackendKind,
+        reason: impl Into<String>,
+    ) -> Self {
+        let reason = reason.into();
+        Self {
+            operation,
+            id: None,
+            backend: Some(backend),
+            status: Some(ProcessJobStatus::BackendUnavailable { reason: reason.clone() }),
+            backend_ref: None,
+            log_refs: Vec::new(),
+            summary: reason.clone(),
+            error: Some(ProcessJobError {
+                code: ProcessJobErrorCode::BackendUnavailable,
+                operation,
+                id: None,
+                backend: Some(backend),
+                action: Some(operation.action_name().to_string()),
+                message: reason,
+            }),
+        }
+    }
+
+    #[must_use]
     pub fn unsupported(
         operation: ProcessJobOperation,
         id: Option<ProcessJobId>,
@@ -2327,23 +2372,11 @@ mod tests {
         assert!(!capabilities.supports_restart);
         assert!(!capabilities.supports_adopt);
 
-        let unavailable = ProcessJobReceipt {
-            operation: ProcessJobOperation::Start,
-            id: None,
-            backend: Some(ProcessJobBackendKind::Systemd),
-            status: None,
-            backend_ref: None,
-            log_refs: Vec::new(),
-            summary: "systemd not enabled".to_string(),
-            error: Some(ProcessJobError {
-                code: ProcessJobErrorCode::BackendUnavailable,
-                operation: ProcessJobOperation::Start,
-                id: None,
-                backend: Some(ProcessJobBackendKind::Systemd),
-                action: Some("start".to_string()),
-                message: "systemd not enabled".to_string(),
-            }),
-        };
+        let unavailable = ProcessJobReceipt::backend_unavailable(
+            ProcessJobOperation::GarbageCollect,
+            ProcessJobBackendKind::Systemd,
+            "systemd not enabled",
+        );
         let unsupported = ProcessJobReceipt::unsupported(
             ProcessJobOperation::Restart,
             Some(ProcessJobId("proc_1".to_string())),
@@ -2352,7 +2385,9 @@ mod tests {
             "restart unsupported",
         );
 
-        assert_eq!(unavailable.error.expect("backend unavailable").code, ProcessJobErrorCode::BackendUnavailable);
+        let unavailable_error = unavailable.error.expect("backend unavailable");
+        assert_eq!(unavailable_error.code, ProcessJobErrorCode::BackendUnavailable);
+        assert_eq!(unavailable_error.action.as_deref(), Some("garbage_collect"));
         assert_eq!(
             unsupported.error.expect("restart unsupported").code,
             ProcessJobErrorCode::UnsupportedActionForBackend
