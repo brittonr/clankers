@@ -71,6 +71,59 @@ fn test_harness_dry_run_receipts_cover_representative_modes() {
 }
 
 #[test]
+fn test_harness_list_mode_documents_profiles_selectors_env_and_receipts() {
+    let receipt_dir = tempfile::tempdir().expect("receipt tempdir should be creatable");
+    let output = Command::new("bash")
+        .current_dir(repo_root())
+        .env("CLANKERS_TEST_RESULT_DIR", receipt_dir.path())
+        .env("CLANKERS_TEST_RUN_ID", "list-contract")
+        .args(["scripts/test-harness.sh", "list"])
+        .output()
+        .expect("test harness list mode should spawn");
+
+    assert!(
+        output.status.success(),
+        "list mode failed\nstdout:\n{}\nstderr:\n{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    for expected in [
+        "# clankers test harness profiles",
+        "## Modes",
+        "`quick`",
+        "`package <crate> [filter...]`",
+        "`full`",
+        "`e2e [fake|deterministic|fast|api|all|test-name]`",
+        "`live [local-model|aspen2-qwen36|all]`",
+        "`vm [all|core|module|smoke|check-name]`",
+        "`ci [extra nix args...]`",
+        "`list`",
+        "## Selectors",
+        "E2E selectors",
+        "Live selectors",
+        "VM selectors",
+        "vm-smoke",
+        "vm-module-daemon",
+        "## Environment",
+        "CLANKERS_TEST_DRY_RUN=1",
+        "CLANKERS_TEST_RESULT_DIR=<dir>",
+        "CLANKERS_TEST_RUN_ID=<id>",
+        "CARGO_TARGET_DIR=<dir>",
+        "CLANKERS_NO_DAEMON=1",
+        "## Receipts",
+        "<result-dir>/runs/<run_id>/summary.md",
+        "<result-dir>/runs/<run_id>/results.json",
+        "<result-dir>/runs/<run_id>/junit.xml",
+        "<result-dir>/runs/<run_id>/logs/*.log",
+        "<result-dir>/summary.md",
+    ] {
+        assert!(stdout.contains(expected), "list output should contain {expected:?}\n{stdout}");
+    }
+}
+
+#[test]
 fn test_harness_stable_receipts_point_to_latest_completed_run() {
     let case = HarnessCase {
         name: "quick",

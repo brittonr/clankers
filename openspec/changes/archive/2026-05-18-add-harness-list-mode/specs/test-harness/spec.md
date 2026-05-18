@@ -1,10 +1,4 @@
-# test-harness Specification
-
-## Purpose
-
-Define the receipt, dry-run, and regression-test contract for Clankers' canonical local test harness.
-
-## Requirements
+## MODIFIED Requirements
 
 ### Requirement: Harness Receipt Contract
 
@@ -38,4 +32,3 @@ The test harness SHALL emit machine-readable and human-readable receipts whose s
 - WHEN the harness prints its profile inventory
 - THEN the output SHALL include supported modes, selectors, environment controls, and run-scoped plus compatibility receipt paths
 - AND the profile inventory SHALL be regression-tested without executing expensive checks
-

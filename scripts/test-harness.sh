@@ -9,6 +9,7 @@
 #   ./scripts/test-harness.sh live [local-model|aspen2-qwen36|all]
 #   ./scripts/test-harness.sh vm [all|core|module|smoke|check-name]
 #   ./scripts/test-harness.sh ci [extra nix args...]
+#   ./scripts/test-harness.sh list
 #
 # Set CLANKERS_TEST_DRY_RUN=1 to print the selected commands without running them.
 set -euo pipefail
@@ -68,6 +69,45 @@ usage() {
         }
         { exit }
     ' "$0"
+}
+
+list_profiles() {
+    cat <<'EOF'
+# clankers test harness profiles
+
+## Modes
+
+- `quick`: cargo check plus workspace nextest.
+- `package <crate> [filter...]`: package-scoped cargo check plus nextest.
+- `full`: fmt, check, workspace nextest, clippy, repo verify, and tigerstyle.
+- `e2e [fake|deterministic|fast|api|all|test-name]`: readiness E2E gates or legacy E2E selector.
+- `live [local-model|aspen2-qwen36|all]`: opt-in live local-model readiness.
+- `vm [all|core|module|smoke|check-name]`: opt-in NixOS VM readiness.
+- `ci [extra nix args...]`: opt-in flake readiness adapter.
+- `help`: usage summary.
+- `list`: this profile inventory.
+
+## Selectors
+
+- E2E selectors: `fake`, `deterministic`, `fast`, `api`, `all`, or a legacy test name.
+- Live selectors: `local-model`, `aspen2-qwen36`, `all`.
+- VM selectors: `all`, `core`, `module`, `smoke`.
+- VM checks: `vm-smoke`, `vm-remote-daemon`, `vm-session-recovery`, `vm-plugin-runtime`, `vm-module-daemon`, `vm-module-router`, `vm-module-integration`.
+
+## Environment
+
+- `CLANKERS_TEST_DRY_RUN=1`: print selected commands and mark steps skipped without executing expensive gates.
+- `CLANKERS_TEST_RESULT_DIR=<dir>`: override the receipt root, default `target/test-harness`.
+- `CLANKERS_TEST_RUN_ID=<id>`: set a deterministic run id; allowed characters are `A-Z`, `a-z`, `0-9`, `.`, `_`, and `-`.
+- `CARGO_TARGET_DIR=<dir>`: cargo target directory, default `target`.
+- `CLANKERS_NO_DAEMON=1`: default harness setting for predictable local runs.
+
+## Receipts
+
+- Primary artifacts: `<result-dir>/runs/<run_id>/summary.md`, `<result-dir>/runs/<run_id>/results.json`, `<result-dir>/runs/<run_id>/junit.xml`.
+- Primary logs: `<result-dir>/runs/<run_id>/logs/*.log`.
+- Stable compatibility artifacts: `<result-dir>/summary.md`, `<result-dir>/results.json`, `<result-dir>/junit.xml`.
+EOF
 }
 
 json_escape() {
@@ -362,6 +402,9 @@ main() {
             ;;
         ci)
             run_step "flake readiness" env CLANKERS_RUN_FLAKE_READINESS=1 cargo nextest run -p clankers --test readiness_opt_in --no-fail-fast -E 'test(readiness_flake_ci_nextest_opt_in)'
+            ;;
+        list|profiles)
+            list_profiles
             ;;
         help|-h|--help)
             usage
