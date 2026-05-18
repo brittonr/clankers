@@ -430,6 +430,7 @@ Workspace-local crates under `crates/`:
 | `clanker-tui-types` | Shared TUI event/action/block/display types |
 | `clankers-agent` | Agent loop, prompt execution, tool dispatch |
 | `clankers-agent-defs` | Agent definition discovery and loading |
+| `clankers-artifacts` | Content-addressed agent artifact receipts and storage |
 | `clankers-autoresearch` | Automated research workflows |
 | `clankers-config` | Settings, paths, keybindings, auth path materialization |
 | `clankers-controller` | SessionController (transport-agnostic agent driver) |
