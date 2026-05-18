@@ -2172,6 +2172,46 @@ fn retention_log_dir(params: &Value) -> Option<PathBuf> {
         .or_else(|| std::env::var("CLANKERS_PROCESS_JOB_LOG_DIR").ok().map(PathBuf::from))
 }
 
+fn log_reference_degradation_detail(record: &StoredProcessJobRecord, log_dir: Option<&PathBuf>) -> Option<String> {
+    let mut unavailable = Vec::new();
+    if record.log_refs.is_empty() {
+        unavailable.push("log_unavailable:no_log_refs".to_string());
+    }
+    for log_ref in &record.log_refs {
+        if log_ref.reference.starts_with("native:") {
+            match safe_native_log_path(log_dir, &log_ref.reference) {
+                Some(path) if path.exists() => {}
+                Some(path) => unavailable.push(format!(
+                    "log_unavailable:native_missing:{} ({})",
+                    log_ref.reference,
+                    path.display()
+                )),
+                None => unavailable.push(format!("log_unavailable:native_unresolved:{}", log_ref.reference)),
+            }
+        } else {
+            unavailable.push(format!("log_unavailable:backend_ref_unresolved:{}", log_ref.reference));
+        }
+    }
+    (!unavailable.is_empty()).then(|| unavailable.join("; "))
+}
+
+fn append_log_degradation(summary: &mut ProcessJobSummary, record: &StoredProcessJobRecord, log_dir: Option<&PathBuf>) {
+    if let Some(detail) = log_reference_degradation_detail(record, log_dir) {
+        summary.command_preview = format!("{} [{detail}]", summary.command_preview);
+    }
+}
+
+fn durable_degraded_log_message(record: &StoredProcessJobRecord, log_dir: Option<&PathBuf>) -> String {
+    let detail = log_reference_degradation_detail(record, log_dir)
+        .unwrap_or_else(|| "log_unavailable:live_output_stream_detached".to_string());
+    format!(
+        "process job {}; {}; {detail}; durable log refs: {}",
+        record.id,
+        durable_reconciliation_note(record),
+        format_log_refs(&record.log_refs)
+    )
+}
+
 async fn apply_process_job_retention(
     db: Option<&clankers_db::Db>,
     policy: ProcessJobRetentionPolicy,
@@ -2397,7 +2437,7 @@ impl ProcessTool {
                         },
                         "log_dir": {
                             "type": "string",
-                            "description": "GC native log directory override; defaults to CLANKERS_PROCESS_JOB_LOG_DIR"
+                            "description": "Native log directory override for gc/log/poll/list degradation checks; defaults to CLANKERS_PROCESS_JOB_LOG_DIR"
                         },
                         "data": {
                             "type": "string",
@@ -2778,22 +2818,6 @@ impl ProcessTool {
         }
     }
 
-    async fn handle_pueue_log(request: ReadProcessJobLogRequest) -> Option<ToolResult> {
-        let id = Self::pueue_id(&request.id.0)?;
-        Some(match Self::pueue_service().log(id, request.range).await {
-            Ok(chunk) => Self::tool_receipt_result(ProcessJobToolResult::Log(chunk)),
-            Err(error) => ToolResult::error(error.to_string()),
-        })
-    }
-
-    async fn handle_systemd_log(request: ReadProcessJobLogRequest) -> Option<ToolResult> {
-        let id = Self::systemd_id(&request.id.0)?;
-        Some(match Self::systemd_service().log(id, request.range).await {
-            Ok(chunk) => Self::tool_receipt_result(ProcessJobToolResult::Log(chunk)),
-            Err(error) => ToolResult::error(error.to_string()),
-        })
-    }
-
     async fn handle_start(&self, ctx: &ToolContext, params: &Value) -> ToolResult {
         let request = match Self::process_job_tool_request(params) {
             Ok(ProcessJobToolRequest::Start(request)) => request,
@@ -2889,7 +2913,8 @@ impl ProcessTool {
             Err(result) => return result,
         };
         let policy = process_job_retention_policy(&json!({}));
-        let _ = apply_process_job_retention(ctx.db(), policy, retention_log_dir(&json!({}))).await;
+        let log_dir = retention_log_dir(params);
+        let _ = apply_process_job_retention(ctx.db(), policy, log_dir.clone()).await;
         let backend_filter = request.filter.backend;
         let mut summaries = Vec::new();
         if backend_filter.is_none_or(|backend| backend == ProcessJobBackendKind::Native) {
@@ -2912,7 +2937,11 @@ impl ProcessTool {
             summaries.extend(
                 durable
                     .iter()
-                    .map(stored_record_summary)
+                    .map(|record| {
+                        let mut summary = stored_record_summary(record);
+                        append_log_degradation(&mut summary, record, log_dir.as_ref());
+                        summary
+                    })
                     .filter(|summary| request.filter.include_terminal || !summary.status.is_terminal()),
             );
         }
@@ -2970,20 +2999,34 @@ impl ProcessTool {
         };
         let session_id = request.id.0.clone();
         if let Some(id) = Self::pueue_id(&session_id) {
-            return Self::pueue_receipt_result(Self::pueue_service().poll(id, request.cursor).await).await;
+            return match Self::pueue_service().poll(id, request.cursor).await {
+                Ok(receipt) => Self::pueue_receipt_result(Ok(receipt)).await,
+                Err(error) => match durable_record(ctx.db(), &session_id).await {
+                    Some(record) => ToolResult::text(format!(
+                        "{}; backend poll unavailable: {error}",
+                        durable_degraded_log_message(&record, retention_log_dir(params).as_ref())
+                    )),
+                    None => ToolResult::error(error.to_string()),
+                },
+            };
         }
         if let Some(id) = Self::systemd_id(&session_id) {
-            return Self::systemd_receipt_result(Self::systemd_service().poll(id, request.cursor).await).await;
+            return match Self::systemd_service().poll(id, request.cursor).await {
+                Ok(receipt) => Self::systemd_receipt_result(Ok(receipt)).await,
+                Err(error) => match durable_record(ctx.db(), &session_id).await {
+                    Some(record) => ToolResult::text(format!(
+                        "{}; backend poll unavailable: {error}",
+                        durable_degraded_log_message(&record, retention_log_dir(params).as_ref())
+                    )),
+                    None => ToolResult::error(error.to_string()),
+                },
+            };
         }
         let entry = match Self::get(&session_id) {
             Some(entry) => entry,
             None => {
                 if let Some(record) = durable_record(ctx.db(), &session_id).await {
-                    return ToolResult::text(format!(
-                        "{}\nNo live output stream; durable log refs: {}",
-                        durable_reconciliation_note(&record),
-                        format_log_refs(&record.log_refs)
-                    ));
+                    return ToolResult::text(durable_degraded_log_message(&record, retention_log_dir(params).as_ref()));
                 }
                 return ToolResult::error(format!("Unknown process session_id: {session_id}"));
             }
@@ -3019,21 +3062,49 @@ impl ProcessTool {
             Err(result) => return result,
         };
         let session_id = request.id.0.clone();
-        if let Some(result) = Self::handle_pueue_log(request.clone()).await {
-            return result;
+        if let Some(id) = Self::pueue_id(&session_id) {
+            return match Self::pueue_service().log(id, request.range.clone()).await {
+                Ok(chunk) if chunk.text.is_empty() => match durable_record(ctx.db(), &session_id).await {
+                    Some(record) => ToolResult::text(format!(
+                        "{}; backend log read returned no output",
+                        durable_degraded_log_message(&record, retention_log_dir(params).as_ref())
+                    )),
+                    None => Self::tool_receipt_result(ProcessJobToolResult::Log(chunk)),
+                },
+                Ok(chunk) => Self::tool_receipt_result(ProcessJobToolResult::Log(chunk)),
+                Err(error) => match durable_record(ctx.db(), &session_id).await {
+                    Some(record) => ToolResult::text(format!(
+                        "{}; backend log read unavailable: {error}",
+                        durable_degraded_log_message(&record, retention_log_dir(params).as_ref())
+                    )),
+                    None => ToolResult::error(error.to_string()),
+                },
+            };
         }
-        if let Some(result) = Self::handle_systemd_log(request.clone()).await {
-            return result;
+        if let Some(id) = Self::systemd_id(&session_id) {
+            return match Self::systemd_service().log(id, request.range.clone()).await {
+                Ok(chunk) if chunk.text.is_empty() => match durable_record(ctx.db(), &session_id).await {
+                    Some(record) => ToolResult::text(format!(
+                        "{}; backend log read returned no output",
+                        durable_degraded_log_message(&record, retention_log_dir(params).as_ref())
+                    )),
+                    None => Self::tool_receipt_result(ProcessJobToolResult::Log(chunk)),
+                },
+                Ok(chunk) => Self::tool_receipt_result(ProcessJobToolResult::Log(chunk)),
+                Err(error) => match durable_record(ctx.db(), &session_id).await {
+                    Some(record) => ToolResult::text(format!(
+                        "{}; backend log read unavailable: {error}",
+                        durable_degraded_log_message(&record, retention_log_dir(params).as_ref())
+                    )),
+                    None => ToolResult::error(error.to_string()),
+                },
+            };
         }
         let entry = match Self::get(&session_id) {
             Some(entry) => entry,
             None => {
                 if let Some(record) = durable_record(ctx.db(), &session_id).await {
-                    return ToolResult::text(format!(
-                        "{}; log read degraded (refs: {}).",
-                        durable_reconciliation_note(&record),
-                        format_log_refs(&record.log_refs)
-                    ));
+                    return ToolResult::text(durable_degraded_log_message(&record, retention_log_dir(params).as_ref()));
                 }
                 return ToolResult::error(format!("Unknown process session_id: {session_id}"));
             }
@@ -3104,7 +3175,7 @@ impl ProcessTool {
         let mut text = format!("{} finished with status: {}", entry.id, entry.status().label());
         if !output.is_empty() {
             text.push('\n');
-            text.push_str(&output.join("\n"));
+            text.push_str(&ProcessJobRedactionPolicy::default().safe_log_excerpt(&output.join("\n")));
         }
         ToolResult::text(text)
     }
@@ -4066,6 +4137,73 @@ mod tests {
             assert!(!result.is_error, "{action}: {result:?}");
             assert!(body.contains("degraded reconciliation"), "{action}: {body}");
             assert!(body.contains("lost-after-restart"), "{action}: {body}");
+        }
+    }
+
+    #[tokio::test]
+    async fn missing_native_log_degrades_list_poll_and_log_without_hiding_metadata() {
+        let db = clankers_db::Db::in_memory().expect("db opens");
+        let ctx = make_ctx_with_db(db.clone());
+        let tool = ProcessTool::new();
+        let temp = tempfile::tempdir().expect("tempdir");
+        let mut durable_only = StoredProcessJobRecord::new_native(
+            "proc_missing_log",
+            "printf missing-log",
+            StoredProcessJobOwnerScope::DaemonGlobal,
+        );
+        durable_only.status = StoredProcessJobStatus::LostAfterRestart;
+        durable_only.completed_at = Some(Utc::now());
+        durable_only.safe_metadata.insert("reconciliation".to_string(), "lost-after-restart".to_string());
+        durable_only.log_refs = vec![StoredProcessJobLogRef {
+            stream: StoredProcessJobStream::Combined,
+            reference: "native:proc_missing_log/combined.log".to_string(),
+            retained_until: None,
+            max_bytes: Some(10),
+        }];
+        db.async_process_jobs().upsert(durable_only).await.expect("insert missing-log record");
+
+        for action in ["list", "poll", "log"] {
+            let result = tool
+                .execute(
+                    &ctx,
+                    json!({"action": action, "session_id": "proc_missing_log", "log_dir": temp.path().to_string_lossy()}),
+                )
+                .await;
+            let body = text(&result);
+            assert!(!result.is_error, "{action}: {result:?}");
+            assert!(body.contains("proc_missing_log"), "{action}: {body}");
+            assert!(body.contains("log_unavailable:native_missing"), "{action}: {body}");
+        }
+    }
+
+    #[tokio::test]
+    async fn backend_log_reference_degrades_to_durable_metadata_when_backend_read_fails() {
+        let db = clankers_db::Db::in_memory().expect("db opens");
+        let ctx = make_ctx_with_db(db.clone());
+        let tool = ProcessTool::new();
+        let mut backend_record = StoredProcessJobRecord::new_native(
+            "pueue_999999999",
+            "cargo check",
+            StoredProcessJobOwnerScope::DaemonGlobal,
+        );
+        backend_record.backend = StoredProcessJobBackendKind::Pueue;
+        backend_record.status = StoredProcessJobStatus::Succeeded { exit_code: Some(0) };
+        backend_record.completed_at = Some(Utc::now());
+        backend_record.log_refs = vec![StoredProcessJobLogRef {
+            stream: StoredProcessJobStream::Combined,
+            reference: "pueue:999999999:log".to_string(),
+            retained_until: None,
+            max_bytes: Some(10),
+        }];
+        db.async_process_jobs().upsert(backend_record).await.expect("insert backend record");
+
+        for action in ["poll", "log"] {
+            let result = tool.execute(&ctx, json!({"action": action, "session_id": "pueue_999999999"})).await;
+            let body = text(&result);
+            assert!(!result.is_error, "{action}: {result:?}");
+            assert!(body.contains("pueue_999999999"), "{action}: {body}");
+            assert!(body.contains("log_unavailable:backend_ref_unresolved:pueue:999999999:log"), "{action}: {body}");
+            assert!(body.contains("backend"), "{action}: {body}");
         }
     }
 
