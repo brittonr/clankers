@@ -40,7 +40,7 @@
 
 ## Phase 5: Verification and rollout
 
-- [ ] [serial] [depends:phase-4] Add restart/reconciliation integration coverage using a temp redb/log dir and a long-lived test child; verify stable id, log reference, and honest lost/reattached status.
+- [x] [serial] [depends:phase-4] Add restart/reconciliation integration coverage using a temp redb/log dir and a long-lived test child; verify stable id, log reference, and honest lost/reattached status. ✅ 2026-05-18T00:26:58Z (started: 2026-05-18T00:24:02Z; evidence: `cargo test -p clankers --lib process_restart_reconciliation_preserves_stable_id_log_ref_and_reports_lost_status -- --nocapture`; `cargo test -p clankers --lib process_list_reconciles_durable_native_restart_states -- --nocapture`; `cargo test -p clankers --lib process:: -- --nocapture --test-threads=1`; `cargo check -p clankers --tests`; `cargo fmt --check`; `openspec validate add-durable-process-jobs --strict --json`; `git diff --check`).
 - [ ] [serial] [depends:phase-4] Add detach/reattach notification delivery tests covering persisted completion events, multi-client event ids, and deduplication behavior.
 - [ ] [serial] [depends:phase-4] Add or refresh NixOS VM smoke coverage for process persistence enabled, daemon restart, list/log status, retention paths, and service directory/hardening behavior where practical.
 - [ ] [parallel] [depends:phase-4] Update README/help text for durable `process` backend selection, typed receipts/errors, pueue/systemd availability errors, retention/GC, project job profiles, and NixOS module options.

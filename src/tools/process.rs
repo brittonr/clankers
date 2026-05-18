@@ -4113,6 +4113,86 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn process_restart_reconciliation_preserves_stable_id_log_ref_and_reports_lost_status() {
+        let temp = tempfile::tempdir().expect("tempdir");
+        let db_path = temp.path().join("process-jobs.redb");
+        let log_dir = temp.path().join("logs");
+        let mut child = std::process::Command::new("sleep").arg("30").spawn().expect("long-lived test child");
+        let child_pid = child.id();
+        let stable_id = format!("proc_restart_{child_pid}");
+        let log_reference = format!("native:{stable_id}/combined.log");
+        let log_path = log_dir.join(&stable_id).join("combined.log");
+        std::fs::create_dir_all(log_path.parent().expect("log parent")).expect("log dir");
+        std::fs::write(
+            &log_path,
+            b"pre-restart-log
+",
+        )
+        .expect("log write");
+
+        {
+            let db = clankers_db::Db::open(&db_path).expect("disk redb opens");
+            let mut record =
+                StoredProcessJobRecord::new_native(&stable_id, "sleep 30", StoredProcessJobOwnerScope::DaemonGlobal);
+            record.status = StoredProcessJobStatus::Running;
+            record.backend_ref = Some(format!("pid:{child_pid}"));
+            record.os_pid = Some(child_pid);
+            record.process_group = i32::try_from(child_pid).ok();
+            record.log_refs = vec![StoredProcessJobLogRef {
+                stream: StoredProcessJobStream::Combined,
+                reference: log_reference.clone(),
+                retained_until: None,
+                max_bytes: Some(16),
+            }];
+            db.async_process_jobs().upsert(record).await.expect("insert active process record");
+        }
+
+        let restarted_db = clankers_db::Db::open(&db_path).expect("reopened redb");
+        let ctx = make_ctx_with_db(restarted_db.clone());
+        let tool = ProcessTool::new();
+        let listed = tool.execute(&ctx, json!({"action": "list", "backend": "native"})).await;
+        assert!(!listed.is_error, "{listed:?}");
+        let listed_text = text(&listed);
+        assert!(listed_text.contains(&stable_id), "{listed_text}");
+        assert!(listed_text.contains("running"), "{listed_text}");
+
+        let reattached = restarted_db
+            .async_process_jobs()
+            .get(stable_id.clone())
+            .await
+            .expect("db read")
+            .expect("reattached record");
+        assert_eq!(reattached.id, stable_id);
+        assert_eq!(reattached.status, StoredProcessJobStatus::Running);
+        assert_eq!(reattached.log_refs.len(), 1);
+        assert_eq!(reattached.log_refs[0].reference, log_reference);
+        assert_eq!(reattached.safe_metadata.get("reconciliation").map(String::as_str), Some("reattached"));
+
+        child.kill().expect("kill long-lived child");
+        child.wait().expect("reap long-lived child");
+
+        let listed_after_loss = tool.execute(&ctx, json!({"action": "list", "backend": "native"})).await;
+        assert!(!listed_after_loss.is_error, "{listed_after_loss:?}");
+        let lost_text = text(&listed_after_loss);
+        assert!(lost_text.contains(&stable_id), "{lost_text}");
+        assert!(lost_text.contains("lost-after-restart"), "{lost_text}");
+
+        let lost = restarted_db
+            .async_process_jobs()
+            .get(stable_id.clone())
+            .await
+            .expect("db read")
+            .expect("lost record");
+        assert_eq!(lost.id, stable_id);
+        assert_eq!(lost.status, StoredProcessJobStatus::LostAfterRestart);
+        assert_eq!(lost.log_refs.len(), 1);
+        assert_eq!(lost.log_refs[0].reference, log_reference);
+        assert_eq!(lost.safe_metadata.get("reconciliation").map(String::as_str), Some("lost-after-restart"));
+        assert!(lost.completed_at.is_some());
+        assert!(log_path.exists(), "reconciliation must preserve existing log reference without GC side effects");
+    }
+
+    #[tokio::test]
     async fn starts_and_waits_for_process() {
         let tool = ProcessTool::new();
         let started = tool.execute(&make_ctx(), json!({"action": "start", "command": "printf hello"})).await;
