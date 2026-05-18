@@ -2505,6 +2505,254 @@ mod tests {
     }
 
     #[test]
+    fn process_job_tool_request_serialization_golden_fixtures() {
+        let id = ProcessJobId("proc_b3_115e5d8781a631cd008255939c0446e4d96d6661b5435a093a534672c17b4f40".to_string());
+        let mut metadata = BTreeMap::new();
+        metadata.insert("purpose".to_string(), "golden".to_string());
+        let start = ProcessJobToolRequest::Start(StartProcessJobRequest {
+            backend: ProcessJobBackendKind::Native,
+            command_preview: "printf ok".to_string(),
+            program: Some("printf".to_string()),
+            args: vec!["ok".to_string()],
+            shell_command: None,
+            cwd: ProcessJobCwd::Inherited,
+            owner: ProcessJobOwnerScope::Session("sess-golden".to_string()),
+            resource_policy: ProcessJobResourcePolicy {
+                timeout: None,
+                memory_max_bytes: Some(268_435_456),
+                cpu_quota_percent: Some(50),
+                max_log_bytes: Some(4096),
+            },
+            notification_policy: ProcessJobNotificationPolicy {
+                notify_on_complete: true,
+                watch_patterns: vec!["READY".to_string()],
+            },
+            metadata,
+        });
+        let log = ProcessJobToolRequest::Log(ReadProcessJobLogRequest {
+            id: id.clone(),
+            range: ProcessJobLogRange {
+                stream: ProcessJobStream::Combined,
+                offset: Some(7),
+                limit_bytes: 1024,
+            },
+        });
+        let write = ProcessJobToolRequest::WriteStdin(WriteProcessJobStdinRequest {
+            id: id.clone(),
+            data: b"hello".to_vec(),
+            newline: true,
+        });
+        let gc = ProcessJobToolRequest::GarbageCollect(GarbageCollectProcessJobsRequest {
+            filter: ProcessJobFilter {
+                owner: Some(ProcessJobOwnerScope::DaemonGlobal),
+                backend: Some(ProcessJobBackendKind::Pueue),
+                include_terminal: true,
+            },
+        });
+
+        let cases = [
+            (
+                start,
+                serde_json::json!({
+                    "action": "start",
+                    "request": {
+                        "backend": "native",
+                        "command_preview": "printf ok",
+                        "program": "printf",
+                        "args": ["ok"],
+                        "shell_command": null,
+                        "cwd": {"kind": "inherited"},
+                        "owner": {"kind": "session", "value": "sess-golden"},
+                        "resource_policy": {
+                            "timeout": null,
+                            "memory_max_bytes": 268435456,
+                            "cpu_quota_percent": 50,
+                            "max_log_bytes": 4096
+                        },
+                        "notification_policy": {
+                            "notify_on_complete": true,
+                            "watch_patterns": ["READY"]
+                        },
+                        "metadata": {"purpose": "golden"}
+                    }
+                }),
+            ),
+            (
+                log,
+                serde_json::json!({
+                    "action": "log",
+                    "request": {
+                        "id": "proc_b3_115e5d8781a631cd008255939c0446e4d96d6661b5435a093a534672c17b4f40",
+                        "range": {"stream": "combined", "offset": 7, "limit_bytes": 1024}
+                    }
+                }),
+            ),
+            (
+                write,
+                serde_json::json!({
+                    "action": "write_stdin",
+                    "request": {
+                        "id": "proc_b3_115e5d8781a631cd008255939c0446e4d96d6661b5435a093a534672c17b4f40",
+                        "data": [104, 101, 108, 108, 111],
+                        "newline": true
+                    }
+                }),
+            ),
+            (
+                gc,
+                serde_json::json!({
+                    "action": "garbage_collect",
+                    "request": {
+                        "filter": {
+                            "owner": {"kind": "daemon_global"},
+                            "backend": "pueue",
+                            "include_terminal": true
+                        }
+                    }
+                }),
+            ),
+        ];
+
+        for (request, expected) in cases {
+            let actual = serde_json::to_value(&request).expect("request serializes");
+            assert_eq!(actual, expected);
+            let roundtrip: ProcessJobToolRequest = serde_json::from_value(actual).expect("request deserializes");
+            assert_eq!(roundtrip, request);
+        }
+    }
+
+    #[test]
+    fn process_job_tool_receipt_serialization_golden_fixtures() {
+        let id = ProcessJobId("proc_b3_115e5d8781a631cd008255939c0446e4d96d6661b5435a093a534672c17b4f40".to_string());
+        let log_ref = ProcessJobLogRef {
+            stream: ProcessJobStream::Combined,
+            reference: "native:proc_b3_115/combined.log".to_string(),
+            retained_until: None,
+            max_bytes: Some(4096),
+        };
+        let start_receipt = ProcessJobToolResult::Start(ProcessJobReceipt {
+            operation: ProcessJobOperation::Start,
+            id: Some(id.clone()),
+            backend: Some(ProcessJobBackendKind::Native),
+            status: Some(ProcessJobStatus::Running),
+            backend_ref: Some(BackendRef("pid:123".to_string())),
+            log_refs: vec![log_ref.clone()],
+            summary: "started process job".to_string(),
+            error: None,
+        })
+        .into_receipt();
+        let log_receipt = ProcessJobToolResult::Log(ProcessJobLogChunk {
+            id: id.clone(),
+            backend: ProcessJobBackendKind::Native,
+            stream: ProcessJobStream::Combined,
+            cursor: ProcessJobLogCursor {
+                stream: ProcessJobStream::Combined,
+                offset: 0,
+            },
+            next_cursor: Some(ProcessJobLogCursor {
+                stream: ProcessJobStream::Combined,
+                offset: 2,
+            }),
+            text: "ok".to_string(),
+            truncated: false,
+        })
+        .into_receipt();
+        let error_receipt = ProcessJobReceipt::unsupported(
+            ProcessJobOperation::WriteStdin,
+            Some(id),
+            ProcessJobBackendKind::Pueue,
+            "write_stdin",
+            "stdin is not supported by pueue backend",
+        )
+        .into_tool_receipt();
+
+        let cases = [
+            (
+                start_receipt,
+                serde_json::json!({
+                    "common": {
+                        "operation": "start",
+                        "id": "proc_b3_115e5d8781a631cd008255939c0446e4d96d6661b5435a093a534672c17b4f40",
+                        "backend": "native",
+                        "status": {"state": "running"},
+                        "backend_ref": "pid:123",
+                        "summary": "started process job",
+                        "error": null
+                    },
+                    "payload": {
+                        "kind": "state",
+                        "data": {
+                            "log_refs": [{
+                                "stream": "combined",
+                                "reference": "native:proc_b3_115/combined.log",
+                                "retained_until": null,
+                                "max_bytes": 4096
+                            }]
+                        }
+                    }
+                }),
+            ),
+            (
+                log_receipt,
+                serde_json::json!({
+                    "common": {
+                        "operation": "log",
+                        "id": "proc_b3_115e5d8781a631cd008255939c0446e4d96d6661b5435a093a534672c17b4f40",
+                        "backend": null,
+                        "status": null,
+                        "backend_ref": null,
+                        "summary": "Read 2 bytes of process job log",
+                        "error": null
+                    },
+                    "payload": {
+                        "kind": "log",
+                        "data": {
+                            "chunk": {
+                                "id": "proc_b3_115e5d8781a631cd008255939c0446e4d96d6661b5435a093a534672c17b4f40",
+                                "backend": "native",
+                                "stream": "combined",
+                                "cursor": {"stream": "combined", "offset": 0},
+                                "next_cursor": {"stream": "combined", "offset": 2},
+                                "text": "ok",
+                                "truncated": false
+                            }
+                        }
+                    }
+                }),
+            ),
+            (
+                error_receipt,
+                serde_json::json!({
+                    "common": {
+                        "operation": "write_stdin",
+                        "id": "proc_b3_115e5d8781a631cd008255939c0446e4d96d6661b5435a093a534672c17b4f40",
+                        "backend": "pueue",
+                        "status": null,
+                        "backend_ref": null,
+                        "summary": "stdin is not supported by pueue backend",
+                        "error": {
+                            "code": "unsupported_action_for_backend",
+                            "operation": "write_stdin",
+                            "id": "proc_b3_115e5d8781a631cd008255939c0446e4d96d6661b5435a093a534672c17b4f40",
+                            "backend": "pueue",
+                            "action": "write_stdin",
+                            "message": "stdin is not supported by pueue backend"
+                        }
+                    },
+                    "payload": {"kind": "state", "data": {"log_refs": []}}
+                }),
+            ),
+        ];
+
+        for (receipt, expected) in cases {
+            let actual = serde_json::to_value(&receipt).expect("receipt serializes");
+            assert_eq!(actual, expected);
+            let roundtrip: ProcessJobToolReceipt = serde_json::from_value(actual).expect("receipt deserializes");
+            assert_eq!(roundtrip, receipt);
+        }
+    }
+
+    #[test]
     fn tool_result_variants_cover_public_operations() {
         let receipt = ProcessJobReceipt {
             operation: ProcessJobOperation::Start,

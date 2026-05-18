@@ -13,7 +13,7 @@
 
 ## Phase 3: Verification
 
-- [ ] [serial] [depends:phase-2] Add golden request/receipt serialization tests.
+- [x] [serial] [depends:phase-2] Add golden request/receipt serialization tests. Evidence: `cargo test -p clankers-runtime process_jobs -- --nocapture`, `cargo test -p clankers --lib process:: -- --nocapture --test-threads=1`, `CARGO_TARGET_DIR=target/process-job-api-check cargo check -p clankers --tests`, `openspec validate define-process-job-tool-api --strict --json`, and `git diff --check` passed at 2026-05-18T03:39:19Z; added exact JSON golden fixtures with roundtrip coverage for representative request DTOs and receipt envelopes.
 - [ ] [serial] [depends:phase-2] Add deterministic BLAKE3 identity fixture tests covering native, pueue, systemd, and legacy/sequential ID projection.
 - [ ] [serial] [depends:phase-2] Add native compatibility tests for current process actions and defaults.
 - [ ] [serial] [depends:phase-2] Run focused process tool tests, DTO tests, `openspec validate define-process-job-tool-api --strict --json`, and `git diff --check`.
