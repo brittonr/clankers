@@ -4281,6 +4281,107 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn process_gc_only_deletes_native_logs_under_configured_temp_dir() {
+        let db = clankers_db::Db::in_memory().expect("db opens");
+        let ctx = make_ctx_with_db(db.clone());
+        let tool = ProcessTool::new();
+        let temp = tempfile::tempdir().expect("tempdir");
+        let log_dir = temp.path().join("logs");
+        let outside_dir = temp.path().join("outside");
+        let outside_log = outside_dir.join("combined.log");
+        std::fs::create_dir_all(&outside_dir).expect("outside dir");
+        std::fs::write(&outside_log, b"must-not-delete").expect("outside log write");
+
+        let old = Utc::now() - chrono::Duration::days(30);
+        let mut escaped = StoredProcessJobRecord::new_native(
+            "proc_gc_escaped_log",
+            "printf escaped",
+            StoredProcessJobOwnerScope::DaemonGlobal,
+        );
+        escaped.status = StoredProcessJobStatus::Succeeded { exit_code: Some(0) };
+        escaped.started_at = old;
+        escaped.updated_at = old;
+        escaped.completed_at = Some(old);
+        escaped.log_refs = vec![StoredProcessJobLogRef {
+            stream: StoredProcessJobStream::Combined,
+            reference: "native:../outside/combined.log".to_string(),
+            retained_until: None,
+            max_bytes: Some(15),
+        }];
+        db.async_process_jobs().upsert(escaped).await.expect("insert escaped ref");
+
+        let result = tool
+            .execute(
+                &ctx,
+                json!({
+                    "action": "gc",
+                    "max_age_days": 1,
+                    "max_records": 100,
+                    "max_log_bytes": 1_000_000,
+                    "log_dir": log_dir.to_string_lossy()
+                }),
+            )
+            .await;
+        assert!(!result.is_error, "{result:?}");
+        let payload = &tool_receipt_json(&result)["payload"]["data"]["receipt"];
+        assert_eq!(payload["removed_metadata_count"], 1);
+        assert_eq!(payload["released_log_refs"].as_array().expect("released refs").len(), 1);
+        assert_eq!(payload["deleted_native_log_files"], 0);
+        assert!(payload["failures"].as_array().expect("failures").is_empty(), "{payload}");
+        assert!(outside_log.exists(), "GC must not resolve native log refs outside configured log_dir");
+        assert!(db.async_process_jobs().get("proc_gc_escaped_log").await.expect("db read").is_none());
+    }
+
+    #[tokio::test]
+    async fn process_gc_active_native_jobs_survive_age_count_and_log_pressure() {
+        let db = clankers_db::Db::in_memory().expect("db opens");
+        let ctx = make_ctx_with_db(db.clone());
+        let tool = ProcessTool::new();
+        let temp = tempfile::tempdir().expect("tempdir");
+        let old = Utc::now() - chrono::Duration::days(30);
+
+        let mut active = StoredProcessJobRecord::new_native(
+            "proc_gc_pressure_active",
+            "sleep protected",
+            StoredProcessJobOwnerScope::DaemonGlobal,
+        );
+        active.status = StoredProcessJobStatus::Running;
+        active.started_at = old;
+        active.updated_at = old;
+        active.log_refs = vec![StoredProcessJobLogRef {
+            stream: StoredProcessJobStream::Combined,
+            reference: "native:proc_gc_pressure_active/combined.log".to_string(),
+            retained_until: None,
+            max_bytes: Some(1_000_000),
+        }];
+        let active_log_path = temp.path().join("proc_gc_pressure_active").join("combined.log");
+        std::fs::create_dir_all(active_log_path.parent().expect("log parent")).expect("active log dir");
+        std::fs::write(&active_log_path, b"active-log").expect("active log write");
+        db.async_process_jobs().upsert(active).await.expect("insert active");
+
+        let result = tool
+            .execute(
+                &ctx,
+                json!({
+                    "action": "gc",
+                    "max_age_days": 0,
+                    "max_records": 0,
+                    "max_log_bytes": 0,
+                    "log_dir": temp.path().to_string_lossy()
+                }),
+            )
+            .await;
+        assert!(!result.is_error, "{result:?}");
+        let payload = &tool_receipt_json(&result)["payload"]["data"]["receipt"];
+        assert_eq!(payload["removed_metadata_count"], 0);
+        assert_eq!(payload["deleted_native_log_files"], 0);
+        assert_eq!(payload["skipped_active_jobs"][0], "proc_gc_pressure_active");
+        assert!(payload["failures"].as_array().expect("failures").is_empty(), "{payload}");
+        assert!(active_log_path.exists(), "active-job log must survive GC pressure");
+        assert!(db.async_process_jobs().get("proc_gc_pressure_active").await.expect("db read").is_some());
+    }
+
+    #[tokio::test]
     async fn process_list_applies_automatic_completed_retention_policy() {
         let db = clankers_db::Db::in_memory().expect("db opens");
         let ctx = make_ctx_with_db(db.clone());
