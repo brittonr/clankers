@@ -2044,6 +2044,9 @@ pub trait ProcessJobService: Send + Sync {
     async fn close_stdin(&self, id: ProcessJobId) -> Result<ProcessJobReceipt, RuntimeError>;
     async fn adopt(&self, request: AdoptProcessJobRequest) -> Result<ProcessJobReceipt, RuntimeError>;
     async fn garbage_collect(&self, filter: ProcessJobFilter) -> Result<ProcessJobReceipt, RuntimeError>;
+    async fn reconcile_startup(&self) -> Result<ProcessJobReconciliationReport, RuntimeError> {
+        Ok(ProcessJobReconciliationReport::default())
+    }
 }
 
 /// Backend adapter boundary. Backends expose facts and capabilities; they do not own UI/storage
@@ -2080,6 +2083,67 @@ pub trait ProcessJobStore: Send + Sync {
         caller: ProcessJobCallerScope,
         after: Option<ProcessJobEventId>,
     ) -> Result<Vec<ProcessJobNotificationEvent>, RuntimeError>;
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ProcessJobReconciliationReport {
+    pub checked: usize,
+    pub updated: usize,
+    pub unavailable: usize,
+    pub skipped_terminal: usize,
+}
+
+impl ProcessJobReconciliationReport {
+    fn record(&mut self, state: ProcessJobReconciliationState) {
+        self.checked += 1;
+        if matches!(state, ProcessJobReconciliationState::BackendUnavailable) {
+            self.unavailable += 1;
+        } else {
+            self.updated += 1;
+        }
+    }
+}
+
+pub async fn reconcile_persisted_process_jobs(
+    store: &dyn ProcessJobStore,
+    backends: &[&dyn ProcessJobBackend],
+) -> Result<ProcessJobReconciliationReport, RuntimeError> {
+    let mut report = ProcessJobReconciliationReport::default();
+    let summaries = store
+        .list(ProcessJobFilter {
+            backend: None,
+            owner: None,
+            include_terminal: true,
+        })
+        .await?;
+    for summary in summaries {
+        if summary.status.is_terminal() {
+            report.skipped_terminal += 1;
+            continue;
+        }
+        let Some(backend) = backends.iter().copied().find(|backend| backend.kind() == summary.backend) else {
+            let reason = format!("{} backend is unavailable during startup reconciliation", summary.backend.label());
+            let updated = ProcessJobReconciliationOutcome {
+                id: summary.id.clone(),
+                backend: summary.backend,
+                backend_ref: summary.backend_ref.clone(),
+                state: ProcessJobReconciliationState::BackendUnavailable,
+                log_state: ProcessJobLogReconciliationState::Unavailable { reason: reason.clone() },
+                status: ProcessJobStatus::BackendUnavailable { reason },
+                log_refs: summary.log_refs.clone(),
+                reason: None,
+            }
+            .into_summary_update(summary, Utc::now());
+            store.upsert(updated).await?;
+            report.record(ProcessJobReconciliationState::BackendUnavailable);
+            continue;
+        };
+        let outcome = backend.reconcile(summary.clone()).await?;
+        let state = outcome.state;
+        store.upsert(outcome.into_summary_update(summary, Utc::now())).await?;
+        report.record(state);
+    }
+    Ok(report)
 }
 
 /// Log storage boundary. Native implementations can append files; pueue/systemd can store
@@ -3224,6 +3288,57 @@ mod tests {
         assert!(!ProcessJobStatus::Running.is_terminal());
         assert!(ProcessJobStatus::Succeeded { exit_code: Some(0) }.is_terminal());
         assert!(ProcessJobStatus::LostAfterRestart.is_terminal());
+    }
+
+    fn persisted_summary(id: &str, backend: ProcessJobBackendKind, status: ProcessJobStatus) -> ProcessJobSummary {
+        let now = DateTime::parse_from_rfc3339("2026-05-18T00:00:00Z").expect("timestamp parses").with_timezone(&Utc);
+        ProcessJobSummary {
+            id: ProcessJobId(id.to_string()),
+            backend,
+            backend_ref: Some(BackendRef(format!("{}:{id}", backend.label()))),
+            owner: ProcessJobOwnerScope::DaemonGlobal,
+            status,
+            command_preview: "sleep 60".to_string(),
+            cwd: ProcessJobCwd::Inherited,
+            started_at: Some(now),
+            updated_at: now,
+            completed_at: None,
+            log_refs: Vec::new(),
+        }
+    }
+
+    #[tokio::test]
+    async fn startup_reconciliation_updates_nonterminal_jobs_and_skips_terminal_records() {
+        let store = FakeStore::default();
+        store.summaries.lock().expect("fake store lock poisoned").extend([
+            persisted_summary("proc_running", ProcessJobBackendKind::Native, ProcessJobStatus::Running),
+            persisted_summary("proc_done", ProcessJobBackendKind::Native, ProcessJobStatus::Succeeded {
+                exit_code: Some(0),
+            }),
+            persisted_summary("pueue_missing", ProcessJobBackendKind::Pueue, ProcessJobStatus::Pending),
+        ]);
+        let backend = FakeBackend::default();
+
+        let report = reconcile_persisted_process_jobs(&store, &[&backend]).await.expect("reconciliation succeeds");
+
+        assert_eq!(report.checked, 2);
+        assert_eq!(report.updated, 1);
+        assert_eq!(report.unavailable, 1);
+        assert_eq!(report.skipped_terminal, 1);
+        assert_eq!(backend.calls.lock().expect("fake backend calls lock poisoned").as_slice(), ["reconcile"]);
+        let summaries = store.summaries.lock().expect("fake store lock poisoned");
+        let reattached = summaries
+            .iter()
+            .rev()
+            .find(|summary| summary.id.0 == "proc_running")
+            .expect("reattached summary persisted");
+        assert_eq!(reattached.status, ProcessJobStatus::ReattachedLogIncomplete);
+        let unavailable = summaries
+            .iter()
+            .rev()
+            .find(|summary| summary.id.0 == "pueue_missing")
+            .expect("unavailable summary persisted");
+        assert!(matches!(unavailable.status, ProcessJobStatus::BackendUnavailable { .. }));
     }
 
     #[test]
