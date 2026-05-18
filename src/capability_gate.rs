@@ -130,6 +130,10 @@ fn process_action_requirement(action: &str) -> Option<ProcessActionRequirement> 
             operation: ProcessJobOperation::Adopt,
             required_tools: &["process:mutate"],
         },
+        "gc" | "garbage_collect" => ProcessActionRequirement {
+            operation: ProcessJobOperation::GarbageCollect,
+            required_tools: &["process:mutate"],
+        },
         _ => return None,
     })
 }

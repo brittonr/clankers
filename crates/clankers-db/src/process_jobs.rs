@@ -223,6 +223,21 @@ impl<'db> ProcessJobStore<'db> {
         let table = tx.open_table(TABLE).map_err(db_err)?;
         table.len().map_err(db_err)
     }
+
+    pub fn delete_many(&self, ids: &[String]) -> Result<u64> {
+        let tx = self.db.begin_write()?;
+        let mut removed = 0_u64;
+        {
+            let mut table = tx.open_table(TABLE).map_err(db_err)?;
+            for id in ids {
+                if table.remove(id.as_str()).map_err(db_err)?.is_some() {
+                    removed += 1;
+                }
+            }
+        }
+        tx.commit().map_err(db_err)?;
+        Ok(removed)
+    }
 }
 
 impl AsyncProcessJobStore {
@@ -246,6 +261,10 @@ impl AsyncProcessJobStore {
 
     pub async fn count(&self) -> Result<u64> {
         self.db.blocking(|db| db.process_jobs().count()).await
+    }
+
+    pub async fn delete_many(&self, ids: Vec<String>) -> Result<u64> {
+        self.db.blocking(move |db| db.process_jobs().delete_many(&ids)).await
     }
 }
 
@@ -362,6 +381,25 @@ mod tests {
         assert!(store.get("proc_future")?.is_none());
         assert!(store.list()?.is_empty());
         assert_eq!(store.count()?, 1);
+        Ok(())
+    }
+
+    #[test]
+    fn delete_many_removes_only_named_records() -> Result<()> {
+        let db = test_db()?;
+        let store = db.process_jobs();
+        let first =
+            StoredProcessJobRecord::new_native("proc_delete_1", "true", StoredProcessJobOwnerScope::DaemonGlobal);
+        let second =
+            StoredProcessJobRecord::new_native("proc_delete_2", "true", StoredProcessJobOwnerScope::DaemonGlobal);
+        store.upsert(&first)?;
+        store.upsert(&second)?;
+
+        let removed = store.delete_many(&["proc_delete_1".to_string(), "missing".to_string()])?;
+
+        assert_eq!(removed, 1);
+        assert!(store.get("proc_delete_1")?.is_none());
+        assert_eq!(store.get("proc_delete_2")?, Some(second));
         Ok(())
     }
 

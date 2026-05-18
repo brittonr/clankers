@@ -5,6 +5,7 @@
 //! output, inspect logs, wait, send stdin, and terminate processes.
 
 use std::collections::HashMap;
+use std::path::PathBuf;
 use std::sync::Arc;
 use std::sync::LazyLock;
 use std::sync::atomic::AtomicU64;
@@ -34,6 +35,8 @@ use clankers_runtime::process_jobs::ProcessJobError;
 use clankers_runtime::process_jobs::ProcessJobErrorCode;
 use clankers_runtime::process_jobs::ProcessJobEventId;
 use clankers_runtime::process_jobs::ProcessJobFilter;
+use clankers_runtime::process_jobs::ProcessJobGarbageCollectionFailure;
+use clankers_runtime::process_jobs::ProcessJobGarbageCollectionReceipt;
 use clankers_runtime::process_jobs::ProcessJobId;
 use clankers_runtime::process_jobs::ProcessJobListProjection;
 use clankers_runtime::process_jobs::ProcessJobLogChunk;
@@ -51,6 +54,8 @@ use clankers_runtime::process_jobs::ProcessJobOperation;
 use clankers_runtime::process_jobs::ProcessJobOwnerScope;
 use clankers_runtime::process_jobs::ProcessJobProjectionBounds;
 use clankers_runtime::process_jobs::ProcessJobReceipt;
+use clankers_runtime::process_jobs::ProcessJobReleasedLogRef;
+use clankers_runtime::process_jobs::ProcessJobRetentionPolicy;
 use clankers_runtime::process_jobs::ProcessJobService;
 use clankers_runtime::process_jobs::ProcessJobStatus;
 use clankers_runtime::process_jobs::ProcessJobStream;
@@ -2146,6 +2151,161 @@ async fn durable_record(db: Option<&clankers_db::Db>, id: &str) -> Option<Stored
     }
 }
 
+fn env_u64(name: &str) -> Option<u64> {
+    std::env::var(name).ok().and_then(|value| value.parse::<u64>().ok())
+}
+
+fn gc_param_u64(params: &Value, key: &str, env: &str) -> Option<u64> {
+    params.get(key).and_then(Value::as_u64).or_else(|| env_u64(env))
+}
+
+fn process_job_retention_policy(params: &Value) -> ProcessJobRetentionPolicy {
+    let max_age_days = gc_param_u64(params, "max_age_days", "CLANKERS_PROCESS_JOB_RETENTION_MAX_AGE_DAYS");
+    let max_records = gc_param_u64(params, "max_records", "CLANKERS_PROCESS_JOB_RETENTION_MAX_RECORDS")
+        .and_then(|value| usize::try_from(value).ok());
+    let max_log_bytes = gc_param_u64(params, "max_log_bytes", "CLANKERS_PROCESS_JOB_RETENTION_MAX_LOG_BYTES");
+    let defaults = ProcessJobRetentionPolicy::default();
+    ProcessJobRetentionPolicy {
+        max_age: max_age_days.map(|days| Duration::from_secs(days.saturating_mul(24 * 60 * 60))).or(defaults.max_age),
+        max_records: max_records.or(defaults.max_records),
+        max_log_bytes: max_log_bytes.or(defaults.max_log_bytes),
+    }
+}
+
+fn completed_or_updated_at(record: &StoredProcessJobRecord) -> DateTime<Utc> {
+    record.completed_at.unwrap_or(record.updated_at)
+}
+
+fn retained_log_bytes(record: &StoredProcessJobRecord) -> u64 {
+    record.log_refs.iter().filter_map(|log_ref| log_ref.max_bytes).sum()
+}
+
+fn safe_native_log_path(log_dir: Option<&PathBuf>, reference: &str) -> Option<PathBuf> {
+    let log_dir = log_dir?;
+    let relative = reference.strip_prefix("native:")?;
+    if relative.split('/').any(|part| part.is_empty() || part == "." || part == "..") {
+        return None;
+    }
+    Some(log_dir.join(relative))
+}
+
+fn retention_log_dir(params: &Value) -> Option<PathBuf> {
+    params
+        .get("log_dir")
+        .and_then(Value::as_str)
+        .map(PathBuf::from)
+        .or_else(|| std::env::var("CLANKERS_PROCESS_JOB_LOG_DIR").ok().map(PathBuf::from))
+}
+
+async fn apply_process_job_retention(
+    db: Option<&clankers_db::Db>,
+    policy: ProcessJobRetentionPolicy,
+    log_dir: Option<PathBuf>,
+) -> ProcessJobGarbageCollectionReceipt {
+    let Some(db) = db else {
+        let mut receipt = ProcessJobGarbageCollectionReceipt::empty();
+        receipt.failures.push(ProcessJobGarbageCollectionFailure {
+            id: None,
+            reference: None,
+            message: "process job GC requires a durable process-job database".to_string(),
+        });
+        receipt.refresh_summary();
+        return receipt;
+    };
+
+    let live_ids = ProcessTool::all_entries()
+        .iter()
+        .map(|entry| entry.id.clone())
+        .collect::<std::collections::BTreeSet<_>>();
+    let records = match db.async_process_jobs().list().await {
+        Ok(records) => records,
+        Err(error) => {
+            let mut receipt = ProcessJobGarbageCollectionReceipt::empty();
+            receipt.failures.push(ProcessJobGarbageCollectionFailure {
+                id: None,
+                reference: None,
+                message: format!("failed to list process job metadata for GC: {error}"),
+            });
+            receipt.refresh_summary();
+            return receipt;
+        }
+    };
+
+    let now = Utc::now();
+    let age_cutoff = policy.max_age.and_then(|age| chrono::Duration::from_std(age).ok()).map(|age| now - age);
+    let mut receipt = ProcessJobGarbageCollectionReceipt::empty();
+    let mut terminal = Vec::new();
+    let mut remove_ids = std::collections::BTreeSet::<String>::new();
+
+    for record in &records {
+        let status = stored_status_to_job_status(&record.status);
+        if live_ids.contains(&record.id) || !status.is_terminal() {
+            receipt.skipped_active_jobs.push(ProcessJobId(record.id.clone()));
+            continue;
+        }
+        if age_cutoff.is_some_and(|cutoff| completed_or_updated_at(record) < cutoff) {
+            remove_ids.insert(record.id.clone());
+        }
+        terminal.push(record.clone());
+    }
+
+    terminal.sort_by_key(completed_or_updated_at);
+    terminal.reverse();
+    if let Some(max_records) = policy.max_records {
+        for record in terminal.iter().skip(max_records) {
+            remove_ids.insert(record.id.clone());
+        }
+    }
+    if let Some(max_log_bytes) = policy.max_log_bytes {
+        let mut retained = 0_u64;
+        for record in &terminal {
+            let bytes = retained_log_bytes(record);
+            if retained.saturating_add(bytes) > max_log_bytes {
+                remove_ids.insert(record.id.clone());
+            } else {
+                retained = retained.saturating_add(bytes);
+            }
+        }
+    }
+
+    let mut remove_ids_vec = remove_ids.iter().cloned().collect::<Vec<_>>();
+    remove_ids_vec.sort();
+    for record in records.iter().filter(|record| remove_ids.contains(&record.id)) {
+        for log_ref in &record.log_refs {
+            let bytes = log_ref.max_bytes.unwrap_or(0);
+            receipt.removed_log_bytes = receipt.removed_log_bytes.saturating_add(bytes);
+            receipt.released_log_refs.push(ProcessJobReleasedLogRef {
+                id: ProcessJobId(record.id.clone()),
+                backend: stored_backend_to_job_backend(record.backend),
+                reference: log_ref.reference.clone(),
+                bytes,
+            });
+            if let Some(path) = safe_native_log_path(log_dir.as_ref(), &log_ref.reference) {
+                match std::fs::remove_file(&path) {
+                    Ok(()) => {}
+                    Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+                    Err(error) => receipt.failures.push(ProcessJobGarbageCollectionFailure {
+                        id: Some(ProcessJobId(record.id.clone())),
+                        reference: Some(log_ref.reference.clone()),
+                        message: format!("failed to remove native log file {}: {error}", path.display()),
+                    }),
+                }
+            }
+        }
+    }
+
+    match db.async_process_jobs().delete_many(remove_ids_vec.clone()).await {
+        Ok(_) => receipt.removed_records = remove_ids_vec.into_iter().map(ProcessJobId).collect(),
+        Err(error) => receipt.failures.push(ProcessJobGarbageCollectionFailure {
+            id: None,
+            reference: None,
+            message: format!("failed to remove process job metadata during GC: {error}"),
+        }),
+    }
+    receipt.refresh_summary();
+    receipt
+}
+
 fn format_log_refs(refs: &[StoredProcessJobLogRef]) -> String {
     if refs.is_empty() {
         return "none".to_string();
@@ -2166,7 +2326,7 @@ impl ProcessTool {
                 description: concat!(
                     "Manage background processes by session ID. Use for servers, watchers, ",
                     "long-running tests/builds, and commands that need stdin. Actions: start, list, ",
-                    "poll, log, wait, kill, write, submit, close. Start with either `command` ",
+                    "poll, log, wait, kill, restart, write, submit, close, adopt, gc. Start with either `command` ",
                     "(shell mode) or `program` + `args` (direct exec mode). Prefer this over shell-level &, ",
                     "nohup, disown, or foreground bash for long-lived processes."
                 )
@@ -2176,7 +2336,7 @@ impl ProcessTool {
                     "properties": {
                         "action": {
                             "type": "string",
-                            "enum": ["start", "list", "poll", "log", "wait", "kill", "restart", "write", "submit", "close", "adopt"],
+                            "enum": ["start", "list", "poll", "log", "wait", "kill", "restart", "write", "submit", "close", "adopt", "gc", "garbage_collect"],
                             "description": "Action to perform"
                         },
                         "backend": {
@@ -2245,6 +2405,22 @@ impl ProcessTool {
                         "limit": {
                             "type": "number",
                             "description": "Maximum log lines to return (default: 200)"
+                        },
+                        "max_age_days": {
+                            "type": "number",
+                            "description": "GC retention age override in days for completed process/job records"
+                        },
+                        "max_records": {
+                            "type": "number",
+                            "description": "GC retention count override for completed process/job records"
+                        },
+                        "max_log_bytes": {
+                            "type": "number",
+                            "description": "GC retained-log byte budget override"
+                        },
+                        "log_dir": {
+                            "type": "string",
+                            "description": "GC native log directory override; defaults to CLANKERS_PROCESS_JOB_LOG_DIR"
                         },
                         "data": {
                             "type": "string",
@@ -2674,6 +2850,8 @@ impl ProcessTool {
     }
 
     async fn handle_list(ctx: &ToolContext, params: &Value) -> ToolResult {
+        let policy = process_job_retention_policy(&json!({}));
+        let _ = apply_process_job_retention(ctx.db(), policy, retention_log_dir(&json!({}))).await;
         let backend_filter = match params.get("backend") {
             Some(_) => match Self::requested_backend(params) {
                 Ok(backend) => Some(backend),
@@ -2730,6 +2908,12 @@ impl ProcessTool {
         }
         let projection = project_process_job_list(summaries, ProcessJobProjectionBounds::default());
         ToolResult::text(format_process_job_projection(&projection))
+    }
+
+    async fn handle_gc(ctx: &ToolContext, params: &Value) -> ToolResult {
+        let policy = process_job_retention_policy(params);
+        let receipt = apply_process_job_retention(ctx.db(), policy, retention_log_dir(params)).await;
+        ToolResult::text(serde_json::to_string(&receipt).unwrap_or(receipt.summary))
     }
 
     async fn handle_poll(ctx: &ToolContext, params: &Value) -> ToolResult {
@@ -3045,6 +3229,7 @@ impl Tool for ProcessTool {
             "submit" => Self::handle_write(&params, true).await,
             "close" => Self::handle_close(&params).await,
             "adopt" => Self::handle_adopt(&params).await,
+            "gc" | "garbage_collect" => Self::handle_gc(ctx, &params).await,
             other => ToolResult::error(format!("Unknown process action: {other}")),
         }
     }
@@ -3750,6 +3935,102 @@ mod tests {
         assert!(text(&listed).contains("proc_durable_only"), "{}", text(&listed));
         let logged = tool.execute(&ctx, json!({"action": "log", "session_id": "proc_durable_only"})).await;
         assert!(text(&logged).contains("durable status"), "{}", text(&logged));
+    }
+
+    #[tokio::test]
+    async fn process_gc_removes_expired_completed_records_logs_and_skips_active_jobs() {
+        let db = clankers_db::Db::in_memory().expect("db opens");
+        let ctx = make_ctx_with_db(db.clone());
+        let tool = ProcessTool::new();
+        let temp = tempfile::tempdir().expect("tempdir");
+        let old = Utc::now() - chrono::Duration::days(30);
+
+        let mut expired = StoredProcessJobRecord::new_native(
+            "proc_gc_expired",
+            "printf expired",
+            StoredProcessJobOwnerScope::DaemonGlobal,
+        );
+        expired.status = StoredProcessJobStatus::Succeeded { exit_code: Some(0) };
+        expired.started_at = old;
+        expired.updated_at = old;
+        expired.completed_at = Some(old);
+        expired.log_refs = vec![StoredProcessJobLogRef {
+            stream: StoredProcessJobStream::Combined,
+            reference: "native:proc_gc_expired/combined.log".to_string(),
+            retained_until: None,
+            max_bytes: Some(12),
+        }];
+        let log_path = temp.path().join("proc_gc_expired").join("combined.log");
+        std::fs::create_dir_all(log_path.parent().expect("log parent")).expect("log dir");
+        std::fs::write(&log_path, b"expired-log!").expect("log write");
+
+        let mut active = StoredProcessJobRecord::new_native(
+            "proc_gc_active",
+            "sleep active",
+            StoredProcessJobOwnerScope::DaemonGlobal,
+        );
+        active.status = StoredProcessJobStatus::Running;
+        active.updated_at = old;
+        active.log_refs = vec![StoredProcessJobLogRef {
+            stream: StoredProcessJobStream::Combined,
+            reference: "native:proc_gc_active/combined.log".to_string(),
+            retained_until: None,
+            max_bytes: Some(99),
+        }];
+
+        db.async_process_jobs().upsert(expired).await.expect("insert expired");
+        db.async_process_jobs().upsert(active).await.expect("insert active");
+
+        let result = tool
+            .execute(
+                &ctx,
+                json!({
+                    "action": "gc",
+                    "max_age_days": 1,
+                    "max_records": 100,
+                    "max_log_bytes": 1_000_000,
+                    "log_dir": temp.path().to_string_lossy()
+                }),
+            )
+            .await;
+        assert!(!result.is_error, "{result:?}");
+        let payload: serde_json::Value = serde_json::from_str(&text(&result)).expect("gc json");
+        assert_eq!(payload["removed_records"][0], "proc_gc_expired");
+        assert_eq!(payload["removed_log_bytes"], 12);
+        assert_eq!(payload["skipped_active_jobs"][0], "proc_gc_active");
+        assert!(payload["failures"].as_array().expect("failures").is_empty(), "{payload}");
+        assert!(db.async_process_jobs().get("proc_gc_expired").await.expect("db read").is_none());
+        assert!(db.async_process_jobs().get("proc_gc_active").await.expect("db read").is_some());
+        assert!(!log_path.exists());
+    }
+
+    #[tokio::test]
+    async fn process_list_applies_automatic_completed_retention_policy() {
+        let db = clankers_db::Db::in_memory().expect("db opens");
+        let ctx = make_ctx_with_db(db.clone());
+        let tool = ProcessTool::new();
+        let old = Utc::now() - chrono::Duration::days(30);
+        let mut expired = StoredProcessJobRecord::new_native(
+            "proc_list_gc_expired",
+            "printf expired",
+            StoredProcessJobOwnerScope::DaemonGlobal,
+        );
+        expired.status = StoredProcessJobStatus::Succeeded { exit_code: Some(0) };
+        expired.started_at = old;
+        expired.updated_at = old;
+        expired.completed_at = Some(old);
+        expired.log_refs = vec![StoredProcessJobLogRef {
+            stream: StoredProcessJobStream::Combined,
+            reference: "native:proc_list_gc_expired/combined.log".to_string(),
+            retained_until: None,
+            max_bytes: Some(1),
+        }];
+        db.async_process_jobs().upsert(expired).await.expect("insert expired");
+
+        let listed = tool.execute(&ctx, json!({"action": "list", "backend": "native"})).await;
+        assert!(!listed.is_error, "{listed:?}");
+        assert!(db.async_process_jobs().get("proc_list_gc_expired").await.expect("db read").is_none());
+        assert!(!text(&listed).contains("proc_list_gc_expired"), "{}", text(&listed));
     }
 
     #[tokio::test]

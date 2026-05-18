@@ -266,6 +266,78 @@ impl ProcessJobLogRetentionPolicy {
     }
 }
 
+/// Completed-job retention policy shared by daemon automation and explicit GC requests.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ProcessJobRetentionPolicy {
+    pub max_age: Option<Duration>,
+    pub max_records: Option<usize>,
+    pub max_log_bytes: Option<u64>,
+}
+
+impl Default for ProcessJobRetentionPolicy {
+    fn default() -> Self {
+        Self {
+            max_age: Some(Duration::from_secs(14 * 24 * 60 * 60)),
+            max_records: Some(1000),
+            max_log_bytes: Some(1024 * 1024 * 1024),
+        }
+    }
+}
+
+/// Backend/log reference that retention released without owning concrete backend cleanup.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ProcessJobReleasedLogRef {
+    pub id: ProcessJobId,
+    pub backend: ProcessJobBackendKind,
+    pub reference: String,
+    pub bytes: u64,
+}
+
+/// Retention failure reported without aborting the whole GC request.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ProcessJobGarbageCollectionFailure {
+    pub id: Option<ProcessJobId>,
+    pub reference: Option<String>,
+    pub message: String,
+}
+
+/// Typed GC receipt for explicit and automatic completed-job retention.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ProcessJobGarbageCollectionReceipt {
+    pub operation: ProcessJobOperation,
+    pub removed_records: Vec<ProcessJobId>,
+    pub removed_log_bytes: u64,
+    pub skipped_active_jobs: Vec<ProcessJobId>,
+    pub released_log_refs: Vec<ProcessJobReleasedLogRef>,
+    pub failures: Vec<ProcessJobGarbageCollectionFailure>,
+    pub summary: String,
+}
+
+impl ProcessJobGarbageCollectionReceipt {
+    #[must_use]
+    pub fn empty() -> Self {
+        Self {
+            operation: ProcessJobOperation::GarbageCollect,
+            removed_records: Vec::new(),
+            removed_log_bytes: 0,
+            skipped_active_jobs: Vec::new(),
+            released_log_refs: Vec::new(),
+            failures: Vec::new(),
+            summary: "process job GC removed 0 records, 0 log bytes, skipped 0 active jobs, 0 failures".to_string(),
+        }
+    }
+
+    pub fn refresh_summary(&mut self) {
+        self.summary = format!(
+            "process job GC removed {} records, {} log bytes, skipped {} active jobs, {} failures",
+            self.removed_records.len(),
+            self.removed_log_bytes,
+            self.skipped_active_jobs.len(),
+            self.failures.len()
+        );
+    }
+}
+
 fn sanitize_log_path_component(input: &str) -> String {
     input
         .chars()
@@ -970,7 +1042,7 @@ pub enum ProcessJobToolResult {
     WriteStdin(ProcessJobReceipt),
     CloseStdin(ProcessJobReceipt),
     Adopt(ProcessJobReceipt),
-    GarbageCollect(ProcessJobReceipt),
+    GarbageCollect(ProcessJobGarbageCollectionReceipt),
 }
 
 /// Backend result after accepting a start request.
@@ -1949,8 +2021,8 @@ mod tests {
             ProcessJobToolResult::Restart(receipt.clone()),
             ProcessJobToolResult::WriteStdin(receipt.clone()),
             ProcessJobToolResult::CloseStdin(receipt.clone()),
-            ProcessJobToolResult::Adopt(receipt.clone()),
-            ProcessJobToolResult::GarbageCollect(receipt),
+            ProcessJobToolResult::Adopt(receipt),
+            ProcessJobToolResult::GarbageCollect(ProcessJobGarbageCollectionReceipt::empty()),
         ];
 
         let operation_names: Vec<_> = variants
