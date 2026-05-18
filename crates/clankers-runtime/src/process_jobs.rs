@@ -362,6 +362,125 @@ impl ProcessJobStatus {
     }
 }
 
+/// Restart/crash reconciliation state for a persisted process/job record.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ProcessJobReconciliationState {
+    Running,
+    Reattached,
+    ReattachedLogIncomplete,
+    Exited,
+    LostAfterRestart,
+    BackendUnavailable,
+    Orphaned,
+    IdentityMismatch,
+}
+
+impl ProcessJobReconciliationState {
+    #[must_use]
+    pub const fn is_adopted(self) -> bool {
+        matches!(self, Self::Running | Self::Reattached | Self::ReattachedLogIncomplete)
+    }
+
+    #[must_use]
+    pub const fn is_fail_closed(self) -> bool {
+        matches!(self, Self::BackendUnavailable | Self::Orphaned | Self::IdentityMismatch)
+    }
+}
+
+/// Log continuity after reconciliation. Status and log ownership can degrade independently.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ProcessJobLogReconciliationState {
+    Complete,
+    Incomplete,
+    Unavailable { reason: String },
+    BackendReferenced,
+}
+
+/// Native process identity facts persisted at start time.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct NativeProcessJobIdentity {
+    pub pid: u32,
+    pub process_group: Option<i32>,
+    pub start_time_ticks: Option<u64>,
+    pub command_fingerprint: Option<String>,
+    pub cwd_fingerprint: Option<String>,
+}
+
+/// Host-observed native process facts used during conservative restart reconciliation.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct NativeProcessJobObservation {
+    pub pid: u32,
+    pub process_group: Option<i32>,
+    pub start_time_ticks: Option<u64>,
+    pub command_fingerprint: Option<String>,
+    pub cwd_fingerprint: Option<String>,
+}
+
+impl NativeProcessJobIdentity {
+    #[must_use]
+    pub fn verify_observation(
+        &self,
+        observation: Option<&NativeProcessJobObservation>,
+    ) -> ProcessJobReconciliationState {
+        let Some(observation) = observation else {
+            return ProcessJobReconciliationState::LostAfterRestart;
+        };
+        if self.pid != observation.pid || self.process_group != observation.process_group {
+            return ProcessJobReconciliationState::IdentityMismatch;
+        }
+        let comparable_facts = [
+            (
+                self.start_time_ticks.map(|value| value.to_string()),
+                observation.start_time_ticks.map(|value| value.to_string()),
+            ),
+            (self.command_fingerprint.clone(), observation.command_fingerprint.clone()),
+            (self.cwd_fingerprint.clone(), observation.cwd_fingerprint.clone()),
+        ];
+        let mut matched_any = false;
+        for (expected, actual) in comparable_facts {
+            match (expected, actual) {
+                (Some(left), Some(right)) if left == right => matched_any = true,
+                (Some(_), Some(_)) => return ProcessJobReconciliationState::IdentityMismatch,
+                _ => {}
+            }
+        }
+        if matched_any {
+            ProcessJobReconciliationState::ReattachedLogIncomplete
+        } else {
+            ProcessJobReconciliationState::IdentityMismatch
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ProcessJobReconciliationOutcome {
+    pub id: ProcessJobId,
+    pub backend: ProcessJobBackendKind,
+    pub backend_ref: Option<BackendRef>,
+    pub state: ProcessJobReconciliationState,
+    pub log_state: ProcessJobLogReconciliationState,
+    pub status: ProcessJobStatus,
+    pub log_refs: Vec<ProcessJobLogRef>,
+    pub reason: Option<String>,
+}
+
+impl ProcessJobReconciliationOutcome {
+    #[must_use]
+    pub fn into_summary_update(self, mut summary: ProcessJobSummary, updated_at: DateTime<Utc>) -> ProcessJobSummary {
+        summary.backend = self.backend;
+        summary.backend_ref = self.backend_ref;
+        summary.status = self.status;
+        summary.updated_at = updated_at;
+        summary.log_refs = self.log_refs;
+        if summary.status.is_terminal() && summary.completed_at.is_none() {
+            summary.completed_at = Some(updated_at);
+        }
+        summary
+    }
+}
+
 /// Scope used to authorize cross-session observation and mutation.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case", tag = "kind", content = "value")]
@@ -1844,6 +1963,7 @@ pub trait ProcessJobBackend: Send + Sync {
     fn capabilities(&self) -> ProcessJobBackendCapabilities;
     async fn start(&self, request: StartProcessJobRequest) -> Result<ProcessJobBackendStart, RuntimeError>;
     async fn observe(&self, backend_ref: BackendRef) -> Result<ProcessJobBackendStatus, RuntimeError>;
+    async fn reconcile(&self, summary: ProcessJobSummary) -> Result<ProcessJobReconciliationOutcome, RuntimeError>;
     async fn log(&self, backend_ref: BackendRef, range: ProcessJobLogRange)
     -> Result<ProcessJobLogChunk, RuntimeError>;
     async fn kill(&self, backend_ref: BackendRef) -> Result<ProcessJobReceipt, RuntimeError>;
@@ -1965,6 +2085,20 @@ mod tests {
                 status: ProcessJobStatus::Running,
                 updated_at: Utc::now(),
                 log_refs: Vec::new(),
+            })
+        }
+
+        async fn reconcile(&self, summary: ProcessJobSummary) -> Result<ProcessJobReconciliationOutcome, RuntimeError> {
+            self.calls.lock().expect("fake backend calls lock poisoned").push("reconcile");
+            Ok(ProcessJobReconciliationOutcome {
+                id: summary.id,
+                backend: summary.backend,
+                backend_ref: summary.backend_ref,
+                state: ProcessJobReconciliationState::ReattachedLogIncomplete,
+                log_state: ProcessJobLogReconciliationState::Incomplete,
+                status: ProcessJobStatus::ReattachedLogIncomplete,
+                log_refs: summary.log_refs,
+                reason: Some("fake backend reattached status but log pipes were not recoverable".to_string()),
             })
         }
 
@@ -2999,6 +3133,112 @@ mod tests {
         assert!(!ProcessJobStatus::Running.is_terminal());
         assert!(ProcessJobStatus::Succeeded { exit_code: Some(0) }.is_terminal());
         assert!(ProcessJobStatus::LostAfterRestart.is_terminal());
+    }
+
+    #[test]
+    fn reconciliation_state_vocabulary_serializes_and_classifies_fail_closed_states() {
+        let states = vec![
+            ProcessJobReconciliationState::Running,
+            ProcessJobReconciliationState::Reattached,
+            ProcessJobReconciliationState::ReattachedLogIncomplete,
+            ProcessJobReconciliationState::Exited,
+            ProcessJobReconciliationState::LostAfterRestart,
+            ProcessJobReconciliationState::BackendUnavailable,
+            ProcessJobReconciliationState::Orphaned,
+            ProcessJobReconciliationState::IdentityMismatch,
+        ];
+        let serialized = serde_json::to_value(&states).expect("states serialize");
+
+        assert_eq!(
+            serialized,
+            serde_json::json!([
+                "running",
+                "reattached",
+                "reattached_log_incomplete",
+                "exited",
+                "lost_after_restart",
+                "backend_unavailable",
+                "orphaned",
+                "identity_mismatch"
+            ])
+        );
+        assert!(ProcessJobReconciliationState::ReattachedLogIncomplete.is_adopted());
+        assert!(ProcessJobReconciliationState::IdentityMismatch.is_fail_closed());
+        assert!(!ProcessJobReconciliationState::LostAfterRestart.is_adopted());
+    }
+
+    #[test]
+    fn native_identity_reconciliation_fails_closed_on_pid_reuse_or_ambiguous_identity() {
+        let persisted = NativeProcessJobIdentity {
+            pid: 4242,
+            process_group: Some(4242),
+            start_time_ticks: Some(100),
+            command_fingerprint: Some("cmd:a".to_string()),
+            cwd_fingerprint: Some("cwd:repo".to_string()),
+        };
+        let matching = NativeProcessJobObservation {
+            pid: 4242,
+            process_group: Some(4242),
+            start_time_ticks: Some(100),
+            command_fingerprint: Some("cmd:a".to_string()),
+            cwd_fingerprint: Some("cwd:repo".to_string()),
+        };
+        let reused_pid = NativeProcessJobObservation {
+            start_time_ticks: Some(200),
+            ..matching.clone()
+        };
+        let ambiguous = NativeProcessJobIdentity {
+            start_time_ticks: None,
+            command_fingerprint: None,
+            cwd_fingerprint: None,
+            ..persisted.clone()
+        };
+
+        assert_eq!(
+            persisted.verify_observation(Some(&matching)),
+            ProcessJobReconciliationState::ReattachedLogIncomplete
+        );
+        assert_eq!(persisted.verify_observation(Some(&reused_pid)), ProcessJobReconciliationState::IdentityMismatch);
+        assert_eq!(ambiguous.verify_observation(Some(&matching)), ProcessJobReconciliationState::IdentityMismatch);
+        assert_eq!(persisted.verify_observation(None), ProcessJobReconciliationState::LostAfterRestart);
+    }
+
+    #[test]
+    fn reconciliation_outcome_updates_summary_without_changing_stable_id() {
+        let now = DateTime::parse_from_rfc3339("2026-05-18T01:00:00Z").expect("timestamp parses").with_timezone(&Utc);
+        let summary = ProcessJobSummary {
+            id: ProcessJobId("proc_stable".to_string()),
+            backend: ProcessJobBackendKind::Pueue,
+            backend_ref: Some(BackendRef("pueue:7".to_string())),
+            owner: ProcessJobOwnerScope::DaemonGlobal,
+            status: ProcessJobStatus::Running,
+            command_preview: "build".to_string(),
+            cwd: ProcessJobCwd::Inherited,
+            started_at: Some(now),
+            updated_at: now,
+            completed_at: None,
+            log_refs: Vec::new(),
+        };
+        let outcome = ProcessJobReconciliationOutcome {
+            id: summary.id.clone(),
+            backend: ProcessJobBackendKind::Pueue,
+            backend_ref: Some(BackendRef("pueue:7".to_string())),
+            state: ProcessJobReconciliationState::BackendUnavailable,
+            log_state: ProcessJobLogReconciliationState::Unavailable {
+                reason: "pueue daemon unavailable".to_string(),
+            },
+            status: ProcessJobStatus::BackendUnavailable {
+                reason: "pueue daemon unavailable".to_string(),
+            },
+            log_refs: Vec::new(),
+            reason: Some("pueue daemon unavailable".to_string()),
+        };
+
+        let updated = outcome.into_summary_update(summary, now + chrono::Duration::seconds(5));
+
+        assert_eq!(updated.id, ProcessJobId("proc_stable".to_string()));
+        assert!(matches!(updated.status, ProcessJobStatus::BackendUnavailable { .. }));
+        assert_eq!(updated.completed_at, Some(now + chrono::Duration::seconds(5)));
     }
 
     #[test]
