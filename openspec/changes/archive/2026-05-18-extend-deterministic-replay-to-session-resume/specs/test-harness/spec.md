@@ -1,9 +1,5 @@
-# test-harness Specification
+## MODIFIED Requirements
 
-## Purpose
-
-Define the receipt, dry-run, and regression-test contract for Clankers' canonical local test harness.
-## Requirements
 ### Requirement: Harness Receipt Contract
 
 The test harness SHALL emit machine-readable and human-readable receipts whose structure is regression-tested without running expensive readiness gates. Each harness invocation SHALL write primary artifacts into a unique run-scoped directory and publish stable compatibility receipt paths only after the run completes. The harness SHALL expose a cheap discoverability mode that lists supported modes, selectors, environment controls, and receipt locations. The harness SHALL expose the deterministic replay rail as a named profile that includes credential-free engine replay, controller/agent shell replay, and persisted-session resume replay.
