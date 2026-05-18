@@ -1,0 +1,14 @@
+[workspace]
+
+[package]
+name = "embedded-provider-adapter-example"
+version = "0.1.0"
+edition = "2024"
+publish = false
+
+[dependencies]
+clanker-message = { path = "../../crates/clanker-message" }
+clankers-adapters = { path = "../../crates/clankers-adapters" }
+clankers-engine = { path = "../../crates/clankers-engine" }
+clankers-engine-host = { path = "../../crates/clankers-engine-host" }
+serde_json = "1"

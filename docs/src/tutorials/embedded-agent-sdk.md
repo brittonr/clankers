@@ -71,7 +71,7 @@ let report = run_engine_turn(
 ).await;
 ```
 
-The checked-in consumer fixture under `examples/embedded-agent-sdk/` is the executable form of this sketch. `examples/embedded-minimal-kit/` uses the reusable adapter bricks for the smallest product kit, and `examples/embedded-tool-kit/` covers successful tool execution plus missing-tool, tool-error, capability-denial, and truncation paths. These examples must stay outside the workspace crate graph and depend only on SDK crates plus application-owned executor/test helpers.
+The checked-in consumer fixture under `examples/embedded-agent-sdk/` is the executable form of this sketch. `examples/embedded-minimal-kit/` uses the reusable adapter bricks for the smallest product kit, `examples/embedded-tool-kit/` covers successful tool execution plus missing-tool, tool-error, capability-denial, and truncation paths, and `examples/embedded-provider-adapter/` shows a product-owned `ModelHost` converting `EngineModelRequest` into local provider IO without importing `clankers-provider`. These examples must stay outside the workspace crate graph and depend only on SDK crates plus application-owned executor/test helpers.
 
 ## Adapter contracts
 
@@ -155,6 +155,7 @@ That bundle must prove:
 - public API inventory is fresh;
 - stale docs fail the checker;
 - `examples/embedded-agent-sdk/` runs positive and negative adapter paths;
+- executable kit examples cover minimal adapter bricks, tool catalogs, and product-owned provider adapter conversion;
 - example dependency graph excludes Clankers shell/runtime crates and UI/network crates listed in the OpenSpec change;
 - feature/default policy matches manifests and a minimal example build;
 - generic SDK crates reject provider/router, daemon/TUI, database, networking, timestamp, shell-generated ID, runtime-handle, provider-shaped request/response, hidden-global-service, and concrete Clankers runtime leakage;
