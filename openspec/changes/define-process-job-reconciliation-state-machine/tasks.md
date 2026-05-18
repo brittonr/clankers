@@ -7,7 +7,7 @@
 ## Phase 2: Service integration
 
 - [x] [serial] [depends:phase-1] Add backend reconciliation interface and service orchestration on daemon startup. ✅ 7m (started: 2026-05-18T06:15:21Z → completed: 2026-05-18T06:22:21Z; evidence: `startup_reconciliation_updates_nonterminal_jobs_and_skips_terminal_records` in `cargo test -p clankers-runtime reconciliation --lib`, existing daemon startup call in `src/modes/agent_setup.rs`, `cargo check --tests`)
-- [ ] [parallel] [covers=process-job-reconciliation-state-machine.receipts.degraded] Project degraded reconciliation/log states into list/poll/log/kill receipts.
+- [x] [parallel] [covers=process-job-reconciliation-state-machine.receipts.degraded] Project degraded reconciliation/log states into list/poll/log/kill receipts. ✅ 7m (started: 2026-05-18T06:22:21Z → completed: 2026-05-18T06:29:15Z; evidence: `durable_degraded_records_project_into_poll_log_and_kill_results` in `cargo test -p clankers durable_ -- --nocapture`, `cargo check --tests`)
 - [ ] [parallel] [covers=process-job-reconciliation-state-machine.storage.stable-id] Preserve stable Clankers IDs while updating backend refs/status/log degradation fields.
 
 ## Phase 3: Verification

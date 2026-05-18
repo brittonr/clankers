@@ -1904,6 +1904,23 @@ fn stored_status_label(status: &StoredProcessJobStatus) -> String {
     }
 }
 
+fn durable_reconciliation_note(record: &StoredProcessJobRecord) -> String {
+    let status = stored_status_label(&record.status);
+    let reconciliation = record.safe_metadata.get("reconciliation").map_or("unknown", String::as_str);
+    match &record.status {
+        StoredProcessJobStatus::ReattachedLogIncomplete => {
+            format!("degraded reconciliation: status={status}, state={reconciliation}; live stdio was not reattached")
+        }
+        StoredProcessJobStatus::LostAfterRestart => format!(
+            "degraded reconciliation: status={status}, state={reconciliation}; process identity was not safely recoverable"
+        ),
+        StoredProcessJobStatus::BackendUnavailable { .. } => {
+            format!("degraded reconciliation: status={status}, state={reconciliation}; backend was unavailable")
+        }
+        _ => format!("durable reconciliation: status={status}, state={reconciliation}"),
+    }
+}
+
 fn stored_status_to_job_status(status: &StoredProcessJobStatus) -> ProcessJobStatus {
     match status {
         StoredProcessJobStatus::Pending => ProcessJobStatus::Pending,
@@ -2943,9 +2960,8 @@ impl ProcessTool {
             None => {
                 if let Some(record) = durable_record(ctx.db(), &session_id).await {
                     return ToolResult::text(format!(
-                        "{} status: {}\nNo live output stream; durable log refs: {}",
-                        record.id,
-                        stored_status_label(&record.status),
+                        "{}\nNo live output stream; durable log refs: {}",
+                        durable_reconciliation_note(&record),
                         format_log_refs(&record.log_refs)
                     ));
                 }
@@ -2994,9 +3010,8 @@ impl ProcessTool {
             None => {
                 if let Some(record) = durable_record(ctx.db(), &session_id).await {
                     return ToolResult::text(format!(
-                        "{} live log stream is unavailable (durable status: {}, refs: {}).",
-                        record.id,
-                        stored_status_label(&record.status),
+                        "{}; log read degraded (refs: {}).",
+                        durable_reconciliation_note(&record),
                         format_log_refs(&record.log_refs)
                     ));
                 }
@@ -3074,7 +3089,7 @@ impl ProcessTool {
         ToolResult::text(text)
     }
 
-    async fn handle_kill(params: &Value) -> ToolResult {
+    async fn handle_kill(ctx: &ToolContext, params: &Value) -> ToolResult {
         let request = match Self::process_job_tool_request(params) {
             Ok(ProcessJobToolRequest::Kill(request)) => request,
             Ok(_) => return ToolResult::error("Parsed unexpected process job request for kill action"),
@@ -3089,7 +3104,16 @@ impl ProcessTool {
         }
         let entry = match Self::get(&session_id) {
             Some(entry) => entry,
-            None => return ToolResult::error(format!("Unknown process session_id: {session_id}")),
+            None => {
+                if let Some(record) = durable_record(ctx.db(), &session_id).await {
+                    return ToolResult::text(format!(
+                        "{}; kill not sent because no live process handle is attached (refs: {}).",
+                        durable_reconciliation_note(&record),
+                        format_log_refs(&record.log_refs)
+                    ));
+                }
+                return ToolResult::error(format!("Unknown process session_id: {session_id}"));
+            }
         };
         if entry.status().is_done() {
             return ToolResult::text(format!("{} is already {}", entry.id, entry.status().label()));
@@ -3241,7 +3265,7 @@ impl Tool for ProcessTool {
             "poll" => Self::handle_poll(ctx, &params).await,
             "log" => Self::handle_log(ctx, &params).await,
             "wait" => Self::handle_wait(ctx, &params).await,
-            "kill" => Self::handle_kill(&params).await,
+            "kill" => Self::handle_kill(ctx, &params).await,
             "restart" => Self::handle_restart(&params).await,
             "write" => Self::handle_write(&params, false).await,
             "submit" => Self::handle_write(&params, true).await,
@@ -3992,7 +4016,37 @@ mod tests {
         let listed = tool.execute(&ctx, json!({"action": "list"})).await;
         assert!(text(&listed).contains("proc_durable_only"), "{}", text(&listed));
         let logged = tool.execute(&ctx, json!({"action": "log", "session_id": "proc_durable_only"})).await;
-        assert!(text(&logged).contains("durable status"), "{}", text(&logged));
+        assert!(text(&logged).contains("durable reconciliation"), "{}", text(&logged));
+    }
+
+    #[tokio::test]
+    async fn durable_degraded_records_project_into_poll_log_and_kill_results() {
+        let db = clankers_db::Db::in_memory().expect("db opens");
+        let ctx = make_ctx_with_db(db.clone());
+        let tool = ProcessTool::new();
+        let mut durable_only = StoredProcessJobRecord::new_native(
+            "proc_degraded_only",
+            "sleep stale",
+            StoredProcessJobOwnerScope::DaemonGlobal,
+        );
+        durable_only.status = StoredProcessJobStatus::LostAfterRestart;
+        durable_only.completed_at = Some(Utc::now());
+        durable_only.safe_metadata.insert("reconciliation".to_string(), "lost-after-restart".to_string());
+        durable_only.log_refs = vec![StoredProcessJobLogRef {
+            stream: StoredProcessJobStream::Combined,
+            reference: "native:proc_degraded_only/combined.log".to_string(),
+            retained_until: None,
+            max_bytes: Some(10),
+        }];
+        db.async_process_jobs().upsert(durable_only).await.expect("insert durable-only record");
+
+        for action in ["poll", "log", "kill"] {
+            let result = tool.execute(&ctx, json!({"action": action, "session_id": "proc_degraded_only"})).await;
+            let body = text(&result);
+            assert!(!result.is_error, "{action}: {result:?}");
+            assert!(body.contains("degraded reconciliation"), "{action}: {body}");
+            assert!(body.contains("lost-after-restart"), "{action}: {body}");
+        }
     }
 
     #[tokio::test]
