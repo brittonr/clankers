@@ -1,0 +1,18 @@
+## Phase 1: Retention model
+
+- [x] [serial] [covers=process-job-retention-gc.policy.classes] Define retention classes, metadata/log/event/tombstone lifetimes, and eligibility rules. ✅ 5m (started: 2026-05-18T06:34:39Z → completed: 2026-05-18T06:40:03Z; evidence: `retention_policy_classifies_metadata_lifetimes_and_active_protection`, `cargo check -p clankers-runtime --tests`)
+- [x] [parallel] [covers=process-job-retention-gc.policy.active-protection] Define active/running/unreconciled job protection rules. ✅ 5m (started: 2026-05-18T06:34:39Z → completed: 2026-05-18T06:40:03Z; evidence: `ProcessJobRetentionClass::protects_active_state`, `retention_policy_classifies_metadata_lifetimes_and_active_protection`, `cargo check -p clankers-runtime --tests`)
+- [x] [parallel] [covers=process-job-retention-gc.logs.overflow] Define max bytes/line/chunk, truncation counters, disk-full behavior, and degraded-log states. ✅ 5m (started: 2026-05-18T06:34:39Z → completed: 2026-05-18T06:40:03Z; evidence: `ProcessJobLogOverflowPolicy::classify_write`, `retention_policy_classifies_metadata_lifetimes_and_active_protection`, `cargo check -p clankers-runtime --tests`)
+
+## Phase 2: GC service and integration
+
+- [ ] [serial] [depends:phase-1] Implement retention eligibility computation as pure/testable logic.
+- [ ] [parallel] [covers=process-job-retention-gc.receipts.typed] Add typed GC receipts and process/job API action shape.
+- [ ] [parallel] [covers=process-job-retention-gc.logs.missing] Add graceful missing-log and backend-log-reference degradation behavior.
+- [ ] [parallel] [covers=process-job-retention-gc.nixos.integration] Add NixOS module options/tests for log/state directories and retention defaults.
+
+## Phase 3: Verification
+
+- [ ] [serial] [depends:phase-2] Add temp-dir native log GC tests and active-job skip tests.
+- [ ] [serial] [depends:phase-2] Add disk-full/output-overflow/truncation fixture tests where practical.
+- [ ] [serial] [depends:phase-2] Run focused retention/GC tests, Nix module eval tests, `openspec validate define-process-job-retention-gc --strict --json`, and `git diff --check`.

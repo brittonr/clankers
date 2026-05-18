@@ -790,6 +790,115 @@ impl Default for ProcessJobRetentionPolicy {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ProcessJobRetentionClass {
+    Active,
+    RecentCompleted,
+    Failed,
+    Adopted,
+    Notification,
+    Tombstone,
+}
+
+impl ProcessJobRetentionClass {
+    #[must_use]
+    pub fn protects_active_state(self) -> bool {
+        matches!(self, Self::Active | Self::Adopted)
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ProcessJobRetentionMetadata {
+    pub class: ProcessJobRetentionClass,
+    pub metadata_retained_until: Option<DateTime<Utc>>,
+    pub log_retained_until: Option<DateTime<Utc>>,
+    pub event_retained_until: Option<DateTime<Utc>>,
+    pub tombstone_retained_until: Option<DateTime<Utc>>,
+    pub policy_ref: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ProcessJobLogOverflowPolicy {
+    pub max_line_bytes: u64,
+    pub max_chunk_bytes: u64,
+    pub max_file_bytes: u64,
+    pub max_total_bytes: u64,
+}
+
+impl Default for ProcessJobLogOverflowPolicy {
+    fn default() -> Self {
+        Self {
+            max_line_bytes: 64 * 1024,
+            max_chunk_bytes: 1024 * 1024,
+            max_file_bytes: 64 * 1024 * 1024,
+            max_total_bytes: 1024 * 1024 * 1024,
+        }
+    }
+}
+
+impl ProcessJobLogOverflowPolicy {
+    #[must_use]
+    pub fn classify_write(&self, line_bytes: u64, chunk_bytes: u64, total_bytes: u64) -> ProcessJobLogWriteDisposition {
+        if line_bytes > self.max_line_bytes {
+            ProcessJobLogWriteDisposition::TruncateLine {
+                dropped_bytes: line_bytes - self.max_line_bytes,
+            }
+        } else if chunk_bytes > self.max_chunk_bytes {
+            ProcessJobLogWriteDisposition::TruncateChunk {
+                dropped_bytes: chunk_bytes - self.max_chunk_bytes,
+            }
+        } else if total_bytes > self.max_total_bytes || total_bytes > self.max_file_bytes {
+            ProcessJobLogWriteDisposition::DegradeDiskFull
+        } else {
+            ProcessJobLogWriteDisposition::Accept
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case", tag = "kind")]
+pub enum ProcessJobLogWriteDisposition {
+    Accept,
+    TruncateLine { dropped_bytes: u64 },
+    TruncateChunk { dropped_bytes: u64 },
+    DegradeDiskFull,
+}
+
+impl ProcessJobRetentionPolicy {
+    #[must_use]
+    pub fn classify_summary(
+        &self,
+        summary: &ProcessJobSummary,
+        now: DateTime<Utc>,
+        policy_ref: Option<String>,
+    ) -> ProcessJobRetentionMetadata {
+        let class = match &summary.status {
+            ProcessJobStatus::Running | ProcessJobStatus::Pending | ProcessJobStatus::Waiting => {
+                ProcessJobRetentionClass::Active
+            }
+            ProcessJobStatus::ReattachedLogIncomplete | ProcessJobStatus::BackendUnavailable { .. } => {
+                ProcessJobRetentionClass::Adopted
+            }
+            ProcessJobStatus::Failed { .. }
+            | ProcessJobStatus::Killed
+            | ProcessJobStatus::Cancelled
+            | ProcessJobStatus::LostAfterRestart => ProcessJobRetentionClass::Failed,
+            ProcessJobStatus::Succeeded { .. } => ProcessJobRetentionClass::RecentCompleted,
+            ProcessJobStatus::Unknown { .. } => ProcessJobRetentionClass::Tombstone,
+        };
+        let retained_until = self.max_age.and_then(|age| chrono::Duration::from_std(age).ok()).map(|age| now + age);
+        ProcessJobRetentionMetadata {
+            class,
+            metadata_retained_until: retained_until,
+            log_retained_until: retained_until,
+            event_retained_until: retained_until,
+            tombstone_retained_until: retained_until,
+            policy_ref,
+        }
+    }
+}
+
 /// Backend/log reference that retention released without owning concrete backend cleanup.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ProcessJobReleasedLogRef {
@@ -3379,6 +3488,49 @@ mod tests {
             .find(|summary| summary.id.0 == "pueue_missing")
             .expect("unavailable summary persisted");
         assert!(matches!(unavailable.status, ProcessJobStatus::BackendUnavailable { .. }));
+    }
+
+    #[test]
+    fn retention_policy_classifies_metadata_lifetimes_and_active_protection() {
+        let now = DateTime::parse_from_rfc3339("2026-05-18T00:00:00Z").expect("timestamp parses").with_timezone(&Utc);
+        let policy = ProcessJobRetentionPolicy {
+            max_age: Some(Duration::from_secs(60)),
+            max_records: Some(10),
+            max_log_bytes: Some(1024),
+        };
+
+        let active_summary = persisted_summary("proc_active", ProcessJobBackendKind::Native, ProcessJobStatus::Running);
+        let active = policy.classify_summary(&active_summary, now, Some("default".to_string()));
+        assert_eq!(active.class, ProcessJobRetentionClass::Active);
+        assert!(active.class.protects_active_state());
+        assert_eq!(active.metadata_retained_until, Some(now + chrono::Duration::seconds(60)));
+        assert_eq!(active.log_retained_until, active.metadata_retained_until);
+        assert_eq!(active.event_retained_until, active.metadata_retained_until);
+        assert_eq!(active.policy_ref.as_deref(), Some("default"));
+
+        let failed_summary =
+            persisted_summary("proc_failed", ProcessJobBackendKind::Native, ProcessJobStatus::Failed {
+                exit_code: Some(1),
+                reason: "boom".to_string(),
+            });
+        let failed = policy.classify_summary(&failed_summary, now, None);
+        assert_eq!(failed.class, ProcessJobRetentionClass::Failed);
+        assert!(!failed.class.protects_active_state());
+
+        let overflow = ProcessJobLogOverflowPolicy {
+            max_line_bytes: 10,
+            max_chunk_bytes: 20,
+            max_file_bytes: 30,
+            max_total_bytes: 40,
+        };
+        assert_eq!(overflow.classify_write(9, 19, 29), ProcessJobLogWriteDisposition::Accept);
+        assert_eq!(overflow.classify_write(11, 19, 29), ProcessJobLogWriteDisposition::TruncateLine {
+            dropped_bytes: 1
+        });
+        assert_eq!(overflow.classify_write(9, 25, 29), ProcessJobLogWriteDisposition::TruncateChunk {
+            dropped_bytes: 5
+        });
+        assert_eq!(overflow.classify_write(9, 19, 31), ProcessJobLogWriteDisposition::DegradeDiskFull);
     }
 
     #[tokio::test]
