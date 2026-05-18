@@ -100,21 +100,27 @@ in
         description = "Default durable process/job backend used when a tool request does not specify one.";
       };
 
+      stateDir = lib.mkOption {
+        type = lib.types.str;
+        default = "${cfg.stateDir}/process-jobs";
+        description = "State directory that owns durable process/job metadata, registry files, and default native log storage.";
+      };
+
       databasePath = lib.mkOption {
         type = lib.types.str;
-        default = "${cfg.stateDir}/process-jobs/process-jobs.redb";
+        default = "${processCfg.stateDir}/process-jobs.redb";
         description = "redb database path used for durable process/job registry persistence.";
       };
 
       logDir = lib.mkOption {
         type = lib.types.str;
-        default = "${cfg.stateDir}/process-jobs/logs";
+        default = "${processCfg.stateDir}/logs";
         description = "Directory for durable process/job log chunks and backend log references.";
       };
 
       registryDir = lib.mkOption {
         type = lib.types.str;
-        default = "${cfg.stateDir}/process-jobs";
+        default = processCfg.stateDir;
         description = "Directory that owns durable process/job registry metadata.";
       };
 
@@ -240,6 +246,22 @@ in
       {
         assertion = builtins.all (path: lib.hasPrefix "/" path) systemdBackendCfg.writablePaths;
         message = "processManagement.systemd.writablePaths entries must be absolute paths.";
+      }
+      {
+        assertion = lib.hasPrefix "/" processCfg.stateDir;
+        message = "processManagement.stateDir must be an absolute path.";
+      }
+      {
+        assertion = lib.hasPrefix "/" processCfg.registryDir;
+        message = "processManagement.registryDir must be an absolute path.";
+      }
+      {
+        assertion = lib.hasPrefix "/" processCfg.logDir;
+        message = "processManagement.logDir must be an absolute path.";
+      }
+      {
+        assertion = lib.hasPrefix "/" processCfg.databasePath;
+        message = "processManagement.databasePath must be an absolute path.";
       }
     ];
 

@@ -37,8 +37,7 @@ pkgs.testers.runNixOSTest {
       processManagement = {
         enable = true;
         defaultBackend = "native";
-        databasePath = "/var/lib/clankers/process-jobs/process-jobs.redb";
-        registryDir = "/var/lib/clankers/process-jobs";
+        stateDir = "/var/lib/clankers/process-jobs";
         logDir = "/var/log/clankers/process-jobs";
         retention = {
           maxAgeDays = 7;

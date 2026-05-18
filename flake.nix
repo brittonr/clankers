@@ -501,7 +501,7 @@
           nixos-module-process-persistence =
             let
               fakeClankersPkg = pkgs.writeShellScriptBin "clankers" "exit 0";
-              evaluated = nixpkgs.lib.nixosSystem {
+              custom = nixpkgs.lib.nixosSystem {
                 inherit system;
                 modules = [
                   self.nixosModules.clankers-daemon
@@ -512,8 +512,8 @@
                       processManagement = {
                         enable = true;
                         defaultBackend = "systemd";
-                        databasePath = "/srv/clankers/jobs/jobs.redb";
-                        registryDir = "/srv/clankers/jobs";
+                        systemd.enable = true;
+                        stateDir = "/srv/clankers/jobs";
                         logDir = "/var/log/clankers/jobs";
                         retention = {
                           maxAgeDays = 7;
@@ -525,11 +525,29 @@
                   })
                 ];
               };
-              service = evaluated.config.systemd.services.clankers-daemon;
+              defaults = nixpkgs.lib.nixosSystem {
+                inherit system;
+                modules = [
+                  self.nixosModules.clankers-daemon
+                  ({ ... }: {
+                    services.clankers-daemon = {
+                      enable = true;
+                      package = fakeClankersPkg;
+                      stateDir = "/var/lib/clankers-defaults";
+                      processManagement.enable = true;
+                    };
+                  })
+                ];
+              };
+              customService = custom.config.systemd.services.clankers-daemon;
+              defaultService = defaults.config.systemd.services.clankers-daemon;
               payload = builtins.toJSON {
-                environment = service.environment;
-                readWritePaths = service.serviceConfig.ReadWritePaths;
-                tmpfiles = evaluated.config.systemd.tmpfiles.rules;
+                customEnvironment = customService.environment;
+                customReadWritePaths = customService.serviceConfig.ReadWritePaths;
+                customTmpfiles = custom.config.systemd.tmpfiles.rules;
+                defaultEnvironment = defaultService.environment;
+                defaultReadWritePaths = defaultService.serviceConfig.ReadWritePaths;
+                defaultTmpfiles = defaults.config.systemd.tmpfiles.rules;
               };
             in pkgs.runCommand "nixos-module-process-persistence" {
               nativeBuildInputs = [ pkgs.jq ];
@@ -538,18 +556,27 @@
             } ''
               cp "$payloadPath" "$out"
               jq -e '
-                .environment.CLANKERS_PROCESS_JOBS_ENABLED == "1" and
-                .environment.CLANKERS_PROCESS_JOB_DEFAULT_BACKEND == "systemd" and
-                .environment.CLANKERS_PROCESS_JOB_DB == "/srv/clankers/jobs/jobs.redb" and
-                .environment.CLANKERS_PROCESS_JOB_REGISTRY_DIR == "/srv/clankers/jobs" and
-                .environment.CLANKERS_PROCESS_JOB_LOG_DIR == "/var/log/clankers/jobs" and
-                .environment.CLANKERS_PROCESS_JOB_RETENTION_MAX_AGE_DAYS == "7" and
-                .environment.CLANKERS_PROCESS_JOB_RETENTION_MAX_RECORDS == "123" and
-                .environment.CLANKERS_PROCESS_JOB_RETENTION_MAX_LOG_BYTES == "456789" and
-                (.readWritePaths | index("/srv/clankers/jobs")) and
-                (.readWritePaths | index("/var/log/clankers/jobs")) and
-                (.tmpfiles | index("d /srv/clankers/jobs 0750 clankers clankers -")) and
-                (.tmpfiles | index("d /var/log/clankers/jobs 0750 clankers clankers -"))
+                .customEnvironment.CLANKERS_PROCESS_JOBS_ENABLED == "1" and
+                .customEnvironment.CLANKERS_PROCESS_JOB_DEFAULT_BACKEND == "systemd" and
+                .customEnvironment.CLANKERS_PROCESS_JOB_DB == "/srv/clankers/jobs/process-jobs.redb" and
+                .customEnvironment.CLANKERS_PROCESS_JOB_REGISTRY_DIR == "/srv/clankers/jobs" and
+                .customEnvironment.CLANKERS_PROCESS_JOB_LOG_DIR == "/var/log/clankers/jobs" and
+                .customEnvironment.CLANKERS_PROCESS_JOB_RETENTION_MAX_AGE_DAYS == "7" and
+                .customEnvironment.CLANKERS_PROCESS_JOB_RETENTION_MAX_RECORDS == "123" and
+                .customEnvironment.CLANKERS_PROCESS_JOB_RETENTION_MAX_LOG_BYTES == "456789" and
+                (.customReadWritePaths | index("/srv/clankers/jobs")) and
+                (.customReadWritePaths | index("/var/log/clankers/jobs")) and
+                (.customTmpfiles | index("d /srv/clankers/jobs 0750 clankers clankers -")) and
+                (.customTmpfiles | index("d /var/log/clankers/jobs 0750 clankers clankers -")) and
+                .defaultEnvironment.CLANKERS_PROCESS_JOB_DB == "/var/lib/clankers-defaults/process-jobs/process-jobs.redb" and
+                .defaultEnvironment.CLANKERS_PROCESS_JOB_REGISTRY_DIR == "/var/lib/clankers-defaults/process-jobs" and
+                .defaultEnvironment.CLANKERS_PROCESS_JOB_LOG_DIR == "/var/lib/clankers-defaults/process-jobs/logs" and
+                .defaultEnvironment.CLANKERS_PROCESS_JOB_RETENTION_MAX_AGE_DAYS == "14" and
+                .defaultEnvironment.CLANKERS_PROCESS_JOB_RETENTION_MAX_RECORDS == "1000" and
+                .defaultEnvironment.CLANKERS_PROCESS_JOB_RETENTION_MAX_LOG_BYTES == "1073741824" and
+                (.defaultReadWritePaths | index("/var/lib/clankers-defaults/process-jobs")) and
+                (.defaultTmpfiles | index("d /var/lib/clankers-defaults/process-jobs 0750 clankers clankers -")) and
+                (.defaultTmpfiles | index("d /var/lib/clankers-defaults/process-jobs/logs 0750 clankers clankers -"))
               ' "$out"
             '';
           nixos-module-process-pueue =
