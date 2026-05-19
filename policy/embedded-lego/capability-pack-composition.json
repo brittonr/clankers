@@ -1,0 +1,200 @@
+{
+  "schema": "clankers.embedded_lego.capability_pack_composition.v1",
+  "capability_order": [
+    "observe",
+    "respond",
+    "read_project",
+    "edit_project",
+    "mutate_project",
+    "shell",
+    "network",
+    "raw-log",
+    "secret-adjacent"
+  ],
+  "packs": [
+    {
+      "name": "embedding_safe",
+      "capabilities": [
+        "observe",
+        "respond"
+      ],
+      "dangerous": false,
+      "requires_human_approval": false,
+      "merge_priority": 10,
+      "default": true
+    },
+    {
+      "name": "read_only",
+      "capabilities": [
+        "observe",
+        "respond",
+        "read_project"
+      ],
+      "dangerous": false,
+      "requires_human_approval": false,
+      "merge_priority": 20,
+      "default": false
+    },
+    {
+      "name": "networkless_coding",
+      "capabilities": [
+        "observe",
+        "respond",
+        "read_project",
+        "edit_project"
+      ],
+      "dangerous": false,
+      "requires_human_approval": false,
+      "merge_priority": 30,
+      "default": false
+    },
+    {
+      "name": "project_local_edit",
+      "capabilities": [
+        "observe",
+        "respond",
+        "read_project",
+        "edit_project",
+        "mutate_project"
+      ],
+      "dangerous": true,
+      "requires_human_approval": true,
+      "merge_priority": 40,
+      "default": false
+    },
+    {
+      "name": "human_approved_shell",
+      "capabilities": [
+        "observe",
+        "respond",
+        "read_project",
+        "shell"
+      ],
+      "dangerous": true,
+      "requires_human_approval": true,
+      "merge_priority": 50,
+      "default": false
+    }
+  ],
+  "compositions": [
+    {
+      "name": "default-minimal",
+      "packs": [
+        "embedding_safe"
+      ],
+      "approval_policy": "safe-only",
+      "expected_capabilities": [
+        "observe",
+        "respond"
+      ]
+    },
+    {
+      "name": "read-only-overlay",
+      "packs": [
+        "embedding_safe",
+        "read_only"
+      ],
+      "approval_policy": "safe-only",
+      "expected_capabilities": [
+        "observe",
+        "respond",
+        "read_project"
+      ]
+    },
+    {
+      "name": "coding-overlay-order-independent",
+      "packs": [
+        "networkless_coding",
+        "read_only",
+        "embedding_safe"
+      ],
+      "approval_policy": "safe-only",
+      "expected_capabilities": [
+        "observe",
+        "respond",
+        "read_project",
+        "edit_project"
+      ]
+    },
+    {
+      "name": "approved-shell",
+      "packs": [
+        "read_only",
+        "human_approved_shell"
+      ],
+      "approval_policy": "allow-dangerous-with-human-approval",
+      "expected_capabilities": [
+        "observe",
+        "respond",
+        "read_project",
+        "shell"
+      ]
+    }
+  ],
+  "denial_fixtures": [
+    {
+      "name": "safe-plus-shell-without-approval",
+      "packs": [
+        "embedding_safe",
+        "human_approved_shell"
+      ],
+      "approval_policy": "safe-only",
+      "expect_error": "dangerous pack requires product approval"
+    },
+    {
+      "name": "safe-plus-network-expansion",
+      "inline_pack": {
+        "name": "bad_network",
+        "capabilities": [
+          "network"
+        ],
+        "dangerous": true,
+        "requires_human_approval": false,
+        "merge_priority": 99,
+        "default": false
+      },
+      "packs": [
+        "embedding_safe",
+        "bad_network"
+      ],
+      "approval_policy": "safe-only",
+      "expect_error": "dangerous pack requires product approval"
+    },
+    {
+      "name": "unknown-capability-atom",
+      "inline_pack": {
+        "name": "bad_atom",
+        "capabilities": [
+          "telepathy"
+        ],
+        "dangerous": false,
+        "requires_human_approval": false,
+        "merge_priority": 99,
+        "default": false
+      },
+      "packs": [
+        "bad_atom"
+      ],
+      "approval_policy": "safe-only",
+      "expect_error": "unknown capability atom"
+    },
+    {
+      "name": "duplicate-pack-name",
+      "inline_pack": {
+        "name": "read_only",
+        "capabilities": [
+          "observe"
+        ],
+        "dangerous": false,
+        "requires_human_approval": false,
+        "merge_priority": 99,
+        "default": false
+      },
+      "packs": [
+        "read_only"
+      ],
+      "approval_policy": "safe-only",
+      "expect_error": "duplicate capability pack"
+    }
+  ]
+}

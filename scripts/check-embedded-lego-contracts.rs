@@ -42,6 +42,8 @@ const EVIDENCE_ARTIFACTS: &[&str] = &[
     "scripts/check-session-resume-brick.rs",
     "examples/embedded-tool-kit/tool-catalog-manifest.json",
     "scripts/check-tool-catalog-manifest.rs",
+    "policy/embedded-lego/capability-pack-composition.json",
+    "scripts/check-capability-pack-composition.rs",
     "examples/embedded-provider-adapter/src/main.rs",
     "examples/embedded-provider-adapter/fixtures/provider-adapter-fixtures.json",
     "scripts/check-provider-adapter-kit.rs",
@@ -71,6 +73,7 @@ fn run() -> Result<PathBuf, String> {
     validate_nickel_contract_sketch(&nickel_text, &mut errors);
     validate_crate_boundaries(&policy, &mut errors);
     validate_capability_packs(&policy, &mut errors);
+    validate_capability_pack_composition(&policy, &mut errors);
     validate_tool_catalog(&policy, &mut errors);
     validate_product_dogfood(&policy, &mut errors);
     validate_provider_fixtures(&policy, &mut errors);
@@ -169,6 +172,16 @@ fn validate_capability_packs(policy: &Value, errors: &mut Vec<String>) {
         if dangerous && !approval {
             errors.push(format!("dangerous pack `{name}` lacks human approval requirement"));
         }
+    }
+}
+
+fn validate_capability_pack_composition(policy: &Value, errors: &mut Vec<String>) {
+    let fixture = required_str(policy, "capability_pack_composition_fixture", errors);
+    if fixture != "policy/embedded-lego/capability-pack-composition.json" {
+        errors.push("capability_pack_composition_fixture must point at the checked composition fixture".to_string());
+    }
+    if !fixture.is_empty() && !Path::new(fixture).exists() {
+        errors.push(format!("capability pack composition fixture `{fixture}` does not exist"));
     }
 }
 

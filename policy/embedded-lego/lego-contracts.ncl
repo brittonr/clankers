@@ -43,6 +43,7 @@ let RuntimeDispatch = {
   schema = "clankers.embedded_lego.contracts.v1",
   crate_boundaries | BoundaryPolicy,
   capability_packs | Array CapabilityPack,
+  capability_pack_composition_fixture | NonEmptyString,
   tool_catalog | Array ToolManifest,
   product_dogfood = {
     manifest | NonEmptyString,

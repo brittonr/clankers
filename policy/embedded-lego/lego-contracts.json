@@ -158,6 +158,7 @@
     }
   ],
   "schema": "clankers.embedded_lego.contracts.v1",
+  "capability_pack_composition_fixture": "policy/embedded-lego/capability-pack-composition.json",
   "tool_catalog_manifest": "examples/embedded-tool-kit/tool-catalog-manifest.json",
   "session_resume_evidence_fixture": "examples/embedded-session-store/session-resume-evidence.json",
   "session_resume_evidence": [

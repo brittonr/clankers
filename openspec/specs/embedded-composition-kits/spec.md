@@ -267,14 +267,21 @@ The system MUST define stable, inspectable contracts for product-facing embedded
 
 The system MUST let embedders compose capability packs while preserving fail-closed safety boundaries.
 
-#### Scenario: Capability packs merge predictably [r[embedded-composition-kits.capability-pack-composition.merge]]
+#### Scenario: Pack merge order is deterministic [r[embedded-composition-kits.capability-pack-composition.merge]]
 
 - GIVEN a product selects multiple capability packs
 - WHEN the packs are merged
 - THEN the resulting ordered capability set MUST be deterministic and snapshot-tested
 - THEN conflicts such as safe-pack plus dangerous override MUST produce typed diagnostics unless an explicit approval policy permits the combination
 
-#### Scenario: Pack policy is schema checked before Rust use [r[embedded-composition-kits.capability-pack-composition.nickel-policy]]
+#### Scenario: Dangerous conflicts fail closed [r[embedded-composition-kits.capability-pack-composition.dangerous-conflicts]]
+
+- GIVEN a product selects multiple capability packs
+- WHEN the selected set combines a safe-pack with shell, network, secret-adjacent, or other dangerous expansion
+- THEN the merge MUST fail with typed diagnostics unless a product-owned approval policy explicitly allows the dangerous combination
+- THEN denied combinations MUST NOT silently widen the resulting capability set
+
+#### Scenario: Pack policy is checked before Rust use [r[embedded-composition-kits.capability-pack-composition.nickel-policy]]
 
 - GIVEN capability packs are declared in a data-oriented policy file
 - WHEN the policy is exported
