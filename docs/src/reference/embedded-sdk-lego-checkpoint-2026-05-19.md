@@ -5,7 +5,9 @@ This checkpoint records the embedded SDK lego/brick readiness slice completed on
 ## Checkpoint
 
 - Branch: `main`
-- Checkpoint commit: `02063512066d577c61f5a9a5b2f7b1d0d6c5b9a2`
+- Tag: `embedded-sdk-lego-2026-05-19`
+- Tagged checkpoint commit: the commit carrying this note
+- Embedded SDK lego payload commit: `02063512066d577c61f5a9a5b2f7b1d0d6c5b9a2`
 - Release receipt: `target/embedded-sdk-release/receipt.json`
 - Receipt status at generation: `## main...origin/main`
 - Receipt artifact count: 49 hashed artifacts
