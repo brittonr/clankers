@@ -100,6 +100,14 @@ Important invariants:
 - Do not rebuild request messages by lossy `serde_json::to_value` conversions for routed provider backends; use the adapter path that preserves provider-native message content.
 - Branch and compaction summaries are durable conversation context. If they are converted for a routed provider path, preserve them as user-visible text context rather than dropping them silently.
 
+## Self-evolution receipt chains
+
+The `self-evolution-receipt-chain-kit` is the copyable brick for gated artifact promotion. It keeps product-owned execution at the CLI/app edge while reusing the deterministic run → approval → application → rollback receipt chain under `src/self_evolution/`.
+
+The chain is explicit: a dry-run receipt records target/candidate identities, corpus readiness, recommendation, and MCP orchestration summaries; an approval receipt records the human confirmation context without applying; an application receipt links run and approval receipts, records pre/post hashes and backup location; a rollback receipt links to application evidence and verifies backup/target hashes before restore.
+
+Receipt-chain validation is fail-closed: stale target hashes, mismatched approval receipts, missing candidates, unsupported apply modes, and already-applied approvals fail closed before mutation. Focused fixtures cover approval-without-apply, application preflight, stale target rejection, mismatched/applied approval rejection, and live backup receipt creation. The drift rail is `scripts/check-self-evolution-receipt-chain-kit.rs`.
+
 ## Observability and audit receipts
 
 The `observability-audit-receipt-kit` is the copyable brick for safe telemetry receipts. Reusable behavior lives in `AuditTracker::observability_receipt` plus `MetricsCollector`'s bounded pending-event buffer; product-owned sinks still decide where receipts are persisted or exported.

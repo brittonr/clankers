@@ -223,3 +223,41 @@ The self-evolution implementation MUST be split into safety-gate-oriented module
 - GIVEN a user runs preflight or dry-run apply/rollback
 - WHEN the decomposed implementation evaluates the request
 - THEN the target bytes and live backup/application/rollback state remain unchanged while planned receipt data is reported
+
+### Requirement: Self-evolution receipt chain kit proves gated artifact promotion [r[self-evolution-control.self-evolution-receipt-chain-kit]]
+
+The system MUST define `self-evolution-receipt-chain-kit` as a composable Clankers brick with explicit ownership boundaries, deterministic fixtures, and safe evidence.
+
+#### Scenario: Brick boundary is explicit [r[self-evolution-control.self-evolution-receipt-chain-kit.boundary]]
+
+- GIVEN a product or contributor adopts the `self-evolution-receipt-chain-kit` brick
+- WHEN the brick is documented, instantiated, or validated
+- THEN the contract MUST name which behavior is reusable, which behavior stays product-owned, and which shell/runtime systems are out of scope
+- THEN reusable validation MUST stay separate from product-owned CLI/app-edge execution and live mutation decisions
+
+#### Scenario: Receipt chain is explicit [r[self-evolution-control.self-evolution-receipt-chain-kit.chain]]
+
+- GIVEN a candidate artifact moves toward promotion
+- WHEN the self-evolution receipt chain is evaluated
+- THEN the chain MUST include a run receipt, approval receipt, application receipt, and rollback receipt with explicit links between artifact identities, target hashes, candidate hashes, approval state, application state, and backup hashes
+- THEN no receipt stage MUST infer hidden receipts, sessions, approvals, candidates, or backup paths from ambient state
+
+#### Scenario: Chain guards fail closed before mutation [r[self-evolution-control.self-evolution-receipt-chain-kit.fail-closed]]
+
+- GIVEN a stale target hash, mismatched approval, missing candidate artifact, unsupported apply mode, or already-applied approval is detected
+- WHEN application preflight or live apply runs
+- THEN the operation MUST fail before mutating target bytes, backup files, application receipts, or rollback receipts
+
+#### Scenario: Brick has executable evidence [r[self-evolution-control.self-evolution-receipt-chain-kit.evidence]]
+
+- GIVEN the brick is changed
+- WHEN the focused verification for the change runs
+- THEN it MUST exercise positive run/approval/application evidence and at least one fail-closed receipt-chain guard
+- THEN evidence MUST be safe to commit or summarize without raw prompts, credentials, authorization headers, OAuth tokens, provider payloads, hidden context, raw tool arguments, or secret environment values
+
+#### Scenario: Brick drift is diagnosable [r[self-evolution-control.self-evolution-receipt-chain-kit.drift]]
+
+- GIVEN source code, docs, fixtures, policy, or generated inventories drift apart
+- WHEN the brick validation rail runs
+- THEN it MUST fail with a diagnostic that names the stale artifact and the expected owner of the update
+- THEN intentional contract changes MUST require updating tests, docs, and receipt or fixture evidence together
