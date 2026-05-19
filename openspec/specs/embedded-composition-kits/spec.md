@@ -292,21 +292,21 @@ The system MUST let embedders compose capability packs while preserving fail-clo
 
 The system MUST support a product-owned tool catalog manifest that validates tools before they are exposed to an embedded agent.
 
-#### Scenario: Manifest exports runtime-neutral metadata [r[embedded-composition-kits.tool-catalog-manifest.export]]
+#### Scenario: Manifest export is normalized and runtime-neutral [r[embedded-composition-kits.tool-catalog-manifest.export]]
 
 - GIVEN a product authors a declarative tool catalog manifest
 - WHEN the manifest is validated and exported
 - THEN it MUST produce runtime-neutral embedded tool metadata compatible with `EmbeddedToolCatalog`
 - THEN export MUST NOT start stdio processes, load Extism modules, perform network calls, open secrets, or execute product tools
 
-#### Scenario: Manifest policy fails closed [r[embedded-composition-kits.tool-catalog-manifest.fail-closed]]
+#### Scenario: Manifest validation diagnostics are actionable [r[embedded-composition-kits.tool-catalog-manifest.fail-closed]]
 
 - GIVEN a catalog contains duplicate names, invalid schemas, unknown runtime kinds, unsafe defaults, missing redaction policy, or undeclared dangerous capabilities
 - WHEN validation runs
 - THEN it MUST return typed errors before metadata is visible to an agent turn
 - THEN denied fields MUST NOT be silently dropped or widened
 
-#### Scenario: Catalog evidence is normalized and hashed [r[embedded-composition-kits.tool-catalog-manifest.blake3-evidence]]
+#### Scenario: Normalized evidence distinguishes semantic drift [r[embedded-composition-kits.tool-catalog-manifest.blake3-evidence]]
 
 - GIVEN the acceptance rail validates catalog fixtures
 - WHEN it records catalog evidence

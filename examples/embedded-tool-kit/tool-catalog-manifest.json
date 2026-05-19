@@ -1,0 +1,201 @@
+{
+  "schema": "clankers.embedded_tool_catalog.manifest.v1",
+  "catalog_name": "embedded-tool-kit-product-catalog",
+  "tools": [
+    {
+      "name": "lookup_project_fact",
+      "description": "Read one product fact by key",
+      "runtime": "product-owned",
+      "capabilities": [
+        "read_project"
+      ],
+      "approval": "never",
+      "redaction": "none",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "key": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "key"
+        ]
+      }
+    },
+    {
+      "name": "summarize_transcript",
+      "description": "Summarize a sanitized transcript",
+      "runtime": "product-owned",
+      "capabilities": [
+        "observe"
+      ],
+      "approval": "never",
+      "redaction": "none",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "max_tokens": {
+            "type": "integer",
+            "minimum": 1
+          }
+        },
+        "required": [
+          "max_tokens"
+        ]
+      }
+    },
+    {
+      "name": "approved_shell_preview",
+      "description": "Preview an approved shell command",
+      "runtime": "stdio",
+      "capabilities": [
+        "shell"
+      ],
+      "approval": "always",
+      "redaction": "secrets",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "command": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "command"
+        ]
+      }
+    }
+  ],
+  "denial_fixtures": [
+    {
+      "name": "duplicate-name",
+      "expect_error": "duplicate tool name",
+      "tools": [
+        {
+          "name": "dup",
+          "description": "first",
+          "runtime": "product-owned",
+          "capabilities": [
+            "observe"
+          ],
+          "approval": "never",
+          "redaction": "none",
+          "input_schema": {}
+        },
+        {
+          "name": "dup",
+          "description": "second",
+          "runtime": "product-owned",
+          "capabilities": [
+            "observe"
+          ],
+          "approval": "never",
+          "redaction": "none",
+          "input_schema": {}
+        }
+      ]
+    },
+    {
+      "name": "invalid-schema",
+      "expect_error": "invalid input schema",
+      "tools": [
+        {
+          "name": "bad_schema",
+          "description": "bad schema",
+          "runtime": "product-owned",
+          "capabilities": [
+            "observe"
+          ],
+          "approval": "never",
+          "redaction": "none",
+          "input_schema": {
+            "properties": []
+          }
+        }
+      ]
+    },
+    {
+      "name": "unknown-runtime-kind",
+      "expect_error": "unknown runtime kind",
+      "tools": [
+        {
+          "name": "bad_runtime",
+          "description": "bad runtime",
+          "runtime": "telepathy",
+          "capabilities": [
+            "observe"
+          ],
+          "approval": "never",
+          "redaction": "none",
+          "input_schema": {}
+        }
+      ]
+    },
+    {
+      "name": "unsafe-capability-default",
+      "expect_error": "dangerous capability requires approval",
+      "tools": [
+        {
+          "name": "unsafe_shell",
+          "description": "unsafe shell",
+          "runtime": "stdio",
+          "capabilities": [
+            "shell"
+          ],
+          "approval": "never",
+          "redaction": "secrets",
+          "input_schema": {}
+        }
+      ]
+    },
+    {
+      "name": "missing-redaction",
+      "expect_error": "secret-adjacent capability requires redaction",
+      "tools": [
+        {
+          "name": "secret_lookup",
+          "description": "secret lookup",
+          "runtime": "product-owned",
+          "capabilities": [
+            "secret-adjacent"
+          ],
+          "approval": "always",
+          "redaction": "none",
+          "input_schema": {}
+        }
+      ]
+    },
+    {
+      "name": "undeclared-dangerous-capability",
+      "expect_error": "dangerous capability must be declared",
+      "tools": [
+        {
+          "name": "implicit_danger",
+          "description": "implicit danger",
+          "runtime": "stdio",
+          "capabilities": [
+            "mutate"
+          ],
+          "approval": "always",
+          "redaction": "summarize",
+          "input_schema": {},
+          "declared_dangerous_capabilities": []
+        }
+      ]
+    }
+  ],
+  "truncation_fixture": {
+    "tool": "summarize_transcript",
+    "max_bytes": 64,
+    "expected_policy": "truncate-before-model-feedback"
+  },
+  "runtime_neutrality": [
+    "does-not-start-stdio",
+    "does-not-load-extism",
+    "does-not-call-network",
+    "does-not-read-secrets",
+    "does-not-execute-product-tools"
+  ],
+  "normalization": "sort-tools-by-name-and-canonicalize-json"
+}

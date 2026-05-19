@@ -40,6 +40,8 @@ const EVIDENCE_ARTIFACTS: &[&str] = &[
     "examples/embedded-session-store/src/main.rs",
     "examples/embedded-session-store/session-resume-evidence.json",
     "scripts/check-session-resume-brick.rs",
+    "examples/embedded-tool-kit/tool-catalog-manifest.json",
+    "scripts/check-tool-catalog-manifest.rs",
     "examples/embedded-provider-adapter/src/main.rs",
     "examples/embedded-provider-adapter/fixtures/provider-adapter-fixtures.json",
     "scripts/check-provider-adapter-kit.rs",
@@ -171,6 +173,13 @@ fn validate_capability_packs(policy: &Value, errors: &mut Vec<String>) {
 }
 
 fn validate_tool_catalog(policy: &Value, errors: &mut Vec<String>) {
+    let manifest = required_str(policy, "tool_catalog_manifest", errors);
+    if manifest != "examples/embedded-tool-kit/tool-catalog-manifest.json" {
+        errors.push("tool_catalog_manifest must point at the checked embedded tool catalog manifest".to_string());
+    }
+    if !manifest.is_empty() && !Path::new(manifest).exists() {
+        errors.push(format!("tool catalog manifest `{manifest}` does not exist"));
+    }
     let tools = array(policy, "tool_catalog", errors);
     let mut names = BTreeSet::new();
     for tool in tools {
