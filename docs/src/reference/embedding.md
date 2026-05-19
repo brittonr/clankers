@@ -65,6 +65,8 @@ Catalog construction remains separate from extension execution. Building a catal
 
 Embedders supply a `ConfirmationBroker` that receives typed `ConfirmationRequest` values and returns `ConfirmationDecision` values. The default broker denies. Absent, unavailable, timed-out, and cancelled brokers fail closed.
 
+- `examples/confirmation-broker-kit/` is the checked copyable recipe for this brick: it shows a host-owned approval broker, proves that denied/default/unavailable brokers do not execute the protected action, redacts secret-like request summaries, and emits a deterministic BLAKE3 receipt hash over safe decision evidence.
+
 Request summaries and event metadata are bounded/redacted and must not include raw credentials, headers, environment values, provider payloads, or hidden prompt/context text.
 
 ## Current non-goals
