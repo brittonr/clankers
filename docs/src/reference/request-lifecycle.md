@@ -69,6 +69,19 @@ Daemon mode wraps a `SessionController` in an actor process.
 
 The daemon actor is responsible for multiplexing commands, actor signals, confirmation requests, plugin runtime events, and periodic event draining. It should not bypass `SessionController` for prompt lifecycle state.
 
+## Controller continuation policy
+
+The `controller-continuation-policy-kit` is the copyable brick for post-prompt continuation decisions. Reusable behavior lives in `SessionController::check_post_prompt` and the reducer-backed core state it evaluates; product-owned shell behavior stays outside the brick and is limited to dispatching the returned `PostPromptAction`.
+
+Decision priority is deterministic:
+
+1. A queued user prompt wins first and returns `ReplayQueuedPrompt`; queued prompt replay must not start loop or auto-test follow-up work implicitly.
+2. Active loop continuation wins before auto-test when no queued prompt exists.
+3. Auto-test follow-up may run only when enabled, configured, not already in progress, and no loop is active.
+4. Otherwise the prompt is done and no continuation is dispatched.
+
+Follow-up dispatch is fail-closed. The shell must acknowledge accepted/rejected dispatch using the exact pending work id, then complete the matching follow-up prompt. Stale follow-up effect ids, duplicate completions, completion before dispatch acknowledgement, and mismatched prompt origins preserve state and emit an error instead of clearing unrelated work. The checked drift rail is `scripts/check-controller-continuation-policy-kit.rs` and the focused fixture is `controller_continuation_policy_kit_prioritizes_follow_ups_and_rejects_stale_effects`.
+
 ## Provider request path
 
 The provider boundary has two deliberate translations.

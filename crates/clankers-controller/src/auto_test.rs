@@ -393,6 +393,55 @@ mod tests {
     }
 
     #[test]
+    fn controller_continuation_policy_kit_prioritizes_follow_ups_and_rejects_stale_effects() {
+        let mut queued_ctrl = make_test_controller();
+        queued_ctrl.auto_test_enabled = true;
+        queued_ctrl.auto_test_command = Some("cargo test".to_string());
+        queued_ctrl.start_loop(crate::loop_mode::LoopConfig {
+            name: "test-loop".to_string(),
+            prompt: Some("continue loop".to_string()),
+            max_iterations: 2,
+            break_text: None,
+        });
+
+        let queued_action = queued_ctrl.check_post_prompt(true);
+        assert!(matches!(queued_action, PostPromptAction::ReplayQueuedPrompt));
+        assert!(queued_ctrl.core_state.pending_follow_up_state.is_none());
+        assert!(!queued_ctrl.auto_test_in_progress);
+
+        let mut follow_up_ctrl = make_test_controller();
+        follow_up_ctrl.auto_test_enabled = true;
+        follow_up_ctrl.auto_test_command = Some("cargo test".to_string());
+        follow_up_ctrl.start_loop(crate::loop_mode::LoopConfig {
+            name: "test-loop".to_string(),
+            prompt: Some("continue loop".to_string()),
+            max_iterations: 2,
+            break_text: None,
+        });
+
+        let effect_id = match follow_up_ctrl.check_post_prompt(false) {
+            PostPromptAction::ContinueLoop {
+                pending_work_id,
+                prompt,
+            } => {
+                assert_eq!(prompt, "continue loop");
+                pending_work_id
+            }
+            other => panic!("expected ContinueLoop before auto-test, got {other:?}"),
+        };
+        assert!(!follow_up_ctrl.auto_test_in_progress);
+
+        let previous_state = follow_up_ctrl.core_state.clone();
+        let wrong_effect_id = PendingWorkId::from_raw(effect_id.raw() + 1);
+        follow_up_ctrl.ack_follow_up_dispatch(wrong_effect_id, ShellFollowUpDispatch::Accepted);
+
+        assert_eq!(follow_up_ctrl.core_state, previous_state);
+        assert!(matches!(follow_up_ctrl.drain_events().as_slice(), [
+            clankers_protocol::DaemonEvent::SystemMessage { is_error: true, .. }
+        ]));
+    }
+
+    #[test]
     fn test_check_post_prompt_finishes_completed_loop_without_follow_up() {
         const SINGLE_ITERATION_LOOP: u32 = 1;
 
