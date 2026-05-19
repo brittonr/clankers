@@ -29,6 +29,7 @@ The public event stream is semantic: prompt accepted, thinking/assistant deltas,
 
 - `PromptAssemblyPolicy::host_context_only()` disables filesystem discovery and context-reference expansion for embedders.
 - `PromptAssemblyPolicy::desktop_default()` is the adapter-side policy for normal Clankers shells.
+- `examples/prompt-assembly-kit/` is the checked copyable recipe for this brick: it assembles host-owned context, rejects ambient filesystem discovery, records unsupported context-reference metadata, and emits a deterministic BLAKE3 receipt hash over redacted prompt evidence.
 - Provenance records safe labels/counts/summaries and redacts secret-like content markers.
 
 ## Tool capability packs

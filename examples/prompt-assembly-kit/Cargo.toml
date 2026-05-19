@@ -1,0 +1,12 @@
+[workspace]
+
+[package]
+name = "prompt-assembly-kit-example"
+version = "0.1.0"
+edition = "2024"
+publish = false
+
+[dependencies]
+blake3 = "1"
+clankers-runtime = { path = "../../crates/clankers-runtime" }
+serde_json = "1"
