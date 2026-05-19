@@ -26,6 +26,7 @@ run_cargo_step() {
 cd "${REPO_ROOT}"
 
 run_step "${SCRIPT_DIR}/check-embedded-sdk-api.rs"
+run_step "${SCRIPT_DIR}/check-embedded-lego-contracts.rs"
 run_step "${SCRIPT_DIR}/check-embedded-sdk-deps.rs"
 run_step "${SCRIPT_DIR}/check-embedded-adapters-deps.rs"
 run_step "${SCRIPT_DIR}/check-llm-contract-boundary.sh"

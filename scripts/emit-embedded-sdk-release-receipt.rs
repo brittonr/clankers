@@ -61,6 +61,7 @@ const DIRECT_ARTIFACTS: &[&str] = &[
     "scripts/check-embedded-agent-sdk.sh",
     "scripts/emit-embedded-sdk-release-receipt.rs",
     "scripts/check-embedded-sdk-api.rs",
+    "scripts/check-embedded-lego-contracts.rs",
     "scripts/check-embedded-sdk-deps.rs",
     "scripts/check-embedded-adapters-deps.rs",
     "scripts/check-engine-host-feature-matrix.rs",
@@ -68,6 +69,8 @@ const DIRECT_ARTIFACTS: &[&str] = &[
     "scripts/check-runtime-extension-service-matrix.rs",
     "scripts/check-shell-adapter-parity-matrix.rs",
     "scripts/check-llm-contract-boundary.sh",
+    "policy/embedded-lego/lego-contracts.ncl",
+    "policy/embedded-lego/lego-contracts.json",
 ];
 
 const EXAMPLE_DIRS: &[&str] = &[

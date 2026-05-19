@@ -107,7 +107,13 @@ Keep generic crates dependency-inverted:
 4. `clanker-message` stays provider/router-neutral. Provider-native request shaping belongs in host adapters.
 5. Application edge code may compose SDK crates with Clankers runtime crates, but that code is not part of the generic SDK surface.
 
-`scripts/check-embedded-agent-sdk.sh` is the required acceptance command for these rules. It composes API inventory, docs freshness, example execution, feature/default checks, dependency denylist checks, source boundary checks, release-receipt generation, and focused Clankers parity rails.
+`scripts/check-embedded-agent-sdk.sh` is the required acceptance command for these rules. It composes API inventory, docs freshness, example execution, feature/default checks, dependency denylist checks, source boundary checks, embedded lego contract validation, release-receipt generation, and focused Clankers parity rails.
+
+## Lego contract policy and evidence
+
+The product-facing lego policy lives under `policy/embedded-lego/`. `lego-contracts.ncl` is the author-time Nickel contract sketch for typed, mergeable policy boundaries; `lego-contracts.json` is the checked export consumed by repository validation. Generic SDK crates do not evaluate Nickel at runtime.
+
+`scripts/check-embedded-lego-contracts.rs` validates the exported contract across the current lego backlog surfaces: green/yellow/red crate boundaries, capability-pack composition, declarative tool catalog manifest rules, real-product dogfood evidence, provider-adapter fixtures, session/resume evidence, and plugin/tool runtime dispatch separation. The checker emits `target/embedded-sdk-release/lego-contracts-receipt.json` with BLAKE3 hashes for the policy, contract sketch, product-workbench/session/provider examples, and generated API/docs evidence. These hashes are deterministic drift evidence, not authorization; any semantic policy or fixture change should intentionally update the checked policy, docs, tests, and receipts together.
 
 ## Feature and default policy
 

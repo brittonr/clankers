@@ -1,0 +1,206 @@
+{
+  "capability_packs": [
+    {
+      "capabilities": [
+        "observe",
+        "respond"
+      ],
+      "dangerous": false,
+      "name": "embedding_safe",
+      "requires_human_approval": false
+    },
+    {
+      "capabilities": [
+        "observe",
+        "respond",
+        "read_project"
+      ],
+      "dangerous": false,
+      "name": "read_only",
+      "requires_human_approval": false
+    },
+    {
+      "capabilities": [
+        "observe",
+        "respond",
+        "read_project",
+        "edit_project"
+      ],
+      "dangerous": false,
+      "name": "networkless_coding",
+      "requires_human_approval": false
+    },
+    {
+      "capabilities": [
+        "observe",
+        "respond",
+        "read_project",
+        "edit_project",
+        "mutate_project"
+      ],
+      "dangerous": true,
+      "name": "project_local_edit",
+      "requires_human_approval": true
+    },
+    {
+      "capabilities": [
+        "observe",
+        "respond",
+        "read_project",
+        "shell"
+      ],
+      "dangerous": true,
+      "name": "human_approved_shell",
+      "requires_human_approval": true
+    }
+  ],
+  "crate_boundaries": {
+    "green": [
+      "clanker-message",
+      "clankers-engine",
+      "clankers-engine-host",
+      "clankers-tool-host",
+      "clankers-adapters",
+      "clankers-core"
+    ],
+    "red": [
+      "clankers-agent",
+      "clankers-controller",
+      "clankers-provider",
+      "clanker-router",
+      "clankers-db",
+      "clankers-session",
+      "clankers-protocol",
+      "clankers-tui",
+      "clankers-prompts",
+      "clankers-skills",
+      "clankers-config",
+      "ratatui",
+      "crossterm",
+      "iroh"
+    ],
+    "yellow": [
+      "daemon/MCP/ACP edge adapters",
+      "product-owned provider adapters",
+      "product-owned session DTOs",
+      "runtime extension services"
+    ]
+  },
+  "product_dogfood": {
+    "allowed_green_deps": [
+      "clanker-message",
+      "clankers-adapters",
+      "clankers-engine",
+      "clankers-engine-host",
+      "clankers-tool-host",
+      "serde_json"
+    ],
+    "manifest": "examples/embedded-product-workbench/Cargo.toml",
+    "receipt_evidence": [
+      "manifest",
+      "dependency-boundary-report",
+      "sanitized-transcript",
+      "turn-receipt"
+    ]
+  },
+  "provider_adapter_fixtures": [
+    {
+      "name": "completed",
+      "retryable": false,
+      "terminal": false,
+      "usage": true
+    },
+    {
+      "name": "retryable-failure",
+      "retryable": true,
+      "terminal": false,
+      "usage": false
+    },
+    {
+      "name": "terminal-failure",
+      "retryable": false,
+      "terminal": true,
+      "usage": false
+    }
+  ],
+  "runtime_dispatch_matrix": [
+    {
+      "forbidden_loaders": [
+        "stdio",
+        "product-owned"
+      ],
+      "kind": "extism",
+      "loader": "wasm"
+    },
+    {
+      "forbidden_loaders": [
+        "wasm"
+      ],
+      "kind": "stdio",
+      "loader": "stdio"
+    },
+    {
+      "forbidden_loaders": [
+        "wasm",
+        "stdio"
+      ],
+      "kind": "built-in",
+      "loader": "built-in"
+    },
+    {
+      "forbidden_loaders": [
+        "wasm",
+        "stdio"
+      ],
+      "kind": "product-owned",
+      "loader": "product-owned"
+    }
+  ],
+  "schema": "clankers.embedded_lego.contracts.v1",
+  "session_resume_evidence": [
+    {
+      "missing_session_fail_closed": true,
+      "owns_storage_dto": true,
+      "product": "embedded-session-store",
+      "restored_context": true
+    },
+    {
+      "missing_session_fail_closed": true,
+      "owns_storage_dto": true,
+      "product": "embedded-product-workbench",
+      "restored_context": true
+    }
+  ],
+  "tool_catalog": [
+    {
+      "approval": "never",
+      "capabilities": [
+        "read_project"
+      ],
+      "name": "lookup_project_fact",
+      "redaction": "none",
+      "runtime": "product-owned",
+      "schema_hash_input": "{\"type\":\"object\",\"properties\":{\"key\":{\"type\":\"string\"}}}"
+    },
+    {
+      "approval": "never",
+      "capabilities": [
+        "observe"
+      ],
+      "name": "summarize_transcript",
+      "redaction": "none",
+      "runtime": "product-owned",
+      "schema_hash_input": "{\"type\":\"object\",\"properties\":{\"max_tokens\":{\"type\":\"integer\"}}}"
+    },
+    {
+      "approval": "always",
+      "capabilities": [
+        "shell"
+      ],
+      "name": "approved_shell_preview",
+      "redaction": "secrets",
+      "runtime": "stdio",
+      "schema_hash_input": "{\"type\":\"object\",\"properties\":{\"command\":{\"type\":\"string\"}}}"
+    }
+  ]
+}
