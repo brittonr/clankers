@@ -48,7 +48,7 @@ The checkpoint receipt set includes these generated artifacts under `target/embe
 - `plugin-runtime-dispatch-receipt.json`
 - `brick-inventory-stability-receipt.json`
 
-The receipt generator reported commit `02063512`, clean `main...origin/main`, and 49 hashed artifacts.
+The checkpoint receipt generator reported a clean `main...origin/main` state and 49 hashed artifacts.
 
 ## Verification run
 
