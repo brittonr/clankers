@@ -107,7 +107,7 @@ Keep generic crates dependency-inverted:
 4. `clanker-message` stays provider/router-neutral. Provider-native request shaping belongs in host adapters.
 5. Application edge code may compose SDK crates with Clankers runtime crates, but that code is not part of the generic SDK surface.
 
-`scripts/check-embedded-agent-sdk.sh` is the required acceptance command for these rules. It composes API inventory, docs freshness, example execution, feature/default checks, dependency denylist checks, source boundary checks, and focused Clankers parity rails.
+`scripts/check-embedded-agent-sdk.sh` is the required acceptance command for these rules. It composes API inventory, docs freshness, example execution, feature/default checks, dependency denylist checks, source boundary checks, release-receipt generation, and focused Clankers parity rails.
 
 ## Feature and default policy
 
@@ -131,6 +131,15 @@ The minimal embedding path must not require features that pull in daemon, TUI, p
 ## Support, versioning, and migration policy
 
 Clankers currently versions the SDK crates with the repository crate versions. Supported embedding entrypoints are the ones documented in this guide and classified in `docs/src/generated/embedded-sdk-api.md`.
+
+Product embedders should capture a release receipt after the acceptance rail succeeds:
+
+```bash
+scripts/check-embedded-agent-sdk.sh
+scripts/emit-embedded-sdk-release-receipt.rs --output target/embedded-sdk-release/receipt.json
+```
+
+The receipt records the current commit/status, BLAKE3 hashes for the SDK guide, generated API inventory, canonical embedded composition spec, acceptance scripts, and standalone embedded examples, plus the green/yellow/red boundary classification. Capture it from a clean committed checkout before claiming product embedding readiness; dirty development runs remain useful because the receipt preserves `git status --short --branch` instead of hiding local changes.
 
 Compatibility expectations:
 
@@ -156,6 +165,7 @@ That bundle must prove:
 - stale docs fail the checker;
 - `examples/embedded-agent-sdk/` runs positive and negative adapter paths;
 - executable kit examples cover minimal adapter bricks, tool catalogs, product-owned provider adapter conversion, and host-owned session persistence/resume;
+- release-receipt generation records commit/status metadata, verification commands, green/yellow/red boundaries, and BLAKE3 hashes for embedded SDK docs/spec/scripts/examples;
 - example dependency graph excludes Clankers shell/runtime crates and UI/network crates listed in the OpenSpec change;
 - feature/default policy matches manifests and a minimal example build;
 - generic SDK crates reject provider/router, daemon/TUI, database, networking, timestamp, shell-generated ID, runtime-handle, provider-shaped request/response, hidden-global-service, and concrete Clankers runtime leakage;
