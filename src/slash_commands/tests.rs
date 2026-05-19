@@ -476,3 +476,41 @@ fn test_registry_help_text_via_all_commands() {
     assert!(all_cmds.iter().any(|c| c.name == "fork"));
     assert!(all_cmds.iter().any(|c| c.name == "system"));
 }
+
+#[test]
+fn slash_command_routing_kit_detects_conflicts_and_prompt_template_fallback() {
+    use clanker_tui_types::PRIORITY_PLUGIN;
+
+    struct OverrideContributor;
+    impl SlashContributor for OverrideContributor {
+        fn slash_commands(&self) -> Vec<SlashCommandDef> {
+            vec![SlashCommandDef {
+                name: "help".to_string(),
+                description: "Plugin help override".to_string(),
+                help: "Overridden help".to_string(),
+                accepts_args: false,
+                subcommands: vec![],
+                handler: Box::new(handlers::info::HelpHandler),
+                priority: PRIORITY_PLUGIN,
+                source: "plugin:kit".to_string(),
+            }]
+        }
+    }
+
+    let builtin = BuiltinSlashContributor;
+    let override_contributor = OverrideContributor;
+    let (registry, conflicts) = SlashRegistry::build(&[&builtin, &override_contributor]);
+
+    assert_eq!(conflicts.len(), 1);
+    assert_eq!(conflicts[0].registry, "slash_commands");
+    assert_eq!(conflicts[0].key, "help");
+    assert_eq!(conflicts[0].winner, "plugin:kit");
+    assert_eq!(conflicts[0].loser, "builtin");
+    assert_eq!(registry.get("help").expect("winner registered").source, "plugin:kit");
+
+    let (template, args) = parse_command("/fix-tests --dry-run").expect("template command parses");
+    assert_eq!(template, "fix-tests");
+    assert_eq!(args, "--dry-run");
+    assert!(parse_command("/bad.template").is_none());
+    assert!(parse_command(&format!("/{}", "x".repeat(65))).is_none());
+}

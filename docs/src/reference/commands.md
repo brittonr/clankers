@@ -2,6 +2,8 @@
 
 Slash commands provide quick access to common operations. Type `/` in the input editor to see autocomplete suggestions.
 
+The `slash-command-routing-kit` is the copyable brick for extending slash routing safely: command contributors register metadata and handlers through the registry, priority conflicts produce deterministic conflict records, unknown safe command names fall through to prompt-template fallback, invalid names fail closed, and attach routing keeps local/daemon/plugin paths explicit. Its drift rail is `scripts/check-slash-command-routing-kit.rs`, which binds conflict detection, prompt-template fallback, attach routing, docs, and OpenSpec evidence together.
+
 ## General
 
 ### `/help`
