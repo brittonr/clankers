@@ -116,9 +116,11 @@ mod tests {
             "qvy147adhknrwz258bfilpsx0369cgjm",
             "z258bfilpsx0369cgjmqvy147adhknrw",
         ];
+        use std::fmt::Write;
+
         let mut text = String::new();
         for (i, hash) in hashes.iter().enumerate() {
-            text.push_str(&format!("/nix/store/{hash}-pkg-{i} "));
+            let _ = write!(text, "/nix/store/{hash}-pkg-{i} ");
         }
         let refs = scan_store_refs(&text);
         assert_eq!(refs.len(), 10);

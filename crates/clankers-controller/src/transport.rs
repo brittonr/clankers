@@ -716,6 +716,10 @@ mod tests {
     }
 
     #[tokio::test(flavor = "current_thread")]
+    #[allow(
+        clippy::await_holding_lock,
+        reason = "socket-dir env tests serialize global XDG_RUNTIME_DIR mutation across awaited I/O"
+    )]
     async fn test_session_socket_handshake_and_events() {
         let _env_guard = TEST_ENV_LOCK.lock().unwrap_or_else(|poison| poison.into_inner());
         let temp_dir = tempfile::tempdir().unwrap();
@@ -772,6 +776,10 @@ mod tests {
     }
 
     #[tokio::test(flavor = "current_thread")]
+    #[allow(
+        clippy::await_holding_lock,
+        reason = "socket-dir env tests serialize global XDG_RUNTIME_DIR mutation across awaited I/O"
+    )]
     async fn test_multiple_clients_receive_broadcast_events() {
         let _env_guard = TEST_ENV_LOCK.lock().unwrap_or_else(|poison| poison.into_inner());
         let temp_dir = tempfile::tempdir().unwrap();
@@ -921,6 +929,10 @@ mod tests {
     }
 
     #[tokio::test(flavor = "current_thread")]
+    #[allow(
+        clippy::await_holding_lock,
+        reason = "socket-dir env tests serialize global XDG_RUNTIME_DIR mutation across awaited I/O"
+    )]
     async fn test_session_client_command_processing() {
         let _env_guard = TEST_ENV_LOCK.lock().unwrap_or_else(|poison| poison.into_inner());
         let temp_dir = tempfile::tempdir().unwrap();

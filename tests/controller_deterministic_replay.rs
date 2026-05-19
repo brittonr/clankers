@@ -57,7 +57,7 @@ impl clankers_provider::Provider for ScriptedProvider {
                 .await
                 .ok();
             }
-        };
+        }
         Ok(())
     }
 
@@ -126,8 +126,8 @@ impl Tool for LookupOrderTool {
 
 #[tokio::test]
 async fn controller_replay_preserves_session_request_shape_tools_and_events() {
-    let first = run_replay_once().await;
-    let second = run_replay_once().await;
+    let first = Box::pin(run_replay_once()).await;
+    let second = Box::pin(run_replay_once()).await;
 
     assert_eq!(first, second, "controller replay must be byte-stable across isolated runs");
     assert_replay_properties(&first);
@@ -142,9 +142,11 @@ async fn run_replay_once() -> Value {
     let provider = Arc::new(ScriptedProvider::default());
     let tool_calls = Arc::new(Mutex::new(Vec::new()));
     let tool: Arc<dyn Tool> = Arc::new(LookupOrderTool::new(tool_calls.clone()));
-    let mut settings = Settings::default();
-    settings.max_tokens = 256;
-    settings.no_cache = true;
+    let settings = Settings {
+        max_tokens: 256,
+        no_cache: true,
+        ..Default::default()
+    };
 
     let agent = Agent::new(provider.clone(), vec![tool], settings, MODEL.to_string(), SYSTEM_PROMPT.to_string());
     let mut controller = SessionController::new(agent, ControllerConfig {

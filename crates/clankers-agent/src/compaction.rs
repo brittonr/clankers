@@ -724,8 +724,10 @@ mod tests {
         assert_eq!(structured.strategy, CompactionStrategy::Structured);
         assert_eq!(structured.summary_model.as_deref(), Some("haiku"));
 
-        let mut truncation_settings = clankers_config::settings::CompressionSettings::default();
-        truncation_settings.summary_model = String::new();
+        let truncation_settings = clankers_config::settings::CompressionSettings {
+            summary_model: String::new(),
+            ..Default::default()
+        };
         let truncation = AutoCompactConfig::from_settings(&truncation_settings);
         assert_eq!(truncation.strategy, CompactionStrategy::Truncation);
         assert!(truncation.summary_model.is_none());

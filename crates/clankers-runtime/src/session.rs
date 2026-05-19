@@ -71,7 +71,9 @@ pub struct SessionOptions {
 #[derive(Clone)]
 pub struct SessionHandle {
     runtime: Arc<RuntimeInner>,
+    /// Lock order: acquire `state` before `events` if both are ever needed.
     state: Arc<Mutex<SessionState>>,
+    /// Lock order: acquire after `state`; current methods take only one lock at a time.
     events: Arc<Mutex<Option<mpsc::Receiver<SessionEvent>>>>,
     tx: mpsc::Sender<SessionEvent>,
 }

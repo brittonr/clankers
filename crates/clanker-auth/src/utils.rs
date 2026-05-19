@@ -15,6 +15,13 @@ use std::time::UNIX_EPOCH;
 /// - No `.expect()` or `.unwrap()` - safe fallback to 0
 /// - Inline for hot path performance
 #[inline]
+#[cfg_attr(
+    dylint_lib = "tigerstyle",
+    allow(
+        tigerstyle::ambient_clock,
+        reason = "auth shell helper centralizes ambient Unix timestamp reads"
+    )
+)]
 pub fn current_time_secs() -> u64 {
     SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0)
 }

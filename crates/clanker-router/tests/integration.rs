@@ -3,6 +3,7 @@
 //! Tests cross-module interactions, edge cases, and scenarios not covered
 //! by unit tests in individual modules.
 
+use std::collections::HashMap;
 use std::sync::Arc;
 
 use async_trait::async_trait;
@@ -166,7 +167,7 @@ fn simple_request(model: &str) -> CompletionRequest {
         thinking: None,
         no_cache: false,
         cache_ttl: None,
-        extra_params: Default::default(),
+        extra_params: HashMap::default(),
     }
 }
 
@@ -715,7 +716,7 @@ fn test_auth_store_save_load_preserves_all_fields() {
     store.set_credential("anthropic", "default", StoredCredential::OAuth {
         access_token: "oat-test".into(),
         refresh_token: "ort-test".into(),
-        expires_at_ms: 1234567890,
+        expires_at_ms: 1_234_567_890,
         label: Some("Test OAuth".into()),
     });
     store.set_credential("openai", "work", StoredCredential::ApiKey {
@@ -1067,7 +1068,7 @@ fn test_completion_request_with_all_fields() {
         }),
         no_cache: false,
         cache_ttl: None,
-        extra_params: Default::default(),
+        extra_params: HashMap::default(),
     };
 
     // Serialize and deserialize

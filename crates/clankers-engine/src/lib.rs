@@ -305,6 +305,8 @@ fn apply_submit_user_prompt(state: &EngineState, submission: &EnginePromptSubmis
     if submission.model_request_slot_budget < ENGINE_MIN_MODEL_REQUEST_SLOT_BUDGET {
         return rejected_outcome(state, EngineRejection::InvalidBudget);
     }
+    debug_assert_eq!(state.phase, EngineTurnPhase::Idle);
+    debug_assert!(state.pending_model_request.is_none());
 
     let request_template = EngineRequestTemplate {
         model: submission.model.clone(),
@@ -366,6 +368,8 @@ fn apply_model_completion(
     if pending_request_id != request_id {
         return rejected_outcome(state, EngineRejection::CorrelationMismatch);
     }
+    debug_assert_eq!(state.phase, EngineTurnPhase::WaitingForModel);
+    debug_assert_eq!(pending_request_id, request_id);
 
     let mut next_messages = state.messages.clone();
     next_messages.push(EngineMessage {
@@ -390,6 +394,8 @@ fn apply_tool_use_model_completion(
     if tool_calls.is_empty() {
         return rejected_outcome(state, EngineRejection::MissingToolCall);
     }
+    debug_assert_eq!(state.phase, EngineTurnPhase::WaitingForModel);
+    debug_assert!(!tool_calls.is_empty());
 
     let pending_tool_calls = tool_calls.iter().map(|call| call.call_id.clone()).collect();
     let next_state = EngineState {
@@ -432,6 +438,8 @@ fn apply_model_failed(
     if pending_request_id != request_id {
         return rejected_outcome(state, EngineRejection::CorrelationMismatch);
     }
+    debug_assert_eq!(state.phase, EngineTurnPhase::WaitingForModel);
+    debug_assert_eq!(pending_request_id, request_id);
 
     if failure.retryable
         && let Some(delay) = retry_delay_for_attempt(state)
@@ -445,7 +453,7 @@ fn apply_model_failed(
             next_model_request_sequence: state.next_model_request_sequence,
             pending_tool_calls: Vec::new(),
             buffered_tool_results: Vec::new(),
-            retry_attempts_for_pending_model_request: state.retry_attempts_for_pending_model_request + 1,
+            retry_attempts_for_pending_model_request: state.retry_attempts_for_pending_model_request.saturating_add(1),
             model_request_slot_budget: state.model_request_slot_budget,
             model_request_slots_used: state.model_request_slots_used,
         };
@@ -477,6 +485,8 @@ fn apply_retry_ready(state: &EngineState, request_id: &EngineCorrelationId) -> E
     let Some(request_template) = state.request_template.as_ref() else {
         return rejected_outcome(state, EngineRejection::InvalidPhase);
     };
+    debug_assert_eq!(state.phase, EngineTurnPhase::WaitingForRetry);
+    debug_assert_eq!(pending_request_id, request_id);
 
     let model_request = build_model_request(request_template, &state.messages, request_id.clone());
     let next_state = EngineState {
@@ -514,11 +524,8 @@ fn retry_wait_feedback_rejection(state: &EngineState, request_id: &EngineCorrela
 #[must_use]
 fn retry_delay_for_attempt(state: &EngineState) -> Option<Duration> {
     let request_template = state.request_template.as_ref()?;
-    request_template
-        .retry_policy
-        .retry_delays
-        .get(state.retry_attempts_for_pending_model_request as usize)
-        .copied()
+    let retry_attempt_index = usize::try_from(state.retry_attempts_for_pending_model_request).ok()?;
+    request_template.retry_policy.retry_delays.get(retry_attempt_index).copied()
 }
 
 #[must_use]
@@ -537,6 +544,8 @@ fn apply_tool_feedback(
     if state.buffered_tool_results.iter().any(|buffered_result| buffered_result.call_id == *call_id) {
         return rejected_outcome(state, EngineRejection::CorrelationMismatch);
     }
+    debug_assert_eq!(state.phase, EngineTurnPhase::WaitingForTools);
+    debug_assert!(state.pending_tool_calls.iter().any(|pending_call_id| pending_call_id == call_id));
 
     let mut buffered_tool_results = state.buffered_tool_results.clone();
     buffered_tool_results.push(EngineBufferedToolResult {
@@ -598,7 +607,7 @@ fn apply_tool_feedback(
         buffered_tool_results: Vec::new(),
         retry_attempts_for_pending_model_request: 0,
         model_request_slot_budget: state.model_request_slot_budget,
-        model_request_slots_used: state.model_request_slots_used + ENGINE_MODEL_REQUEST_SLOT_COST,
+        model_request_slots_used: state.model_request_slots_used.saturating_add(ENGINE_MODEL_REQUEST_SLOT_COST),
     };
     EngineOutcome {
         next_state,
@@ -745,7 +754,7 @@ fn extract_tool_calls(output: &[Content]) -> Vec<EngineToolCall> {
 
 fn mint_model_request_id(sequence: u32) -> (EngineCorrelationId, u32) {
     let request_id = EngineCorrelationId(format!("{}-{}", ENGINE_MODEL_REQUEST_PREFIX, sequence));
-    let next_sequence = sequence + ENGINE_CORRELATION_SEQUENCE_STEP;
+    let next_sequence = sequence.saturating_add(ENGINE_CORRELATION_SEQUENCE_STEP);
     (request_id, next_sequence)
 }
 

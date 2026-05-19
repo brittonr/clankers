@@ -86,6 +86,20 @@ fn session_socket_path_from_attach_response(session_id: &str, response: ControlR
     }
 }
 
+async fn connect_session(session_id: &str) -> Result<ClientAdapter> {
+    let response = crate::modes::attach::send_control(ControlCommand::AttachSession {
+        session_id: session_id.to_string(),
+    })
+    .await?;
+    let socket_path = session_socket_path_from_attach_response(session_id, response)?;
+    let stream = UnixStream::connect(&socket_path).await.map_err(|source| crate::error::Error::Io { source })?;
+    ClientAdapter::connect(stream, "clankers-mcp-session-control", None, Some(session_id.to_string()))
+        .await
+        .map_err(|error| crate::error::Error::Provider {
+            message: format!("Failed to connect MCP session-control bridge to session socket: {error}"),
+        })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -101,18 +115,4 @@ mod tests {
         assert!(message.contains("Failed to attach MCP session-control bridge to session missing-session"));
         assert!(message.contains("session not found"));
     }
-}
-
-async fn connect_session(session_id: &str) -> Result<ClientAdapter> {
-    let response = crate::modes::attach::send_control(ControlCommand::AttachSession {
-        session_id: session_id.to_string(),
-    })
-    .await?;
-    let socket_path = session_socket_path_from_attach_response(session_id, response)?;
-    let stream = UnixStream::connect(&socket_path).await.map_err(|source| crate::error::Error::Io { source })?;
-    ClientAdapter::connect(stream, "clankers-mcp-session-control", None, Some(session_id.to_string()))
-        .await
-        .map_err(|error| crate::error::Error::Provider {
-            message: format!("Failed to connect MCP session-control bridge to session socket: {error}"),
-        })
 }

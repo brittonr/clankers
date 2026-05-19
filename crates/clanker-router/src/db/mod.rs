@@ -149,8 +149,8 @@ mod tests {
     fn test_open_idempotent() {
         let tmp = tempfile::TempDir::new().unwrap();
         let path = tmp.path().join("router.db");
-        let _db1 = RouterDb::open(&path).unwrap();
-        drop(_db1);
+        let db1 = RouterDb::open(&path).unwrap();
+        drop(db1);
         let _db2 = RouterDb::open(&path).unwrap();
     }
 

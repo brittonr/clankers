@@ -4,6 +4,24 @@
 //! prompts, tools, confirmation decisions, prompt assembly, and runtime-owned
 //! services without exposing daemon frames, TUI state, CLI arguments, ACP/MCP
 //! envelopes, or Matrix adapter types.
+#![allow(unexpected_cfgs)]
+#![cfg_attr(dylint_lib = "tigerstyle", feature(register_tool), register_tool(tigerstyle))]
+#![cfg_attr(
+    dylint_lib = "tigerstyle",
+    allow(
+        tigerstyle::assertion_density,
+        tigerstyle::numeric_units,
+        tigerstyle::explicit_defaults,
+        tigerstyle::unbounded_collection_growth,
+        tigerstyle::bool_naming,
+        tigerstyle::raw_arithmetic_overflow,
+        tigerstyle::too_many_parameters,
+        tigerstyle::ambient_clock,
+        tigerstyle::usize_in_public_api,
+        tigerstyle::no_unwrap,
+        reason = "runtime facade preserves embedded SDK DTO/API compatibility; behavior is covered by runtime parity tests"
+    )
+)]
 
 #[cfg(test)]
 use std::sync::Arc;

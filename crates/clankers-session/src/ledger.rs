@@ -28,6 +28,11 @@ pub const LEDGER_SCHEMA_VERSION: u32 = 1;
 
 /// One append-only typed session fact or opaque safe fallback.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+// allow justification: LedgerRecord preserves stable JSON shape; boxing would not reduce serialized payload size.
+#[allow(
+    clippy::large_enum_variant,
+    reason = "LedgerRecord preserves stable JSON shape; boxing the typed variant would not reduce serialized payload size and risks API churn."
+)]
 #[serde(tag = "record_kind", rename_all = "snake_case")]
 pub enum LedgerRecord {
     /// Current schema record with typed payload.

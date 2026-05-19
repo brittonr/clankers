@@ -908,8 +908,10 @@ mod tests {
         let _preset = EnvGuard::remove("CLANKERS_PERSONALITY_PRESET");
         let temp = TempDir::new().expect("temp dir");
         let global = temp.path().join("global");
+        let project_config = temp.path().join(".clankers");
         std::fs::create_dir_all(&global).expect("global dir");
-        std::fs::write(temp.path().join("SOUL.md"), "Private soul prompt").expect("SOUL.md");
+        std::fs::create_dir_all(&project_config).expect("project config dir");
+        std::fs::write(project_config.join("SOUL.md"), "Private soul prompt").expect("SOUL.md");
         let project = ProjectPaths::resolve(temp.path());
 
         let assembly = load_soul_personality(&global, &project);

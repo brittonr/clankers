@@ -190,7 +190,7 @@ mod tests {
         // Should produce DaemonEvent in outgoing buffer
         let outgoing = ctrl.take_outgoing();
         assert_eq!(outgoing.len(), 1);
-        assert!(matches!(outgoing[0], DaemonEvent::AgentStart { .. }));
+        assert!(matches!(outgoing[0], DaemonEvent::AgentStart));
     }
 
     #[test]
@@ -378,7 +378,7 @@ mod tests {
 
         let events = ctrl.take_outgoing();
         assert_eq!(events.len(), 2);
-        assert!(matches!(events[0], DaemonEvent::AgentStart { .. }));
-        assert!(matches!(events[1], DaemonEvent::AgentEnd { .. }));
+        assert!(matches!(events[0], DaemonEvent::AgentStart));
+        assert!(matches!(events[1], DaemonEvent::AgentEnd));
     }
 }

@@ -5,6 +5,17 @@
 //! Prompts are markdown files at:
 //! - ~/.clankers/agent/prompts/*.md (global)
 //! - .clankers/prompts/*.md (project)
+#![allow(unexpected_cfgs)]
+#![cfg_attr(dylint_lib = "tigerstyle", feature(register_tool), register_tool(tigerstyle))]
+#![cfg_attr(
+    dylint_lib = "tigerstyle",
+    allow(
+        tigerstyle::assertion_density,
+        tigerstyle::unbounded_collection_growth,
+        tigerstyle::raw_arithmetic_overflow,
+        reason = "prompt scanner is small compatibility glue covered by parser tests"
+    )
+)]
 
 use std::path::Path;
 use std::path::PathBuf;

@@ -82,7 +82,17 @@ pub struct OpenAICodexProvider {
 }
 
 impl OpenAICodexProvider {
+    // Compatibility constructor: existing callers expect the provider-erased return type.
+    #[allow(clippy::new_ret_no_self)]
     pub fn new(credential_manager: Arc<CredentialManager>, models: Vec<Model>, account: String) -> Arc<dyn Provider> {
+        Self::into_provider(credential_manager, models, account)
+    }
+
+    pub fn into_provider(
+        credential_manager: Arc<CredentialManager>,
+        models: Vec<Model>,
+        account: String,
+    ) -> Arc<dyn Provider> {
         Arc::new(Self {
             credential_manager,
             models,
@@ -154,6 +164,10 @@ fn codex_test_lock() -> &'static Mutex<()> {
 }
 
 #[cfg(test)]
+#[allow(
+    clippy::await_holding_lock,
+    reason = "Codex backend tests intentionally serialize shared global hook overrides across awaited probes."
+)]
 pub(crate) async fn with_test_probe_hook_async<F, Fut, R>(hook: F, f: impl FnOnce() -> Fut) -> R
 where
     F: Fn(&StoredCredential) -> ProbeOutcome + Send + Sync + 'static,
@@ -374,7 +388,7 @@ mod tests {
         let dir = tempfile::TempDir::new().expect("tempdir should exist");
         let auth_paths = AuthStorePaths::single(dir.path().join("auth.json"));
         let manager = CredentialManager::new(OPENAI_CODEX_PROVIDER.to_string(), credential, auth_paths, None);
-        OpenAICodexProvider::new(manager, codex_models(), "work".to_string())
+        OpenAICodexProvider::into_provider(manager, codex_models(), "work".to_string())
     }
 
     fn header_subset(request: &reqwest::Request, names: &[&str]) -> BTreeMap<String, String> {
@@ -579,7 +593,7 @@ mod tests {
                 assert_eq!(*index, 0);
                 match delta {
                     ContentDelta::SignatureDelta { signature } => {
-                        assert_eq!(signature, &expected_signature)
+                        assert_eq!(signature, &expected_signature);
                     }
                     other => panic!("expected SignatureDelta, got {other:?}"),
                 }
@@ -661,7 +675,7 @@ mod tests {
                 assert_eq!(*index, 2);
                 match delta {
                     ContentDelta::InputJsonDelta { partial_json } => {
-                        assert_eq!(partial_json, "\"path\"")
+                        assert_eq!(partial_json, "\"path\"");
                     }
                     other => panic!("expected InputJsonDelta, got {other:?}"),
                 }
@@ -674,7 +688,7 @@ mod tests {
                 assert_eq!(*index, 2);
                 match delta {
                     ContentDelta::InputJsonDelta { partial_json } => {
-                        assert_eq!(partial_json, ":\"Cargo.toml\"}")
+                        assert_eq!(partial_json, ":\"Cargo.toml\"}");
                     }
                     other => panic!("expected final InputJsonDelta suffix, got {other:?}"),
                 }
@@ -766,6 +780,10 @@ mod tests {
         }
     }
 
+    #[allow(
+        clippy::await_holding_lock,
+        reason = "Codex backend tests intentionally serialize shared global HTTP hook overrides across awaited requests."
+    )]
     async fn with_test_http_hooks<F, Fut, R>(url: String, sleep_log: Option<Arc<Mutex<Vec<Duration>>>>, f: F) -> R
     where
         F: FnOnce() -> Fut,
@@ -1476,7 +1494,7 @@ mod tests {
         assert_eq!(probe_body.get("model"), Some(&json!(OPENAI_CODEX_PROBE_MODEL)));
         assert!(probe_body.get("prompt_cache_key").is_none());
         assert_eq!(requests[0].headers.get("accept"), Some(&"text/event-stream".to_string()));
-        assert!(requests[0].headers.get("session_id").is_none());
+        assert!(!requests[0].headers.contains_key("session_id"));
         assert_eq!(normal_body.get("stream"), Some(&json!(true)));
         assert_eq!(normal_body.get("model"), Some(&json!(OPENAI_CODEX_MODEL_IDS[0])));
         assert_eq!(normal_body.get("prompt_cache_key"), Some(&json!("session-1")));
@@ -1535,7 +1553,7 @@ mod tests {
         assert_eq!(err.status_code(), Some(503));
         assert!(err.to_string().contains("provider error: openai-codex entitlement check failed"));
         let requests = server.requests.lock().expect("requests lock poisoned");
-        assert!(requests.iter().all(|request| request.headers.get("session_id").is_none()));
+        assert!(requests.iter().all(|request| !request.headers.contains_key("session_id")));
         assert_eq!(*sleep_log.lock().expect("sleep log lock poisoned"), vec![
             Duration::from_secs(1),
             Duration::from_secs(2),

@@ -250,7 +250,7 @@ mod tests {
         let valid = OAuthCredentials {
             access: "token".to_string(),
             refresh: "refresh".to_string(),
-            expires: chrono::Utc::now().timestamp_millis() + 3600000,
+            expires: chrono::Utc::now().timestamp_millis() + 3_600_000,
         };
         assert!(!valid.is_expired());
     }

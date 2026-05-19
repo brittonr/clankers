@@ -963,7 +963,7 @@ mod tests {
 
     #[test]
     fn disabled_tools_default_empty() {
-        let json = r#"{}"#;
+        let json = r"{}";
         let settings: Settings = serde_json::from_str(json).unwrap();
         assert!(settings.disabled_tools.is_empty());
     }
@@ -1052,7 +1052,7 @@ mod tests {
 
     #[test]
     fn external_memory_defaults_disabled() {
-        let settings: Settings = serde_json::from_str(r#"{}"#).unwrap();
+        let settings: Settings = serde_json::from_str(r"{}").unwrap();
         assert!(!settings.external_memory.enabled);
         assert_eq!(settings.external_memory.provider, ExternalMemoryProvider::Local);
         assert_eq!(settings.external_memory.max_results, 8);
@@ -1319,7 +1319,7 @@ mod tests {
 
     #[test]
     fn auto_test_command_default_none() {
-        let json = r#"{}"#;
+        let json = r"{}";
         let settings: Settings = serde_json::from_str(json).unwrap();
         assert!(settings.auto_test_command.is_none());
     }
@@ -1334,7 +1334,7 @@ mod tests {
 
     #[test]
     fn use_daemon_default_true() {
-        let json = r#"{}"#;
+        let json = r"{}";
         let settings: Settings = serde_json::from_str(json).unwrap();
         assert!(settings.use_daemon);
     }
@@ -1356,7 +1356,7 @@ mod tests {
 
     #[test]
     fn scrollback_on_exit_default_none() {
-        let json = r#"{}"#;
+        let json = r"{}";
         let settings: Settings = serde_json::from_str(json).unwrap();
         assert_eq!(settings.scrollback_on_exit, None);
     }

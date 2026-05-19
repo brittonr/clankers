@@ -32,7 +32,7 @@ pub fn paste_from_clipboard(app: &mut App) {
     }
     app.clipboard_pending = true;
 
-    let (tx, rx) = std::sync::mpsc::channel::<ClipboardResult>();
+    let (tx, rx) = std::sync::mpsc::sync_channel::<ClipboardResult>(1);
 
     std::thread::spawn(move || {
         let is_wayland = std::env::var("WAYLAND_DISPLAY").is_ok();
@@ -81,6 +81,8 @@ fn paste_wayland_image() -> Option<ClipboardResult> {
     if !output.status.success() || output.stdout.is_empty() {
         return None;
     }
+    assert!(output.status.success());
+    assert!(!output.stdout.is_empty());
 
     let png_buf = output.stdout;
 
@@ -89,17 +91,21 @@ fn paste_wayland_image() -> Option<ClipboardResult> {
     let img = reader.decode().ok()?;
     let width = img.width();
     let height = img.height();
+    assert!(width > 0);
+    assert!(height > 0);
 
     use base64::Engine;
     use base64::engine::general_purpose::STANDARD as BASE64;
 
-    let raw_size = png_buf.len();
+    let raw_size_bytes = png_buf.len();
     let encoded = BASE64.encode(&png_buf);
+    assert!(raw_size_bytes > 0);
+    assert!(!encoded.is_empty());
 
     Some(ClipboardResult::Image {
         encoded,
         mime: "image/png".to_string(),
-        raw_size,
+        raw_size: raw_size_bytes,
         width,
         height,
     })
@@ -126,6 +132,8 @@ fn paste_arboard() -> Result<ClipboardResult, ClipboardResult> {
             let width = img_data.width as u32;
             let height = img_data.height as u32;
             let rgba: Vec<u8> = img_data.bytes.into_owned();
+            assert!(width > 0);
+            assert!(height > 0);
 
             let img = image::RgbaImage::from_raw(width, height, rgba)
                 .ok_or_else(|| ClipboardResult::Error("Failed to decode clipboard image data.".to_string()))?;
@@ -135,13 +143,15 @@ fn paste_arboard() -> Result<ClipboardResult, ClipboardResult> {
             img.write_to(&mut cursor, image::ImageFormat::Png)
                 .map_err(|e| ClipboardResult::Error(format!("Failed to encode image as PNG: {e}")))?;
 
-            let raw_size = png_buf.len();
+            let raw_size_bytes = png_buf.len();
             let encoded = BASE64.encode(&png_buf);
+            assert!(raw_size_bytes > 0);
+            assert!(!encoded.is_empty());
 
             Ok(ClipboardResult::Image {
                 encoded,
                 mime: "image/png".to_string(),
-                raw_size,
+                raw_size: raw_size_bytes,
                 width,
                 height,
             })
@@ -166,6 +176,8 @@ pub fn poll_clipboard_result(app: &mut App) {
 
     app.clipboard_rx = None;
     app.clipboard_pending = false;
+    assert!(app.clipboard_rx.is_none());
+    assert!(!app.clipboard_pending);
 
     if let Some(result) = result {
         match result {
@@ -184,18 +196,20 @@ pub fn poll_clipboard_result(app: &mut App) {
             } => {
                 app.attach_image(encoded, mime, raw_size);
 
-                let size_str = if raw_size >= 1024 * 1024 {
+                let size_label = if raw_size >= 1024 * 1024 {
                     format!("{:.1} MB", raw_size as f64 / (1024.0 * 1024.0))
                 } else if raw_size >= 1024 {
                     format!("{:.1} KB", raw_size as f64 / 1024.0)
                 } else {
                     format!("{raw_size} bytes")
                 };
+                assert!(!size_label.is_empty());
+                assert!(raw_size > 0);
 
                 let count = app.pending_images.len();
                 app.push_system(
                     format!(
-                        "📎 Image attached ({width}×{height}, {size_str}). {count} image{} pending.",
+                        "📎 Image attached ({width}×{height}, {size_label}). {count} image{} pending.",
                         if count == 1 { "" } else { "s" }
                     ),
                     false,
@@ -216,11 +230,13 @@ pub fn poll_clipboard_result(app: &mut App) {
 pub fn open_external_editor(terminal: &mut Terminal<CrosstermBackend<io::Stdout>>, app: &mut App) {
     // Determine which editor to use
     let editor_cmd = std::env::var("EDITOR").or_else(|_| std::env::var("VISUAL")).unwrap_or_else(|_| "vi".to_string());
+    assert!(!editor_cmd.trim().is_empty());
 
     // Write current editor content to a temp file
     let current_content = app.editor.content().join("\n");
     let tmp_dir = std::env::temp_dir();
     let tmp_path = tmp_dir.join(format!("clankers-edit-{}.md", std::process::id()));
+    assert!(tmp_path.is_absolute());
 
     if let Err(e) = std::fs::write(&tmp_path, &current_content) {
         app.push_system(format!("Failed to create temp file: {}", e), true);

@@ -476,7 +476,7 @@ mod tests {
         assert!(!resp.is_error());
         let model: Model = serde_json::from_value(resp.result.unwrap()).unwrap();
         // Should be one of our registered models
-        assert!(model.id == "test-model" || model.id == "test-fast", "unexpected model: {}", model.id,);
+        assert!(model.id == "test-model" || model.id == "test-fast", "unexpected model: {}", model.id);
     }
 
     #[test]

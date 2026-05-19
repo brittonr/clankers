@@ -438,10 +438,10 @@ fn build_request_body_inner(request: &CompletionRequest, is_oauth: bool) -> Resu
         // Anthropic requires temperature to be omitted when thinking is
         // enabled.  The old typed handler stripped it; the raw passthrough
         // must do the same or Anthropic returns 400.
-        if body.get("thinking").and_then(|t| t.get("type")).and_then(|t| t.as_str()) == Some("enabled") {
-            if let Some(obj) = body.as_object_mut() {
-                obj.remove("temperature");
-            }
+        if body.get("thinking").and_then(|t| t.get("type")).and_then(|t| t.as_str()) == Some("enabled")
+            && let Some(obj) = body.as_object_mut()
+        {
+            obj.remove("temperature");
         }
 
         return Ok(body);

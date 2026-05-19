@@ -1,4 +1,14 @@
 //! Zellij integration and orchestration
+#![allow(unexpected_cfgs)]
+#![cfg_attr(dylint_lib = "tigerstyle", feature(register_tool), register_tool(tigerstyle))]
+#![cfg_attr(
+    dylint_lib = "tigerstyle",
+    allow(
+        tigerstyle::assertion_density,
+        tigerstyle::ambiguous_params,
+        reason = "Zellij integration is thin process/socket glue exercised by integration tests"
+    )
+)]
 
 pub mod streaming;
 

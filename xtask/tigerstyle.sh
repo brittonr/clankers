@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Run tigerstyle lints on the clankers workspace.
 #
-# Fetches pinned tigerstyle-rs from GitHub over SSH, builds a cached lint
+# Fetches pinned Tiger Style from Octet on GitHub, builds a cached lint
 # library plus cargo-tigerstyle runner, then runs the first-class tigerstyle
 # consumer command against this workspace.
 #
@@ -12,11 +12,11 @@
 set -euo pipefail
 
 TOOLCHAIN="nightly-x86_64-unknown-linux-gnu"
-TIGERSTYLE_REPO="ssh://git@github.com/brittonr/tigerstyle-rs.git"
+TIGERSTYLE_REPO="github:OnixResearch/octet"
 TIGERSTYLE_REV="bbf5fbb60679668ca8c42593fd617db2d0f89b43"
 TIGERSTYLE_DYLINT_REV="0e0a71eefe6f01563d11acc6e1d7af1d505934a9"
-TIGERSTYLE_CACHE_DIR="${XDG_CACHE_HOME:-$HOME/.cache}/clankers/tigerstyle-rs"
-LINT_TARGET_DIR="${CARGO_TARGET_DIR:-$HOME/.cargo-target}/dylint/tigerstyle-rs/$TIGERSTYLE_REV/$TOOLCHAIN"
+TIGERSTYLE_CACHE_DIR="${XDG_CACHE_HOME:-$HOME/.cache}/clankers/octet-tigerstyle"
+LINT_TARGET_DIR="${CARGO_TARGET_DIR:-$HOME/.cargo-target}/dylint/octet-tigerstyle/$TIGERSTYLE_REV/$TOOLCHAIN"
 LINT_BUILD_DIR="$LINT_TARGET_DIR/release"
 RUNNER_TARGET_DIR="${CARGO_TARGET_DIR:-$HOME/.cargo-target}/cargo-tigerstyle/$TIGERSTYLE_REV"
 RUNNER_BIN="$RUNNER_TARGET_DIR/release/cargo-tigerstyle"
@@ -30,16 +30,30 @@ prefer_tigerstyle_toolchain() {
     fi
 }
 
+tigerstyle_git_url() {
+    case "$TIGERSTYLE_REPO" in
+        github:*)
+            printf 'ssh://git@github.com/%s.git\n' "${TIGERSTYLE_REPO#github:}"
+            ;;
+        *)
+            printf '%s\n' "$TIGERSTYLE_REPO"
+            ;;
+    esac
+}
+
 sync_tigerstyle() {
+    local tigerstyle_git_repo
+    tigerstyle_git_repo="$(tigerstyle_git_url)"
+
     mkdir -p "$(dirname "$TIGERSTYLE_CACHE_DIR")"
     if [[ ! -d "$TIGERSTYLE_CACHE_DIR/.git" ]]; then
         rm -rf "$TIGERSTYLE_CACHE_DIR"
-        git clone "$TIGERSTYLE_REPO" "$TIGERSTYLE_CACHE_DIR"
+        git clone "$tigerstyle_git_repo" "$TIGERSTYLE_CACHE_DIR"
     fi
 
     (
         cd "$TIGERSTYLE_CACHE_DIR"
-        git remote set-url origin "$TIGERSTYLE_REPO"
+        git remote set-url origin "$tigerstyle_git_repo"
         git fetch origin "$TIGERSTYLE_REV"
         git checkout --detach "$TIGERSTYLE_REV"
     )

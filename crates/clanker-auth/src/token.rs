@@ -49,6 +49,13 @@ pub struct CapabilityToken<C: Cap> {
 impl<C: Cap> CapabilityToken<C> {
     /// Create a new token (used by the builder).
     #[allow(clippy::too_many_arguments)]
+    #[cfg_attr(
+        dylint_lib = "tigerstyle",
+        allow(
+            tigerstyle::too_many_parameters,
+            reason = "private constructor mirrors serialized token fields"
+        )
+    )]
     pub(crate) fn new(
         version: u8,
         issuer: PublicKey,

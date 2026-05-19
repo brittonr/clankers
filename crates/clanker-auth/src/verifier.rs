@@ -101,7 +101,7 @@ impl<C: Cap> TokenVerifier<C> {
 
         // Expiration
         let now = current_time_secs();
-        if token.expires_at + self.clock_skew_tolerance < now {
+        if token.expires_at.saturating_add(self.clock_skew_tolerance) < now {
             return Err(AuthError::TokenExpired {
                 expired_at: token.expires_at,
                 now,
@@ -109,7 +109,7 @@ impl<C: Cap> TokenVerifier<C> {
         }
 
         // Not from the future
-        if token.issued_at > now + self.clock_skew_tolerance {
+        if token.issued_at > now.saturating_add(self.clock_skew_tolerance) {
             return Err(AuthError::TokenFromFuture {
                 issued_at: token.issued_at,
                 now,
@@ -158,7 +158,7 @@ impl<C: Cap> TokenVerifier<C> {
                 if let Some(parent) = cache.get(&parent_hash) {
                     let parent = parent.clone();
                     drop(cache);
-                    self.verify_internal(&parent, None, chain_depth + 1)?;
+                    self.verify_internal(&parent, None, chain_depth.saturating_add(1))?;
                 } else {
                     return Err(AuthError::ParentTokenRequired);
                 }
@@ -201,13 +201,13 @@ impl<C: Cap> TokenVerifier<C> {
         token.issuer.verify(&sign_bytes, &signature).map_err(|_| AuthError::InvalidSignature)?;
 
         let now = current_time_secs();
-        if token.expires_at + self.clock_skew_tolerance < now {
+        if token.expires_at.saturating_add(self.clock_skew_tolerance) < now {
             return Err(AuthError::TokenExpired {
                 expired_at: token.expires_at,
                 now,
             });
         }
-        if token.issued_at > now + self.clock_skew_tolerance {
+        if token.issued_at > now.saturating_add(self.clock_skew_tolerance) {
             return Err(AuthError::TokenFromFuture {
                 issued_at: token.issued_at,
                 now,
@@ -244,7 +244,7 @@ impl<C: Cap> TokenVerifier<C> {
         if !self.trusted_roots.is_empty() {
             if let Some(parent_hash) = token.proof {
                 if let Some(parent) = chain_map.get(&parent_hash) {
-                    self.verify_with_chain_internal(parent, chain_map, None, chain_depth + 1)?;
+                    self.verify_with_chain_internal(parent, chain_map, None, chain_depth.saturating_add(1))?;
                 } else {
                     let cache = self.parent_cache.read().map_err(|_| AuthError::InternalError {
                         reason: "parent cache lock poisoned".to_string(),
@@ -252,7 +252,7 @@ impl<C: Cap> TokenVerifier<C> {
                     if let Some(parent) = cache.get(&parent_hash) {
                         let parent = parent.clone();
                         drop(cache);
-                        self.verify_with_chain_internal(&parent, chain_map, None, chain_depth + 1)?;
+                        self.verify_with_chain_internal(&parent, chain_map, None, chain_depth.saturating_add(1))?;
                     } else {
                         return Err(AuthError::ParentTokenRequired);
                     }

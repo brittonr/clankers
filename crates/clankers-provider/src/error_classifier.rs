@@ -12,7 +12,6 @@ const STATUS_BAD_GATEWAY: u16 = 502;
 const STATUS_SERVICE_UNAVAILABLE: u16 = 503;
 const STATUS_CLOUDFLARE_OVERLOADED: u16 = 529;
 
-const PROVIDER_UNKNOWN: &str = "unknown";
 const PROVIDER_ANTHROPIC: &str = "anthropic";
 const PROVIDER_OPENAI: &str = "openai";
 const PROVIDER_OPENROUTER: &str = "openrouter";
@@ -189,7 +188,6 @@ fn build_classified_error(
 }
 
 fn classify_reason(status_code: Option<u16>, body: &str, provider: &str) -> FailoverReason {
-    let _provider_is_unknown = provider == PROVIDER_UNKNOWN;
     if let Some(reason) = classify_from_status(status_code) {
         return reason;
     }
@@ -377,6 +375,10 @@ mod tests {
     use super::classify_transport_error;
     use super::recovery_hints;
 
+    #[allow(
+        clippy::fn_params_excessive_bools,
+        reason = "The classifier test helper mirrors four boolean recovery hints to keep table cases compact."
+    )]
     fn assert_reason(
         classified: ClassifiedError,
         expected_reason: FailoverReason,

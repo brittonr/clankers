@@ -471,7 +471,7 @@ mod tests {
         let db = test_db()?;
         let store = db.tool_results();
 
-        let test_cases = vec![
+        let test_cases = [
             ("", 0),
             ("single line", 1),
             ("line 1\nline 2", 2),

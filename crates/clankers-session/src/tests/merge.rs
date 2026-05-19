@@ -329,7 +329,7 @@ fn test_merge_selective_preserves_message_content() {
     mgr.append_message(make_msg(&a1, "Unique content from A"), Some(root.clone())).unwrap();
     mgr.append_message(make_msg(&b1, "B1"), Some(root.clone())).unwrap();
 
-    mgr.merge_selective(a1.clone(), b1.clone(), &[a1.clone()]).unwrap();
+    mgr.merge_selective(a1.clone(), b1.clone(), std::slice::from_ref(&a1)).unwrap();
 
     // The merged message should have new ID but same content
     let context = mgr.build_context().unwrap();

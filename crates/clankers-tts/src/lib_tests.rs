@@ -293,7 +293,7 @@ fn tts_request_fields() {
         format: AudioFormat::Pcm,
     };
     assert_eq!(req.text, "hello world");
-    assert_eq!(req.speed, 1.5);
+    assert!((req.speed - 1.5).abs() < f32::EPSILON);
     assert_eq!(req.format, AudioFormat::Pcm);
 }
 
@@ -559,8 +559,8 @@ fn wav_extreme_sample_values() {
     let reader = hound::WavReader::new(std::io::Cursor::new(&wav)).unwrap();
     let read_back: Vec<f32> = reader.into_samples::<f32>().map(|s| s.unwrap()).collect();
     assert_eq!(read_back.len(), 6);
-    assert_eq!(read_back[0], -1.0);
-    assert_eq!(read_back[1], 1.0);
+    assert!((read_back[0] - -1.0).abs() < f32::EPSILON);
+    assert!((read_back[1] - 1.0).abs() < f32::EPSILON);
 }
 
 #[test]

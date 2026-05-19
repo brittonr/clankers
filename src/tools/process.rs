@@ -5,6 +5,7 @@
 //! output, inspect logs, wait, send stdin, and terminate processes.
 
 use std::collections::HashMap;
+use std::fmt::Write as _;
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::sync::LazyLock;
@@ -1167,7 +1168,7 @@ fn parse_pueue_log_text(raw: &str, task_id: u64) -> String {
         .get("tasks")
         .and_then(Value::as_object)
         .and_then(|tasks| tasks.get(&task_id.to_string()))
-        .or_else(|| value.get(&task_id.to_string()))
+        .or_else(|| value.get(task_id.to_string()))
         .or_else(|| value.get("output"));
     let Some(task) = task else {
         return String::new();
@@ -1876,7 +1877,7 @@ fn stored_record_from_entry(entry: &ProcessEntry) -> StoredProcessJobRecord {
             can_write_stdin: true,
             can_select_backend: false,
         },
-        safe_metadata: Default::default(),
+        safe_metadata: std::collections::BTreeMap::default(),
     }
 }
 
@@ -2080,11 +2081,11 @@ fn reconciled_native_record(mut record: StoredProcessJobRecord) -> StoredProcess
 
 async fn reconcile_native_record(db: &clankers_db::Db, record: StoredProcessJobRecord) -> StoredProcessJobRecord {
     let reconciled = reconciled_native_record(record.clone());
-    if reconciled != record {
-        if let Err(error) = db.async_process_jobs().upsert(reconciled.clone()).await {
-            tracing::warn!("failed to persist reconciled process job metadata: {error}");
-            return record;
-        }
+    if reconciled != record
+        && let Err(error) = db.async_process_jobs().upsert(reconciled.clone()).await
+    {
+        tracing::warn!("failed to persist reconciled process job metadata: {error}");
+        return record;
     }
     reconciled
 }
@@ -2804,6 +2805,10 @@ impl ProcessTool {
         }
     }
 
+    #[allow(
+        clippy::unused_async,
+        reason = "process backends share async result helpers with the tool dispatch shell"
+    )]
     async fn pueue_receipt_result(result: Result<ProcessJobReceipt, RuntimeError>) -> ToolResult {
         match result {
             Ok(receipt) => Self::receipt_result(receipt),
@@ -2811,6 +2816,10 @@ impl ProcessTool {
         }
     }
 
+    #[allow(
+        clippy::unused_async,
+        reason = "process backends share async result helpers with the tool dispatch shell"
+    )]
     async fn systemd_receipt_result(result: Result<ProcessJobReceipt, RuntimeError>) -> ToolResult {
         match result {
             Ok(receipt) => Self::receipt_result(receipt),
@@ -3049,7 +3058,7 @@ impl ProcessTool {
                         format!("watch_pattern[{pattern_index}]={pattern}")
                     }
                 };
-                text.push_str(&format!("\n- {} {}: {}", notification.event_id.0, kind, notification.summary));
+                let _ = write!(text, "\n- {} {}: {}", notification.event_id.0, kind, notification.summary);
             }
         }
         ToolResult::text(text)
@@ -3509,7 +3518,7 @@ mod tests {
             owner: clankers_runtime::process_jobs::ProcessJobOwnerScope::DaemonGlobal,
             resource_policy: clankers_runtime::process_jobs::ProcessJobResourcePolicy::default(),
             notification_policy: ProcessJobNotificationPolicy::default(),
-            metadata: Default::default(),
+            metadata: std::collections::BTreeMap::default(),
         }
     }
 
@@ -3583,7 +3592,7 @@ mod tests {
                 Some("status") => Ok(self.status_json.clone()),
                 Some("log") => Ok(self.log_json.clone()),
                 Some("add") => Ok(self.add_output.clone()),
-                Some("kill") | Some("restart") => Ok(String::new()),
+                Some("kill" | "restart") => Ok(String::new()),
                 other => Err(RuntimeError::InvalidTool(format!("unexpected pueue call: {other:?}"))),
             }
         }

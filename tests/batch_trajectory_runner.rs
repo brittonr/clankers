@@ -53,7 +53,7 @@ async fn batch_runner_exports_successful_jsonl_trajectory() {
     assert_eq!(results[0].response.as_deref(), Some("answer: first"));
 
     let rendered = render_trajectory_results(TrajectoryFormat::Jsonl, &results).expect("jsonl renders");
-    assert!(rendered.lines().count() == 2);
+    assert_eq!(rendered.lines().count(), 2);
     assert!(rendered.contains(r#""id":"one""#));
     assert!(!results[0].metadata.as_ref().unwrap().to_string().contains("integration\"}"));
 }

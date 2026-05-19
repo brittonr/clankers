@@ -5,6 +5,21 @@
 //! Skills are markdown files at:
 //! - ~/.clankers/agent/skills/*/SKILL.md (global)
 //! - .clankers/skills/*/SKILL.md (project)
+#![allow(unexpected_cfgs)]
+#![cfg_attr(dylint_lib = "tigerstyle", feature(register_tool), register_tool(tigerstyle))]
+#![cfg_attr(
+    dylint_lib = "tigerstyle",
+    allow(
+        tigerstyle::assertion_density,
+        tigerstyle::ambiguous_params,
+        tigerstyle::numeric_units,
+        tigerstyle::bool_naming,
+        tigerstyle::unbounded_collection_growth,
+        tigerstyle::compound_assertion,
+        tigerstyle::raw_arithmetic_overflow,
+        reason = "skills crate is validated through focused parser/security tests; public API shape is tool-contract compatibility"
+    )
+)]
 
 mod security;
 
@@ -417,7 +432,9 @@ fn load_skill(path: &Path) -> Option<Skill> {
 fn extract_description(content: &str) -> String {
     let mut is_in_frontmatter = false;
     assert!(!content.contains('\0'));
-    assert!(content.is_empty() || !content.starts_with("\n"));
+    if !content.is_empty() {
+        assert!(!content.starts_with("\n"));
+    }
 
     for line in content.lines() {
         let trimmed = line.trim();

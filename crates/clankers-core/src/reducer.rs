@@ -48,6 +48,13 @@ pub fn reduce(state: &CoreState, input: &CoreInput) -> CoreOutcome {
     }
 }
 
+#[cfg_attr(
+    dylint_lib = "tigerstyle",
+    allow(
+        tigerstyle::assertion_density,
+        reason = "core reducer transition function is covered by table-driven reducer tests and keeps local lifecycle guards explicit"
+    )
+)]
 fn reduce_prompt_requested(state: &CoreState, request: &PromptRequest) -> CoreOutcome {
     if state.busy {
         return rejection(state, CoreError::Busy);
@@ -73,6 +80,13 @@ fn reduce_prompt_requested(state: &CoreState, request: &PromptRequest) -> CoreOu
     ])
 }
 
+#[cfg_attr(
+    dylint_lib = "tigerstyle",
+    allow(
+        tigerstyle::assertion_density,
+        reason = "core reducer transition function is covered by table-driven reducer tests and keeps local lifecycle guards explicit"
+    )
+)]
 fn reduce_prompt_completed(state: &CoreState, completed: &PromptCompleted) -> CoreOutcome {
     let Some(pending_prompt) = state.pending_prompt.as_ref() else {
         return if has_other_pending_work(state) {
@@ -112,12 +126,19 @@ fn reduce_prompt_completed(state: &CoreState, completed: &PromptCompleted) -> Co
     transitioned(next_state, effects)
 }
 
+#[cfg_attr(
+    dylint_lib = "tigerstyle",
+    allow(
+        tigerstyle::assertion_density,
+        reason = "core reducer transition function is covered by table-driven reducer tests and keeps local lifecycle guards explicit"
+    )
+)]
 fn reduce_post_prompt_evaluation(state: &CoreState, evaluation: &PostPromptEvaluation) -> CoreOutcome {
     let mut next_state = state.clone();
-    next_state.active_loop_state = evaluation.active_loop_state.clone();
-    next_state.pending_follow_up_state = evaluation.pending_follow_up_state.clone();
+    next_state.active_loop_state.clone_from(&evaluation.active_loop_state);
+    next_state.pending_follow_up_state.clone_from(&evaluation.pending_follow_up_state);
     next_state.auto_test_enabled = evaluation.auto_test_enabled;
-    next_state.auto_test_command = evaluation.auto_test_command.clone();
+    next_state.auto_test_command.clone_from(&evaluation.auto_test_command);
     next_state.auto_test_in_progress = evaluation.auto_test_in_progress;
 
     let mut effects = Vec::new();
@@ -178,6 +199,13 @@ fn reduce_post_prompt_evaluation(state: &CoreState, evaluation: &PostPromptEvalu
     transitioned(next_state, effects)
 }
 
+#[cfg_attr(
+    dylint_lib = "tigerstyle",
+    allow(
+        tigerstyle::assertion_density,
+        reason = "core reducer transition function is covered by table-driven reducer tests and keeps local lifecycle guards explicit"
+    )
+)]
 fn reduce_follow_up_dispatch_acknowledged(
     state: &CoreState,
     acknowledged: &FollowUpDispatchAcknowledged,
@@ -264,7 +292,7 @@ fn reduce_set_disabled_tools(state: &CoreState, update: &DisabledToolsUpdate) ->
 
     let mut next_state = state.clone();
     let effect_id = allocate_effect_id(&mut next_state);
-    next_state.disabled_tools = update.requested_disabled_tools.clone();
+    next_state.disabled_tools.clone_from(&update.requested_disabled_tools);
     next_state.pending_tool_filter = Some(PendingToolFilterState {
         effect_id,
         requested_disabled_tools: update.requested_disabled_tools.clone(),
@@ -276,6 +304,13 @@ fn reduce_set_disabled_tools(state: &CoreState, update: &DisabledToolsUpdate) ->
     }])
 }
 
+#[cfg_attr(
+    dylint_lib = "tigerstyle",
+    allow(
+        tigerstyle::assertion_density,
+        reason = "core reducer transition function is covered by table-driven reducer tests and keeps local lifecycle guards explicit"
+    )
+)]
 fn reduce_tool_filter_applied(state: &CoreState, applied: &ToolFilterApplied) -> CoreOutcome {
     let Some(pending_tool_filter) = state.pending_tool_filter.as_ref() else {
         return if has_pending_work_other_than_tool_filter(state) {
@@ -303,6 +338,13 @@ fn reduce_tool_filter_applied(state: &CoreState, applied: &ToolFilterApplied) ->
     })])
 }
 
+#[cfg_attr(
+    dylint_lib = "tigerstyle",
+    allow(
+        tigerstyle::assertion_density,
+        reason = "core reducer transition function is covered by table-driven reducer tests and keeps local lifecycle guards explicit"
+    )
+)]
 fn reduce_start_loop(state: &CoreState, request: &LoopRequest) -> CoreOutcome {
     if state.pending_follow_up_state.is_some() {
         return rejection(state, CoreError::LoopFollowUpStillPending);
@@ -342,6 +384,13 @@ fn reduce_stop_loop(state: &CoreState) -> CoreOutcome {
     })])
 }
 
+#[cfg_attr(
+    dylint_lib = "tigerstyle",
+    allow(
+        tigerstyle::assertion_density,
+        reason = "core reducer transition function is covered by table-driven reducer tests and keeps local lifecycle guards explicit"
+    )
+)]
 fn reduce_loop_follow_up_completed(state: &CoreState, completed: &LoopFollowUpCompleted) -> CoreOutcome {
     let Some(pending_follow_up_state) = state.pending_follow_up_state.as_ref() else {
         return if has_pending_work_other_than_follow_up(state) {
@@ -390,7 +439,7 @@ fn build_auto_test_prompt(command: &str) -> String {
 }
 
 fn allocate_effect_id(state: &mut CoreState) -> CoreEffectId {
-    let next_id = CoreEffectId(state.next_effect_id.0 + 1);
+    let next_id = CoreEffectId(state.next_effect_id.0.saturating_add(1));
     state.next_effect_id = next_id;
     next_id
 }

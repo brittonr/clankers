@@ -3,8 +3,6 @@
 //! Tests frame I/O over real Unix domain sockets and duplex streams,
 //! verifying correct behavior under realistic transport conditions.
 
-use std::time::Duration;
-
 use clankers_protocol::command::SessionCommand;
 use clankers_protocol::control::ControlCommand;
 use clankers_protocol::control::ControlResponse;
@@ -13,13 +11,11 @@ use clankers_protocol::control::SessionSummary;
 use clankers_protocol::event::DaemonEvent;
 use clankers_protocol::frame::FrameError;
 use clankers_protocol::frame::read_frame;
-use clankers_protocol::frame::read_raw_frame;
 use clankers_protocol::frame::write_frame;
 use clankers_protocol::frame::write_raw_frame;
 use clankers_protocol::types::Handshake;
 use clankers_protocol::types::ImageData;
 use clankers_protocol::types::PROTOCOL_VERSION;
-use tempfile;
 use tokio::io::duplex;
 use tokio::net::UnixListener;
 use tokio::net::UnixStream;
@@ -276,7 +272,7 @@ async fn concurrent_clients_on_unix_socket() {
 
     let listener = UnixListener::bind(&sock_path).unwrap();
 
-    let path = sock_path.clone();
+    let _path = sock_path.clone();
     let server_handle = tokio::spawn(async move {
         for _ in 0..3 {
             let (mut stream, _) = listener.accept().await.unwrap();
@@ -665,7 +661,7 @@ fn daemon_event_externally_tagged() {
 // r[verify protocol.handshake.version-field]
 #[test]
 fn protocol_version_is_nonzero() {
-    assert!(PROTOCOL_VERSION > 0, "PROTOCOL_VERSION must be > 0");
+    const { assert!(PROTOCOL_VERSION > 0) };
 }
 
 // r[verify protocol.frame.max-fits-u32]

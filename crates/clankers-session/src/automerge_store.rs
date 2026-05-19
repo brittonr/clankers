@@ -965,7 +965,7 @@ mod tests {
             MigrateResult::Migrated { path, message_count } => {
                 assert!(path.exists());
                 assert_eq!(message_count, 2);
-                assert!(path.extension().unwrap() == "automerge");
+                assert_eq!(path.extension().unwrap(), "automerge");
 
                 // Original renamed to .bak
                 assert!(!jsonl_path.exists());

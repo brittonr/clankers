@@ -166,7 +166,7 @@ fn content_stats(content: &[Content]) -> ContentStats {
         match block {
             Content::Text { text } => push_text_stats(text, &mut text_parts, &mut char_count, &mut line_count),
             Content::Thinking { thinking, .. } => {
-                push_text_stats(thinking, &mut text_parts, &mut char_count, &mut line_count)
+                push_text_stats(thinking, &mut text_parts, &mut char_count, &mut line_count);
             }
             Content::Image { .. } => {
                 has_image = true;
@@ -200,12 +200,11 @@ fn parse_bash_output(text: &str) -> (Option<i32>, &str) {
     const EXIT_CODE_PREFIX: &str = "Exit code: ";
     const EXIT_CODE_SEPARATOR: &str = "\n\n";
 
-    if let Some(rest) = text.strip_prefix(EXIT_CODE_PREFIX) {
-        if let Some((code_text, output_text)) = rest.split_once(EXIT_CODE_SEPARATOR) {
-            if let Ok(code) = code_text.trim().parse::<i32>() {
-                return (Some(code), output_text);
-            }
-        }
+    if let Some(rest) = text.strip_prefix(EXIT_CODE_PREFIX)
+        && let Some((code_text, output_text)) = rest.split_once(EXIT_CODE_SEPARATOR)
+        && let Ok(code) = code_text.trim().parse::<i32>()
+    {
+        return (Some(code), output_text);
     }
 
     (Some(0), text)
@@ -431,7 +430,7 @@ mod tests {
     fn prune_tool_results_preserves_existing_summary() {
         let call_id = "call-1";
         let summary = "[bash] ls (exit 0, 1 lines)";
-        let messages = vec![tool_result(call_id, "bash", text_content(summary))];
+        let messages = [tool_result(call_id, "bash", text_content(summary))];
         let AgentMessage::ToolResult(tool_result) = &messages[0] else {
             panic!("expected tool result");
         };

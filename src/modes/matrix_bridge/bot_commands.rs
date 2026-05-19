@@ -371,10 +371,9 @@ pub(crate) fn parse_delegate_duration(s: &str) -> Option<std::time::Duration> {
         (stripped, 'h')
     } else if let Some(stripped) = s.strip_suffix('d') {
         (stripped, 'd')
-    } else if let Some(stripped) = s.strip_suffix('y') {
-        (stripped, 'y')
     } else {
-        return None;
+        let stripped = s.strip_suffix('y')?;
+        (stripped, 'y')
     };
     let num: u64 = num_str.parse().ok()?;
     let secs = match unit {

@@ -737,7 +737,7 @@ mod tests {
             loop {
                 match done_rx.recv().await {
                     Some(TaskResult::PromptDone(_)) => break,
-                    Some(_) => continue,
+                    Some(_) => {}
                     None => panic!("agent task ended before prompt completed"),
                 }
             }

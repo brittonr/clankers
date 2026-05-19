@@ -976,7 +976,7 @@ mod factory_plugin_tests {
             loop {
                 match event_rx.recv().await {
                     Ok(clankers_protocol::DaemonEvent::PluginList { plugins }) => break plugins,
-                    Ok(_) | Err(broadcast::error::RecvError::Lagged(_)) => continue,
+                    Ok(_) | Err(broadcast::error::RecvError::Lagged(_)) => {}
                     Err(error) => panic!("failed waiting for PluginList: {error}"),
                 }
             }
@@ -993,7 +993,7 @@ mod factory_plugin_tests {
             loop {
                 match event_rx.recv().await {
                     Ok(clankers_protocol::DaemonEvent::ToolList { tools }) => break tools,
-                    Ok(_) | Err(broadcast::error::RecvError::Lagged(_)) => continue,
+                    Ok(_) | Err(broadcast::error::RecvError::Lagged(_)) => {}
                     Err(error) => panic!("failed waiting for ToolList: {error}"),
                 }
             }
@@ -1185,6 +1185,10 @@ mod factory_plugin_tests {
     }
 
     #[tokio::test]
+    #[allow(
+        clippy::await_holding_lock,
+        reason = "test asserts plugin manager state then explicitly drops the sync guard before async shutdown"
+    )]
     async fn shared_plugin_host_keeps_disabled_tools_session_local() {
         let dir = tempdir().unwrap();
         crate::plugin::tests::stdio_runtime::write_stdio_plugin_manifest(

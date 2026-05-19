@@ -1,4 +1,17 @@
 //! Configuration loading and path resolution for clankers.
+#![allow(unexpected_cfgs)]
+#![cfg_attr(dylint_lib = "tigerstyle", feature(register_tool), register_tool(tigerstyle))]
+#![cfg_attr(
+    dylint_lib = "tigerstyle",
+    allow(
+        tigerstyle::explicit_defaults,
+        tigerstyle::unbounded_collection_growth,
+        tigerstyle::bool_naming,
+        tigerstyle::ambiguous_params,
+        tigerstyle::float_for_currency,
+        reason = "configuration structures preserve serde defaults and documented TOML surface during Tigerstyle drain"
+    )
+)]
 
 pub mod keybindings;
 pub mod model_roles;

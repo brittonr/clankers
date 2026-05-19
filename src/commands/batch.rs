@@ -1,3 +1,4 @@
+use std::path::Path;
 use std::path::PathBuf;
 use std::process::Stdio;
 
@@ -153,17 +154,17 @@ async fn write_output(path: &PathBuf, rendered: &str, resume: bool) -> Result<()
         existing.push_str(rendered);
         tokio::fs::write(path, existing).await.map_err(|source| Error::Io { source })
     } else {
-        if let Some(parent) = path.parent() {
-            if !parent.as_os_str().is_empty() {
-                tokio::fs::create_dir_all(parent).await.map_err(|source| Error::Io { source })?;
-            }
+        if let Some(parent) = path.parent()
+            && !parent.as_os_str().is_empty()
+        {
+            tokio::fs::create_dir_all(parent).await.map_err(|source| Error::Io { source })?;
         }
         tokio::fs::write(path, rendered).await.map_err(|source| Error::Io { source })
     }
 }
 
-fn manifest_path(output: &PathBuf) -> PathBuf {
-    let mut path = output.clone();
+fn manifest_path(output: &Path) -> PathBuf {
+    let mut path = output.to_path_buf();
     let extension = path
         .extension()
         .and_then(|value| value.to_str())
@@ -182,10 +183,10 @@ async fn read_manifest(path: &PathBuf) -> Result<Option<BatchRunManifest>> {
 }
 
 async fn write_manifest(path: &PathBuf, manifest: &BatchRunManifest) -> Result<()> {
-    if let Some(parent) = path.parent() {
-        if !parent.as_os_str().is_empty() {
-            tokio::fs::create_dir_all(parent).await.map_err(|source| Error::Io { source })?;
-        }
+    if let Some(parent) = path.parent()
+        && !parent.as_os_str().is_empty()
+    {
+        tokio::fs::create_dir_all(parent).await.map_err(|source| Error::Io { source })?;
     }
     let rendered = serde_json::to_string_pretty(manifest).map_err(|source| Error::Json { source })?;
     tokio::fs::write(path, format!("{rendered}\n")).await.map_err(|source| Error::Io { source })

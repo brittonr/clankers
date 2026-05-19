@@ -1,4 +1,6 @@
 //! Core process monitor for tracking child processes and resource usage.
+#![allow(unexpected_cfgs)]
+#![cfg_attr(dylint_lib = "tigerstyle", feature(register_tool), register_tool(tigerstyle))]
 
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -172,7 +174,7 @@ impl ProcessMonitor {
             snapshots: Vec::new(),
             children: Vec::new(),
             peak_rss: 0,
-            start_time: Instant::now(),
+            start_time: process_monitor_instant_now(),
         };
 
         inner.tracked.insert(pid, tracked);
@@ -229,20 +231,20 @@ impl ProcessMonitor {
 
     /// Main poll loop that runs in the background.
     async fn poll_loop(inner: Arc<RwLock<ProcessMonitorInner>>, cancel: CancellationToken) {
-        let poll_interval = {
+        let poll_cadence = {
             let guard = inner.read();
             guard.config.poll_interval
         };
 
-        let mut interval = time::interval(poll_interval);
-        interval.set_missed_tick_behavior(time::MissedTickBehavior::Skip);
+        let mut poll_clock = time::interval(poll_cadence);
+        poll_clock.set_missed_tick_behavior(time::MissedTickBehavior::Skip);
 
         loop {
             tokio::select! {
                 () = cancel.cancelled() => {
                     break;
                 }
-                _ = interval.tick() => {
+                _ = poll_clock.tick() => {
                     Self::poll_once(&inner);
                 }
             }
@@ -256,7 +258,7 @@ impl ProcessMonitor {
         // Refresh all processes to get both tracked PIDs and children
         guard.system.refresh_processes(ProcessesToUpdate::All, true);
 
-        let now = Instant::now();
+        let now = process_monitor_instant_now();
         let max_history = guard.config.max_history;
 
         // First pass: collect samples from sysinfo (immutable system access)
@@ -270,8 +272,8 @@ impl ProcessMonitor {
             children: Vec<u32>,
         }
 
-        let mut samples: Vec<SampleResult> = Vec::new();
-        let mut exited: Vec<(u32, Duration)> = Vec::new();
+        let mut samples: Vec<SampleResult> = Vec::with_capacity(pids.len());
+        let mut exited: Vec<(u32, Duration)> = Vec::with_capacity(pids.len());
 
         for &pid in &pids {
             let sys_pid = Pid::from_u32(pid);
@@ -288,7 +290,8 @@ impl ProcessMonitor {
         }
 
         // Second pass: apply mutations to tracked state
-        let mut events: Vec<ProcessEvent> = Vec::new();
+        let event_budget = samples.len().saturating_add(exited.len());
+        let mut events: Vec<ProcessEvent> = Vec::with_capacity(event_budget);
 
         for sample in &samples {
             if let Some(tracked) = guard.tracked.get_mut(&sample.pid) {
@@ -343,7 +346,7 @@ impl ProcessMonitor {
 
     /// Find all child PIDs of a given parent PID.
     fn find_children(system: &System, parent_pid: u32) -> Vec<u32> {
-        let mut children = Vec::new();
+        let mut children = Vec::with_capacity(system.processes().len().min(16));
         let parent_sys_pid = Pid::from_u32(parent_pid);
 
         for (pid, process) in system.processes() {
@@ -403,6 +406,8 @@ impl clanker_tui_types::ProcessDataSource for ProcessMonitor {
 
 fn tracked_to_snapshot(pid: u32, t: &TrackedProcess) -> clanker_tui_types::ProcessSnapshot {
     let (cpu_percent, rss_bytes) = t.snapshots.last().map(|s| (s.cpu_percent, s.rss_bytes)).unwrap_or((0.0, 0));
+    assert!(pid > 0);
+    assert!(t.peak_rss >= rss_bytes);
     let state = match &t.state {
         ProcessState::Running => clanker_tui_types::ProcessDisplayState::Running,
         ProcessState::Exited { code, wall_time } => clanker_tui_types::ProcessDisplayState::Exited {
@@ -424,6 +429,17 @@ fn tracked_to_snapshot(pid: u32, t: &TrackedProcess) -> clanker_tui_types::Proce
         mem_history: t.snapshots.iter().map(|s| s.rss_bytes as f32).collect(),
         children: t.children.clone(),
     }
+}
+
+#[cfg_attr(
+    dylint_lib = "tigerstyle",
+    allow(
+        tigerstyle::ambient_clock,
+        reason = "process monitor is the shell boundary that samples wall-clock process lifetimes"
+    )
+)]
+fn process_monitor_instant_now() -> Instant {
+    Instant::now()
 }
 
 #[cfg(test)]

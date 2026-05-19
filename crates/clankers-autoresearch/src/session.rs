@@ -3,6 +3,7 @@
 use std::path::Path;
 use std::path::PathBuf;
 
+use chrono::DateTime;
 use chrono::Utc;
 
 use crate::confidence;
@@ -81,7 +82,7 @@ impl ExperimentSession {
         status: ResultStatus,
         description: &str,
     ) -> std::io::Result<RecordOutcome> {
-        self.run_counter += 1;
+        self.run_counter = self.run_counter.saturating_add(1);
 
         let result = ExperimentResult {
             record_type: "result".to_string(),
@@ -92,25 +93,25 @@ impl ExperimentSession {
             status,
             description: description.to_string(),
             asi: None,
-            timestamp: Utc::now(),
+            timestamp: session_timestamp_now(),
         };
 
         jsonl::append_result(&self.log_path, &result)?;
         self.results.push(result);
 
-        let minimize = self.config.is_minimize();
+        let is_minimize = self.config.is_minimize();
 
         // Compute confidence from kept results
         let kept_metrics: Vec<f64> =
             self.results.iter().filter(|r| r.status == ResultStatus::Keep).map(|r| r.metric).collect();
 
-        let conf = confidence::compute_confidence(&kept_metrics, metric, minimize);
+        let conf = confidence::compute_confidence(&kept_metrics, metric, is_minimize);
 
         // Update best
         let is_new_best = match (self.best_metric, status) {
             (None, ResultStatus::Keep) => true,
             (Some(best), ResultStatus::Keep) => {
-                if minimize {
+                if is_minimize {
                     metric < best
                 } else {
                     metric > best
@@ -149,13 +150,24 @@ impl ExperimentSession {
         })
     }
 
-    pub fn kept_count(&self) -> usize {
-        self.results.iter().filter(|r| r.status == ResultStatus::Keep).count()
+    pub fn kept_count(&self) -> u64 {
+        self.results.iter().filter(|r| r.status == ResultStatus::Keep).count() as u64
     }
 
     pub fn total_runs(&self) -> u32 {
         self.run_counter
     }
+}
+
+#[cfg_attr(
+    dylint_lib = "tigerstyle",
+    allow(
+        tigerstyle::ambient_clock,
+        reason = "experiment result recording is a persistence shell boundary"
+    )
+)]
+fn session_timestamp_now() -> DateTime<Utc> {
+    Utc::now()
 }
 
 #[derive(Debug)]
@@ -166,12 +178,12 @@ pub struct RecordOutcome {
     pub confidence: Option<confidence::ConfidenceResult>,
 }
 
-fn compute_best(results: &[ExperimentResult], minimize: bool) -> Option<f64> {
+fn compute_best(results: &[ExperimentResult], is_minimize: bool) -> Option<f64> {
     results
         .iter()
         .filter(|r| r.status == ResultStatus::Keep)
         .map(|r| r.metric)
-        .reduce(|a, b| if minimize { a.min(b) } else { a.max(b) })
+        .reduce(|a, b| if is_minimize { a.min(b) } else { a.max(b) })
 }
 
 #[cfg(test)]

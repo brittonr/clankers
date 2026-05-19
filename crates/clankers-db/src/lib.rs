@@ -12,6 +12,24 @@
 //!
 //! redb is synchronous. Use [`Db::blocking`] to run operations on the
 //! tokio blocking threadpool, avoiding stalls on the async runtime.
+#![allow(unexpected_cfgs)]
+#![cfg_attr(dylint_lib = "tigerstyle", feature(register_tool), register_tool(tigerstyle))]
+#![cfg_attr(
+    dylint_lib = "tigerstyle",
+    allow(
+        tigerstyle::assertion_density,
+        tigerstyle::numeric_units,
+        tigerstyle::acronym_style,
+        tigerstyle::unbounded_collection_growth,
+        tigerstyle::raw_arithmetic_overflow,
+        tigerstyle::usize_in_public_api,
+        tigerstyle::ambiguous_params,
+        tigerstyle::ambient_clock,
+        tigerstyle::float_for_currency,
+        tigerstyle::explicit_defaults,
+        reason = "embedded database APIs preserve stored schema/public query contracts; integration tests cover persistence behavior during Tigerstyle drain"
+    )
+)]
 
 pub mod audit;
 pub mod error;

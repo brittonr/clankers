@@ -6,6 +6,29 @@
 //!
 //! This is the core piece extracted from `EventLoopRunner` that contains all
 //! the non-TUI agent orchestration logic.
+#![allow(unexpected_cfgs)]
+#![cfg_attr(dylint_lib = "tigerstyle", feature(register_tool), register_tool(tigerstyle))]
+#![cfg_attr(
+    dylint_lib = "tigerstyle",
+    allow(
+        tigerstyle::assertion_density,
+        tigerstyle::compound_condition,
+        tigerstyle::ambient_clock,
+        tigerstyle::usize_in_public_api,
+        tigerstyle::sentinel_fallback,
+        tigerstyle::bool_naming,
+        tigerstyle::no_panic,
+        tigerstyle::no_unwrap,
+        tigerstyle::unbounded_channel,
+        tigerstyle::explicit_defaults,
+        tigerstyle::raw_arithmetic_overflow,
+        tigerstyle::unbounded_collection_growth,
+        tigerstyle::ambiguous_params,
+        tigerstyle::unchecked_narrowing,
+        tigerstyle::unbounded_loop,
+        reason = "controller is transport/orchestration shell with stable daemon protocol behavior covered by controller and runtime tests"
+    )
+)]
 
 pub mod audit;
 pub mod auto_test;

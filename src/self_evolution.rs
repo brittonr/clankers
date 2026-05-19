@@ -413,7 +413,7 @@ mod tests {
     fn self_evolution_approval_requires_dry_run_and_confirmation_context() {
         let options = SelfEvolutionApprovalOptions {
             receipt_path: PathBuf::from("receipt.json"),
-            session_id: "".to_string(),
+            session_id: String::new(),
             confirmation_id: "confirm-1".to_string(),
             approver: "reviewer".to_string(),
             dry_run: true,

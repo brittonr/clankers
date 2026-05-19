@@ -394,7 +394,7 @@ pub fn deliver_artifact(
         source: "tool_gateway".to_string(),
         action: "deliver_attempt".to_string(),
         attempt_id: receipt.attempt_id.clone(),
-        status: receipt.status.to_string(),
+        status: receipt.status.clone(),
         artifact_type: receipt.artifact_type.clone(),
         target_kind: receipt.target_kind.clone(),
         safe_path: receipt.safe_path.clone(),

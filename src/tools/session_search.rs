@@ -6,6 +6,7 @@
 use std::collections::HashSet;
 use std::fmt::Write;
 use std::io::BufRead;
+use std::path::Path;
 use std::path::PathBuf;
 
 use async_trait::async_trait;
@@ -485,7 +486,7 @@ fn read_lines(file: &PathBuf) -> Vec<String> {
     reader.lines().map_while(Result::ok).collect()
 }
 
-fn extract_metadata(file: &PathBuf, lines: &[String]) -> SessionMetadata {
+fn extract_metadata(file: &Path, lines: &[String]) -> SessionMetadata {
     let mut metadata = SessionMetadata {
         session_id: file.file_stem().and_then(|s| s.to_str()).unwrap_or("unknown").to_string(),
         date: file

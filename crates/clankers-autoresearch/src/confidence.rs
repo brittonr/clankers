@@ -7,11 +7,13 @@ pub struct ConfidenceResult {
     pub delta: f64,
 }
 
-pub fn compute_confidence(kept_metrics: &[f64], current: f64, minimize: bool) -> Option<ConfidenceResult> {
+pub fn compute_confidence(kept_metrics: &[f64], current: f64, is_minimize: bool) -> Option<ConfidenceResult> {
     if kept_metrics.len() < 3 {
         return None;
     }
 
+    debug_assert!(kept_metrics.len() >= 3);
+    debug_assert!(kept_metrics.iter().all(|metric| metric.is_finite()));
     let n = kept_metrics.len() as f64;
     let mean = kept_metrics.iter().sum::<f64>() / n;
     let variance = kept_metrics.iter().map(|v| (v - mean).powi(2)).sum::<f64>() / (n - 1.0);
@@ -25,13 +27,13 @@ pub fn compute_confidence(kept_metrics: &[f64], current: f64, minimize: bool) ->
         });
     }
 
-    let best = if minimize {
+    let best = if is_minimize {
         kept_metrics.iter().copied().reduce(f64::min)?
     } else {
         kept_metrics.iter().copied().reduce(f64::max)?
     };
 
-    let delta = if minimize { best - current } else { current - best };
+    let delta = if is_minimize { best - current } else { current - best };
 
     let score = delta.abs() / noise_floor;
 

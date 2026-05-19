@@ -17,6 +17,12 @@ pub struct InitExperimentTool {
     definition: ToolDefinition,
 }
 
+impl Default for InitExperimentTool {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl InitExperimentTool {
     pub fn new() -> Self {
         Self {
@@ -75,6 +81,12 @@ impl Tool for InitExperimentTool {
 
 pub struct RunExperimentTool {
     definition: ToolDefinition,
+}
+
+impl Default for RunExperimentTool {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl RunExperimentTool {
@@ -147,6 +159,12 @@ impl Tool for RunExperimentTool {
 
 pub struct LogExperimentTool {
     definition: ToolDefinition,
+}
+
+impl Default for LogExperimentTool {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl LogExperimentTool {

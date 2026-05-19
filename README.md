@@ -428,6 +428,7 @@ Workspace-local crates under `crates/`:
 | `clanker-plugin-sdk` | Extism guest SDK used by plugins |
 | `clanker-router` | Multi-provider routing, fallback, caching, OAuth, RPC |
 | `clanker-tui-types` | Shared TUI event/action/block/display types |
+| `clankers-adapters` | Shell-free embedded SDK adapter bricks, catalog helpers, and product kit fixtures |
 | `clankers-agent` | Agent loop, prompt execution, tool dispatch |
 | `clankers-agent-defs` | Agent definition discovery and loading |
 | `clankers-artifacts` | Content-addressed agent artifact receipts and storage |

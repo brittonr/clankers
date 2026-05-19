@@ -159,7 +159,7 @@ fn count_lines(text: &str) -> usize {
     if text.is_empty() {
         return 0;
     }
-    text.split_inclusive('\n').count() + usize::from(!text.ends_with('\n'))
+    text.lines().count()
 }
 
 #[must_use]
@@ -176,14 +176,16 @@ fn truncate_utf8_by_bytes_and_lines(text: &str, limits: &ToolTruncationLimits) -
         }
         let prefix = utf8_prefix(piece, remaining);
         kept.push_str(prefix);
-        line_count += usize::from(prefix.ends_with('\n'));
+        line_count = line_count.saturating_add(usize::from(prefix.ends_with('\n')));
         if prefix.len() < piece.len() {
             break;
         }
         if !piece.ends_with('\n') {
-            line_count += 1;
+            line_count = line_count.saturating_add(1);
         }
     }
+    debug_assert!(kept.len() <= limits.max_bytes);
+    debug_assert!(count_lines(&kept) <= limits.max_lines);
     kept
 }
 
@@ -366,7 +368,7 @@ mod tests {
 
     #[test]
     fn outcome_variants_are_explicit() {
-        let outcomes = vec![
+        let outcomes = [
             ToolHostOutcome::Succeeded {
                 content: Vec::new(),
                 details: serde_json::json!({}),

@@ -68,17 +68,18 @@ impl ProcessJobIdentityEnvelope {
 
     #[must_use]
     pub fn canonical_bytes(&self) -> Vec<u8> {
-        let mut fields = Vec::new();
-        fields.push(("version".to_string(), self.version.to_string()));
-        fields.push(("domain".to_string(), self.domain.clone()));
-        fields.push(("backend".to_string(), self.backend.label().to_string()));
-        fields.push(("owner.kind".to_string(), owner_kind(&self.owner).to_string()));
-        fields.push(("owner.value".to_string(), owner_value(&self.owner).unwrap_or_default()));
-        fields.push(("command_preview".to_string(), self.command_preview.clone()));
-        fields.push(("cwd.kind".to_string(), cwd_kind(&self.cwd).to_string()));
-        fields.push(("cwd.path".to_string(), cwd_path(&self.cwd).unwrap_or_default()));
-        fields.push(("profile".to_string(), self.profile.clone().unwrap_or_default()));
-        fields.push(("request_nonce".to_string(), self.request_nonce.clone()));
+        let mut fields = vec![
+            ("version".to_string(), self.version.to_string()),
+            ("domain".to_string(), self.domain.clone()),
+            ("backend".to_string(), self.backend.label().to_string()),
+            ("owner.kind".to_string(), owner_kind(&self.owner).to_string()),
+            ("owner.value".to_string(), owner_value(&self.owner).unwrap_or_default()),
+            ("command_preview".to_string(), self.command_preview.clone()),
+            ("cwd.kind".to_string(), cwd_kind(&self.cwd).to_string()),
+            ("cwd.path".to_string(), cwd_path(&self.cwd).unwrap_or_default()),
+            ("profile".to_string(), self.profile.clone().unwrap_or_default()),
+            ("request_nonce".to_string(), self.request_nonce.clone()),
+        ];
         for (key, value) in &self.metadata {
             fields.push((format!("metadata.{key}"), value.clone()));
         }
@@ -934,13 +935,13 @@ impl ProcessJobRetentionPolicy {
                 class: metadata.class,
             };
         }
-        if let Some(retained_until) = metadata.metadata_retained_until {
-            if now < retained_until {
-                return ProcessJobRetentionEligibility::KeepUntil {
-                    id: summary.id.clone(),
-                    retained_until,
-                };
-            }
+        if let Some(retained_until) = metadata.metadata_retained_until
+            && now < retained_until
+        {
+            return ProcessJobRetentionEligibility::KeepUntil {
+                id: summary.id.clone(),
+                retained_until,
+            };
         }
         ProcessJobRetentionEligibility::Eligible {
             id: summary.id.clone(),
@@ -1479,20 +1480,20 @@ fn validate_profile_resources(
     resources: &ProcessJobResourcePolicy,
     policy: &ProjectProcessJobProfilePolicy,
 ) -> Result<(), RuntimeError> {
-    if let (Some(actual), Some(maximum)) = (resources.timeout, policy.max_timeout) {
-        if actual > maximum {
-            return Err(RuntimeError::InvalidTool(format!("process job profile {name} timeout exceeds policy")));
-        }
+    if let (Some(actual), Some(maximum)) = (resources.timeout, policy.max_timeout)
+        && actual > maximum
+    {
+        return Err(RuntimeError::InvalidTool(format!("process job profile {name} timeout exceeds policy")));
     }
-    if let (Some(actual), Some(maximum)) = (resources.memory_max_bytes, policy.max_memory_bytes) {
-        if actual > maximum {
-            return Err(RuntimeError::InvalidTool(format!("process job profile {name} memory exceeds policy")));
-        }
+    if let (Some(actual), Some(maximum)) = (resources.memory_max_bytes, policy.max_memory_bytes)
+        && actual > maximum
+    {
+        return Err(RuntimeError::InvalidTool(format!("process job profile {name} memory exceeds policy")));
     }
-    if let (Some(actual), Some(maximum)) = (resources.cpu_quota_percent, policy.max_cpu_quota_percent) {
-        if actual > maximum {
-            return Err(RuntimeError::InvalidTool(format!("process job profile {name} cpu quota exceeds policy")));
-        }
+    if let (Some(actual), Some(maximum)) = (resources.cpu_quota_percent, policy.max_cpu_quota_percent)
+        && actual > maximum
+    {
+        return Err(RuntimeError::InvalidTool(format!("process job profile {name} cpu quota exceeds policy")));
     }
     Ok(())
 }
@@ -3237,7 +3238,7 @@ mod tests {
         persist_and_deliver_notification(&store, &sink, event.clone())
             .await
             .expect("persist and deliver succeeds");
-        assert_eq!(sink.delivered.lock().expect("sink lock").as_slice(), &[event.event_id.clone()]);
+        assert_eq!(sink.delivered.lock().expect("sink lock").as_slice(), std::slice::from_ref(&event.event_id));
 
         let authorized = ProcessJobCallerScope {
             session_id: Some("sess".to_string()),

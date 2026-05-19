@@ -1549,7 +1549,7 @@ mod tests {
             .await;
 
         let events = controller.drain_events();
-        assert!(events.iter().any(|event| super::is_thinking_ack_message(event)));
+        assert!(events.iter().any(super::is_thinking_ack_message));
         assert!(!events.iter().any(|event| matches!(event, DaemonEvent::ThinkingLevelChanged { .. })));
     }
 
@@ -1560,7 +1560,7 @@ mod tests {
         controller.handle_command(SessionCommand::CycleThinkingLevel).await;
 
         let events = controller.drain_events();
-        assert!(events.iter().any(|event| super::is_thinking_ack_message(event)));
+        assert!(events.iter().any(super::is_thinking_ack_message));
         assert!(!events.iter().any(|event| matches!(event, DaemonEvent::ThinkingLevelChanged { .. })));
     }
 
@@ -1764,7 +1764,7 @@ mod tests {
         attached.tool_info = tool_rows;
 
         run_standalone_slash(&mut standalone, "/tools disable bash");
-        run_attach_slash_through_daemon(&mut attached, "/tools disable bash").await;
+        Box::pin(run_attach_slash_through_daemon(&mut attached, "/tools disable bash")).await;
 
         assert_eq!(attached.disabled_tools, standalone.disabled_tools);
         assert_eq!(conversation_snapshot(&attached), conversation_snapshot(&standalone));
@@ -1776,7 +1776,7 @@ mod tests {
         let mut attached = test_app();
 
         run_standalone_slash(&mut standalone, "/compact");
-        run_attach_slash_through_daemon(&mut attached, "/compact").await;
+        Box::pin(run_attach_slash_through_daemon(&mut attached, "/compact")).await;
 
         assert_eq!(conversation_snapshot(&attached), conversation_snapshot(&standalone));
     }
@@ -1787,7 +1787,7 @@ mod tests {
         let mut attached = test_app();
 
         run_standalone_slash(&mut standalone, "/compress");
-        run_attach_slash_through_daemon(&mut attached, "/compress").await;
+        Box::pin(run_attach_slash_through_daemon(&mut attached, "/compress")).await;
 
         assert_eq!(conversation_snapshot(&attached), conversation_snapshot(&standalone));
     }
@@ -1798,7 +1798,7 @@ mod tests {
         let mut attached = test_app();
 
         run_standalone_slash(&mut standalone, "/think high");
-        run_attach_slash_through_daemon(&mut attached, "/think high").await;
+        Box::pin(run_attach_slash_through_daemon(&mut attached, "/think high")).await;
 
         assert_eq!(attached.thinking_enabled, standalone.thinking_enabled);
         assert_eq!(attached.thinking_level, standalone.thinking_level);
@@ -1811,7 +1811,7 @@ mod tests {
         let mut attached = test_app();
 
         run_standalone_slash(&mut standalone, "/think");
-        run_attach_slash_through_daemon(&mut attached, "/think").await;
+        Box::pin(run_attach_slash_through_daemon(&mut attached, "/think")).await;
 
         assert_eq!(attached.thinking_enabled, standalone.thinking_enabled);
         assert_eq!(attached.thinking_level, standalone.thinking_level);

@@ -2,6 +2,21 @@
 //!
 //! Dynamically selects the appropriate model role based on task complexity
 //! signals: token count, tool usage, keyword hints, and user preferences.
+#![allow(unexpected_cfgs)]
+#![cfg_attr(dylint_lib = "tigerstyle", feature(register_tool), register_tool(tigerstyle))]
+#![cfg_attr(
+    dylint_lib = "tigerstyle",
+    allow(
+        tigerstyle::assertion_density,
+        tigerstyle::multi_lock_ordering,
+        tigerstyle::explicit_defaults,
+        tigerstyle::float_for_currency,
+        tigerstyle::raw_arithmetic_overflow,
+        tigerstyle::compound_condition,
+        tigerstyle::unbounded_collection_growth,
+        reason = "model selection preserves public cost/routing policy shapes; focused tests cover routing behavior during Tigerstyle drain"
+    )
+)]
 
 pub mod config;
 pub mod cost_tracker;

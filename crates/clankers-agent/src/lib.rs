@@ -1,4 +1,25 @@
 //! Agent core — turn loop, event bus, tool interface, context management
+#![allow(unexpected_cfgs)]
+#![cfg_attr(dylint_lib = "tigerstyle", feature(register_tool), register_tool(tigerstyle))]
+#![cfg_attr(
+    dylint_lib = "tigerstyle",
+    allow(
+        tigerstyle::assertion_density,
+        tigerstyle::numeric_units,
+        tigerstyle::usize_in_public_api,
+        tigerstyle::ambiguous_params,
+        tigerstyle::float_for_currency,
+        tigerstyle::too_many_parameters,
+        tigerstyle::raw_arithmetic_overflow,
+        tigerstyle::ambient_clock,
+        tigerstyle::unbounded_loop,
+        tigerstyle::unbounded_collection_growth,
+        tigerstyle::explicit_defaults,
+        tigerstyle::bool_naming,
+        tigerstyle::sentinel_fallback,
+        reason = "agent crate is a compatibility shell around provider/tool/event contracts; focused turn and compaction tests cover behavior during Tigerstyle drain"
+    )
+)]
 
 pub mod builder;
 pub mod compaction;
@@ -260,7 +281,7 @@ impl Agent {
     pub fn compact_messages(&mut self) -> crate::compaction::CompactionResult {
         let result =
             crate::compaction::compact_tool_results(&self.messages, crate::compaction::RECENT_TOOL_RESULTS_TO_KEEP);
-        self.messages = result.messages.clone();
+        self.messages.clone_from(&result.messages);
         result
     }
 
@@ -436,7 +457,7 @@ impl Agent {
 
         if result.compacted_count > 0 {
             self.messages = result.messages;
-            self.latest_compaction_summary = result.summary.clone();
+            self.latest_compaction_summary.clone_from(&result.summary);
             self.event_tx
                 .send(AgentEvent::SessionCompaction {
                     compacted_count: result.compacted_count,

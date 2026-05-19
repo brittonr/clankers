@@ -1300,7 +1300,7 @@ mod tests {
             thinking: None,
             no_cache: false,
             cache_ttl: None,
-            extra_params: Default::default(),
+            extra_params: HashMap::default(),
         };
 
         let oai_req = build_openai_request(&request);
@@ -1325,7 +1325,7 @@ mod tests {
             thinking: None,
             no_cache: false,
             cache_ttl: None,
-            extra_params: Default::default(),
+            extra_params: HashMap::default(),
         };
         let oai_req = build_openai_request(&request);
         assert!(oai_req.tools.is_none());

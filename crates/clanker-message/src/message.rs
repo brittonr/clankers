@@ -79,7 +79,7 @@ pub enum Content {
     Thinking {
         thinking: String,
         /// Opaque signature returned by Anthropic; must be echoed back verbatim.
-        #[serde(default, skip_serializing_if = "String::is_empty")]
+        #[serde(default = "empty_thinking_signature", skip_serializing_if = "String::is_empty")]
         signature: String,
     },
     ToolUse {
@@ -93,6 +93,10 @@ pub enum Content {
         #[serde(skip_serializing_if = "Option::is_none")]
         is_error: Option<bool>,
     },
+}
+
+fn empty_thinking_signature() -> String {
+    String::new()
 }
 
 /// Image source (base64-encoded or URL)

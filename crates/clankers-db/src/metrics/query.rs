@@ -1,5 +1,7 @@
 //! High-level metrics query API.
 
+use std::cmp::Reverse;
+
 use serde::Serialize;
 
 use super::storage::MetricsStore;
@@ -105,9 +107,9 @@ impl MetricsStore<'_> {
 
 fn session_to_report(s: &SessionMetricsSummary) -> CurrentSessionReport {
     let mut top_models: Vec<_> = s.models.top().iter().map(|(k, v)| (k.clone(), *v)).collect();
-    top_models.sort_by(|a, b| b.1.cmp(&a.1));
+    top_models.sort_by_key(|entry| Reverse(entry.1));
     let mut top_tools: Vec<_> = s.tools.top().iter().map(|(k, v)| (k.clone(), *v)).collect();
-    top_tools.sort_by(|a, b| b.1.cmp(&a.1));
+    top_tools.sort_by_key(|entry| Reverse(entry.1));
 
     CurrentSessionReport {
         session_id: s.session_id.clone(),

@@ -120,7 +120,7 @@ fn pcm16_to_f32_conversion_range() {
     // i16::MAX → ~1.0, i16::MIN → -1.0, 0 → 0.0
     let cases: Vec<(i16, f32)> = vec![
         (0, 0.0),
-        (i16::MAX, i16::MAX as f32 / 32768.0),
+        (i16::MAX, f32::from(i16::MAX) / 32768.0),
         (i16::MIN, -1.0),
         (16384, 0.5),
         (-16384, -0.5),

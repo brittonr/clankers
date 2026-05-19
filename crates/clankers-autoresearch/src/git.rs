@@ -7,7 +7,7 @@ pub fn create_branch(cwd: &Path, tag: &str) -> std::io::Result<()> {
     let branch = format!("autoresearch/{tag}");
     let status = Command::new("git").args(["checkout", "-b", &branch]).current_dir(cwd).status()?;
     if !status.success() {
-        return Err(std::io::Error::new(std::io::ErrorKind::Other, format!("git checkout -b {branch} failed")));
+        return Err(std::io::Error::other(format!("git checkout -b {branch} failed")));
     }
     Ok(())
 }
@@ -15,16 +15,18 @@ pub fn create_branch(cwd: &Path, tag: &str) -> std::io::Result<()> {
 pub fn commit(cwd: &Path, message: &str) -> std::io::Result<String> {
     let status = Command::new("git").args(["add", "-A"]).current_dir(cwd).status()?;
     if !status.success() {
-        return Err(std::io::Error::new(std::io::ErrorKind::Other, "git add -A failed"));
+        return Err(std::io::Error::other("git add -A failed"));
     }
     let status = Command::new("git").args(["commit", "-m", message, "--allow-empty"]).current_dir(cwd).status()?;
     if !status.success() {
-        return Err(std::io::Error::new(std::io::ErrorKind::Other, "git commit failed"));
+        return Err(std::io::Error::other("git commit failed"));
     }
     short_hash(cwd)
 }
 
 pub fn revert_preserving(cwd: &Path, preserve: &[&str]) -> std::io::Result<()> {
+    debug_assert!(cwd.is_absolute() || !cwd.as_os_str().is_empty());
+    debug_assert!(preserve.iter().all(|file| !file.is_empty()));
     // Stash preserved files
     for file in preserve {
         let path = cwd.join(file);
@@ -37,7 +39,7 @@ pub fn revert_preserving(cwd: &Path, preserve: &[&str]) -> std::io::Result<()> {
     // Revert tracked changes.
     let status = Command::new("git").args(["checkout", "--", "."]).current_dir(cwd).status()?;
     if !status.success() {
-        return Err(std::io::Error::new(std::io::ErrorKind::Other, "git checkout -- . failed"));
+        return Err(std::io::Error::other("git checkout -- . failed"));
     }
 
     // Remove untracked experiment artifacts while keeping backups.
@@ -46,7 +48,7 @@ pub fn revert_preserving(cwd: &Path, preserve: &[&str]) -> std::io::Result<()> {
         .current_dir(cwd)
         .status()?;
     if !status.success() {
-        return Err(std::io::Error::new(std::io::ErrorKind::Other, "git clean -fd failed"));
+        return Err(std::io::Error::other("git clean -fd failed"));
     }
 
     // Restore preserved files
@@ -67,7 +69,7 @@ pub fn revert_preserving(cwd: &Path, preserve: &[&str]) -> std::io::Result<()> {
 pub fn short_hash(cwd: &Path) -> std::io::Result<String> {
     let output = Command::new("git").args(["rev-parse", "--short=7", "HEAD"]).current_dir(cwd).output()?;
     if !output.status.success() {
-        return Err(std::io::Error::new(std::io::ErrorKind::Other, "git rev-parse failed"));
+        return Err(std::io::Error::other("git rev-parse failed"));
     }
     Ok(String::from_utf8_lossy(&output.stdout).trim().to_string())
 }

@@ -21,7 +21,7 @@ use crate::token::Audience;
 use crate::token::CapabilityToken;
 
 /// Maximum credential size: bounded by delegation depth × token size.
-pub const MAX_CREDENTIAL_SIZE: usize = MAX_DELEGATION_DEPTH_USIZE * MAX_TOKEN_SIZE_USIZE;
+pub const MAX_CREDENTIAL_SIZE: usize = MAX_DELEGATION_DEPTH_USIZE.saturating_mul(MAX_TOKEN_SIZE_USIZE);
 
 /// A self-contained credential for offline chain verification.
 ///

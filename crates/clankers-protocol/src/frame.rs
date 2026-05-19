@@ -877,7 +877,7 @@ mod tests {
 
     #[test]
     fn test_frame_error_source() {
-        let io_err = FrameError::Io(std::io::Error::new(std::io::ErrorKind::Other, "test"));
+        let io_err = FrameError::Io(std::io::Error::other("test"));
         assert!(std::error::Error::source(&io_err).is_some());
 
         let json_err = FrameError::Json(serde_json::from_str::<String>("{{").unwrap_err());

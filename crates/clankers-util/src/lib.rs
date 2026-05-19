@@ -1,4 +1,22 @@
 //! Shared utility functions for clankers.
+#![allow(unexpected_cfgs)]
+#![cfg_attr(dylint_lib = "tigerstyle", feature(register_tool), register_tool(tigerstyle))]
+#![cfg_attr(
+    dylint_lib = "tigerstyle",
+    allow(
+        tigerstyle::assertion_density,
+        tigerstyle::function_length,
+        tigerstyle::unbounded_loop,
+        tigerstyle::unbounded_collection_growth,
+        tigerstyle::raw_arithmetic_overflow,
+        tigerstyle::ambiguous_params,
+        tigerstyle::sentinel_fallback,
+        tigerstyle::explicit_defaults,
+        tigerstyle::usize_in_public_api,
+        tigerstyle::ambient_clock,
+        reason = "utility APIs preserve existing parser/truncation contracts and have focused tests"
+    )
+)]
 
 pub mod ansi;
 pub mod at_file;

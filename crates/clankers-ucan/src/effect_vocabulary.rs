@@ -176,12 +176,14 @@ fn normalize_path_segments(path: &str) -> VocabularyResult<String> {
 }
 
 fn percent_encode(bytes: &[u8]) -> String {
+    use std::fmt::Write;
+
     let mut encoded = String::new();
     for byte in bytes {
         if is_unreserved(*byte) {
             encoded.push(char::from(*byte));
         } else {
-            encoded.push_str(&format!("%{byte:02X}"));
+            let _ = write!(encoded, "%{byte:02X}");
         }
     }
     encoded

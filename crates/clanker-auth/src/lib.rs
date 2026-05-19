@@ -1,3 +1,6 @@
+#![allow(unexpected_cfgs)]
+#![cfg_attr(dylint_lib = "tigerstyle", feature(register_tool), register_tool(tigerstyle))]
+
 //! UCAN-inspired capability tokens over iroh Ed25519 identity.
 //!
 //! Generic token infrastructure for signing, verifying, and delegating

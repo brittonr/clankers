@@ -474,7 +474,7 @@ async fn build_providers(cli: &Cli, auth_store: &AuthStore, auth_paths: &AuthSto
                 openai_codex::catalog_for_active_account_with_manager(auth_store, &account, Some(manager.as_ref()))
                     .await;
             if !models.is_empty() {
-                providers.push(OpenAICodexProvider::new(manager, models, account));
+                providers.push(OpenAICodexProvider::into_provider(manager, models, account));
             }
         }
     }

@@ -110,7 +110,7 @@ async fn test_complete_routes_correctly() {
         thinking: None,
         no_cache: false,
         cache_ttl: None,
-        extra_params: Default::default(),
+        extra_params: HashMap::default(),
     };
 
     router.complete(request, tx).await.unwrap();
@@ -285,7 +285,7 @@ async fn test_fallback_on_retryable_error() {
         thinking: None,
         no_cache: false,
         cache_ttl: None,
-        extra_params: Default::default(),
+        extra_params: HashMap::default(),
     };
 
     // Should succeed via fallback to model-b
@@ -315,7 +315,7 @@ async fn test_no_fallback_on_auth_error() {
         thinking: None,
         no_cache: false,
         cache_ttl: None,
-        extra_params: Default::default(),
+        extra_params: HashMap::default(),
     };
 
     // Should fail immediately — auth errors are not retryable
@@ -349,7 +349,7 @@ async fn test_fallback_skips_unhealthy_providers() {
         thinking: None,
         no_cache: false,
         cache_ttl: None,
-        extra_params: Default::default(),
+        extra_params: HashMap::default(),
     };
 
     // model-a fails (retryable), model-b in cooldown, model-c succeeds
@@ -384,7 +384,7 @@ async fn test_primary_in_cooldown_skips_to_fallback() {
         thinking: None,
         no_cache: false,
         cache_ttl: None,
-        extra_params: Default::default(),
+        extra_params: HashMap::default(),
     };
 
     // model-a skipped (cooldown), model-b succeeds
@@ -414,7 +414,7 @@ async fn test_all_fallbacks_exhausted() {
         thinking: None,
         no_cache: false,
         cache_ttl: None,
-        extra_params: Default::default(),
+        extra_params: HashMap::default(),
     };
 
     // Both fail → returns last error
@@ -439,7 +439,7 @@ async fn test_no_fallback_configured_returns_error() {
         thinking: None,
         no_cache: false,
         cache_ttl: None,
-        extra_params: Default::default(),
+        extra_params: HashMap::default(),
     };
 
     let err = router.complete(request, tx).await.unwrap_err();
@@ -546,7 +546,7 @@ async fn test_complete_records_usage() {
         thinking: None,
         no_cache: false,
         cache_ttl: None,
-        extra_params: Default::default(),
+        extra_params: HashMap::default(),
     };
     router.complete(request, tx).await.unwrap();
     while rx.recv().await.is_some() {}
@@ -573,7 +573,7 @@ async fn test_complete_records_request_log() {
         thinking: None,
         no_cache: false,
         cache_ttl: None,
-        extra_params: Default::default(),
+        extra_params: HashMap::default(),
     };
     router.complete(request, tx).await.unwrap();
     while rx.recv().await.is_some() {}
@@ -602,7 +602,7 @@ async fn test_cache_write_back_and_hit() {
         thinking: None,
         no_cache: false,
         cache_ttl: None,
-        extra_params: Default::default(),
+        extra_params: HashMap::default(),
     };
     router.complete(request.clone(), tx1).await.unwrap();
     let mut first_events = Vec::new();
@@ -655,7 +655,7 @@ async fn test_fallback_records_rate_limit_error() {
         thinking: None,
         no_cache: false,
         cache_ttl: None,
-        extra_params: Default::default(),
+        extra_params: HashMap::default(),
     };
 
     router.complete(request, tx).await.unwrap();

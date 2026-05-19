@@ -166,12 +166,12 @@ mod tests {
 
     #[test]
     fn extract_from_multiline_text() {
-        let text = r#"
+        let text = r"
 building '/nix/store/00bgd045z0d4icpbc2yyz4gx48ak44la-foo.drv'...
 fetching path '/nix/store/vxjiwkjkn7x4079qvh1jkl5pn05j2aw0-bar-1.0'
 some other output
 /nix/store/00bgd045z0d4icpbc2yyz4gx48ak44la-foo.drv
-"#;
+";
         let paths = extract_store_paths(text);
         assert_eq!(paths.len(), 2);
         assert!(paths[0].is_derivation);

@@ -115,6 +115,10 @@ pub fn render_image_to_terminal(
 /// `m=1` on continuation chunks and `m=0` on the final chunk.
 ///
 /// Reference: <https://sw.kovidgoyal.net/kitty/graphics-protocol/>
+#[cfg_attr(
+    dylint_lib = "tigerstyle",
+    allow(tigerstyle::no_unwrap, reason = "base64 output is always valid UTF-8")
+)]
 fn render_kitty(data: &[u8], max_width: u16, max_height: u16) -> io::Result<usize> {
     let encoded = BASE64.encode(data);
     let mut tty = open_tty()?;

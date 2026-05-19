@@ -631,6 +631,10 @@ pub(crate) fn write_stdio_plugin_manifest_with_policy(
     );
 }
 
+#[allow(
+    clippy::too_many_arguments,
+    reason = "test fixture writer mirrors manifest knobs explicitly"
+)]
 pub(crate) fn write_stdio_plugin_manifest_with_restricted_policy(
     dir: &Path,
     name: &str,

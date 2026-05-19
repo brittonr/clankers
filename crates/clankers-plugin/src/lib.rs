@@ -2,6 +2,28 @@
 //!
 //! Core plugin manager, manifest loading, WASM execution, sandboxing,
 //! host functions, and UI action protocol.
+#![allow(unexpected_cfgs)]
+#![cfg_attr(dylint_lib = "tigerstyle", feature(register_tool), register_tool(tigerstyle))]
+#![cfg_attr(
+    dylint_lib = "tigerstyle",
+    allow(
+        tigerstyle::assertion_density,
+        tigerstyle::numeric_units,
+        tigerstyle::function_length,
+        tigerstyle::explicit_defaults,
+        tigerstyle::ambient_clock,
+        tigerstyle::no_unwrap,
+        tigerstyle::unbounded_channel,
+        tigerstyle::ambiguous_params,
+        tigerstyle::too_many_parameters,
+        tigerstyle::bool_naming,
+        tigerstyle::unbounded_loop,
+        tigerstyle::unbounded_collection_growth,
+        tigerstyle::unchecked_narrowing,
+        tigerstyle::usize_in_public_api,
+        reason = "plugin runtime preserves manifest/stdio/sandbox compatibility; existing runtime and manifest tests cover behavior during Tigerstyle drain"
+    )
+)]
 
 pub mod bridge;
 pub mod hooks;

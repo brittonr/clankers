@@ -1781,9 +1781,11 @@ mod tests {
                         && cumulative_usage.output_tokens == EXPECTED_USAGE_OUTPUT;
                 }
                 Ok(_) => {}
-                Err(tokio::sync::broadcast::error::TryRecvError::Empty)
-                | Err(tokio::sync::broadcast::error::TryRecvError::Closed) => break,
-                Err(tokio::sync::broadcast::error::TryRecvError::Lagged(_)) => continue,
+                Err(
+                    tokio::sync::broadcast::error::TryRecvError::Empty
+                    | tokio::sync::broadcast::error::TryRecvError::Closed,
+                ) => break,
+                Err(tokio::sync::broadcast::error::TryRecvError::Lagged(_)) => {}
             }
         }
         assert!(saw_model_change);
@@ -2472,9 +2474,11 @@ mod tests {
             match rx.try_recv() {
                 Ok(AgentEvent::SystemMessage { message }) => messages.push(message),
                 Ok(_) => {}
-                Err(tokio::sync::broadcast::error::TryRecvError::Lagged(_)) => continue,
-                Err(tokio::sync::broadcast::error::TryRecvError::Empty)
-                | Err(tokio::sync::broadcast::error::TryRecvError::Closed) => break,
+                Err(tokio::sync::broadcast::error::TryRecvError::Lagged(_)) => {}
+                Err(
+                    tokio::sync::broadcast::error::TryRecvError::Empty
+                    | tokio::sync::broadcast::error::TryRecvError::Closed,
+                ) => break,
             }
         }
         messages

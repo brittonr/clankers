@@ -417,8 +417,10 @@ mod accepted_engine_prompt_tests {
 
     #[test]
     fn accepted_engine_prompt_rejects_core_rejection() {
-        let mut busy = CoreState::default();
-        busy.busy = true;
+        let busy = CoreState {
+            busy: true,
+            ..Default::default()
+        };
         let outcome = clankers_core::reduce(
             &busy,
             &CoreInput::PromptRequested(PromptRequest {

@@ -253,7 +253,7 @@ pub struct CanonicalArtifactEnvelope {
     /// Normalized semantic payload.
     pub payload: Value,
     /// Content hashes this artifact depends on, sorted and deduplicated.
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    #[serde(default = "Vec::new", skip_serializing_if = "Vec::is_empty")]
     pub dependencies: Vec<ArtifactHash>,
 }
 
@@ -469,7 +469,7 @@ impl ReceiptArtifactRef {
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ReceiptArtifacts {
     /// Model/tool/session/review artifact references.
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    #[serde(default = "Vec::new", skip_serializing_if = "Vec::is_empty")]
     pub artifacts: Vec<ReceiptArtifactRef>,
 }
 
@@ -499,7 +499,7 @@ pub struct ArtifactInspectSummary {
     /// Redaction policy applied to inspect output.
     pub redaction: RedactionClass,
     /// Dependency hashes referenced by this artifact.
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    #[serde(default = "Vec::new", skip_serializing_if = "Vec::is_empty")]
     pub dependencies: Vec<ArtifactHash>,
     /// Payload only when redaction policy permits safe display.
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -544,13 +544,13 @@ impl PureCacheKey {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct DeterministicInputDeclaration {
     /// Artifact inputs consumed by the operation.
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    #[serde(default = "Vec::new", skip_serializing_if = "Vec::is_empty")]
     pub artifact_hashes: Vec<ArtifactHash>,
     /// File content hashes consumed by the operation.
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    #[serde(default = "Vec::new", skip_serializing_if = "Vec::is_empty")]
     pub file_input_hashes: Vec<ArtifactHash>,
     /// Environment variable names explicitly admitted as deterministic inputs.
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    #[serde(default = "Vec::new", skip_serializing_if = "Vec::is_empty")]
     pub env_allowlist: Vec<String>,
     /// Tool or operation version string.
     pub tool_version: String,
@@ -608,7 +608,7 @@ pub struct CacheEligibility {
     /// Computed key when eligible.
     pub key: Option<PureCacheKey>,
     /// Denied effect classes, empty when eligible.
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    #[serde(default = "Vec::new", skip_serializing_if = "Vec::is_empty")]
     pub denied_effects: Vec<EffectClass>,
 }
 
@@ -649,7 +649,7 @@ pub struct PureCacheReceipt {
     /// Whether an existing result was reused.
     pub hit: bool,
     /// Denied effects when cache use was blocked.
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    #[serde(default = "Vec::new", skip_serializing_if = "Vec::is_empty")]
     pub denied_effects: Vec<EffectClass>,
 }
 
@@ -757,7 +757,20 @@ fn map_not_found(error: io::Error, hash: ArtifactHash) -> ArtifactStoreError {
 }
 
 fn validate_name(name: &str) -> Result<(), ArtifactStoreError> {
-    if name.is_empty() || name.contains('/') || name.contains('\\') || Path::new(name).components().count() != 1 {
+    let is_empty_name = name.is_empty();
+    let has_forward_slash = name.contains('/');
+    let has_backward_slash = name.contains('\\');
+    let is_single_component = Path::new(name).components().count() == 1;
+    if is_empty_name {
+        return Err(ArtifactStoreError::UnsafeName { name: name.to_owned() });
+    }
+    if has_forward_slash {
+        return Err(ArtifactStoreError::UnsafeName { name: name.to_owned() });
+    }
+    if has_backward_slash {
+        return Err(ArtifactStoreError::UnsafeName { name: name.to_owned() });
+    }
+    if !is_single_component {
         return Err(ArtifactStoreError::UnsafeName { name: name.to_owned() });
     }
     Ok(())
@@ -1158,7 +1171,8 @@ mod tests {
         ];
 
         for (kind, redaction, payload, expected_hash) in fixtures {
-            let (_, hash) = canonicalize_artifact(kind, redaction, payload, []).expect(kind.as_str());
+            let (_, hash) =
+                canonicalize_artifact(kind, redaction, payload, []).unwrap_or_else(|_| panic!("{}", kind.as_str()));
             assert_eq!(hash.to_string(), expected_hash, "golden fixture for {}", kind.as_str());
         }
     }

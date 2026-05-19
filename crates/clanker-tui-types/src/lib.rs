@@ -1,3 +1,5 @@
+#![cfg_attr(dylint_lib = "tigerstyle", feature(register_tool), register_tool(tigerstyle))]
+
 //! Shared types for terminal-agent TUI boundaries.
 //!
 //! This crate contains types that flow between the TUI rendering layer and

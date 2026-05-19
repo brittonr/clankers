@@ -18,6 +18,15 @@
 //! # Ok(())
 //! # }
 //! ```
+#![allow(unexpected_cfgs)]
+#![cfg_attr(dylint_lib = "tigerstyle", feature(register_tool), register_tool(tigerstyle))]
+#![cfg_attr(
+    dylint_lib = "tigerstyle",
+    allow(
+        tigerstyle::ambiguous_params,
+        reason = "TTS provider helper constructors mirror provider/name DTO fields"
+    )
+)]
 
 pub mod error;
 pub mod provider;

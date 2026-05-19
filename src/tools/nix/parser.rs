@@ -501,7 +501,7 @@ pub fn shorten_url(url: &str) -> String {
     {
         return format!(
             "github:{}",
-            &rest[..GITHUB_URL_TRUNCATE_AT]
+            rest[..GITHUB_URL_TRUNCATE_AT]
                 .rsplit_once('/')
                 .map(|(l, _)| l)
                 .unwrap_or(&rest[..GITHUB_URL_TRUNCATE_AT])

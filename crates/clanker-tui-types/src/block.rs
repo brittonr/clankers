@@ -15,7 +15,7 @@ pub const CANONICAL_BLOCK_ENVELOPE_VERSION_V1: u8 = 1;
 #[cfg_attr(
     dylint_lib = "tigerstyle",
     allow(
-        ambient_clock,
+        tigerstyle::ambient_clock,
         reason = "synthetic conversation blocks still originate at the shell boundary"
     )
 )]
@@ -58,7 +58,7 @@ impl ConversationBlock {
     #[cfg_attr(
         dylint_lib = "tigerstyle",
         allow(
-            usize_in_public_api,
+            tigerstyle::usize_in_public_api,
             reason = "conversation block IDs are tree indexes shared with existing TUI code"
         )
     )]
@@ -81,7 +81,8 @@ impl ConversationBlock {
     #[cfg_attr(
         dylint_lib = "tigerstyle",
         allow(
-            ambient_clock,
+            tigerstyle::ambient_clock,
+            tigerstyle::usize_in_public_api,
             reason = "synthetic preview/test blocks do not have persisted message timestamps"
         )
     )]

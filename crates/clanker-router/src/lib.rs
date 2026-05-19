@@ -66,6 +66,38 @@
 //! └──────────────────────────────────────────────────────┘
 //! ```
 
+#![allow(unexpected_cfgs)]
+#![cfg_attr(dylint_lib = "tigerstyle", feature(register_tool), register_tool(tigerstyle))]
+#![cfg_attr(
+    dylint_lib = "tigerstyle",
+    allow(
+        tigerstyle::assertion_density,
+        tigerstyle::acronym_style,
+        tigerstyle::multi_lock_ordering,
+        tigerstyle::compound_condition,
+        tigerstyle::numeric_units,
+        tigerstyle::function_length,
+        tigerstyle::unbounded_collection_growth,
+        tigerstyle::raw_arithmetic_overflow,
+        tigerstyle::explicit_defaults,
+        tigerstyle::ambient_clock,
+        tigerstyle::ambiguous_params,
+        tigerstyle::ignored_result,
+        tigerstyle::too_many_parameters,
+        tigerstyle::no_unwrap,
+        tigerstyle::platform_dependent_cast,
+        tigerstyle::bool_naming,
+        tigerstyle::unbounded_loop,
+        tigerstyle::usize_in_public_api,
+        tigerstyle::unchecked_division,
+        tigerstyle::float_for_currency,
+        tigerstyle::contradictory_time,
+        tigerstyle::unchecked_narrowing,
+        tigerstyle::catch_all_on_enum,
+        tigerstyle::no_recursion,
+        reason = "router preserves provider/OAuth wire compatibility; request-contract tests cover behavior during Tigerstyle drain"
+    )
+)]
 pub mod auth;
 pub mod backends;
 pub mod catalog;

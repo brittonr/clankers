@@ -95,10 +95,7 @@ impl<C: Cap> TokenBuilder<C> {
     /// Build and sign the token.
     pub fn build(self) -> Result<CapabilityToken<C>, AuthError> {
         if self.capabilities.len() > MAX_CAPABILITIES_PER_TOKEN_USIZE {
-            let count = match u32::try_from(self.capabilities.len()) {
-                Ok(count) => count,
-                Err(_) => u32::MAX,
-            };
+            let count = u32::try_from(self.capabilities.len()).unwrap_or(MAX_CAPABILITIES_PER_TOKEN.saturating_add(1));
             return Err(AuthError::TooManyCapabilities {
                 count,
                 max: MAX_CAPABILITIES_PER_TOKEN,
@@ -143,7 +140,7 @@ impl<C: Cap> TokenBuilder<C> {
             self.audience,
             self.capabilities,
             now,
-            now + self.lifetime.as_secs(),
+            now.saturating_add(self.lifetime.as_secs()),
             self.nonce,
             self.parent.as_ref().map(|p| p.hash()).transpose()?,
             delegation_depth,
@@ -163,6 +160,9 @@ impl<C: Cap> TokenBuilder<C> {
 /// Signs everything except the signature field itself.
 pub fn bytes_to_sign<C: Cap>(token: &CapabilityToken<C>) -> Result<Vec<u8>, AuthError> {
     let mut bytes = Vec::with_capacity(SIGNING_BUFFER_BYTES);
+
+    assert!(token.version > 0);
+    assert!(token.expires_at >= token.issued_at);
 
     bytes.push(token.version);
     bytes.extend_from_slice(token.issuer.as_bytes());
@@ -186,6 +186,7 @@ pub fn bytes_to_sign<C: Cap>(token: &CapabilityToken<C>) -> Result<Vec<u8>, Auth
     bytes.push(token.delegation_depth);
 
     assert!(bytes.len() > MIN_SIGNING_TOKEN_BYTES);
+    assert!(bytes.len() <= bytes.capacity());
 
     Ok(bytes)
 }

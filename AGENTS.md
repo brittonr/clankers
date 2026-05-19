@@ -10,7 +10,7 @@ cargo build --release          # release build
 cargo nextest run              # run tests (preferred over cargo test)
 cargo clippy -- -D warnings    # lint
 ./scripts/verify.sh            # repo validation rails (verus/tracey + no_std core bundle)
-./xtask/tigerstyle.sh          # tigerstyle dylint run (pulls pinned tigerstyle-rs over SSH)
+./xtask/tigerstyle.sh          # tigerstyle dylint run (pulls pinned Octet Tiger Style over SSH)
 ```
 
 ### Architecture

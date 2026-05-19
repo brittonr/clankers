@@ -151,7 +151,7 @@ impl StreamAccumulator {
     }
 
     pub fn finish(&self) -> Result<StreamFoldResult, StreamAccumulatorError> {
-        let mut content = Vec::new();
+        let mut content = Vec::with_capacity(self.blocks.len());
         for (index, block) in &self.blocks {
             content.push(block_to_content(*index, block)?);
         }

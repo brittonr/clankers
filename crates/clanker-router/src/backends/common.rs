@@ -373,7 +373,7 @@ mod tests {
 
         let event2 = SseEvent {
             event_type: Some("ping".into()),
-            data: "".to_string(),
+            data: String::new(),
         };
         assert_eq!(event2.event_type(), "ping");
     }

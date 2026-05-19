@@ -1,3 +1,6 @@
+#![allow(unexpected_cfgs)]
+#![cfg_attr(dylint_lib = "tigerstyle", feature(register_tool), register_tool(tigerstyle))]
+
 //! Autonomous experiment loop — init/run/log workflow with JSONL persistence,
 //! metric extraction, confidence scoring, and git integration.
 

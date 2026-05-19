@@ -1,5 +1,6 @@
 #![no_std]
 #![forbid(unsafe_code)]
+#![cfg_attr(dylint_lib = "tigerstyle", feature(register_tool), register_tool(tigerstyle))]
 
 extern crate alloc;
 

@@ -291,7 +291,7 @@ fn render_list_view(frame: &mut Frame, panel: &PeersPanel, _theme: &Theme, area:
         ];
 
         // Show short ID
-        spans.push(Span::styled(format!(" ({})", &entry.short_id), Style::default().fg(Color::DarkGray)));
+        spans.push(Span::styled(format!(" ({})", entry.short_id), Style::default().fg(Color::DarkGray)));
 
         lines.push(Line::from(spans));
 

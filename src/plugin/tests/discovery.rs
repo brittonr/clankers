@@ -404,6 +404,10 @@ async fn daemon_mode_plugin_init_handles_empty_dirs_without_plugins() {
 }
 
 #[tokio::test]
+#[allow(
+    clippy::await_holding_lock,
+    reason = "test asserts plugin manager state then explicitly drops the sync guard before async shutdown"
+)]
 async fn daemon_mode_plugin_init_continues_when_some_plugins_fail() {
     let dir = tempfile::tempdir().unwrap();
     write_plugin_manifest(

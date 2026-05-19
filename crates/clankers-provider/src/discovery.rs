@@ -102,10 +102,10 @@ fn credential_pool_strategy_for(provider: &str) -> clanker_router::credential_po
     let provider_env = format!("CLANKERS_CREDENTIAL_POOL_STRATEGY_{}", provider.replace('-', "_").to_ascii_uppercase());
     let value = std::env::var(provider_env).ok().or_else(|| std::env::var("CLANKERS_CREDENTIAL_POOL_STRATEGY").ok());
     match value.as_deref().map(str::trim).map(str::to_ascii_lowercase).as_deref() {
-        Some("round_robin") | Some("round-robin") => clanker_router::credential_pool::SelectionStrategy::RoundRobin,
-        Some("least_used") | Some("least-used") => clanker_router::credential_pool::SelectionStrategy::LeastUsed,
+        Some("round_robin" | "round-robin") => clanker_router::credential_pool::SelectionStrategy::RoundRobin,
+        Some("least_used" | "least-used") => clanker_router::credential_pool::SelectionStrategy::LeastUsed,
         Some("random") => clanker_router::credential_pool::SelectionStrategy::Random,
-        Some("fill_first") | Some("fill-first") | Some("failover") | None => {
+        Some("fill_first" | "fill-first" | "failover") | None => {
             clanker_router::credential_pool::SelectionStrategy::FillFirst
         }
         Some(other) => {
@@ -218,7 +218,7 @@ pub fn build_router(
             clanker_router::backends::openai_codex::refresh_fn_for_codex(),
         );
         let provider: Arc<dyn Provider> =
-            Arc::new(RouterCompatAdapter::new(OpenAICodexProvider::new(manager, models, account_name)));
+            Arc::new(RouterCompatAdapter::new(OpenAICodexProvider::into_provider(manager, models, account_name)));
         backends.push((openai_codex::OPENAI_CODEX_PROVIDER.to_string(), provider));
     }
 

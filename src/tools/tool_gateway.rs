@@ -126,12 +126,10 @@ fn deliver_params(params: &Value, record: bool) -> ToolResult {
         tool_gateway::DeliveryContext::local()
     };
     let attempt = tool_gateway::deliver_artifact(artifact_type, path, &target, &context);
-    if record {
-        if let Some(outbox) = params.get("outbox").and_then(|value| value.as_str()) {
-            match tool_gateway::record_attempt(std::path::Path::new(outbox), attempt) {
-                Ok(attempt) => return attempt_result(attempt),
-                Err(message) => return ToolResult::error(message),
-            }
+    if record && let Some(outbox) = params.get("outbox").and_then(|value| value.as_str()) {
+        match tool_gateway::record_attempt(std::path::Path::new(outbox), attempt) {
+            Ok(attempt) => return attempt_result(attempt),
+            Err(message) => return ToolResult::error(message),
         }
     }
     if record {

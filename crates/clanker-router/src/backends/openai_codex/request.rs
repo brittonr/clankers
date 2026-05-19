@@ -222,10 +222,9 @@ pub(crate) fn build_codex_input(messages: &[Value]) -> Result<Vec<Value>> {
                 Some("thinking") => {
                     if let Some(signature) =
                         block.get("signature").and_then(|value| value.as_str()).filter(|value| !value.is_empty())
+                        && let Ok(reasoning) = serde_json::from_str::<Value>(signature)
                     {
-                        if let Ok(reasoning) = serde_json::from_str::<Value>(signature) {
-                            input.push(reasoning);
-                        }
+                        input.push(reasoning);
                     }
                 }
                 Some("text") => {

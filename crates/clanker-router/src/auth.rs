@@ -1009,7 +1009,7 @@ mod tests {
         });
 
         let mut providers = store.configured_providers();
-        providers.sort();
+        providers.sort_unstable();
         assert_eq!(providers, vec!["anthropic", "openai"]);
     }
 
@@ -1051,12 +1051,14 @@ mod tests {
 
     #[test]
     fn test_legacy_migration() {
-        let mut store = AuthStore::default();
-        store.anthropic = Some(LegacyOAuthCredentials {
-            access: "old-token".into(),
-            refresh: "old-refresh".into(),
-            expires: i64::MAX,
-        });
+        let mut store = AuthStore {
+            anthropic: Some(LegacyOAuthCredentials {
+                access: "old-token".into(),
+                refresh: "old-refresh".into(),
+                expires: i64::MAX,
+            }),
+            ..Default::default()
+        };
         store.migrate_legacy();
 
         let cred = store.active_credential("anthropic").unwrap();

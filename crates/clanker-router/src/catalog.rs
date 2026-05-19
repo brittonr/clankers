@@ -194,7 +194,7 @@ mod tests {
                     output_cost_per_mtok: Some(8.0),
                 },
             ],
-            aliases: Default::default(),
+            aliases: HashMap::default(),
         };
 
         catalog.apply_to(&mut models);
@@ -220,7 +220,7 @@ mod tests {
                 input_cost_per_mtok: None,
                 output_cost_per_mtok: None,
             }],
-            aliases: Default::default(),
+            aliases: HashMap::default(),
         };
 
         catalog.save(tmp.path()).unwrap();

@@ -1,3 +1,4 @@
+#![cfg_attr(dylint_lib = "tigerstyle", feature(register_tool), register_tool(tigerstyle))]
 //! Message types for LLM agent conversations
 //!
 //! Defines all message types used in the agent conversation loop:

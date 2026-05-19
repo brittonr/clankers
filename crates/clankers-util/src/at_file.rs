@@ -544,10 +544,11 @@ fn read_git_diff_reference(path: &str, cwd: &str, max_bytes: usize) -> ReadConte
     command.current_dir(cwd).args(["diff", "--no-ext-diff", "--no-color"]);
     if path == "diff:staged" || path == "git:diff:staged" {
         command.arg("--cached");
-    } else if let Some(scope) = path.strip_prefix("diff:").or_else(|| path.strip_prefix("git:diff:")) {
-        if !scope.is_empty() && scope != "unstaged" {
-            command.arg("--").arg(scope);
-        }
+    } else if let Some(scope) = path.strip_prefix("diff:").or_else(|| path.strip_prefix("git:diff:"))
+        && !scope.is_empty()
+        && scope != "unstaged"
+    {
+        command.arg("--").arg(scope);
     }
     match command.output() {
         Ok(output) if output.status.success() => bounded_content(

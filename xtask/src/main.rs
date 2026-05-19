@@ -58,7 +58,7 @@ fn discover_plugins(root: &Path) -> Vec<PathBuf> {
     let dirs = ["plugins", "examples/plugins"];
     let mut plugins = Vec::with_capacity(32);
     assert!(root.is_dir());
-    assert!(dirs.len() == 2);
+    assert_eq!(dirs.len(), 2);
 
     for dir in dirs {
         let base = root.join(dir);
@@ -155,7 +155,7 @@ fn build_plugins(filter: Option<&str>) -> ExitCode {
         let size_bytes = fs::metadata(&dst).map(|m| m.len()).unwrap_or(0);
         let rel = dst.strip_prefix(&root).unwrap_or(&dst);
         assert!(dst.is_file());
-        assert!(rel != Path::new(""));
+        assert_ne!(rel, Path::new(""));
         println!("  ✓ {:.0}K → {}", size_bytes as f64 / 1024.0, rel.display());
         built += 1;
     }

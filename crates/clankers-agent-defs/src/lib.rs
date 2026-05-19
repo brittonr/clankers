@@ -1,3 +1,6 @@
+#![allow(unexpected_cfgs)]
+#![cfg_attr(dylint_lib = "tigerstyle", feature(register_tool), register_tool(tigerstyle))]
+
 //! Agent definition system (first-class)
 
 pub mod definition;
@@ -40,6 +43,13 @@ impl AgentRegistry {
         names
     }
 
+    #[cfg_attr(
+        dylint_lib = "tigerstyle",
+        allow(
+            tigerstyle::usize_in_public_api,
+            reason = "registry length mirrors standard collection APIs for in-process callers"
+        )
+    )]
     pub fn len(&self) -> usize {
         self.agents.len()
     }

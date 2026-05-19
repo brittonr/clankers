@@ -270,7 +270,7 @@ ratcore = { git = "ssh://git@github.com:22/brittonr/ratcore.git", rev = "16333a5
 
 [workspace.metadata.dylint]
 libraries = [
-    { git = "ssh://git@github.com/brittonr/tigerstyle-rs.git", rev = "bbf5fbb60679668ca8c42593fd617db2d0f89b43" },
+    { git = "ssh://git@github.com/OnixResearch/octet.git", rev = "bbf5fbb60679668ca8c42593fd617db2d0f89b43" },
 ]
 
 

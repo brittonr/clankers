@@ -9,7 +9,7 @@ fn test_create_and_open_session() {
     let mgr = SessionManager::create(sessions_dir, cwd, "claude-sonnet", None, None, None).unwrap();
     assert!(!mgr.session_id().is_empty());
     assert!(mgr.file_path().exists());
-    assert!(mgr.file_path().extension().unwrap() == "automerge");
+    assert_eq!(mgr.file_path().extension().unwrap(), "automerge");
 
     // Should be able to open the session
     let mgr2 = SessionManager::open(mgr.file_path().to_path_buf()).unwrap();

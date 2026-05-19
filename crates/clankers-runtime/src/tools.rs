@@ -47,7 +47,6 @@ impl ToolCatalog {
             .expect("built-in packs have no collisions")
     }
 
-    #[must_use]
     pub fn tools(&self) -> impl Iterator<Item = &ToolDescriptor> {
         self.tools.values()
     }
@@ -216,7 +215,6 @@ pub enum ToolCollisionPolicy {
 impl ToolDescriptor {
     #[must_use]
     pub fn new(name: impl Into<String>, description: impl Into<String>, side_effect: SideEffectLevel) -> Self {
-        let side_effect = side_effect;
         Self {
             name: name.into(),
             description: description.into(),

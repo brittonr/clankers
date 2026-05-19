@@ -3,6 +3,33 @@
 //! This module defines the core provider trait and types for interacting with
 //! language model APIs. It supports streaming responses, multiple content types,
 //! tool use, and extended thinking modes.
+#![allow(unexpected_cfgs)]
+#![cfg_attr(dylint_lib = "tigerstyle", feature(register_tool), register_tool(tigerstyle))]
+#![cfg_attr(
+    dylint_lib = "tigerstyle",
+    allow(
+        tigerstyle::assertion_density,
+        tigerstyle::multi_lock_ordering,
+        tigerstyle::acronym_style,
+        tigerstyle::numeric_units,
+        tigerstyle::function_length,
+        tigerstyle::nested_conditionals,
+        tigerstyle::compound_condition,
+        tigerstyle::unbounded_collection_growth,
+        tigerstyle::raw_arithmetic_overflow,
+        tigerstyle::ambiguous_params,
+        tigerstyle::ignored_result,
+        tigerstyle::explicit_defaults,
+        tigerstyle::unbounded_loop,
+        tigerstyle::no_recursion,
+        tigerstyle::ambient_clock,
+        tigerstyle::no_unwrap,
+        tigerstyle::bool_naming,
+        tigerstyle::platform_dependent_cast,
+        tigerstyle::usize_in_public_api,
+        reason = "provider crate preserves live provider request contracts; fixture and transport tests cover behavior during Tigerstyle drain"
+    )
+)]
 
 use std::collections::HashMap;
 

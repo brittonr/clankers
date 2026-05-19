@@ -845,7 +845,7 @@ fn test_delegation_too_deep() {
             builder = builder.delegated_from(parent);
         }
 
-        current_token = Some(builder.build().expect(&format!("should build token at depth {}", i)));
+        current_token = Some(builder.build().unwrap_or_else(|_| panic!("should build token at depth {}", i)));
     }
 
     // Attempt to delegate beyond MAX_DELEGATION_DEPTH should fail

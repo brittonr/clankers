@@ -1,5 +1,10 @@
 //! Tests using a simple TestCap to validate the generic token machinery.
 
+#![allow(
+    clippy::similar_names,
+    reason = "Crypto tests intentionally use sk/pk variable pairs to distinguish secret and public keys."
+)]
+
 use std::time::Duration;
 
 use iroh::SecretKey;
@@ -31,18 +36,12 @@ impl Cap for TestCap {
     type Operation = TestOp;
 
     fn authorizes(&self, op: &TestOp) -> bool {
-        match (self, op) {
-            (TestCap::Read, TestOp::Read) => true,
-            (TestCap::Write, TestOp::Write) => true,
-            (TestCap::Admin, _) => true,
-            _ => false,
-        }
+        matches!((self, op), (TestCap::Read, TestOp::Read) | (TestCap::Write, TestOp::Write) | (TestCap::Admin, _))
     }
 
     fn contains(&self, child: &TestCap) -> bool {
         match (self, child) {
-            (TestCap::Admin, _) => true,
-            (TestCap::Delegate, TestCap::Delegate) => true,
+            (TestCap::Admin, _) | (TestCap::Delegate, TestCap::Delegate) => true,
             (a, b) => a == b,
         }
     }

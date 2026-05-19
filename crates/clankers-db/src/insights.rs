@@ -1,5 +1,6 @@
 //! Usage insights engine — aggregate queries over usage, audit, and session data.
 
+use std::cmp::Reverse;
 use std::collections::BTreeMap;
 use std::collections::HashMap;
 
@@ -136,7 +137,7 @@ pub fn generate_insights(db: &Db, days: u32) -> Result<InsightsReport> {
                 }
             })
             .collect();
-        entries.sort_by(|a, b| (b.input_tokens + b.output_tokens).cmp(&(a.input_tokens + a.output_tokens)));
+        entries.sort_by_key(|entry| Reverse(entry.input_tokens + entry.output_tokens));
         entries
     };
 
@@ -148,7 +149,7 @@ pub fn generate_insights(db: &Db, days: u32) -> Result<InsightsReport> {
                 call_count: count,
             })
             .collect();
-        entries.sort_by(|a, b| b.call_count.cmp(&a.call_count));
+        entries.sort_by_key(|entry| Reverse(entry.call_count));
         entries.truncate(15);
         entries
     };
@@ -185,7 +186,7 @@ fn query_tool_calls_in_window(db: &Db, cutoff: &DateTime<Utc>) -> Result<Vec<(St
         }
     }
     let mut result: Vec<_> = counts.into_iter().collect();
-    result.sort_by(|a, b| b.1.cmp(&a.1));
+    result.sort_by_key(|entry| Reverse(entry.1));
     Ok(result)
 }
 
@@ -212,7 +213,7 @@ fn build_top_sessions(
             prompt_preview: s.first_prompt.chars().take(60).collect(),
         })
         .collect();
-    entries.sort_by(|a, b| b.tokens.cmp(&a.tokens));
+    entries.sort_by_key(|entry| Reverse(entry.tokens));
     entries.truncate(5);
     entries
 }
@@ -310,7 +311,7 @@ pub fn format_insights_terminal(report: &InsightsReport) -> String {
     // Top sessions
     if !report.top_sessions.is_empty() {
         writeln!(out, "### Top Sessions").ok();
-        writeln!(out, "  {:12} {:10} {:>8} {:20} {}", "ID", "Date", "Tokens", "Model", "Prompt").ok();
+        writeln!(out, "  {:12} {:10} {:>8} {:20} Prompt", "ID", "Date", "Tokens", "Model").ok();
         for s in &report.top_sessions {
             writeln!(
                 out,

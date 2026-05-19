@@ -196,7 +196,7 @@ fn discover_skill_records(global_dir: &Path, project_dir: Option<&Path>) -> Vec<
             .then_with(|| display_name(a).cmp(&display_name(b)))
     });
     records.retain(|record| seen.insert(display_name(record)));
-    records.sort_by(|a, b| display_name(a).cmp(&display_name(b)));
+    records.sort_by_key(display_name);
     records
 }
 

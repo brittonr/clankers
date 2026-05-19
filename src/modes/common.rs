@@ -1054,13 +1054,15 @@ mod tests {
 
     #[test]
     fn build_all_tiered_tools_adds_mcp_specialty_tools_from_settings() {
-        let mut settings = crate::config::settings::Settings::default();
-        settings.mcp = serde_json::from_value(serde_json::json!({
-            "servers": {
-                "filesystem": {"transport": "stdio", "command": "fake-mcp", "toolPrefix": "fs"}
-            }
-        }))
-        .unwrap();
+        let settings = crate::config::settings::Settings {
+            mcp: serde_json::from_value(serde_json::json!({
+                "servers": {
+                    "filesystem": {"transport": "stdio", "command": "fake-mcp", "toolPrefix": "fs"}
+                }
+            }))
+            .unwrap(),
+            ..Default::default()
+        };
         let env = ToolEnv {
             settings: Some(settings),
             mcp_registry: Some(Arc::new(FakeMcpRegistry)),
@@ -1076,14 +1078,16 @@ mod tests {
 
     #[test]
     fn build_all_tiered_tools_skips_mcp_tools_that_collide_with_builtins() {
-        let mut settings = crate::config::settings::Settings::default();
-        settings.mcp = serde_json::from_value(serde_json::json!({
-            "servers": {
-                "filesystem": {"transport": "stdio", "command": "fake-mcp", "toolPrefix": "fs"},
-                "colliding": {"transport": "stdio", "command": "fake-mcp", "toolPrefix": "fs"}
-            }
-        }))
-        .unwrap();
+        let settings = crate::config::settings::Settings {
+            mcp: serde_json::from_value(serde_json::json!({
+                "servers": {
+                    "filesystem": {"transport": "stdio", "command": "fake-mcp", "toolPrefix": "fs"},
+                    "colliding": {"transport": "stdio", "command": "fake-mcp", "toolPrefix": "fs"}
+                }
+            }))
+            .unwrap(),
+            ..Default::default()
+        };
         let env = ToolEnv {
             settings: Some(settings),
             mcp_registry: Some(Arc::new(FakeMcpRegistry)),

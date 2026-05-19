@@ -6,6 +6,19 @@
 //! - `RedbRevocationStore` for persistent revocation
 //! - `generate_root_token()` for bootstrap
 //! - Type aliases: `CapabilityToken`, `TokenBuilder`, `TokenVerifier`
+#![allow(unexpected_cfgs)]
+#![cfg_attr(dylint_lib = "tigerstyle", feature(register_tool), register_tool(tigerstyle))]
+#![cfg_attr(
+    dylint_lib = "tigerstyle",
+    allow(
+        tigerstyle::assertion_density,
+        tigerstyle::ambiguous_params,
+        tigerstyle::raw_arithmetic_overflow,
+        tigerstyle::unbounded_collection_growth,
+        tigerstyle::ignored_result,
+        reason = "UCAN vocabulary and capability APIs are compatibility surfaces with focused authorization tests"
+    )
+)]
 
 mod capability;
 pub mod constants;

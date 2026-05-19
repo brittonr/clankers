@@ -3,6 +3,23 @@
 //! Manages session files as Automerge documents that record the full
 //! conversation history with branching, merging, and label support.
 //! Legacy JSONL files are auto-migrated to Automerge on open.
+#![allow(unexpected_cfgs)]
+#![cfg_attr(dylint_lib = "tigerstyle", feature(register_tool), register_tool(tigerstyle))]
+#![cfg_attr(
+    dylint_lib = "tigerstyle",
+    allow(
+        tigerstyle::assertion_density,
+        tigerstyle::compound_condition,
+        tigerstyle::unbounded_collection_growth,
+        tigerstyle::raw_arithmetic_overflow,
+        tigerstyle::explicit_defaults,
+        tigerstyle::ambient_clock,
+        tigerstyle::usize_in_public_api,
+        tigerstyle::ambiguous_params,
+        tigerstyle::too_many_parameters,
+        reason = "session persistence APIs and serialized records are compatibility contracts covered by migration/tree tests"
+    )
+)]
 
 pub mod automerge_store;
 pub mod context;
@@ -147,7 +164,7 @@ impl SessionManager {
                     None
                 }
             })
-            .last();
+            .next_back();
         let tree = SessionTree::build(entries);
         let active_leaf_id = tree
             .find_all_leaves()

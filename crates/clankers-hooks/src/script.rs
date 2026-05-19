@@ -187,7 +187,7 @@ fn parse_script_output(point: HookPoint, output: &ScriptOutput) -> HookVerdict {
         return HookVerdict::Modify(modified);
     }
 
-    assert!(output.exit_code == 0);
+    assert_eq!(output.exit_code, 0);
     HookVerdict::Continue
 }
 

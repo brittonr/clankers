@@ -25,6 +25,22 @@
 //!
 //! Adds Wu-Manber scanning via `snix-castore` for large outputs.
 //! The regex-based scanner in [`refscan`] works without this feature.
+#![allow(unexpected_cfgs)]
+#![cfg_attr(dylint_lib = "tigerstyle", feature(register_tool), register_tool(tigerstyle))]
+#![cfg_attr(
+    dylint_lib = "tigerstyle",
+    allow(
+        tigerstyle::assertion_density,
+        tigerstyle::acronym_style,
+        tigerstyle::compound_condition,
+        tigerstyle::usize_in_public_api,
+        tigerstyle::unbounded_collection_growth,
+        tigerstyle::ambiguous_params,
+        tigerstyle::raw_arithmetic_overflow,
+        tigerstyle::ambient_clock,
+        reason = "Nix parser facade preserves existing public API and has focused parsing tests"
+    )
+)]
 
 pub mod derivation;
 pub mod error;

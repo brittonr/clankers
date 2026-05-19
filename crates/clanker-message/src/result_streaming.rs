@@ -8,6 +8,17 @@ use std::time::Instant;
 
 use super::tool_result::ToolResult;
 
+#[cfg_attr(
+    dylint_lib = "tigerstyle",
+    allow(
+        tigerstyle::ambient_clock,
+        reason = "ResultChunk builders are shell-facing convenience constructors."
+    )
+)]
+fn result_chunk_timestamp_now() -> Instant {
+    Instant::now()
+}
+
 /// Result chunk that tools emit as they produce output
 #[derive(Debug, Clone)]
 pub struct ResultChunk {
@@ -28,7 +39,7 @@ impl ResultChunk {
             content: content.into(),
             content_type: "text".to_string(),
             sequence: 0, // Caller should set this
-            timestamp: Instant::now(),
+            timestamp: result_chunk_timestamp_now(),
         }
     }
 
@@ -38,7 +49,7 @@ impl ResultChunk {
             content: content.into(),
             content_type: "base64".to_string(),
             sequence: 0,
-            timestamp: Instant::now(),
+            timestamp: result_chunk_timestamp_now(),
         }
     }
 
@@ -48,7 +59,7 @@ impl ResultChunk {
             content: value.to_string(),
             content_type: "json".to_string(),
             sequence: 0,
-            timestamp: Instant::now(),
+            timestamp: result_chunk_timestamp_now(),
         }
     }
 
@@ -117,11 +128,11 @@ impl ToolResultAccumulator {
     /// Add a chunk (automatically assigns sequence number)
     pub fn push(&mut self, mut chunk: ResultChunk) {
         chunk.sequence = self.next_sequence;
-        self.next_sequence += 1;
+        self.next_sequence = self.next_sequence.saturating_add(1);
 
-        self.total_bytes += chunk.content.len();
+        self.total_bytes = self.total_bytes.saturating_add(chunk.content.len());
         if chunk.content_type == "text" {
-            self.total_lines += chunk.content.lines().count();
+            self.total_lines = self.total_lines.saturating_add(chunk.content.lines().count());
         }
 
         self.chunks.push(chunk);
@@ -133,11 +144,25 @@ impl ToolResultAccumulator {
     }
 
     /// Get total lines accumulated
+    #[cfg_attr(
+        dylint_lib = "tigerstyle",
+        allow(
+            tigerstyle::usize_in_public_api,
+            reason = "Accumulator counters are internal display metrics backed by usize line and byte counts."
+        )
+    )]
     pub fn total_lines(&self) -> usize {
         self.total_lines
     }
 
     /// Get total bytes accumulated
+    #[cfg_attr(
+        dylint_lib = "tigerstyle",
+        allow(
+            tigerstyle::usize_in_public_api,
+            reason = "Accumulator counters are internal display metrics backed by usize line and byte counts."
+        )
+    )]
     pub fn total_bytes(&self) -> usize {
         self.total_bytes
     }
@@ -149,7 +174,7 @@ impl ToolResultAccumulator {
         }
 
         // Merge all text chunks
-        let mut lines: Vec<String> = Vec::new();
+        let mut lines: Vec<String> = Vec::with_capacity(self.total_lines);
         for chunk in &self.chunks {
             if chunk.content_type == "text" {
                 for line in chunk.content.lines() {
@@ -160,10 +185,13 @@ impl ToolResultAccumulator {
 
         // Apply truncation if needed
         let result_text = if lines.len() > self.config.max_lines {
-            let head: Vec<_> = lines.iter().take(self.config.head_lines).map(|s| s.as_str()).collect();
-            let tail: Vec<_> = lines.iter().skip(lines.len() - self.config.tail_lines).map(|s| s.as_str()).collect();
+            let head_lines = self.config.head_lines.min(lines.len());
+            let tail_lines = self.config.tail_lines.min(lines.len().saturating_sub(head_lines));
+            let tail_start = lines.len().saturating_sub(tail_lines);
+            let head: Vec<_> = lines.iter().take(head_lines).map(|s| s.as_str()).collect();
+            let tail: Vec<_> = lines.iter().skip(tail_start).map(|s| s.as_str()).collect();
 
-            let omitted = lines.len() - self.config.head_lines - self.config.tail_lines;
+            let omitted = lines.len().saturating_sub(head_lines).saturating_sub(tail_lines);
             let marker = format!("\n... [{} lines omitted] ...\n", omitted);
 
             let mut result = head.join("\n");

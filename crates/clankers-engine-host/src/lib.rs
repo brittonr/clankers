@@ -1,3 +1,6 @@
+#![allow(unexpected_cfgs)]
+#![cfg_attr(dylint_lib = "tigerstyle", feature(register_tool), register_tool(tigerstyle))]
+
 //! Reusable async host runner for `clankers-engine` effects.
 //!
 //! The runner owns effect interpretation and correlation plumbing while callers
@@ -198,6 +201,15 @@ where
     pub usage_observer: &'a mut U,
 }
 
+#[cfg_attr(
+    dylint_lib = "tigerstyle",
+    allow(
+        tigerstyle::assertion_density,
+        tigerstyle::numeric_units,
+        tigerstyle::unbounded_loop,
+        reason = "host runner shell is bounded by reducer effect exhaustion and regression-tested adapter sequencing guards"
+    )
+)]
 pub async fn run_engine_turn<M, T, R, E, C, U>(
     seed: EngineRunSeed,
     mut hosts: HostAdapters<'_, M, T, R, E, C, U>,
@@ -210,42 +222,42 @@ where
     C: CancellationSource,
     U: UsageObserver,
 {
-    let mut report = EngineRunReport::new(&seed);
+    let mut execution_report = EngineRunReport::new(&seed);
     let mut state = seed.first_outcome.next_state.clone();
     let mut outcome = seed.first_outcome;
 
     loop {
         if outcome.rejection.is_some() || outcome.terminal_failure.is_some() || outcome.effects.is_empty() {
-            report.replace_reducer_outcome(outcome);
-            return report;
+            execution_report.replace_reducer_outcome(outcome);
+            return execution_report;
         }
 
         let effects = outcome.effects.clone();
-        let mut advanced_reducer = false;
+        let mut is_reducer_advanced = false;
         for effect in effects {
             match effect {
                 EngineEffect::EmitEvent(event) => {
-                    observe_event(&mut report, hosts.event_sink, event);
+                    observe_event(&mut execution_report, hosts.event_sink, event);
                 }
                 EngineEffect::RequestModel(request) => {
-                    let input = model_input_from_effect(&mut report, &mut hosts, request).await;
+                    let input = model_input_from_effect(&mut execution_report, &mut hosts, request).await;
                     outcome = reduce(&state, &input);
                     state = outcome.next_state.clone();
-                    advanced_reducer = true;
+                    is_reducer_advanced = true;
                     break;
                 }
                 EngineEffect::ScheduleRetry { request_id, delay } => {
-                    let input = retry_input_from_effect(&mut report, &mut hosts, request_id, delay).await;
+                    let input = retry_input_from_effect(&mut execution_report, &mut hosts, request_id, delay).await;
                     outcome = reduce(&state, &input);
                     state = outcome.next_state.clone();
-                    advanced_reducer = true;
+                    is_reducer_advanced = true;
                     break;
                 }
                 EngineEffect::ExecuteTool(call) => {
                     let input = tool_input_from_effect(&mut hosts, call).await;
                     outcome = reduce(&state, &input);
                     state = outcome.next_state.clone();
-                    advanced_reducer = true;
+                    is_reducer_advanced = true;
                     if outcome.rejection.is_some() || outcome.terminal_failure.is_some() {
                         break;
                     }
@@ -253,15 +265,22 @@ where
             }
         }
 
-        report.replace_reducer_outcome(outcome.clone());
-        if !advanced_reducer {
-            return report;
+        execution_report.replace_reducer_outcome(outcome.clone());
+        if !is_reducer_advanced {
+            return execution_report;
         }
     }
 }
 
+#[cfg_attr(
+    dylint_lib = "tigerstyle",
+    allow(
+        tigerstyle::assertion_density,
+        reason = "host runner shell code is exercised by async host-runner tests and preserves adapter sequencing guards"
+    )
+)]
 async fn model_input_from_effect<M, T, R, E, C, U>(
-    report: &mut EngineRunReport,
+    execution_report: &mut EngineRunReport,
     hosts: &mut HostAdapters<'_, M, T, R, E, C, U>,
     request: EngineModelRequest,
 ) -> EngineInput
@@ -284,19 +303,26 @@ where
     match outcome {
         ModelHostOutcome::Completed { response, usage } => {
             if let Some(usage) = usage {
-                observe_usage(report, hosts.usage_observer, UsageObservationKind::FinalSummary, usage);
+                observe_usage(execution_report, hosts.usage_observer, UsageObservationKind::FinalSummary, usage);
             }
             runtime::model_completed_input(request_id, response)
         }
         ModelHostOutcome::Streamed { events } => {
-            stream_events_to_model_input(report, hosts.usage_observer, request_id, events)
+            stream_events_to_model_input(execution_report, hosts.usage_observer, request_id, events)
         }
         ModelHostOutcome::Failed { failure } => runtime::model_failed_input(request_id, failure),
     }
 }
 
+#[cfg_attr(
+    dylint_lib = "tigerstyle",
+    allow(
+        tigerstyle::assertion_density,
+        reason = "host runner shell code is exercised by async host-runner tests and preserves adapter sequencing guards"
+    )
+)]
 fn stream_events_to_model_input<U: UsageObserver>(
-    report: &mut EngineRunReport,
+    execution_report: &mut EngineRunReport,
     usage_observer: &mut U,
     request_id: EngineCorrelationId,
     events: Vec<HostStreamEvent>,
@@ -304,7 +330,7 @@ fn stream_events_to_model_input<U: UsageObserver>(
     let mut accumulator = StreamAccumulator::new();
     for event in events {
         if let HostStreamEvent::Usage { usage } = &event {
-            observe_usage(report, usage_observer, UsageObservationKind::StreamDelta, usage.clone());
+            observe_usage(execution_report, usage_observer, UsageObservationKind::StreamDelta, usage.clone());
         }
         if let Err(error) = accumulator.push(event) {
             return runtime::model_failed_input(request_id, stream_error_to_failure(error));
@@ -314,7 +340,7 @@ fn stream_events_to_model_input<U: UsageObserver>(
     match accumulator.finish() {
         Ok(folded) => {
             if let Some(usage) = folded.usage {
-                observe_usage(report, usage_observer, UsageObservationKind::FinalSummary, usage);
+                observe_usage(execution_report, usage_observer, UsageObservationKind::FinalSummary, usage);
             }
             runtime::model_completed_input(request_id, EngineModelResponse {
                 output: folded.content,
@@ -345,7 +371,7 @@ fn stream_error_to_failure(error: StreamAccumulatorError) -> EngineTerminalFailu
 }
 
 async fn retry_input_from_effect<M, T, R, E, C, U>(
-    report: &mut EngineRunReport,
+    execution_report: &mut EngineRunReport,
     hosts: &mut HostAdapters<'_, M, T, R, E, C, U>,
     request_id: EngineCorrelationId,
     delay: Duration,
@@ -362,7 +388,7 @@ where
         return cancel_input(hosts.cancellation);
     }
     if let Err(error) = hosts.retry_sleeper.sleep_for_retry(request_id.clone(), delay).await {
-        report.push_diagnostic(HostAdapterComponent::RetrySleeper, error.message());
+        execution_report.push_diagnostic(HostAdapterComponent::RetrySleeper, error.message());
     }
     if hosts.cancellation.is_cancelled() {
         return cancel_input(hosts.cancellation);
@@ -389,6 +415,13 @@ where
     tool_outcome_to_input(call_id, hosts.tools.execute_tool(call).await, hosts.cancellation)
 }
 
+#[cfg_attr(
+    dylint_lib = "tigerstyle",
+    allow(
+        tigerstyle::assertion_density,
+        reason = "host runner shell code is exercised by async host-runner tests and preserves adapter sequencing guards"
+    )
+)]
 fn tool_outcome_to_input<C: CancellationSource>(
     call_id: EngineCorrelationId,
     outcome: ToolHostOutcome,
@@ -422,26 +455,33 @@ fn cancel_input<C: CancellationSource>(cancellation: &mut C) -> EngineInput {
     runtime::cancel_turn_input(cancellation.cancellation_reason())
 }
 
-fn observe_event<E: EngineEventSink>(report: &mut EngineRunReport, sink: &mut E, event: EngineEvent) {
-    report.observed_events.push(event.clone());
+fn observe_event<E: EngineEventSink>(execution_report: &mut EngineRunReport, sink: &mut E, event: EngineEvent) {
+    execution_report.observed_events.push(event.clone());
     if let Err(error) = sink.emit_engine_event(&event) {
-        report.push_diagnostic(HostAdapterComponent::EventSink, error.message());
+        execution_report.push_diagnostic(HostAdapterComponent::EventSink, error.message());
     }
 }
 
 fn observe_usage<U: UsageObserver>(
-    report: &mut EngineRunReport,
+    execution_report: &mut EngineRunReport,
     observer: &mut U,
     kind: UsageObservationKind,
     usage: Usage,
 ) {
     let observation = UsageObservation { kind, usage };
     if let Err(error) = observer.observe_usage(&observation) {
-        report.push_diagnostic(HostAdapterComponent::UsageObserver, error.message());
+        execution_report.push_diagnostic(HostAdapterComponent::UsageObserver, error.message());
     }
-    report.usage_observations.push(observation);
+    execution_report.usage_observations.push(observation);
 }
 
+#[cfg_attr(
+    dylint_lib = "tigerstyle",
+    allow(
+        tigerstyle::ambiguous_params,
+        reason = "small local formatter keeps prefix and name call sites adjacent"
+    )
+)]
 fn format_tool_error(prefix: &str, name: &str) -> String {
     format!("{prefix}: {name}")
 }
@@ -468,20 +508,12 @@ mod tests {
     const ZERO_MODEL_REQUEST_SLOT_BUDGET: u32 = 0;
 
     fn block_on<F: core::future::Future>(future: F) -> F::Output {
-        use std::sync::Arc;
         use std::task::Context;
         use std::task::Poll;
-        use std::task::Wake;
         use std::task::Waker;
 
-        struct NoopWaker;
-
-        impl Wake for NoopWaker {
-            fn wake(self: Arc<Self>) {}
-        }
-
-        let waker: Waker = Waker::from(Arc::new(NoopWaker));
-        let mut context = Context::from_waker(&waker);
+        let waker = Waker::noop();
+        let mut context = Context::from_waker(waker);
         let mut future = Box::pin(future);
         loop {
             match future.as_mut().poll(&mut context) {
@@ -924,28 +956,31 @@ mod tests {
     }
 
     #[test]
-    fn engine_host_feature_matrix_executes_declared_cases_and_reports_axes() {
+    fn engine_host_feature_matrix_executes_declared_cases_and_execution_reports_axes() {
         for case in MATRIX_CASES {
-            let report = run_matrix_case(case);
+            let execution_report = run_matrix_case(case);
             let ok = match case.scenario {
                 MatrixScenario::MalformedStream | MatrixScenario::ProviderStreamError => {
-                    report.last_outcome.terminal_failure.is_some()
+                    execution_report.last_outcome.terminal_failure.is_some()
                 }
                 MatrixScenario::ZeroBudgetRejected => {
-                    matches!(report.last_outcome.rejection, Some(EngineRejection::InvalidBudget { .. }))
+                    matches!(execution_report.last_outcome.rejection, Some(EngineRejection::InvalidBudget))
                 }
-                _ => report.last_outcome.rejection.is_none() && report.last_outcome.terminal_failure.is_none(),
+                _ => {
+                    execution_report.last_outcome.rejection.is_none()
+                        && execution_report.last_outcome.terminal_failure.is_none()
+                }
             };
             assert!(
                 ok,
                 "matrix case {} failed axes={:?}: rejection={:?} terminal_failure={:?} events={:?} usage={:?} diagnostics={:?}",
                 case.id,
                 case.axes,
-                report.last_outcome.rejection,
-                report.last_outcome.terminal_failure,
-                report.observed_events,
-                report.usage_observations,
-                report.adapter_diagnostics
+                execution_report.last_outcome.rejection,
+                execution_report.last_outcome.terminal_failure,
+                execution_report.observed_events,
+                execution_report.usage_observations,
+                execution_report.adapter_diagnostics
             );
         }
     }
@@ -1009,11 +1044,16 @@ mod tests {
         let mut tools = FakeTools::default();
         let mut events = FakeEvents::default();
         let mut cancel = FakeCancel::default();
-        let report = block_on(run_with(&mut model, &mut tools, &mut events, &mut cancel));
-        assert!(report.last_outcome.rejection.is_none());
-        assert!(report.last_outcome.terminal_failure.is_none());
-        assert_eq!(report.usage_observations.len(), 1);
-        assert!(report.observed_events.iter().any(|event| matches!(event, EngineEvent::TurnFinished { .. })));
+        let execution_report = block_on(run_with(&mut model, &mut tools, &mut events, &mut cancel));
+        assert!(execution_report.last_outcome.rejection.is_none());
+        assert!(execution_report.last_outcome.terminal_failure.is_none());
+        assert_eq!(execution_report.usage_observations.len(), 1);
+        assert!(
+            execution_report
+                .observed_events
+                .iter()
+                .any(|event| matches!(event, EngineEvent::TurnFinished { .. }))
+        );
     }
 
     #[test]
@@ -1033,11 +1073,11 @@ mod tests {
             fail: true,
         };
         let mut cancel = FakeCancel::default();
-        let report = block_on(run_with(&mut model, &mut tools, &mut events, &mut cancel));
-        assert!(report.last_outcome.rejection.is_none());
-        assert!(!report.adapter_diagnostics.is_empty());
+        let execution_report = block_on(run_with(&mut model, &mut tools, &mut events, &mut cancel));
+        assert!(execution_report.last_outcome.rejection.is_none());
+        assert!(!execution_report.adapter_diagnostics.is_empty());
         assert!(
-            report
+            execution_report
                 .adapter_diagnostics
                 .iter()
                 .all(|diagnostic| diagnostic.component == HostAdapterComponent::EventSink)
@@ -1066,9 +1106,9 @@ mod tests {
         };
         let mut events = FakeEvents::default();
         let mut cancel = FakeCancel::default();
-        let report = block_on(run_with(&mut model, &mut tools, &mut events, &mut cancel));
-        assert!(report.last_outcome.rejection.is_none());
-        assert!(report.last_outcome.terminal_failure.is_none());
+        let execution_report = block_on(run_with(&mut model, &mut tools, &mut events, &mut cancel));
+        assert!(execution_report.last_outcome.rejection.is_none());
+        assert!(execution_report.last_outcome.terminal_failure.is_none());
         assert_eq!(model.outcomes.len(), 0);
     }
 
@@ -1078,9 +1118,9 @@ mod tests {
         let mut tools = FakeTools::default();
         let mut events = FakeEvents::default();
         let mut cancel = FakeCancel { cancelled: true };
-        let report = block_on(run_with(&mut model, &mut tools, &mut events, &mut cancel));
-        assert!(report.last_outcome.rejection.is_none());
-        assert!(report.observed_events.iter().any(
+        let execution_report = block_on(run_with(&mut model, &mut tools, &mut events, &mut cancel));
+        assert!(execution_report.last_outcome.rejection.is_none());
+        assert!(execution_report.observed_events.iter().any(
             |event| matches!(event, EngineEvent::TurnFinished { stop_reason } if *stop_reason == StopReason::Stop)
         ));
     }
@@ -1113,11 +1153,11 @@ mod tests {
         let mut tools = FakeTools::default();
         let mut events = FakeEvents::default();
         let mut cancel = FakeCancel::default();
-        let report = block_on(run_with(&mut model, &mut tools, &mut events, &mut cancel));
-        assert!(report.last_outcome.rejection.is_none());
-        assert_eq!(report.usage_observations.len(), 2);
-        assert_eq!(report.usage_observations[0].kind, UsageObservationKind::StreamDelta);
-        assert_eq!(report.usage_observations[1].kind, UsageObservationKind::FinalSummary);
+        let execution_report = block_on(run_with(&mut model, &mut tools, &mut events, &mut cancel));
+        assert!(execution_report.last_outcome.rejection.is_none());
+        assert_eq!(execution_report.usage_observations.len(), 2);
+        assert_eq!(execution_report.usage_observations[0].kind, UsageObservationKind::StreamDelta);
+        assert_eq!(execution_report.usage_observations[1].kind, UsageObservationKind::FinalSummary);
     }
 
     #[test]
@@ -1133,8 +1173,8 @@ mod tests {
         let mut tools = FakeTools::default();
         let mut events = FakeEvents::default();
         let mut cancel = FakeCancel::default();
-        let report = block_on(run_with(&mut model, &mut tools, &mut events, &mut cancel));
-        let failure = report
+        let execution_report = block_on(run_with(&mut model, &mut tools, &mut events, &mut cancel));
+        let failure = execution_report
             .last_outcome
             .terminal_failure
             .expect("stream error should terminalize through engine failure");
@@ -1158,8 +1198,9 @@ mod tests {
         let mut tools = FakeTools::default();
         let mut events = FakeEvents::default();
         let mut cancel = FakeCancel::default();
-        let report = block_on(run_with(&mut model, &mut tools, &mut events, &mut cancel));
-        let failure = report.last_outcome.terminal_failure.expect("provider error should become engine failure");
+        let execution_report = block_on(run_with(&mut model, &mut tools, &mut events, &mut cancel));
+        let failure =
+            execution_report.last_outcome.terminal_failure.expect("provider error should become engine failure");
         assert_eq!(failure.status, Some(TEST_PROVIDER_STATUS));
         assert!(!failure.retryable);
         assert_eq!(failure.message, "rate limited");
@@ -1206,7 +1247,7 @@ mod tests {
         let mut cancel = FakeCancel::default();
         let mut usage = FakeUsage::default();
 
-        let report = block_on(run_engine_turn(seed_with_budget(2), HostAdapters {
+        let execution_report = block_on(run_engine_turn(seed_with_budget(2), HostAdapters {
             model: &mut model,
             tools: &mut tools,
             retry_sleeper: &mut sleeper,
@@ -1215,7 +1256,7 @@ mod tests {
             usage_observer: &mut usage,
         }));
 
-        assert!(report.last_outcome.terminal_failure.is_none());
+        assert!(execution_report.last_outcome.terminal_failure.is_none());
         assert_eq!(model.calls.len(), 2);
         assert_eq!(sleeper.slept.len(), 1);
         assert_eq!(sleeper.slept[0].0, model.calls[0]);
@@ -1249,7 +1290,7 @@ mod tests {
         let mut events = FakeEvents::default();
         let mut cancel = FakeCancel::default();
         let mut usage = FakeUsage::default();
-        let report = block_on(run_engine_turn(seed(), HostAdapters {
+        let execution_report = block_on(run_engine_turn(seed(), HostAdapters {
             model: &mut model,
             tools: &mut tools,
             retry_sleeper: &mut sleeper,
@@ -1258,10 +1299,15 @@ mod tests {
             usage_observer: &mut usage,
         }));
 
-        assert!(report.last_outcome.terminal_failure.is_none());
+        assert!(execution_report.last_outcome.terminal_failure.is_none());
         assert_eq!(sleeper.slept.len(), 1);
         assert!(sleeper.slept[0].1.as_millis() >= TEST_RETRY_DELAY_MIN_MS);
-        assert!(report.observed_events.iter().any(|event| matches!(event, EngineEvent::TurnFinished { .. })));
+        assert!(
+            execution_report
+                .observed_events
+                .iter()
+                .any(|event| matches!(event, EngineEvent::TurnFinished { .. }))
+        );
     }
 
     #[test]
@@ -1331,7 +1377,7 @@ mod tests {
         let mut cancel = FakeCancel::default();
         let mut usage = FakeUsage::default();
 
-        let report = block_on(run_engine_turn(seed_with_budget(2), HostAdapters {
+        let execution_report = block_on(run_engine_turn(seed_with_budget(2), HostAdapters {
             model: &mut model,
             tools: &mut tools,
             retry_sleeper: &mut sleeper,
@@ -1340,7 +1386,7 @@ mod tests {
             usage_observer: &mut usage,
         }));
 
-        assert!(report.last_outcome.terminal_failure.is_none());
+        assert!(execution_report.last_outcome.terminal_failure.is_none());
         assert_eq!(tools.calls, vec!["call-1".to_string(), "call-2".to_string()]);
         assert!(model.outcomes.is_empty());
     }
@@ -1401,10 +1447,15 @@ mod tests {
             };
             let mut events = FakeEvents::default();
             let mut cancel = FakeCancel::default();
-            let report = block_on(run_with(&mut model, &mut tools, &mut events, &mut cancel));
+            let execution_report = block_on(run_with(&mut model, &mut tools, &mut events, &mut cancel));
 
-            assert!(report.last_outcome.rejection.is_none());
-            assert!(report.observed_events.iter().any(|event| matches!(event, EngineEvent::TurnFinished { .. })));
+            assert!(execution_report.last_outcome.rejection.is_none());
+            assert!(
+                execution_report
+                    .observed_events
+                    .iter()
+                    .any(|event| matches!(event, EngineEvent::TurnFinished { .. }))
+            );
         }
     }
 
@@ -1458,8 +1509,11 @@ mod tests {
             let mut tools = FakeTools::default();
             let mut events = FakeEvents::default();
             let mut cancel = FakeCancel::default();
-            let report = block_on(run_with(&mut model, &mut tools, &mut events, &mut cancel));
-            let failure = report.last_outcome.terminal_failure.expect("malformed stream should fail through reducer");
+            let execution_report = block_on(run_with(&mut model, &mut tools, &mut events, &mut cancel));
+            let failure = execution_report
+                .last_outcome
+                .terminal_failure
+                .expect("malformed stream should fail through reducer");
 
             assert!(!failure.retryable);
             assert_eq!(failure.status, None);
@@ -1497,11 +1551,16 @@ mod tests {
             let mut tools = FakeTools::default();
             let mut events = FakeEvents::default();
             let mut cancel = FakeCancel::default();
-            let report = block_on(run_with(&mut model, &mut tools, &mut events, &mut cancel));
+            let execution_report = block_on(run_with(&mut model, &mut tools, &mut events, &mut cancel));
 
-            assert!(report.last_outcome.rejection.is_none());
-            assert!(report.last_outcome.terminal_failure.is_none());
-            assert!(report.observed_events.iter().any(|event| matches!(event, EngineEvent::TurnFinished { .. })));
+            assert!(execution_report.last_outcome.rejection.is_none());
+            assert!(execution_report.last_outcome.terminal_failure.is_none());
+            assert!(
+                execution_report
+                    .observed_events
+                    .iter()
+                    .any(|event| matches!(event, EngineEvent::TurnFinished { .. }))
+            );
         }
     }
 
@@ -1538,7 +1597,7 @@ mod tests {
             cancel_at: 2,
         };
         let mut usage = FakeUsage::default();
-        let model_report = block_on(run_engine_turn(seed(), HostAdapters {
+        let model_execution_report = block_on(run_engine_turn(seed(), HostAdapters {
             model: &mut model_after_cancel,
             tools: &mut tools,
             retry_sleeper: &mut sleeper,
@@ -1546,7 +1605,7 @@ mod tests {
             cancellation: &mut cancel,
             usage_observer: &mut usage,
         }));
-        assert!(model_report.final_state.messages.len() <= 1);
+        assert!(model_execution_report.final_state.messages.len() <= 1);
 
         let mut retry_model = FakeModel {
             outcomes: vec![
@@ -1576,7 +1635,7 @@ mod tests {
             cancel_at: 4,
         };
         let mut usage = FakeUsage::default();
-        let retry_report = block_on(run_engine_turn(seed_with_budget(2), HostAdapters {
+        let retry_execution_report = block_on(run_engine_turn(seed_with_budget(2), HostAdapters {
             model: &mut retry_model,
             tools: &mut tools,
             retry_sleeper: &mut sleeper,
@@ -1586,7 +1645,7 @@ mod tests {
         }));
         assert_eq!(sleeper.slept.len(), 1);
         assert_eq!(retry_model.outcomes.len(), 1);
-        assert!(retry_report.final_state.messages.len() <= 1);
+        assert!(retry_execution_report.final_state.messages.len() <= 1);
 
         let mut tool_model = FakeModel {
             outcomes: vec![ModelHostOutcome::Completed {
@@ -1616,7 +1675,7 @@ mod tests {
             cancel_at: 4,
         };
         let mut usage = FakeUsage::default();
-        let tool_report = block_on(run_engine_turn(seed_with_budget(2), HostAdapters {
+        let tool_execution_report = block_on(run_engine_turn(seed_with_budget(2), HostAdapters {
             model: &mut tool_model,
             tools: &mut tools,
             retry_sleeper: &mut sleeper,
@@ -1625,7 +1684,7 @@ mod tests {
             usage_observer: &mut usage,
         }));
         assert!(tools.outcomes.is_empty());
-        assert!(tool_report.final_state.messages.len() <= 2);
+        assert!(tool_execution_report.final_state.messages.len() <= 2);
 
         let mut two_tool_model = FakeModel {
             outcomes: vec![ModelHostOutcome::Completed {
@@ -1670,7 +1729,7 @@ mod tests {
             cancel_at: 5,
         };
         let mut usage = FakeUsage::default();
-        let next_tool_report = block_on(run_engine_turn(seed_with_budget(2), HostAdapters {
+        let next_tool_execution_report = block_on(run_engine_turn(seed_with_budget(2), HostAdapters {
             model: &mut two_tool_model,
             tools: &mut tools,
             retry_sleeper: &mut sleeper,
@@ -1679,7 +1738,7 @@ mod tests {
             usage_observer: &mut usage,
         }));
         assert_eq!(tools.outcomes.len(), 1);
-        assert!(next_tool_report.final_state.messages.len() <= 2);
+        assert!(next_tool_execution_report.final_state.messages.len() <= 2);
     }
 
     #[test]
@@ -1711,7 +1770,7 @@ mod tests {
         let mut events = FakeEvents::default();
         let mut cancel = FakeCancel::default();
         let mut usage = FailingUsage;
-        let report = block_on(run_engine_turn(seed(), HostAdapters {
+        let execution_report = block_on(run_engine_turn(seed(), HostAdapters {
             model: &mut model,
             tools: &mut tools,
             retry_sleeper: &mut sleeper,
@@ -1720,9 +1779,9 @@ mod tests {
             usage_observer: &mut usage,
         }));
 
-        assert!(report.last_outcome.terminal_failure.is_none());
+        assert!(execution_report.last_outcome.terminal_failure.is_none());
         assert!(
-            report
+            execution_report
                 .adapter_diagnostics
                 .iter()
                 .any(|diagnostic| diagnostic.component == HostAdapterComponent::UsageObserver)
@@ -1737,30 +1796,31 @@ mod tests {
         let mut events = FakeEvents::default();
         let mut cancel = FakeCancel::default();
         let mut usage = FakeUsage::default();
-        let report = block_on(run_engine_turn(seed_with_budget(ZERO_MODEL_REQUEST_SLOT_BUDGET), HostAdapters {
-            model: &mut model,
-            tools: &mut tools,
-            retry_sleeper: &mut sleeper,
-            event_sink: &mut events,
-            cancellation: &mut cancel,
-            usage_observer: &mut usage,
-        }));
+        let execution_report =
+            block_on(run_engine_turn(seed_with_budget(ZERO_MODEL_REQUEST_SLOT_BUDGET), HostAdapters {
+                model: &mut model,
+                tools: &mut tools,
+                retry_sleeper: &mut sleeper,
+                event_sink: &mut events,
+                cancellation: &mut cancel,
+                usage_observer: &mut usage,
+            }));
 
-        assert_eq!(report.last_outcome.rejection, Some(EngineRejection::InvalidBudget));
-        assert_eq!(report.final_state.phase, report.initial_state.phase);
-        assert_eq!(report.final_state.messages.len(), report.initial_state.messages.len());
-        assert!(report.final_state.pending_model_request.is_none());
-        assert!(report.final_state.pending_tool_calls.is_empty());
-        assert!(report.observed_events.is_empty());
-        assert!(report.usage_observations.is_empty());
-        assert!(report.adapter_diagnostics.is_empty());
+        assert_eq!(execution_report.last_outcome.rejection, Some(EngineRejection::InvalidBudget));
+        assert_eq!(execution_report.final_state.phase, execution_report.initial_state.phase);
+        assert_eq!(execution_report.final_state.messages.len(), execution_report.initial_state.messages.len());
+        assert!(execution_report.final_state.pending_model_request.is_none());
+        assert!(execution_report.final_state.pending_tool_calls.is_empty());
+        assert!(execution_report.observed_events.is_empty());
+        assert!(execution_report.usage_observations.is_empty());
+        assert!(execution_report.adapter_diagnostics.is_empty());
         assert!(sleeper.slept.is_empty());
         assert!(events.events.is_empty());
         assert!(usage.observations.is_empty());
     }
 
     #[test]
-    fn reducer_rejection_is_reported_without_local_terminalization() {
+    fn reducer_rejection_is_execution_reported_without_local_terminalization() {
         let bad_seed = EngineRunSeed::new(EngineState::new(), EngineOutcome {
             next_state: EngineState::new(),
             effects: Vec::new(),
@@ -1773,7 +1833,7 @@ mod tests {
         let mut events = FakeEvents::default();
         let mut cancel = FakeCancel::default();
         let mut usage = FakeUsage::default();
-        let report = block_on(run_engine_turn(bad_seed, HostAdapters {
+        let execution_report = block_on(run_engine_turn(bad_seed, HostAdapters {
             model: &mut model,
             tools: &mut tools,
             retry_sleeper: &mut sleeper,
@@ -1781,7 +1841,7 @@ mod tests {
             cancellation: &mut cancel,
             usage_observer: &mut usage,
         }));
-        assert_eq!(report.last_outcome.rejection, Some(EngineRejection::InvalidPhase));
-        assert!(report.observed_events.is_empty());
+        assert_eq!(execution_report.last_outcome.rejection, Some(EngineRejection::InvalidPhase));
+        assert!(execution_report.observed_events.is_empty());
     }
 }

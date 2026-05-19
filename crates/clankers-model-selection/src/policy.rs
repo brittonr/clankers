@@ -240,8 +240,10 @@ mod tests {
 
     #[test]
     fn test_disabled_policy_returns_default() {
-        let mut config = RoutingPolicyConfig::default();
-        config.enabled = false;
+        let config = RoutingPolicyConfig {
+            enabled: false,
+            ..Default::default()
+        };
         let policy = RoutingPolicy::new(config);
 
         let signals = ComplexitySignals {
@@ -427,8 +429,10 @@ mod tests {
 
     #[test]
     fn test_hard_budget_forces_smol() {
-        let mut config = RoutingPolicyConfig::default();
-        config.budget_hard_limit = Some(5.0);
+        let config = RoutingPolicyConfig {
+            budget_hard_limit: Some(5.0),
+            ..Default::default()
+        };
         let policy = RoutingPolicy::new(config);
 
         let signals = ComplexitySignals {
@@ -445,8 +449,10 @@ mod tests {
 
     #[test]
     fn test_soft_budget_biases_cheaper() {
-        let mut config = RoutingPolicyConfig::default();
-        config.budget_soft_limit = Some(1.0);
+        let config = RoutingPolicyConfig {
+            budget_soft_limit: Some(1.0),
+            ..Default::default()
+        };
         let policy = RoutingPolicy::new(config);
 
         // Without soft budget pressure, this would select "slow"
@@ -472,8 +478,10 @@ mod tests {
 
     #[test]
     fn test_hard_budget_overrides_user_hint() {
-        let mut config = RoutingPolicyConfig::default();
-        config.budget_hard_limit = Some(5.0);
+        let config = RoutingPolicyConfig {
+            budget_hard_limit: Some(5.0),
+            ..Default::default()
+        };
         let policy = RoutingPolicy::new(config);
 
         let signals = ComplexitySignals {

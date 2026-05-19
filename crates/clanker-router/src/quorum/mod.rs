@@ -435,14 +435,12 @@ pub fn build_judge_prompt(
 /// Parse the judge's JSON response.
 pub fn parse_judge_response(text: &str) -> Option<(usize, String, f64)> {
     // Try to find JSON in the response (may be wrapped in markdown fences)
-    let json_str = if let Some(start) = text.find('{') {
-        if let Some(end) = text.rfind('}') {
+    let json_str = {
+        let start = text.find('{')?;
+        {
+            let end = text.rfind('}')?;
             &text[start..=end]
-        } else {
-            return None;
         }
-    } else {
-        return None;
     };
 
     let parsed: serde_json::Value = serde_json::from_str(json_str).ok()?;

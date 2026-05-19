@@ -183,7 +183,7 @@ pub(crate) fn dispatch_attach_slash(
     match route_attach_slash(command, args) {
         AttachSlashRoute::CustomLocal => handle_client_side_slash(app, command, args),
         AttachSlashRoute::RegistryLocal => {
-            handle_attach_registry_slash(app, client, command, args, slash_registry, parity_tracker)
+            handle_attach_registry_slash(app, client, command, args, slash_registry, parity_tracker);
         }
         AttachSlashRoute::GetPlugins => {
             client.send(SessionCommand::GetPlugins);

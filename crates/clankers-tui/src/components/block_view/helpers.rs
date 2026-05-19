@@ -14,18 +14,41 @@ pub fn format_elapsed(secs: u64) -> String {
 
 /// Build a horizontal rule of `─` that fills the remaining width.
 /// `used` is how many columns are already consumed by the prefix on this line.
+#[cfg_attr(
+    dylint_lib = "tigerstyle",
+    allow(
+        tigerstyle::usize_in_public_api,
+        tigerstyle::ambiguous_params,
+        reason = "TUI helpers expose terminal column counts as usize to match ratatui and unicode-width APIs"
+    )
+)]
 pub fn hrule(width: usize, used: usize) -> String {
     let remaining = width.saturating_sub(used);
     "─".repeat(remaining)
 }
 
 /// Build a horizontal rule of `┄` that fills the remaining width.
+#[cfg_attr(
+    dylint_lib = "tigerstyle",
+    allow(
+        tigerstyle::usize_in_public_api,
+        tigerstyle::ambiguous_params,
+        reason = "TUI helpers expose terminal column counts as usize to match ratatui and unicode-width APIs"
+    )
+)]
 pub fn hrule_dotted(width: usize, used: usize) -> String {
     let remaining = width.saturating_sub(used);
     "┄".repeat(remaining)
 }
 
 /// Convert a column index (character offset) to a byte offset in a string.
+#[cfg_attr(
+    dylint_lib = "tigerstyle",
+    allow(
+        tigerstyle::usize_in_public_api,
+        reason = "TUI string indexing uses usize because Rust byte offsets and char iterators are usize-indexed"
+    )
+)]
 pub fn char_to_byte(s: &str, col: usize) -> usize {
     s.char_indices().nth(col).map(|(i, _)| i).unwrap_or(s.len())
 }
@@ -40,6 +63,14 @@ pub fn char_to_byte(s: &str, col: usize) -> usize {
 ///
 /// Returns `(visible_lines, residual_offset)` where `residual_offset` is always
 /// small enough to fit in a `u16`.
+#[cfg_attr(
+    dylint_lib = "tigerstyle",
+    allow(
+        tigerstyle::usize_in_public_api,
+        tigerstyle::ambiguous_params,
+        reason = "TUI viewport slicing uses usize to match Vec indices, ratatui scroll offsets, and unicode-width counts"
+    )
+)]
 pub fn slice_visible_window<'a>(
     lines: &[Line<'a>],
     scroll_offset: usize,
@@ -49,6 +80,8 @@ pub fn slice_visible_window<'a>(
     if inner_width == 0 || lines.is_empty() {
         return (lines.to_vec(), scroll_offset.min(u16::MAX as usize));
     }
+    assert!(inner_width > 0);
+    assert!(!lines.is_empty());
 
     // Find the first logical line whose visual lines overlap with the viewport.
     let mut visual_pos: usize = 0;
@@ -63,17 +96,17 @@ pub fn slice_visible_window<'a>(
             display_width.div_ceil(inner_width)
         };
 
-        if visual_pos + line_visual > scroll_offset {
+        if visual_pos.saturating_add(line_visual) > scroll_offset {
             // This logical line contains the scroll target
             first_logical = i;
-            residual = scroll_offset - visual_pos;
+            residual = scroll_offset.saturating_sub(visual_pos);
             break;
         }
-        visual_pos += line_visual;
+        visual_pos = visual_pos.saturating_add(line_visual);
 
         // If we've exhausted all lines without reaching the offset,
         // show the last line
-        if i == lines.len() - 1 {
+        if i == lines.len().saturating_sub(1) {
             first_logical = i;
             residual = 0;
         }
@@ -82,7 +115,7 @@ pub fn slice_visible_window<'a>(
     // Take enough logical lines to fill the viewport (with some buffer for
     // wrapped lines). We need at least `visible_height` visual lines past
     // the residual.
-    let needed_visual = visible_height + residual;
+    let needed_visual = visible_height.saturating_add(residual);
     let mut collected_visual: usize = 0;
     let mut last_logical = first_logical;
 
@@ -93,13 +126,15 @@ pub fn slice_visible_window<'a>(
         } else {
             display_width.div_ceil(inner_width)
         };
-        collected_visual += line_visual;
-        last_logical += 1;
+        collected_visual = collected_visual.saturating_add(line_visual);
+        last_logical = last_logical.saturating_add(1);
         if collected_visual >= needed_visual {
             break;
         }
     }
 
     let sliced = lines[first_logical..last_logical].to_vec();
+    assert!(last_logical <= lines.len());
+    assert!(residual <= scroll_offset);
     (sliced, residual)
 }

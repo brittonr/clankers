@@ -25,6 +25,21 @@
 //! - [`protocol`] — Wire format for clankers-to-clankers messages
 //! - [`bridge`] — Translates between Matrix events and clankers RPC
 //! - [`room`] — Room management (join, create, invite)
+#![allow(unexpected_cfgs)]
+#![cfg_attr(dylint_lib = "tigerstyle", feature(register_tool), register_tool(tigerstyle))]
+#![cfg_attr(
+    dylint_lib = "tigerstyle",
+    allow(
+        tigerstyle::assertion_density,
+        tigerstyle::numeric_units,
+        tigerstyle::explicit_defaults,
+        tigerstyle::ambient_clock,
+        tigerstyle::usize_in_public_api,
+        tigerstyle::unbounded_collection_growth,
+        tigerstyle::raw_arithmetic_overflow,
+        reason = "Matrix bridge preserves Matrix protocol wire shapes and message chunking behavior; bridge tests cover behavior during Tigerstyle drain"
+    )
+)]
 
 pub mod bridge;
 pub mod client;

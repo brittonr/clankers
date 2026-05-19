@@ -34,7 +34,14 @@ pub struct Usage {
 }
 
 impl Usage {
+    #[cfg_attr(
+        dylint_lib = "tigerstyle",
+        allow(
+            tigerstyle::usize_in_public_api,
+            reason = "Usage token counts mirror existing usize fields and internal UI metrics."
+        )
+    )]
     pub fn total_tokens(&self) -> usize {
-        self.input_tokens + self.output_tokens
+        self.input_tokens.saturating_add(self.output_tokens)
     }
 }

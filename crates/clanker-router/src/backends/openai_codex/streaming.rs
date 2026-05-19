@@ -253,21 +253,21 @@ impl CodexStreamState {
                 };
                 match active.kind {
                     BlockKind::Thinking { mut buffer } => {
-                        if buffer.is_empty() {
-                            if let Some(summary) = item.get("summary").and_then(|value| value.as_array()) {
-                                buffer = summary
-                                    .iter()
-                                    .filter_map(|part| part.get("text").and_then(|value| value.as_str()))
-                                    .collect::<Vec<_>>()
-                                    .join("\n\n");
-                                if !buffer.is_empty() {
-                                    events.push(StreamEvent::ContentBlockDelta {
-                                        index: active.index,
-                                        delta: ContentDelta::ThinkingDelta {
-                                            thinking: buffer.clone(),
-                                        },
-                                    });
-                                }
+                        if buffer.is_empty()
+                            && let Some(summary) = item.get("summary").and_then(|value| value.as_array())
+                        {
+                            buffer = summary
+                                .iter()
+                                .filter_map(|part| part.get("text").and_then(|value| value.as_str()))
+                                .collect::<Vec<_>>()
+                                .join("\n\n");
+                            if !buffer.is_empty() {
+                                events.push(StreamEvent::ContentBlockDelta {
+                                    index: active.index,
+                                    delta: ContentDelta::ThinkingDelta {
+                                        thinking: buffer.clone(),
+                                    },
+                                });
                             }
                         }
                         events.push(StreamEvent::ContentBlockDelta {
@@ -279,23 +279,23 @@ impl CodexStreamState {
                         events.push(StreamEvent::ContentBlockStop { index: active.index });
                     }
                     BlockKind::Text { mut buffer } => {
-                        if buffer.is_empty() {
-                            if let Some(content) = item.get("content").and_then(|value| value.as_array()) {
-                                buffer = content
-                                    .iter()
-                                    .filter_map(|part| match part.get("type").and_then(|value| value.as_str()) {
-                                        Some("output_text") => part.get("text").and_then(|value| value.as_str()),
-                                        Some("refusal") => part.get("refusal").and_then(|value| value.as_str()),
-                                        _ => None,
-                                    })
-                                    .collect::<Vec<_>>()
-                                    .join("");
-                                if !buffer.is_empty() {
-                                    events.push(StreamEvent::ContentBlockDelta {
-                                        index: active.index,
-                                        delta: ContentDelta::TextDelta { text: buffer.clone() },
-                                    });
-                                }
+                        if buffer.is_empty()
+                            && let Some(content) = item.get("content").and_then(|value| value.as_array())
+                        {
+                            buffer = content
+                                .iter()
+                                .filter_map(|part| match part.get("type").and_then(|value| value.as_str()) {
+                                    Some("output_text") => part.get("text").and_then(|value| value.as_str()),
+                                    Some("refusal") => part.get("refusal").and_then(|value| value.as_str()),
+                                    _ => None,
+                                })
+                                .collect::<Vec<_>>()
+                                .join("");
+                            if !buffer.is_empty() {
+                                events.push(StreamEvent::ContentBlockDelta {
+                                    index: active.index,
+                                    delta: ContentDelta::TextDelta { text: buffer.clone() },
+                                });
                             }
                         }
                         events.push(StreamEvent::ContentBlockStop { index: active.index });
@@ -324,7 +324,7 @@ impl CodexStreamState {
                 };
                 let status = response.get("status").and_then(|value| value.as_str());
                 match status {
-                    Some("failed") | Some("cancelled") => {
+                    Some("failed" | "cancelled") => {
                         return Err(Error::Provider {
                             message: response
                                 .get("error")
@@ -335,7 +335,7 @@ impl CodexStreamState {
                             status: Some(500),
                         });
                     }
-                    Some("completed") | Some("incomplete") | Some("queued") | Some("in_progress") | None => {}
+                    Some("completed" | "incomplete" | "queued" | "in_progress") | None => {}
                     Some(other) => {
                         warn!("unexpected Codex response status '{other}'");
                     }

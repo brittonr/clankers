@@ -57,7 +57,7 @@ impl Provider for FakeProvider {
         match action {
             FakeAction::Text(text) => send_text_response(&tx, &request.model, &text).await,
             FakeAction::Tool { call_id, name, input } => {
-                send_tool_response(&tx, &request.model, &call_id, &name, input).await
+                send_tool_response(&tx, &request.model, &call_id, &name, input).await;
             }
         }
         Ok(())
@@ -321,7 +321,7 @@ mod tests {
             thinking: None,
             no_cache: false,
             cache_ttl: None,
-            extra_params: Default::default(),
+            extra_params: std::collections::HashMap::default(),
         }
     }
 

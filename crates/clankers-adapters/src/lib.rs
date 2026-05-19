@@ -3,6 +3,15 @@
 //! This crate intentionally contains only small deterministic adapters and DTOs.
 //! It does not start runtimes, discover providers, open daemon sockets, read
 //! credentials, or load plugins.
+#![allow(unexpected_cfgs)]
+#![cfg_attr(dylint_lib = "tigerstyle", feature(register_tool), register_tool(tigerstyle))]
+#![cfg_attr(
+    dylint_lib = "tigerstyle",
+    allow(
+        tigerstyle::explicit_defaults,
+        reason = "adapter DTO defaults intentionally use derived serde/builder defaults covered by adapter tests"
+    )
+)]
 
 use std::collections::BTreeSet;
 use std::collections::HashMap;
@@ -266,7 +275,7 @@ impl ScriptedToolExecutor {
 impl ToolExecutor for ScriptedToolExecutor {
     async fn execute_tool(&mut self, call: EngineToolCall) -> ToolHostOutcome {
         self.calls.push(call.clone());
-        self.outcomes.pop_front().unwrap_or_else(|| ToolHostOutcome::MissingTool { name: call.tool_name })
+        self.outcomes.pop_front().unwrap_or(ToolHostOutcome::MissingTool { name: call.tool_name })
     }
 }
 
@@ -761,18 +770,12 @@ mod tests {
     }
 
     fn block_on<F: std::future::Future>(future: F) -> F::Output {
-        use std::sync::Arc;
         use std::task::Context;
         use std::task::Poll;
-        use std::task::Wake;
         use std::task::Waker;
 
-        struct NoopWaker;
-        impl Wake for NoopWaker {
-            fn wake(self: Arc<Self>) {}
-        }
-        let waker = Waker::from(Arc::new(NoopWaker));
-        let mut context = Context::from_waker(&waker);
+        let waker = Waker::noop();
+        let mut context = Context::from_waker(waker);
         let mut future = Box::pin(future);
         loop {
             match future.as_mut().poll(&mut context) {

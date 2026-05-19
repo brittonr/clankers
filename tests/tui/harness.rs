@@ -15,6 +15,9 @@ use portable_pty::PtySize;
 use portable_pty::PtySystem;
 use vt100::Parser;
 
+const INITIAL_RENDER_TIMEOUT: Duration = Duration::from_secs(30);
+const SCREEN_POLL_INTERVAL: Duration = Duration::from_millis(50);
+
 /// A running clankers TUI instance inside a PTY
 pub struct TuiTestHarness {
     parser: Arc<Mutex<Parser>>,
@@ -96,8 +99,10 @@ impl TuiTestHarness {
             cols,
         };
 
-        // Wait for initial render
-        harness.wait_for_text("NORMAL", Duration::from_secs(10));
+        // Wait for initial render. Under full-workspace nextest concurrency, the
+        // binary can take longer than focused TUI runs to get past startup
+        // warnings and draw the first status bar.
+        harness.wait_for_text("NORMAL", INITIAL_RENDER_TIMEOUT);
         harness
     }
 
@@ -135,7 +140,7 @@ impl TuiTestHarness {
                 needle,
                 self.screen_text()
             );
-            std::thread::sleep(Duration::from_millis(50));
+            std::thread::sleep(SCREEN_POLL_INTERVAL);
         }
     }
 
@@ -216,7 +221,7 @@ impl TuiTestHarness {
                 marker,
                 self.raw_output_text()
             );
-            std::thread::sleep(Duration::from_millis(50));
+            std::thread::sleep(SCREEN_POLL_INTERVAL);
         }
     }
 

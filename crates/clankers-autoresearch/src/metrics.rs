@@ -3,16 +3,16 @@
 use std::collections::HashMap;
 
 pub fn extract_metrics(output: &str) -> HashMap<String, f64> {
-    let mut metrics = HashMap::new();
+    let mut metrics = HashMap::with_capacity(output.lines().count());
     for line in output.lines() {
         let trimmed = line.trim();
-        if let Some(rest) = trimmed.strip_prefix("METRIC ") {
-            if let Some((name, value_str)) = rest.split_once('=') {
-                let name = name.trim();
-                let value_str = value_str.trim();
-                if let Ok(v) = value_str.parse::<f64>() {
-                    metrics.insert(name.to_string(), v);
-                }
+        if let Some(rest) = trimmed.strip_prefix("METRIC ")
+            && let Some((name, value_str)) = rest.split_once('=')
+        {
+            let name = name.trim();
+            let value_str = value_str.trim();
+            if let Ok(v) = value_str.parse::<f64>() {
+                metrics.insert(name.to_string(), v);
             }
         }
     }

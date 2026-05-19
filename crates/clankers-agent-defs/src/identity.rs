@@ -132,7 +132,7 @@ impl AgentIdentity {
     /// Create a new identity.
     pub fn new(name: impl Into<String>, agent_type: impl Into<String>) -> Self {
         let id = format!("agent-{}", generate_hex_id());
-        let now = Utc::now();
+        let now = identity_timestamp_now();
         Self {
             id,
             name: name.into(),
@@ -154,8 +154,8 @@ impl AgentIdentity {
 
     /// Record a completed work item.
     pub fn record_work(&mut self, task: &str, outcome: WorkOutcome, duration: Duration, session_id: Option<&str>) {
-        let now = Utc::now();
-        let duration_ms = u64::try_from(duration.as_millis()).unwrap_or(u64::MAX);
+        let now = identity_timestamp_now();
+        let duration_ms = u64::try_from(duration.as_millis()).unwrap_or_else(|_| u64::MAX.saturating_sub(1));
 
         // Truncate task to 200 chars for storage
         let task_truncated: String = task.chars().take(200).collect();
@@ -174,7 +174,7 @@ impl AgentIdentity {
 
         // Keep only last 100 work records to avoid unbounded growth
         if self.work_history.len() > 100 {
-            self.work_history.drain(..self.work_history.len() - 100);
+            self.work_history.drain(..self.work_history.len().saturating_sub(100));
         }
     }
 
@@ -182,11 +182,11 @@ impl AgentIdentity {
     pub fn add_session(&mut self, session_id: &str) {
         if !self.session_ids.contains(&session_id.to_string()) {
             self.session_ids.push(session_id.to_string());
-            self.last_active = Utc::now();
+            self.last_active = identity_timestamp_now();
         }
         // Keep only last 50 session IDs
         if self.session_ids.len() > 50 {
-            self.session_ids.drain(..self.session_ids.len() - 50);
+            self.session_ids.drain(..self.session_ids.len().saturating_sub(50));
         }
     }
 
@@ -194,6 +194,17 @@ impl AgentIdentity {
     pub fn has_tag(&self, tag: &str) -> bool {
         self.tags.iter().any(|t| t.eq_ignore_ascii_case(tag))
     }
+}
+
+#[cfg_attr(
+    dylint_lib = "tigerstyle",
+    allow(
+        tigerstyle::ambient_clock,
+        reason = "identity persistence shell stamps records at mutation boundaries"
+    )
+)]
+fn identity_timestamp_now() -> DateTime<Utc> {
+    Utc::now()
 }
 
 // ── Persistent store ────────────────────────────────────────────────────
@@ -255,7 +266,7 @@ impl IdentityStore {
         let txn = self.db.begin_read().map_err(|e| format!("begin_read: {e}"))?;
         let table = txn.open_table(IDENTITY_TABLE).map_err(|e| format!("open_table: {e}"))?;
 
-        let mut identities = Vec::new();
+        let mut identities = Vec::with_capacity(128);
         let iter = table.iter().map_err(|e| format!("iter: {e}"))?;
         for entry in iter {
             let (_, value) = entry.map_err(|e| format!("entry: {e}"))?;

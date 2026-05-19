@@ -22,6 +22,17 @@ pub struct ExperimentConfig {
     pub timestamp: DateTime<Utc>,
 }
 
+#[cfg_attr(
+    dylint_lib = "tigerstyle",
+    allow(
+        tigerstyle::ambient_clock,
+        reason = "experiment JSONL creation is a persistence shell boundary"
+    )
+)]
+fn experiment_timestamp_now() -> DateTime<Utc> {
+    Utc::now()
+}
+
 impl ExperimentConfig {
     pub fn new(name: &str, metric_name: &str) -> Self {
         Self {
@@ -30,7 +41,7 @@ impl ExperimentConfig {
             metric_name: metric_name.to_string(),
             metric_unit: None,
             direction: None,
-            timestamp: Utc::now(),
+            timestamp: experiment_timestamp_now(),
         }
     }
 
@@ -71,10 +82,12 @@ pub struct ExperimentLog {
 }
 
 pub fn read_log(path: &Path) -> std::io::Result<ExperimentLog> {
+    debug_assert!(!path.as_os_str().is_empty());
+    debug_assert!(path.file_name().is_some());
     let file = std::fs::File::open(path)?;
     let reader = std::io::BufReader::new(file);
     let mut config = None;
-    let mut results = Vec::new();
+    let mut results = Vec::with_capacity(128);
 
     for line in reader.lines() {
         let line = line?;
@@ -107,14 +120,14 @@ pub fn read_log(path: &Path) -> std::io::Result<ExperimentLog> {
 pub fn append_config(path: &Path, config: &ExperimentConfig) -> std::io::Result<()> {
     use std::io::Write;
     let mut file = std::fs::OpenOptions::new().create(true).append(true).open(path)?;
-    let json = serde_json::to_string(config).map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?;
+    let json = serde_json::to_string(config).map_err(std::io::Error::other)?;
     writeln!(file, "{json}")
 }
 
 pub fn append_result(path: &Path, result: &ExperimentResult) -> std::io::Result<()> {
     use std::io::Write;
     let mut file = std::fs::OpenOptions::new().create(true).append(true).open(path)?;
-    let json = serde_json::to_string(result).map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?;
+    let json = serde_json::to_string(result).map_err(std::io::Error::other)?;
     writeln!(file, "{json}")
 }
 
@@ -148,7 +161,7 @@ mod tests {
             record_type: "result".to_string(),
             run: 1,
             commit: "abc1234".to_string(),
-            metric: 3.14,
+            metric: 3.125,
             metrics: None,
             status: ResultStatus::Keep,
             description: "first run".to_string(),
@@ -160,7 +173,7 @@ mod tests {
         let log = read_log(&path).unwrap();
         assert_eq!(log.results.len(), 1);
         assert_eq!(log.results[0].run, 1);
-        assert!((log.results[0].metric - 3.14).abs() < f64::EPSILON);
+        assert!((log.results[0].metric - 3.125).abs() < f64::EPSILON);
     }
 
     #[test]

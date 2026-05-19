@@ -54,13 +54,15 @@ impl McpRuntimeRegistry for IntegrationMcpRegistry {
 
 #[tokio::test]
 async fn configured_mcp_tool_is_available_and_executes() {
-    let mut settings = clankers::config::settings::Settings::default();
-    settings.mcp = serde_json::from_value(json!({
-        "servers": {
-            "filesystem": {"transport": "stdio", "command": "fake-mcp", "toolPrefix": "fs"}
-        }
-    }))
-    .expect("settings should parse");
+    let settings = clankers::config::settings::Settings {
+        mcp: serde_json::from_value(json!({
+            "servers": {
+                "filesystem": {"transport": "stdio", "command": "fake-mcp", "toolPrefix": "fs"}
+            }
+        }))
+        .expect("settings should parse"),
+        ..Default::default()
+    };
     let registry = Arc::new(IntegrationMcpRegistry {
         calls: Mutex::new(Vec::new()),
         fail: false,
@@ -96,13 +98,15 @@ async fn configured_mcp_tool_is_available_and_executes() {
 
 #[tokio::test]
 async fn configured_mcp_tool_failure_is_actionable() {
-    let mut settings = clankers::config::settings::Settings::default();
-    settings.mcp = serde_json::from_value(json!({
-        "servers": {
-            "filesystem": {"transport": "stdio", "command": "fake-mcp", "toolPrefix": "fs"}
-        }
-    }))
-    .expect("settings should parse");
+    let settings = clankers::config::settings::Settings {
+        mcp: serde_json::from_value(json!({
+            "servers": {
+                "filesystem": {"transport": "stdio", "command": "fake-mcp", "toolPrefix": "fs"}
+            }
+        }))
+        .expect("settings should parse"),
+        ..Default::default()
+    };
     let registry = Arc::new(IntegrationMcpRegistry {
         calls: Mutex::new(Vec::new()),
         fail: true,

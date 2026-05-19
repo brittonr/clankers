@@ -75,7 +75,7 @@ impl clankers_provider::Provider for ScriptedProvider {
                 .await
                 .ok();
             }
-        };
+        }
         Ok(())
     }
 
@@ -146,8 +146,8 @@ impl Tool for LookupOrderTool {
 
 #[tokio::test]
 async fn persisted_session_resume_replay_restores_context_and_session_metadata() {
-    let first = run_resume_replay_once().await;
-    let second = run_resume_replay_once().await;
+    let first = Box::pin(run_resume_replay_once()).await;
+    let second = Box::pin(run_resume_replay_once()).await;
 
     assert_eq!(first, second, "session resume replay must be byte-stable across isolated runs");
     assert_resume_properties(&first);
@@ -244,10 +244,11 @@ async fn run_resume_replay_once() -> Value {
 }
 
 fn deterministic_settings() -> Settings {
-    let mut settings = Settings::default();
-    settings.max_tokens = 256;
-    settings.no_cache = true;
-    settings
+    Settings {
+        max_tokens: 256,
+        no_cache: true,
+        ..Default::default()
+    }
 }
 
 fn assert_resume_properties(receipt: &Value) {
@@ -349,7 +350,7 @@ fn metadata(id: &str) -> MessageMetadata {
 
 fn normalize_request(request: &CompletionRequest) -> Value {
     let mut extra_params = request.extra_params.clone();
-    if extra_params.get("_session_id").is_some() {
+    if extra_params.contains_key("_session_id") {
         extra_params.insert("_session_id".to_string(), json!("SESSION"));
     }
     json!({
