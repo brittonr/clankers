@@ -75,10 +75,11 @@ CLANKERS_RUN_FLAKE_READINESS=1 \
 1. Start from a clean branch that tracks the intended release branch.
 2. Run `./scripts/test-harness.sh full` and confirm the summary reports no failures.
 3. Run `cargo nextest run -p clankers --test readiness_e2e --no-fail-fast` if the baseline summary was produced by older tooling or if you need a focused credential-free E2E receipt.
-4. Run `./scripts/test-harness.sh live aspen2-qwen36` when the Lemonade/Qwen3.6 endpoint is reachable.
-5. Run `./scripts/test-harness.sh vm all` and `./scripts/test-harness.sh ci` on machines authorized for NixOS VM and flake-heavy checks.
-6. Confirm OAuth login commands print authorization URLs instead of opening a browser automatically.
-7. Inspect `git diff --check`, commit the verified changes, push, and verify `main`/`origin/main` match.
-8. Include the full harness summary plus any opt-in nextest live/VM/flake summaries in the release/readiness note, clearly separating pure readiness from optional host-dependent coverage.
+4. Run `nix build .#checks.$(nix eval --raw --impure --expr builtins.currentSystem).embedded-sdk-release-receipt` to verify the embedded SDK receipt rail remains wired into the routine Nix check surface.
+5. Run `./scripts/test-harness.sh live aspen2-qwen36` when the Lemonade/Qwen3.6 endpoint is reachable.
+6. Run `./scripts/test-harness.sh vm all` and `./scripts/test-harness.sh ci` on machines authorized for NixOS VM and flake-heavy checks.
+7. Confirm OAuth login commands print authorization URLs instead of opening a browser automatically.
+8. Inspect `git diff --check`, commit the verified changes, push, and verify `main`/`origin/main` match.
+9. Include the full harness summary plus any opt-in nextest live/VM/flake summaries in the release/readiness note, clearly separating pure readiness from optional host-dependent coverage.
 
 Do not make a general external-production claim from these gates alone. They support trusted/internal dogfooding and release-candidate hygiene; public unattended production readiness still depends on the active roadmap, security boundary review, packaging/deployment surface, and operator documentation.

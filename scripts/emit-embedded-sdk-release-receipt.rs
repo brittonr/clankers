@@ -47,7 +47,8 @@ const RED_EXCLUSIONS: &[&str] = &[
 ];
 
 const VERIFICATION_COMMANDS: &[&str] = &[
-    "scripts/check-embedded-agent-sdk.sh",
+    "scripts/check-embedded-agent-sdk.rs",
+    "nix build .#checks.$(nix eval --raw --impure --expr builtins.currentSystem).embedded-sdk-release-receipt",
     "cargo check --workspace --all-targets",
     "openspec validate embedded-composition-kits --strict --json",
     "cargo fmt --check",
@@ -58,7 +59,8 @@ const DIRECT_ARTIFACTS: &[&str] = &[
     "docs/src/tutorials/embedded-agent-sdk.md",
     "docs/src/generated/embedded-sdk-api.md",
     "openspec/specs/embedded-composition-kits/spec.md",
-    "scripts/check-embedded-agent-sdk.sh",
+    "scripts/check-embedded-agent-sdk.rs",
+    "scripts/check-embedded-sdk-ci-wiring.rs",
     "scripts/emit-embedded-sdk-release-receipt.rs",
     "scripts/check-embedded-sdk-api.rs",
     "scripts/check-brick-inventory-stability.rs",
@@ -71,11 +73,11 @@ const DIRECT_ARTIFACTS: &[&str] = &[
     "scripts/check-plugin-runtime-dispatch.rs",
     "scripts/check-embedded-sdk-deps.rs",
     "scripts/check-embedded-adapters-deps.rs",
+    "scripts/check-llm-contract-boundary.rs",
     "scripts/check-engine-host-feature-matrix.rs",
     "scripts/check-tool-catalog-matrix.rs",
     "scripts/check-runtime-extension-service-matrix.rs",
     "scripts/check-shell-adapter-parity-matrix.rs",
-    "scripts/check-llm-contract-boundary.sh",
     "policy/embedded-lego/lego-contracts.ncl",
     "policy/embedded-lego/lego-contracts.json",
     "policy/embedded-lego/brick-inventory-stability.json",

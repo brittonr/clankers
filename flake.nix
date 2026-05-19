@@ -250,6 +250,18 @@
 
           docs = clankers-docs;
 
+          embedded-sdk-release-receipt = pkgs.runCommand "embedded-sdk-release-receipt" {
+            nativeBuildInputs = [ rustToolchain ];
+            src = ./.;
+          } ''
+            cp -R $src source
+            chmod -R u+w source
+            cd source
+            rustc --edition=2024 scripts/check-embedded-sdk-ci-wiring.rs -o check-embedded-sdk-ci-wiring
+            ./check-embedded-sdk-ci-wiring
+            touch $out
+          '';
+
           e2e-fake = pkgs.runCommand "clankers-e2e-fake" {
             nativeBuildInputs = [
               pkgs.bash

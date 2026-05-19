@@ -20,7 +20,8 @@
   - red exclusions keep daemon protocol clients, TUI, provider discovery/router/OAuth stores, session database ownership, plugin supervision, Matrix, iroh/P2P, built-in tool bundles, live credentials, network access, daemon startup, and shell-global service lookup outside the generic SDK boundary;
   - yellow app-edge surfaces remain product-owned integration layers.
 - The maintained receipt rail lists these verification commands:
-  - `scripts/check-embedded-agent-sdk.sh`
+  - `scripts/check-embedded-agent-sdk.rs`
+  - `nix build .#checks.$(nix eval --raw --impure --expr builtins.currentSystem).embedded-sdk-release-receipt`
   - `cargo check --workspace --all-targets`
   - `openspec validate embedded-composition-kits --strict --json`
   - `cargo fmt --check`
