@@ -76,6 +76,7 @@ const EXAMPLE_DIRS: &[&str] = &[
     "examples/embedded-tool-kit",
     "examples/embedded-provider-adapter",
     "examples/embedded-session-store",
+    "examples/embedded-product-workbench",
 ];
 
 #[derive(Debug)]

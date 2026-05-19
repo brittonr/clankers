@@ -16,6 +16,8 @@ const EXAMPLE_MANIFEST: &str = "examples/embedded-agent-sdk/Cargo.toml";
 const EXAMPLE_PACKAGE: &str = "embedded-agent-sdk-example";
 const SESSION_STORE_MANIFEST: &str = "examples/embedded-session-store/Cargo.toml";
 const SESSION_STORE_PACKAGE: &str = "embedded-session-store-example";
+const PRODUCT_WORKBENCH_MANIFEST: &str = "examples/embedded-product-workbench/Cargo.toml";
+const PRODUCT_WORKBENCH_PACKAGE: &str = "embedded-product-workbench-example";
 const GUIDE_PATH: &str = "docs/src/tutorials/embedded-agent-sdk.md";
 const SUCCESS_EXIT: i32 = 0;
 const ERROR_EXIT: i32 = 1;
@@ -39,6 +41,17 @@ const SESSION_STORE_REQUIRED_DIRECT_DEPS: &[&str] = &[
 ];
 
 const SESSION_STORE_ALLOWED_DIRECT_DEPS: &[&str] = SESSION_STORE_REQUIRED_DIRECT_DEPS;
+
+const PRODUCT_WORKBENCH_REQUIRED_DIRECT_DEPS: &[&str] = &[
+    "clanker-message",
+    "clankers-adapters",
+    "clankers-engine",
+    "clankers-engine-host",
+    "clankers-tool-host",
+    "serde_json",
+];
+
+const PRODUCT_WORKBENCH_ALLOWED_DIRECT_DEPS: &[&str] = PRODUCT_WORKBENCH_REQUIRED_DIRECT_DEPS;
 
 const FORBIDDEN_GRAPH_CRATES: &[&str] = &[
     "clankers-agent",
@@ -232,11 +245,16 @@ fn run() -> Result<CheckReport, String> {
     cargo_check_example(EXAMPLE_MANIFEST, "cargo check for embedded SDK example")?;
     let session_metadata = cargo_metadata(SESSION_STORE_MANIFEST, "cargo metadata for embedded session-store example")?;
     cargo_check_example(SESSION_STORE_MANIFEST, "cargo check for embedded session-store example")?;
+    let product_workbench_metadata =
+        cargo_metadata(PRODUCT_WORKBENCH_MANIFEST, "cargo metadata for embedded product-workbench example")?;
+    cargo_check_example(PRODUCT_WORKBENCH_MANIFEST, "cargo check for embedded product-workbench example")?;
 
     let names = package_names(&metadata)?;
     let direct_deps = example_direct_deps(&metadata, EXAMPLE_PACKAGE)?;
     let session_names = package_names(&session_metadata)?;
     let session_direct_deps = example_direct_deps(&session_metadata, SESSION_STORE_PACKAGE)?;
+    let product_workbench_names = package_names(&product_workbench_metadata)?;
+    let product_workbench_direct_deps = example_direct_deps(&product_workbench_metadata, PRODUCT_WORKBENCH_PACKAGE)?;
     let mut errors = Vec::new();
     validate_standalone_manifest(&mut errors, EXAMPLE_MANIFEST);
     validate_direct_deps(&mut errors, &direct_deps, REQUIRED_DIRECT_DEPS, ALLOWED_DIRECT_DEPS, EXAMPLE_PACKAGE);
@@ -250,11 +268,20 @@ fn run() -> Result<CheckReport, String> {
         SESSION_STORE_PACKAGE,
     );
     validate_forbidden_graph(&mut errors, &session_names);
+    validate_standalone_manifest(&mut errors, PRODUCT_WORKBENCH_MANIFEST);
+    validate_direct_deps(
+        &mut errors,
+        &product_workbench_direct_deps,
+        PRODUCT_WORKBENCH_REQUIRED_DIRECT_DEPS,
+        PRODUCT_WORKBENCH_ALLOWED_DIRECT_DEPS,
+        PRODUCT_WORKBENCH_PACKAGE,
+    );
+    validate_forbidden_graph(&mut errors, &product_workbench_names);
     validate_feature_policy(&mut errors);
 
     Ok(CheckReport {
         errors,
-        package_count: names.len() + session_names.len(),
+        package_count: names.len() + session_names.len() + product_workbench_names.len(),
     })
 }
 

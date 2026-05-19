@@ -71,7 +71,7 @@ let report = run_engine_turn(
 ).await;
 ```
 
-The checked-in consumer fixture under `examples/embedded-agent-sdk/` is the executable form of this sketch. `examples/embedded-minimal-kit/` uses the reusable adapter bricks for the smallest product kit, `examples/embedded-tool-kit/` covers successful tool execution plus missing-tool, tool-error, capability-denial, and truncation paths, `examples/embedded-provider-adapter/` shows a product-owned `ModelHost` converting `EngineModelRequest` into local provider IO without importing `clankers-provider`, and `examples/embedded-session-store/` shows host-owned session persistence with product DTOs, an in-memory product store, restored-history model-request assertions, and missing-session fail-closed behavior without importing Clankers storage/session shells. These examples must stay outside the workspace crate graph and depend only on SDK crates plus application-owned executor/test helpers.
+The checked-in consumer fixture under `examples/embedded-agent-sdk/` is the executable form of this sketch. `examples/embedded-minimal-kit/` uses the reusable adapter bricks for the smallest product kit, `examples/embedded-tool-kit/` covers successful tool execution plus missing-tool, tool-error, capability-denial, and truncation paths, `examples/embedded-provider-adapter/` shows a product-owned `ModelHost` converting `EngineModelRequest` into local provider IO without importing `clankers-provider`, `examples/embedded-session-store/` shows host-owned session persistence with product DTOs, an in-memory product store, restored-history model-request assertions, and missing-session fail-closed behavior without importing Clankers storage/session shells, and `examples/embedded-product-workbench/` composes those seams together in one product-style dogfood recipe with provider, tool-catalog, session-store, receipt, restored-context, and fail-closed assertions. These examples must stay outside the workspace crate graph and depend only on SDK crates plus application-owned executor/test helpers.
 
 ## Adapter contracts
 
@@ -164,7 +164,7 @@ That bundle must prove:
 - public API inventory is fresh;
 - stale docs fail the checker;
 - `examples/embedded-agent-sdk/` runs positive and negative adapter paths;
-- executable kit examples cover minimal adapter bricks, tool catalogs, product-owned provider adapter conversion, and host-owned session persistence/resume;
+- executable kit examples cover minimal adapter bricks, tool catalogs, product-owned provider adapter conversion, host-owned session persistence/resume, and one combined product-workbench dogfood recipe that composes provider, tool, and session seams together;
 - release-receipt generation records commit/status metadata, verification commands, green/yellow/red boundaries, and BLAKE3 hashes for embedded SDK docs/spec/scripts/examples;
 - example dependency graph excludes Clankers shell/runtime crates and UI/network crates listed in the OpenSpec change;
 - feature/default policy matches manifests and a minimal example build;
