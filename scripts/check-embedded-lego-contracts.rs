@@ -34,7 +34,9 @@ const EVIDENCE_ARTIFACTS: &[&str] = &[
     POLICY_JSON,
     POLICY_NICKEL,
     "examples/embedded-product-workbench/Cargo.toml",
+    "examples/embedded-product-workbench/dogfood-manifest.json",
     "examples/embedded-product-workbench/src/main.rs",
+    "scripts/check-real-product-dogfood.rs",
     "examples/embedded-session-store/src/main.rs",
     "examples/embedded-provider-adapter/src/main.rs",
     "docs/src/tutorials/embedded-agent-sdk.md",
@@ -197,11 +199,50 @@ fn validate_product_dogfood(policy: &Value, errors: &mut Vec<String>) {
     if manifest.is_empty() || !Path::new(manifest).exists() {
         errors.push(format!("product dogfood manifest `{manifest}` does not exist"));
     }
+    if !manifest.ends_with("dogfood-manifest.json") {
+        errors.push(format!("product dogfood manifest `{manifest}` must be a checked manifest JSON, not only Cargo metadata"));
+    }
+    validate_product_dogfood_manifest(manifest, errors);
     let deps = string_set(dogfood, "allowed_green_deps", errors);
     for dep in ["clankers-provider", "clankers-tui", "clankers-session", "iroh"] {
         if deps.contains(dep) {
             errors.push(format!("product dogfood allows red dependency `{dep}`"));
         }
+    }
+}
+
+fn validate_product_dogfood_manifest(path: &str, errors: &mut Vec<String>) {
+    if path.is_empty() {
+        return;
+    }
+    let Ok(text) = fs::read_to_string(path) else {
+        return;
+    };
+    let Ok(manifest) = serde_json::from_str::<Value>(&text) else {
+        errors.push(format!("product dogfood manifest `{path}` is not valid JSON"));
+        return;
+    };
+    for field in [
+        "selected_green_crates",
+        "capability_packs",
+        "tool_catalog_refs",
+        "provider_seam",
+        "session_seam",
+        "shell_exclusions",
+        "follow_up_policy",
+    ] {
+        if manifest.get(field).is_none() {
+            errors.push(format!("product dogfood manifest missing `{field}`"));
+        }
+    }
+    if manifest.pointer("/provider_seam/live_credentials") != Some(&Value::Bool(false)) {
+        errors.push("product dogfood manifest must disable live credentials".to_string());
+    }
+    if manifest.pointer("/provider_seam/network_access") != Some(&Value::Bool(false)) {
+        errors.push("product dogfood manifest must disable network access".to_string());
+    }
+    if manifest.pointer("/session_seam/opens_clankers_db") != Some(&Value::Bool(false)) {
+        errors.push("product dogfood manifest must keep Clankers DB out of the product seam".to_string());
     }
 }
 

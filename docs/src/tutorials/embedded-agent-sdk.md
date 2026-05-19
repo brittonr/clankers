@@ -115,6 +115,10 @@ The product-facing lego policy lives under `policy/embedded-lego/`. `lego-contra
 
 `scripts/check-embedded-lego-contracts.rs` validates the exported contract across the current lego backlog surfaces: green/yellow/red crate boundaries, capability-pack composition, declarative tool catalog manifest rules, real-product dogfood evidence, provider-adapter fixtures, session/resume evidence, and plugin/tool runtime dispatch separation. The checker emits `target/embedded-sdk-release/lego-contracts-receipt.json` with BLAKE3 hashes for the policy, contract sketch, product-workbench/session/provider examples, and generated API/docs evidence. These hashes are deterministic drift evidence, not authorization; any semantic policy or fixture change should intentionally update the checked policy, docs, tests, and receipts together.
 
+`examples/embedded-product-workbench/dogfood-manifest.json` is the checked real-product dogfood manifest. `scripts/check-real-product-dogfood.rs` validates that the workbench uses only policy-approved green SDK crates, declares product-owned provider/session/tool seams, excludes shell/runtime surfaces, and then emits deterministic dependency-boundary, sanitized-transcript, and BLAKE3 receipt evidence under `target/embedded-sdk-release/product-dogfood/`. The generated transcript is sanitized fixture evidence: it proves the product-style seams and fail-closed paths without live credentials, network access, daemon startup, provider discovery, OAuth stores, or user-local Clankers session state.
+
+Reusable app-owned glue found while extending this dogfood path should become a follow-up OpenSpec before entering green SDK crates; do not silently widen green dependencies from product evidence alone.
+
 ## Feature and default policy
 
 Current SDK crates are intended to work with their default features for the minimal embedding path:
@@ -171,6 +175,7 @@ That bundle must prove:
 - stale docs fail the checker;
 - `examples/embedded-agent-sdk/` runs positive and negative adapter paths;
 - executable kit examples cover minimal adapter bricks, tool catalogs, product-owned provider adapter conversion, host-owned session persistence/resume, and one combined product-workbench dogfood recipe that composes provider, tool, and session seams together;
+- real-product dogfood validation checks `examples/embedded-product-workbench/dogfood-manifest.json` before accepting runtime evidence and emits dependency-boundary, sanitized-transcript, and BLAKE3 receipt artifacts under `target/embedded-sdk-release/product-dogfood/`;
 - release-receipt generation records commit/status metadata, verification commands, green/yellow/red boundaries, and BLAKE3 hashes for embedded SDK docs/spec/scripts/examples;
 - example dependency graph excludes Clankers shell/runtime crates and UI/network crates listed in the OpenSpec change;
 - feature/default policy matches manifests and a minimal example build;

@@ -205,6 +205,13 @@ The system MUST prove lego-style Clankers composition in at least one real produ
 - THEN it MUST use only documented green generic SDK crates for in-process engine composition
 - THEN it MUST NOT import daemon sockets, TUI/rendering crates, provider discovery, OAuth stores, Clankers session DB ownership, Matrix, iroh/P2P, plugin supervision, or built-in tool bundles
 
+#### Scenario: Product dogfood manifest is checked [r[embedded-composition-kits.real-product-dogfood.product-dogfood-manifest-is-checked]]
+
+- GIVEN the embedded SDK lego-readiness rail is being advanced
+- WHEN dogfood runtime evidence is accepted
+- THEN a selected product embedding MUST declare its SDK crate set, capability packs, tool catalog references, provider/session seams, and shell exclusions in a checked manifest first
+- THEN the manifest MUST be validated by the lego policy checker and the real-product dogfood checker before generated transcript evidence is trusted
+
 #### Scenario: Dogfood evidence is content addressed [r[embedded-composition-kits.real-product-dogfood.receipt]]
 
 - GIVEN the product dogfood rail completes
@@ -212,12 +219,24 @@ The system MUST prove lego-style Clankers composition in at least one real produ
 - THEN the receipt MUST include BLAKE3 hashes for the dogfood manifest, dependency-boundary report, executable recipe or integration test source, and sanitized runtime transcript
 - THEN changing any hashed evidence artifact MUST change the receipt without requiring live credentials or network access
 
+#### Scenario: Dogfood run emits reproducible transcript evidence [r[embedded-composition-kits.real-product-dogfood.dogfood-run-emits-reproducible-transcript-evidence]]
+
+- GIVEN the embedded SDK lego-readiness rail is being advanced
+- WHEN the product dogfood checker runs
+- THEN the dogfood rail MUST emit a sanitized transcript plus dependency-boundary report and BLAKE3 receipt without live credentials, network access, daemon startup, provider discovery, OAuth stores, or user-local state
+
 #### Scenario: Product manifest is contract checked [r[embedded-composition-kits.real-product-dogfood.nickel-manifest]]
 
 - GIVEN the integration declares its embedded-agent composition in a checked manifest
 - WHEN the manifest is exported for the dogfood rail
 - THEN Nickel contracts SHOULD validate selected crates, capability packs, tool catalog references, and forbidden shell surfaces before Rust tests run
 - THEN the Rust runtime MUST consume exported typed data or generated fixtures rather than evaluating Nickel inside generic SDK crates
+
+#### Scenario: Dogfood findings drive brick backlog [r[embedded-composition-kits.real-product-dogfood.dogfood-findings-drive-brick-backlog]]
+
+- GIVEN the dogfood integration needs app-owned glue that appears reusable across products
+- WHEN a developer wants to promote that glue into a green SDK dependency or public brick
+- THEN the result MUST be recorded as a follow-up OpenSpec rather than silently expanding green SDK dependencies
 
 ### Requirement: Embedded brick contract stability [r[embedded-composition-kits.brick-contracts]]
 

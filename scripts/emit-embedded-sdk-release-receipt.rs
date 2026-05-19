@@ -62,6 +62,7 @@ const DIRECT_ARTIFACTS: &[&str] = &[
     "scripts/emit-embedded-sdk-release-receipt.rs",
     "scripts/check-embedded-sdk-api.rs",
     "scripts/check-embedded-lego-contracts.rs",
+    "scripts/check-real-product-dogfood.rs",
     "scripts/check-embedded-sdk-deps.rs",
     "scripts/check-embedded-adapters-deps.rs",
     "scripts/check-engine-host-feature-matrix.rs",
@@ -80,6 +81,7 @@ const EXAMPLE_DIRS: &[&str] = &[
     "examples/embedded-provider-adapter",
     "examples/embedded-session-store",
     "examples/embedded-product-workbench",
+    "examples/embedded-product-workbench/dogfood-manifest.json",
 ];
 
 #[derive(Debug)]

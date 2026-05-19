@@ -1,0 +1,47 @@
+{
+  "schema": "clankers.embedded_product_dogfood.manifest.v1",
+  "product": "embedded-product-workbench",
+  "cargo_manifest": "examples/embedded-product-workbench/Cargo.toml",
+  "executable_recipe": "examples/embedded-product-workbench/src/main.rs",
+  "selected_green_crates": [
+    "clanker-message",
+    "clankers-adapters",
+    "clankers-engine",
+    "clankers-engine-host",
+    "clankers-tool-host",
+    "serde_json"
+  ],
+  "capability_packs": [
+    "read_only"
+  ],
+  "tool_catalog_refs": [
+    "lookup_project_fact"
+  ],
+  "provider_seam": {
+    "owner": "product",
+    "adapter": "ProductModelAdapter",
+    "live_credentials": false,
+    "network_access": false
+  },
+  "session_seam": {
+    "owner": "product",
+    "store": "ProductSessionStore",
+    "opens_clankers_db": false,
+    "reads_clankers_jsonl": false
+  },
+  "shell_exclusions": [
+    "clankers-provider",
+    "clankers-tui",
+    "clankers-session",
+    "clankers-db",
+    "clankers-protocol",
+    "clanker-router",
+    "daemon sockets",
+    "OAuth stores",
+    "Matrix",
+    "iroh/P2P",
+    "plugin supervision",
+    "built-in tool bundles"
+  ],
+  "follow_up_policy": "Reusable app-owned glue discovered by this dogfood must become a follow-up OpenSpec before entering green SDK crates."
+}

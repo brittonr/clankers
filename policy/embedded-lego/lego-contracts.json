@@ -95,12 +95,13 @@
       "clankers-tool-host",
       "serde_json"
     ],
-    "manifest": "examples/embedded-product-workbench/Cargo.toml",
+    "manifest": "examples/embedded-product-workbench/dogfood-manifest.json",
     "receipt_evidence": [
       "manifest",
       "dependency-boundary-report",
       "sanitized-transcript",
-      "turn-receipt"
+      "turn-receipt",
+      "blake3-receipt"
     ]
   },
   "provider_adapter_fixtures": [
