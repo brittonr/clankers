@@ -44,6 +44,8 @@ const EVIDENCE_ARTIFACTS: &[&str] = &[
     "scripts/check-tool-catalog-manifest.rs",
     "policy/embedded-lego/capability-pack-composition.json",
     "scripts/check-capability-pack-composition.rs",
+    "policy/embedded-lego/plugin-runtime-dispatch.json",
+    "scripts/check-plugin-runtime-dispatch.rs",
     "examples/embedded-provider-adapter/src/main.rs",
     "examples/embedded-provider-adapter/fixtures/provider-adapter-fixtures.json",
     "scripts/check-provider-adapter-kit.rs",
@@ -308,6 +310,14 @@ fn validate_session_resume(policy: &Value, errors: &mut Vec<String>) {
 }
 
 fn validate_runtime_dispatch(policy: &Value, errors: &mut Vec<String>) {
+    let fixture = required_str(policy, "plugin_runtime_dispatch_fixture", errors);
+    if fixture != "policy/embedded-lego/plugin-runtime-dispatch.json" {
+        errors.push("plugin_runtime_dispatch_fixture must point at the checked runtime dispatch fixture".to_string());
+    }
+    if !fixture.is_empty() && !Path::new(fixture).exists() {
+        errors.push(format!("plugin runtime dispatch fixture `{fixture}` does not exist"));
+    }
+
     let entries = array(policy, "runtime_dispatch_matrix", errors);
     let mut kinds = BTreeSet::new();
     for entry in entries {
@@ -320,6 +330,14 @@ fn validate_runtime_dispatch(policy: &Value, errors: &mut Vec<String>) {
         let forbidden = string_set(entry, "forbidden_loaders", errors);
         if forbidden.contains(loader) {
             errors.push(format!("runtime kind `{kind}` forbids its selected loader `{loader}`"));
+        }
+        for field in ["manifest_requires", "dispatch_owner"] {
+            if entry.get(field).is_none() {
+                errors.push(format!("runtime kind `{kind}` missing `{field}`"));
+            }
+        }
+        if entry.get("policy_checked_before_dispatch").and_then(Value::as_bool) != Some(true) {
+            errors.push(format!("runtime kind `{kind}` must check policy before dispatch"));
         }
     }
     for required in ["extism", "stdio", "built-in", "product-owned"] {

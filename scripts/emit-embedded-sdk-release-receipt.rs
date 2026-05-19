@@ -67,6 +67,7 @@ const DIRECT_ARTIFACTS: &[&str] = &[
     "scripts/check-session-resume-brick.rs",
     "scripts/check-tool-catalog-manifest.rs",
     "scripts/check-capability-pack-composition.rs",
+    "scripts/check-plugin-runtime-dispatch.rs",
     "scripts/check-embedded-sdk-deps.rs",
     "scripts/check-embedded-adapters-deps.rs",
     "scripts/check-engine-host-feature-matrix.rs",
@@ -88,6 +89,7 @@ const EXAMPLE_DIRS: &[&str] = &[
     "examples/embedded-tool-kit",
     "examples/embedded-tool-kit/tool-catalog-manifest.json",
     "policy/embedded-lego/capability-pack-composition.json",
+    "policy/embedded-lego/plugin-runtime-dispatch.json",
     "examples/embedded-product-workbench",
     "examples/embedded-product-workbench/dogfood-manifest.json",
 ];

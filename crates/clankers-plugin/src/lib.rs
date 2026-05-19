@@ -442,3 +442,71 @@ pub fn load_plugins_from_dir(dir: &std::path::Path, plugins: &mut HashMap<String
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use serde_json::json;
+
+    use super::*;
+
+    fn write_plugin_manifest(root: &std::path::Path, name: &str, manifest: serde_json::Value) {
+        let dir = root.join(name);
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join("plugin.json"), serde_json::to_vec_pretty(&manifest).unwrap()).unwrap();
+    }
+
+    #[test]
+    fn plugin_runtime_dispatch_kit_keeps_non_extism_out_of_wasm_loader() {
+        let root = std::env::temp_dir().join(format!(
+            "clankers-plugin-runtime-dispatch-kit-{}",
+            std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos()
+        ));
+        std::fs::create_dir_all(&root).unwrap();
+        write_plugin_manifest(
+            &root,
+            "stdio-plugin",
+            json!({
+                "name": "stdio-plugin",
+                "version": "0.1.0",
+                "kind": "stdio",
+                "wasm": "should-not-be-loaded.wasm",
+                "stdio": {
+                    "command": "fake-stdio-runtime",
+                    "sandbox": "inherit"
+                }
+            }),
+        );
+        write_plugin_manifest(
+            &root,
+            "extism-with-stdio-policy",
+            json!({
+                "name": "extism-with-stdio-policy",
+                "version": "0.1.0",
+                "kind": "extism",
+                "wasm": "plugin.wasm",
+                "stdio": {
+                    "command": "wrong-runtime",
+                    "sandbox": "inherit"
+                }
+            }),
+        );
+
+        let mut manager = PluginManager::new(root.clone(), None);
+        manager.discover();
+
+        let stdio = manager.get("stdio-plugin").unwrap();
+        assert_eq!(stdio.state, PluginState::Loaded);
+        assert_eq!(stdio.manifest.kind, manifest::PluginKind::Stdio);
+        let error = manager.load_wasm("stdio-plugin").unwrap_err();
+        assert!(error.contains("uses 'stdio' runtime, not WASM"), "{error}");
+        assert!(!error.contains("WASM file not found"), "{error}");
+
+        let invalid_extism = manager.get("extism-with-stdio-policy").unwrap();
+        assert_eq!(invalid_extism.manifest.kind, manifest::PluginKind::Extism);
+        assert!(
+            matches!(invalid_extism.state, PluginState::Error(ref error) if error.contains("non-stdio plugins cannot declare a `stdio` launch policy"))
+        );
+
+        let _ = std::fs::remove_dir_all(root);
+    }
+}

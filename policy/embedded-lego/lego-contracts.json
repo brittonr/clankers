@@ -1,4 +1,5 @@
 {
+  "capability_pack_composition_fixture": "policy/embedded-lego/capability-pack-composition.json",
   "capability_packs": [
     {
       "capabilities": [
@@ -86,6 +87,7 @@
       "runtime extension services"
     ]
   },
+  "plugin_runtime_dispatch_fixture": "policy/embedded-lego/plugin-runtime-dispatch.json",
   "product_dogfood": {
     "allowed_green_deps": [
       "clanker-message",
@@ -126,41 +128,72 @@
   ],
   "runtime_dispatch_matrix": [
     {
+      "dispatch_owner": "plugin-wasm-loader",
       "forbidden_loaders": [
         "stdio",
+        "built-in",
         "product-owned"
       ],
       "kind": "extism",
-      "loader": "wasm"
+      "loader": "wasm",
+      "manifest_requires": [
+        "wasm",
+        "permissions",
+        "redaction_policy"
+      ],
+      "policy_checked_before_dispatch": true
     },
     {
+      "dispatch_owner": "stdio-runtime-service",
       "forbidden_loaders": [
-        "wasm"
+        "wasm",
+        "built-in",
+        "product-owned"
       ],
       "kind": "stdio",
-      "loader": "stdio"
+      "loader": "stdio",
+      "manifest_requires": [
+        "stdio.command",
+        "stdio.sandbox",
+        "permissions",
+        "redaction_policy"
+      ],
+      "policy_checked_before_dispatch": true
     },
     {
+      "dispatch_owner": "app-edge-built-in-registry",
       "forbidden_loaders": [
         "wasm",
-        "stdio"
+        "stdio",
+        "product-owned"
       ],
       "kind": "built-in",
-      "loader": "built-in"
+      "loader": "built-in",
+      "manifest_requires": [
+        "builtin_id",
+        "capabilities",
+        "redaction_policy"
+      ],
+      "policy_checked_before_dispatch": true
     },
     {
+      "dispatch_owner": "embedding-product",
       "forbidden_loaders": [
         "wasm",
-        "stdio"
+        "stdio",
+        "built-in"
       ],
       "kind": "product-owned",
-      "loader": "product-owned"
+      "loader": "product-owned",
+      "manifest_requires": [
+        "executor_ref",
+        "capabilities",
+        "redaction_policy"
+      ],
+      "policy_checked_before_dispatch": true
     }
   ],
   "schema": "clankers.embedded_lego.contracts.v1",
-  "capability_pack_composition_fixture": "policy/embedded-lego/capability-pack-composition.json",
-  "tool_catalog_manifest": "examples/embedded-tool-kit/tool-catalog-manifest.json",
-  "session_resume_evidence_fixture": "examples/embedded-session-store/session-resume-evidence.json",
   "session_resume_evidence": [
     {
       "evidence_source": "examples/embedded-session-store/session-resume-evidence.json",
@@ -177,6 +210,7 @@
       "restored_context": true
     }
   ],
+  "session_resume_evidence_fixture": "examples/embedded-session-store/session-resume-evidence.json",
   "tool_catalog": [
     {
       "approval": "never",
@@ -208,5 +242,6 @@
       "runtime": "stdio",
       "schema_hash_input": "{\"type\":\"object\",\"properties\":{\"command\":{\"type\":\"string\"}}}"
     }
-  ]
+  ],
+  "tool_catalog_manifest": "examples/embedded-tool-kit/tool-catalog-manifest.json"
 }

@@ -1,0 +1,79 @@
+{
+  "schema": "clankers.embedded_lego.runtime_dispatch.v1",
+  "runtime_kind_allowlist": [
+    "extism",
+    "stdio",
+    "built-in",
+    "product-owned"
+  ],
+  "dispatch_matrix": [
+    {
+      "kind": "extism",
+      "loader": "wasm",
+      "manifest_requires": ["wasm", "permissions", "redaction_policy"],
+      "forbidden_loaders": ["stdio", "built-in", "product-owned"],
+      "dispatch_owner": "plugin-wasm-loader",
+      "policy_checked_before_dispatch": true
+    },
+    {
+      "kind": "stdio",
+      "loader": "stdio",
+      "manifest_requires": ["stdio.command", "stdio.sandbox", "permissions", "redaction_policy"],
+      "forbidden_loaders": ["wasm", "built-in", "product-owned"],
+      "dispatch_owner": "stdio-runtime-service",
+      "policy_checked_before_dispatch": true
+    },
+    {
+      "kind": "built-in",
+      "loader": "built-in",
+      "manifest_requires": ["builtin_id", "capabilities", "redaction_policy"],
+      "forbidden_loaders": ["wasm", "stdio", "product-owned"],
+      "dispatch_owner": "app-edge-built-in-registry",
+      "policy_checked_before_dispatch": true
+    },
+    {
+      "kind": "product-owned",
+      "loader": "product-owned",
+      "manifest_requires": ["executor_ref", "capabilities", "redaction_policy"],
+      "forbidden_loaders": ["wasm", "stdio", "built-in"],
+      "dispatch_owner": "embedding-product",
+      "policy_checked_before_dispatch": true
+    }
+  ],
+  "denial_fixtures": [
+    {
+      "name": "stdio_without_launch_policy",
+      "kind": "stdio",
+      "diagnostic_contains": "stdio plugins must declare a `stdio` launch policy"
+    },
+    {
+      "name": "stdio_without_sandbox",
+      "kind": "stdio",
+      "diagnostic_contains": "stdio plugins must declare `stdio.sandbox`"
+    },
+    {
+      "name": "non_stdio_with_stdio_policy",
+      "kind": "extism",
+      "diagnostic_contains": "non-stdio plugins cannot declare a `stdio` launch policy"
+    },
+    {
+      "name": "stdio_sent_to_wasm_loader",
+      "kind": "stdio",
+      "diagnostic_contains": "uses 'stdio' runtime, not WASM"
+    }
+  ],
+  "source_guards": [
+    {
+      "path": "crates/clankers-plugin/src/lib.rs",
+      "must_contain": "if !info.manifest.kind.uses_wasm_runtime()"
+    },
+    {
+      "path": "crates/clankers-plugin/src/manifest.rs",
+      "must_contain": "MissingStdioLaunchPolicy"
+    },
+    {
+      "path": "crates/clankers-plugin/src/host_facade.rs",
+      "must_contain": "filter(|info| info.manifest.kind.uses_wasm_runtime())"
+    }
+  ]
+}

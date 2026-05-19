@@ -38,6 +38,9 @@ let RuntimeDispatch = {
   kind | NonEmptyString,
   loader | NonEmptyString,
   forbidden_loaders | Array NonEmptyString,
+  manifest_requires | Array NonEmptyString,
+  dispatch_owner | NonEmptyString,
+  policy_checked_before_dispatch | Bool,
 } in
 {
   schema = "clankers.embedded_lego.contracts.v1",
@@ -52,5 +55,6 @@ let RuntimeDispatch = {
   },
   provider_adapter_fixtures | Array ProviderFixture,
   session_resume_evidence | Array SessionResumeEvidence,
+  plugin_runtime_dispatch_fixture | NonEmptyString,
   runtime_dispatch_matrix | Array RuntimeDispatch,
 }
