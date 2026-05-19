@@ -63,6 +63,8 @@ Flow: `Handshake → SessionInfo → ReplayHistory → streaming events`
 
 See `crates/clankers-protocol/` for frame types, `DaemonEvent`, and `SessionCommand`.
 
+The `daemon-event-translation-kit` is the copyable brick for streaming/replay event compatibility. Reusable behavior lives in `crates/clankers-controller/src/convert.rs`: `AgentEvent` → `DaemonEvent`, `DaemonEvent` → `TuiEvent`, and stored message replay → `TuiEvent` sequences. Attach clients consume that shared translator in `src/modes/attach/events.rs`, while session metadata, system messages, confirmation dialogs, plugin widgets, subagent panes, and replay control markers stay app-edge behavior. The checked fixture covers positive text/user replay conversion plus fail-closed app-edge and replay-metadata cases with redacted evidence; `scripts/check-daemon-event-translation-kit.rs` keeps source, docs, and OpenSpec anchors aligned.
+
 ## Actor system
 
 The actor system ([`clanker-actor`](https://github.com/brittonr/clanker-actor)) provides Erlang-style process management:

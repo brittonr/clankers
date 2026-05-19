@@ -557,6 +557,40 @@ mod tests {
     }
 
     #[test]
+    fn daemon_event_translation_kit_preserves_streaming_replay_and_app_edge_events() {
+        let text_event = daemon_event_to_tui_event(&DaemonEvent::TextDelta {
+            text: "assistant delta".to_string(),
+        });
+        assert!(matches!(text_event, Some(clanker_tui_types::TuiEvent::TextDelta(text)) if text == "assistant delta"));
+
+        let timestamp = "2026-04-22T12:34:56Z".to_string();
+        let user_event = daemon_event_to_tui_event(&DaemonEvent::UserInput {
+            text: "safe replay prompt".to_string(),
+            agent_msg_count: 7,
+            timestamp: timestamp.clone(),
+        });
+        assert!(matches!(
+            user_event,
+            Some(clanker_tui_types::TuiEvent::UserInput { text, agent_msg_count: 7, timestamp: parsed })
+                if text == "safe replay prompt" && parsed == parse_user_input_timestamp(&timestamp)
+        ));
+
+        let app_edge_event = DaemonEvent::SystemMessage {
+            text: "token=[REDACTED]".to_string(),
+            is_error: true,
+        };
+        assert!(daemon_event_to_tui_event(&app_edge_event).is_none());
+
+        let branch = clanker_message::AgentMessage::BranchSummary(clanker_message::BranchSummaryMessage {
+            id: clanker_message::MessageId::new("bs-kit"),
+            from_id: clanker_message::MessageId::new("m-kit"),
+            summary: "branch summaries stay app-edge replay metadata".to_string(),
+            timestamp: fixed_timestamp(),
+        });
+        assert!(agent_message_to_tui_events(&branch).is_empty());
+    }
+
+    #[test]
     fn test_extract_tool_content_mixed() {
         let content = vec![
             ToolResultContent::Text {
