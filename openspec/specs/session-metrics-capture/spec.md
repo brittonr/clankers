@@ -1,63 +1,41 @@
-## ADDED Requirements
+# Session Metrics Capture Specification
 
-### Requirement: Sessions emit unified metrics events
-Clankers MUST translate runtime activity into a unified metrics stream that covers session lifecycle, turn lifecycle, model changes, session compaction, cancellation, and process-monitoring signals when procmon is active.
+## Purpose
 
-#### Scenario: Session summary captures model switches and compaction
-- **GIVEN** a session that changes models and compacts old context
-- **WHEN** the session ends
-- **THEN** the session metrics summary records wall time, turn count, model switch count, compaction count, and total tokens saved by compaction
+Defines reusable session metrics and audit receipt contracts for safe, bounded observability across controller-owned prompt, tool, plugin, and session telemetry.
 
-#### Scenario: Procmon metrics are optional
-- **GIVEN** process monitoring is disabled for a session
-- **WHEN** no procmon events are emitted
-- **THEN** metrics capture skips process fields without treating the session as failed
+## Requirements
 
-### Requirement: Tool execution metrics are recorded per call
-Clankers MUST record one tool metric entry per execution with the tool name, call ID, source, duration, outcome, and streamed-result totals.
+### Requirement: Observability kit emits bounded redacted receipts [r[session-metrics-capture.observability-audit-receipt-kit]]
 
-#### Scenario: Built-in tool execution succeeds
-- **GIVEN** the agent calls a built-in tool such as `read`
-- **WHEN** the tool finishes successfully
-- **THEN** metrics capture records the tool name, `builtin` source, duration, success outcome, and streamed byte/chunk totals for that call
+The system MUST define `observability-audit-receipt-kit` as a composable Clankers brick with explicit ownership boundaries, deterministic fixtures, and safe evidence.
 
-#### Scenario: Tool execution is blocked or errors
-- **GIVEN** a tool call is blocked by the sandbox or returns an error
-- **WHEN** execution ends
-- **THEN** metrics capture records the tool outcome as blocked or error and increments the session error counters
+#### Scenario: Brick boundary is explicit [r[session-metrics-capture.observability-audit-receipt-kit.boundary]]
 
-#### Scenario: Plugin tool execution carries plugin ownership
-- **GIVEN** the agent calls a plugin-provided tool
-- **WHEN** metrics capture records the call
-- **THEN** the entry records the tool source as `plugin` and includes the owning plugin name
+- GIVEN a product or contributor adopts the `observability-audit-receipt-kit` brick
+- WHEN the brick is documented, instantiated, or validated
+- THEN the contract MUST name which behavior is reusable, which behavior stays product-owned, and which shell/runtime systems are out of scope
+- THEN reusable receipt construction MUST stay separate from product-owned persistence, export, daemon, plugin, provider, and TUI sinks
 
-### Requirement: Plugin activity metrics are recorded
-Clankers MUST record plugin lifecycle and activity metrics, including load results, event dispatches, hook denials, tool calls, UI actions, and plugin execution errors.
+#### Scenario: Receipts are bounded and redacted [r[session-metrics-capture.observability-audit-receipt-kit.redaction]]
 
-#### Scenario: Plugin handles an agent event and emits UI actions
-- **GIVEN** a plugin subscribes to `tool_call`
-- **WHEN** the daemon or standalone runtime dispatches that event and the plugin returns a status update or widget action
-- **THEN** metrics capture increments that plugin's event-dispatch and UI-action counters
+- GIVEN audit or metrics state contains pending tool calls, completed tool calls, or dropped-event counters
+- WHEN a reusable observability receipt is produced
+- THEN the receipt MUST expose bounded counts and booleans rather than hidden maps, raw event payloads, or unbounded pending buffers
+- THEN the receipt MUST NOT serialize raw tool names, call ids, prompts, provider payloads, credentials, authorization headers, OAuth tokens, raw tool arguments, tool output, or secret environment values
+- WHEN hidden pending state exceeds the public receipt limit
+- THEN the receipt MUST clamp public count fields to the configured limit and expose an over-limit diagnostic boolean
 
-#### Scenario: Plugin hook denies an operation
-- **GIVEN** a plugin denies a pre-tool hook
-- **WHEN** the denial is surfaced back to the runtime
-- **THEN** metrics capture records a hook-deny event for that plugin and increments the session deny counter
+#### Scenario: Brick has executable evidence [r[session-metrics-capture.observability-audit-receipt-kit.evidence]]
 
-#### Scenario: Plugin load fails
-- **GIVEN** plugin startup fails for a discovered plugin
-- **WHEN** the runtime logs the failure
-- **THEN** metrics capture records the plugin name, failure outcome, and failure count without stopping other plugins from being counted
+- GIVEN the brick is changed
+- WHEN the focused verification for the change runs
+- THEN it MUST exercise at least one positive path and one fail-closed or negative path through deterministic fixtures, examples, policy checks, generated inventory checks, or receipt validation
+- THEN evidence MUST be safe to commit or summarize without raw prompts, credentials, authorization headers, OAuth tokens, provider payloads, hidden context, raw tool arguments, or secret environment values
 
-### Requirement: Token and cost metrics are recorded by model
-Clankers MUST record per-turn and per-session token usage by model, including input, output, cache-read, cache-write, and estimated cost when pricing data exists.
+#### Scenario: Brick drift is diagnosable [r[session-metrics-capture.observability-audit-receipt-kit.drift]]
 
-#### Scenario: Usage update contributes to the active model
-- **GIVEN** the provider reports input, output, and cache tokens for a turn
-- **WHEN** metrics capture processes the usage update
-- **THEN** the current model's counters increase for those token classes and the session summary updates its cumulative totals
-
-#### Scenario: Model change splits usage across models
-- **GIVEN** a session switches from one model to another mid-run
-- **WHEN** later usage updates arrive
-- **THEN** metrics capture stores per-model counters separately and preserves the total session counters across both models
+- GIVEN source code, docs, fixtures, policy, or generated inventories drift apart
+- WHEN the brick validation rail runs
+- THEN it MUST fail with a diagnostic that names the stale artifact and the expected owner of the update
+- THEN intentional contract changes MUST require updating tests, docs, and receipt or fixture evidence together

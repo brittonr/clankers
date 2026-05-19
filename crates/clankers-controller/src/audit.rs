@@ -4,10 +4,22 @@ use std::collections::HashMap;
 use std::time::Instant;
 
 use clankers_agent::events::AgentEvent;
+use serde::Deserialize;
+use serde::Serialize;
 use tracing::warn;
 
 /// Maximum number of pending (unfinished) tool calls before warning.
 const MAX_PENDING_CALLS: usize = 1024;
+
+/// Safe, bounded observability receipt for tool-call audit state.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ObservabilityAuditReceipt {
+    pub pending_count: usize,
+    pub pending_limit: usize,
+    pub pending_over_limit: bool,
+    pub completed_count: u64,
+    pub average_duration_ms: u64,
+}
 
 /// Tracks tool call starts and ends for timing and leak detection.
 pub struct AuditTracker {
@@ -74,6 +86,18 @@ impl AuditTracker {
                 .unwrap_or(u64::MAX)
         }
     }
+
+    /// Build a safe receipt without raw tool names, call ids, arguments, provider payloads, or
+    /// environment values.
+    pub fn observability_receipt(&self) -> ObservabilityAuditReceipt {
+        ObservabilityAuditReceipt {
+            pending_count: self.pending.len().min(MAX_PENDING_CALLS),
+            pending_limit: MAX_PENDING_CALLS,
+            pending_over_limit: self.pending.len() > MAX_PENDING_CALLS,
+            completed_count: self.completed_count(),
+            average_duration_ms: self.avg_duration_ms(),
+        }
+    }
 }
 
 impl Default for AuditTracker {
@@ -110,17 +134,41 @@ mod tests {
     }
 
     #[test]
-    fn test_audit_unknown_end() {
-        let mut audit = AuditTracker::new();
+    fn observability_audit_receipt_kit_bounds_and_redacts_tool_state() {
+        const SECRET_TOOL_NAME: &str = "Authorization: Bearer SECRET_TOKEN";
 
-        // Ending an unknown call_id should not panic
+        let mut audit = AuditTracker::new();
+        audit.process_event(&AgentEvent::ToolExecutionStart {
+            call_id: "secret-call-id".to_string(),
+            tool_name: SECRET_TOOL_NAME.to_string(),
+        });
         audit.process_event(&AgentEvent::ToolExecutionEnd {
-            call_id: "unknown".to_string(),
-            result: ToolResult::text("ok"),
+            call_id: "secret-call-id".to_string(),
+            result: ToolResult::text("raw tool output with SECRET_TOKEN"),
             is_error: false,
         });
 
-        assert_eq!(audit.pending_count(), 0);
-        assert_eq!(audit.completed_count(), 0);
+        let receipt = audit.observability_receipt();
+        assert_eq!(receipt.pending_count, 0);
+        assert_eq!(receipt.pending_limit, MAX_PENDING_CALLS);
+        assert!(!receipt.pending_over_limit);
+        assert_eq!(receipt.completed_count, 1);
+
+        let receipt_json = serde_json::to_string(&receipt).expect("serialize observability receipt");
+        assert!(!receipt_json.contains("SECRET_TOKEN"));
+        assert!(!receipt_json.contains("Authorization"));
+        assert!(!receipt_json.contains("secret-call-id"));
+        assert!(!receipt_json.contains("raw tool output"));
+
+        for index in 0..=MAX_PENDING_CALLS {
+            audit.process_event(&AgentEvent::ToolExecutionStart {
+                call_id: format!("pending-{index}"),
+                tool_name: format!("tool-{index}"),
+            });
+        }
+
+        let saturated_receipt = audit.observability_receipt();
+        assert_eq!(saturated_receipt.pending_count, MAX_PENDING_CALLS);
+        assert!(saturated_receipt.pending_over_limit);
     }
 }

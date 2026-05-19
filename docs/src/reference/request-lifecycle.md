@@ -100,6 +100,14 @@ Important invariants:
 - Do not rebuild request messages by lossy `serde_json::to_value` conversions for routed provider backends; use the adapter path that preserves provider-native message content.
 - Branch and compaction summaries are durable conversation context. If they are converted for a routed provider path, preserve them as user-visible text context rather than dropping them silently.
 
+## Observability and audit receipts
+
+The `observability-audit-receipt-kit` is the copyable brick for safe telemetry receipts. Reusable behavior lives in `AuditTracker::observability_receipt` plus `MetricsCollector`'s bounded pending-event buffer; product-owned sinks still decide where receipts are persisted or exported.
+
+Audit receipts expose bounded counts and booleans: pending tool-call count, configured pending limit, over-limit status, completed tool-call count, and average duration. They intentionally include no raw tool names, call ids, tool output, prompts, provider payloads, credentials, authorization headers, OAuth tokens, raw tool arguments, or secret environment values. When pending state exceeds the configured limit, the receipt clamps the public count to the limit and sets an over-limit diagnostic instead of serializing the hidden pending map.
+
+The checked drift rail is `scripts/check-observability-audit-receipt-kit.rs` and the focused fixture is `observability_audit_receipt_kit_bounds_and_redacts_tool_state`.
+
 ## Persistence and replay
 
 Persistence is controller-owned.
