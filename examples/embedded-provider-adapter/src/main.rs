@@ -40,6 +40,10 @@ fn main() {
 }
 
 fn completed_provider_path() {
+    let profile = product_model_profile();
+    assert_eq!(profile.model, MODEL);
+    assert_eq!(profile.retryable_statuses, vec![429, 500, 502, 503, 504]);
+    assert!(!profile.live_credentials);
     let mut adapter = ProductProviderAdapter::new([ProductProviderResponse::Completed {
         text: "provider adapter completed".to_string(),
         usage: Usage {
@@ -143,6 +147,16 @@ struct ProductProviderRequest {
     prompt_text: String,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct ProductModelProfile {
+    model: &'static str,
+    max_tokens: usize,
+    model_request_slot_budget: u32,
+    supports_tool_use: bool,
+    retryable_statuses: Vec<u16>,
+    live_credentials: bool,
+}
+
 #[derive(Debug, Clone)]
 enum ProductProviderResponse {
     Completed { text: String, usage: Usage },
@@ -222,7 +236,19 @@ impl ModelHost for ProductProviderAdapter {
     }
 }
 
+fn product_model_profile() -> ProductModelProfile {
+    ProductModelProfile {
+        model: MODEL,
+        max_tokens: 256,
+        model_request_slot_budget: 3,
+        supports_tool_use: false,
+        retryable_statuses: vec![429, 500, 502, 503, 504],
+        live_credentials: false,
+    }
+}
+
 fn seed(prompt: &str) -> EngineRunSeed {
+    let profile = product_model_profile();
     let submission = EnginePromptSubmission {
         messages: vec![EngineMessage {
             role: EngineMessageRole::User,
@@ -230,16 +256,16 @@ fn seed(prompt: &str) -> EngineRunSeed {
                 text: prompt.to_string(),
             }],
         }],
-        model: MODEL.to_string(),
+        model: profile.model.to_string(),
         system_prompt: "product-owned provider adapter".to_string(),
-        max_tokens: Some(256),
+        max_tokens: Some(profile.max_tokens),
         temperature: None,
         thinking: None,
         tools: Vec::new(),
         no_cache: true,
         cache_ttl: None,
         session_id: SESSION_ID.to_string(),
-        model_request_slot_budget: 3,
+        model_request_slot_budget: profile.model_request_slot_budget,
     };
     let initial_state = EngineState::new();
     let first_outcome = reduce(&initial_state, &EngineInput::submit_user_prompt(submission));

@@ -63,6 +63,7 @@ const DIRECT_ARTIFACTS: &[&str] = &[
     "scripts/check-embedded-sdk-api.rs",
     "scripts/check-embedded-lego-contracts.rs",
     "scripts/check-real-product-dogfood.rs",
+    "scripts/check-provider-adapter-kit.rs",
     "scripts/check-embedded-sdk-deps.rs",
     "scripts/check-embedded-adapters-deps.rs",
     "scripts/check-engine-host-feature-matrix.rs",

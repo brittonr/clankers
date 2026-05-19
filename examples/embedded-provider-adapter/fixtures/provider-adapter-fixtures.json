@@ -1,0 +1,60 @@
+{
+  "schema": "clankers.embedded_provider_adapter.fixtures.v1",
+  "request_fixture": {
+    "model": "product-owned-model",
+    "session_id": "embedded-provider-session",
+    "system_prompt": "product-owned provider adapter",
+    "prompt_text": "answer directly",
+    "max_tokens": 256,
+    "model_request_slot_budget": 3
+  },
+  "model_capability_profile": {
+    "owner": "product",
+    "model": "product-owned-model",
+    "max_tokens": 256,
+    "supports_tool_use": false,
+    "retryable_statuses": [429, 500, 502, 503, 504],
+    "live_credentials": false,
+    "network_required": false
+  },
+  "response_fixtures": [
+    {
+      "name": "completed",
+      "kind": "completed",
+      "text": "provider adapter completed",
+      "usage": {
+        "input_tokens": 4,
+        "output_tokens": 6,
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 0
+      }
+    },
+    {
+      "name": "retryable-failure",
+      "kind": "failed",
+      "status": 503,
+      "message": "provider warming",
+      "retryable": true
+    },
+    {
+      "name": "terminal-failure",
+      "kind": "failed",
+      "status": 400,
+      "message": "bad product request",
+      "retryable": false
+    },
+    {
+      "name": "usage-accounting",
+      "kind": "usage",
+      "input_tokens": 4,
+      "output_tokens": 6
+    }
+  ],
+  "forbidden_dependencies": [
+    "clankers-provider",
+    "clanker-router",
+    "OAuth stores",
+    "provider discovery",
+    "live network credentials"
+  ]
+}

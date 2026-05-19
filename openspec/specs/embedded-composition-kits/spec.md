@@ -331,19 +331,26 @@ The system MUST make product-owned model-provider adaptation easy to copy withou
 - THEN it MUST demonstrate completed, retryable-failure, terminal-failure, and usage-accounting outcomes
 - THEN each outcome MUST be asserted without live credentials, network access, OAuth stores, provider discovery, or router daemon RPC
 
-#### Scenario: Provider fixtures are explicit and hashed [r[embedded-composition-kits.provider-adapter-kit.fixtures]]
+#### Scenario: Provider adapter template is fixture backed [r[embedded-composition-kits.provider-adapter-kit.provider-adapter-template-is-fixture-backed]]
 
 - GIVEN provider-adapter examples use request/response fixtures
 - WHEN verification runs
 - THEN fixture inputs and expected normalized outputs MUST be explicit literals or exported data, not produced by the code path under test
 - THEN the embedded release receipt SHOULD include BLAKE3 hashes for representative request fixtures, response fixtures, and adapter-run receipts
 
-#### Scenario: Model capability declarations stay product-owned [r[embedded-composition-kits.provider-adapter-kit.nickel-profile]]
+#### Scenario: Model capability profile remains product-owned [r[embedded-composition-kits.provider-adapter-kit.model-capability-profile-remains-product-owned]]
 
 - GIVEN a product declares model limits, retry policy, or feature flags for its adapter
 - WHEN those declarations are contract checked
+- THEN optional model limits, retry policy, and feature flags MUST be declared as product-owned data and consumed as typed Rust inputs
 - THEN Nickel MAY validate the example profile shape and defaults at author time
 - THEN the generic SDK MUST expose Rust traits and DTOs rather than a Nickel-dependent provider abstraction
+
+#### Scenario: Template dependency boundary is enforced [r[embedded-composition-kits.provider-adapter-kit.template-dependency-boundary-is-enforced]]
+
+- GIVEN a product-owned provider adapter template is checked into examples
+- WHEN the embedded SDK acceptance rail runs
+- THEN the template and examples MUST reject `clankers-provider`, clanker-router daemon RPC, OAuth stores, provider discovery, and live network credentials from the generic SDK path
 
 ### Requirement: Session/resume brick convergence [r[embedded-composition-kits.session-resume-brick]]
 

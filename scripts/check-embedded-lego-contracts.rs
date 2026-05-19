@@ -39,6 +39,8 @@ const EVIDENCE_ARTIFACTS: &[&str] = &[
     "scripts/check-real-product-dogfood.rs",
     "examples/embedded-session-store/src/main.rs",
     "examples/embedded-provider-adapter/src/main.rs",
+    "examples/embedded-provider-adapter/fixtures/provider-adapter-fixtures.json",
+    "scripts/check-provider-adapter-kit.rs",
     "docs/src/tutorials/embedded-agent-sdk.md",
     "docs/src/generated/embedded-sdk-api.md",
 ];

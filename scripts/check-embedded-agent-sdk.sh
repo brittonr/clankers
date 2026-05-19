@@ -34,6 +34,7 @@ export TMPDIR
 run_step "${SCRIPT_DIR}/check-embedded-sdk-api.rs"
 run_step "${SCRIPT_DIR}/check-embedded-lego-contracts.rs"
 run_step "${SCRIPT_DIR}/check-real-product-dogfood.rs"
+run_step "${SCRIPT_DIR}/check-provider-adapter-kit.rs"
 run_step "${SCRIPT_DIR}/check-embedded-sdk-deps.rs"
 run_step "${SCRIPT_DIR}/check-embedded-adapters-deps.rs"
 run_step "${SCRIPT_DIR}/check-llm-contract-boundary.sh"
