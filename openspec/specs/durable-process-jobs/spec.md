@@ -305,3 +305,34 @@ The system MUST resolve any supported named project job profiles through validat
 - WHEN Clankers loads or starts the profile
 - THEN it MUST reject the profile with typed validation errors and MUST NOT execute any command from it
 
+### Requirement: Process job profile kit validates backend-neutral job manifests [r[durable-process-jobs.process-job-profile-kit]]
+
+The system MUST define `process-job-profile-kit` as a composable Clankers brick with explicit ownership boundaries, deterministic fixtures, and safe evidence.
+
+#### Scenario: Brick boundary is explicit [r[durable-process-jobs.process-job-profile-kit.boundary]]
+
+- GIVEN a product or contributor adopts the `process-job-profile-kit` brick
+- WHEN the brick is documented, instantiated, or validated
+- THEN the contract MUST name which behavior is reusable, which behavior stays product-owned, and which shell/runtime systems are out of scope
+- THEN reusable profile parsing, policy validation, identity derivation, and redaction MUST stay separate from product-owned daemon/session selection, backend spawning, persistence, and user notification delivery
+
+#### Scenario: Profile resolution is pure and backend-neutral [r[durable-process-jobs.process-job-profile-kit.evidence]]
+
+- GIVEN a project manifest defines a named process job profile
+- WHEN the profile resolver accepts it
+- THEN resolving a profile produces a backend-neutral start request without spawning a process, contacting pueue/systemd, writing storage, using TUI state, or reading ambient credentials
+- THEN the resolved request MUST include explicit backend, command/program shape, cwd, owner, resource policy, notification policy, and safe metadata
+
+#### Scenario: Profile policy fails closed before backend dispatch [r[durable-process-jobs.process-job-profile-kit.fail-closed]]
+
+- GIVEN a process job profile names a disallowed backend, malformed command shape, secret-like environment key, or resource limit above policy
+- WHEN profile validation runs
+- THEN it MUST reject the profile before backend dispatch and MUST NOT execute any command from that profile
+
+#### Scenario: Brick drift is diagnosable [r[durable-process-jobs.process-job-profile-kit.drift]]
+
+- GIVEN source code, docs, fixtures, policy, or generated inventories drift apart
+- WHEN the brick validation rail runs
+- THEN it MUST fail with a diagnostic that names the stale artifact and the expected owner of the update
+- THEN intentional contract changes MUST require updating tests, docs, and receipt or fixture evidence together
+

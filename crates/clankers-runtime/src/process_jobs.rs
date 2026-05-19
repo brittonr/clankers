@@ -2815,6 +2815,56 @@ mod tests {
         assert!(err.to_string().contains("disallowed backend"));
     }
 
+    #[test]
+    fn process_job_profile_kit_validates_manifest_policy_identity_and_redaction() {
+        let profiles = ProjectProcessJobProfiles::from_json_str(
+            r#"{
+              "profiles": {
+                "quick-check": {
+                  "command": "cargo check --tests",
+                  "cwd": "/repo",
+                  "env": {"APP_MODE": "ci"},
+                  "resource_policy": {"timeout": {"secs": 300, "nanos": 0}},
+                  "notification_policy": {"notify_on_complete": true},
+                  "metadata": {"intent": "developer-smoke", "identity.team": "runtime"}
+                }
+              }
+            }"#,
+        )
+        .expect("profile manifest parses without contacting a backend");
+
+        let resolved = profiles
+            .resolve("quick-check", ProcessJobOwnerScope::Workspace("repo".to_string()), &profile_policy())
+            .expect("valid profile resolves to backend-neutral start spec");
+        assert_eq!(resolved.request.backend, ProcessJobBackendKind::Native);
+        assert_eq!(resolved.request.shell_command.as_deref(), Some("cargo check --tests"));
+        assert_eq!(resolved.request.program, None);
+        assert!(resolved.request.notification_policy.notify_on_complete);
+        assert_eq!(resolved.request.metadata.get("profile").map(String::as_str), Some("quick-check"));
+        assert_eq!(resolved.request.metadata.get("env:APP_MODE").map(String::as_str), Some("ci"));
+
+        let envelope = ProcessJobIdentityEnvelope::for_start_request(&resolved.request, "nonce-1");
+        let stable_id = envelope.derive_id();
+        assert!(stable_id.is_blake3_native());
+        assert_eq!(envelope.profile.as_deref(), Some("quick-check"));
+        assert_eq!(envelope.metadata.get("identity.team").map(String::as_str), Some("runtime"));
+        assert!(!envelope.metadata.contains_key("env:APP_MODE"));
+
+        let mut secret_profiles = ProjectProcessJobProfiles::default();
+        secret_profiles.profiles.insert("leaky".to_string(), ProjectProcessJobProfile {
+            command: Some("echo ok".to_string()),
+            env: BTreeMap::from([("APP_TOKEN".to_string(), "SECRET_TOKEN".to_string())]),
+            ..ProjectProcessJobProfile::default()
+        });
+        let err = secret_profiles
+            .resolve("leaky", ProcessJobOwnerScope::Workspace("repo".to_string()), &profile_policy())
+            .expect_err("secret env keys reject before backend dispatch");
+        assert!(err.to_string().contains("disallowed environment key APP_TOKEN"));
+
+        let redaction = ProcessJobRedactionPolicy::default();
+        assert_eq!(redaction.safe_command_preview("Authorization: Bearer SECRET_TOKEN"), PROCESS_JOB_REDACTED);
+    }
+
     #[derive(Default)]
     struct FakeStore {
         summaries: Mutex<Vec<ProcessJobSummary>>,

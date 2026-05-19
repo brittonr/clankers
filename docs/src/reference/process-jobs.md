@@ -80,7 +80,9 @@ The module creates the process-job registry and log directories below the daemon
 
 ## Project job profiles
 
-Project-defined profiles parse into backend-neutral `StartProcessJobRequest` values before any backend dispatch. A profile must set exactly one of `command` or `program`; `args` is valid only with `program`. Policy controls the default backend, allowed backends, maximum timeout/memory/CPU bounds, and allowed environment-variable prefixes. Environment keys containing `SECRET`, `TOKEN`, or `KEY` are rejected.
+The `process-job-profile-kit` is the copyable brick for backend-neutral process-job manifests. Project-defined profiles parse into backend-neutral `StartProcessJobRequest` values before any backend dispatch. A profile must set exactly one of `command` or `program`; `args` is valid only with `program`. Policy controls the default backend, allowed backends, maximum timeout/memory/CPU bounds, and allowed environment-variable prefixes. Secret-like environment keys such as `APP_TOKEN`, `APP_SECRET`, or `APP_KEY` fail closed before backend dispatch.
+
+Reusable behavior lives in `ProjectProcessJobProfiles`, `ProjectProcessJobProfilePolicy`, `StartProcessJobRequest`, `ProcessJobIdentityEnvelope`, and `ProcessJobRedactionPolicy`. Product-owned behavior remains outside the brick: selecting a daemon/session, spawning native/pueue/systemd jobs, persisting receipts/logs, and notifying users. Resolving a profile is pure: it validates policy and returns a start request, but does not spawn a process, contact pueue/systemd, or write storage.
 
 Profile JSON shape:
 
@@ -98,4 +100,4 @@ Profile JSON shape:
 }
 ```
 
-Profiles are pure configuration: resolving them validates policy and produces a start request; it does not spawn a process, contact pueue/systemd, or write storage by itself.
+Profiles are pure configuration: resolving them validates policy and produces a start request; it does not spawn a process, contact pueue/systemd, or write storage by itself. The focused drift rail is `scripts/check-process-job-profile-kit.rs`.
