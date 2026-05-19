@@ -356,19 +356,26 @@ The system MUST make product-owned model-provider adaptation easy to copy withou
 
 The system MUST gather comparable host-owned session/resume evidence before promoting a reusable public session API.
 
-#### Scenario: Multiple products preserve restored context [r[embedded-composition-kits.session-resume-brick.multi-product]]
+#### Scenario: Multiple product-shaped stores prove restored context [r[embedded-composition-kits.session-resume-brick.multiple-product-shaped-stores-prove-restored-context]]
 
-- GIVEN two or more product-style embeddings persist and resume embedded sessions
-- WHEN their follow-up turns run
+- GIVEN at least two product-style embeddings persist and resume embedded sessions
+- WHEN their follow-up turns run through the embedded SDK acceptance rail
 - THEN each MUST prove restored user/tool/assistant context reaches the next `EngineModelRequest` in deterministic order
 - THEN each product MUST own its storage DTOs and persistence I/O unless a later OpenSpec promotes a reusable session trait
 
-#### Scenario: Missing-session and fork prevention are explicit [r[embedded-composition-kits.session-resume-brick.fail-closed]]
+#### Scenario: Missing and stale sessions fail closed [r[embedded-composition-kits.session-resume-brick.missing-and-stale-sessions-fail-closed]]
 
-- GIVEN a product requests a missing or stale session id
+- GIVEN a product requests a missing, stale, or fork-prone session id
 - WHEN restore is attempted
 - THEN the embedding MUST fail closed before model/tool execution or explicitly create a new session through a separate product-owned path
 - THEN it MUST NOT silently fork a replacement session or read Clankers JSONL/DB/session shell state
+
+#### Scenario: Reusable API promotion waits for convergence [r[embedded-composition-kits.session-resume-brick.reusable-api-promotion-waits-for-convergence]]
+
+- GIVEN multiple product embeddings expose similar session DTO or store shapes
+- WHEN a developer wants to promote that shape into a generic green SDK API
+- THEN the repeated shape MUST be recorded as convergence evidence for a later OpenSpec
+- THEN the current generic SDK MUST NOT import `clankers-session`, `clankers-db`, Clankers JSONL restore shells, daemon sockets, or TUI/session restore logic as part of this evidence-only slice
 
 #### Scenario: Resume evidence is content addressed [r[embedded-composition-kits.session-resume-brick.blake3-evidence]]
 

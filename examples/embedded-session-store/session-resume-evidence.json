@@ -1,0 +1,62 @@
+{
+  "schema": "clankers.embedded_session_resume.evidence.v1",
+  "products": [
+    {
+      "product": "embedded-session-store",
+      "cargo_manifest": "examples/embedded-session-store/Cargo.toml",
+      "source": "examples/embedded-session-store/src/main.rs",
+      "store_type": "InMemoryProductSessionStore",
+      "dto_types": [
+        "ProductSession",
+        "ProductMessage",
+        "ProductTurnReceipt"
+      ],
+      "restored_context": true,
+      "missing_session_fail_closed": true,
+      "owns_storage_dto": true,
+      "expected_follow_up_context": [
+        "user: Remember the launch code name is Orchard.",
+        "assistant: Stored: launch code name Orchard.",
+        "user: What launch code name did I give you?"
+      ],
+      "missing_session_error": "ProductStoreError::MissingSession",
+      "forbidden_dependencies": [
+        "clankers-session",
+        "clankers-db",
+        "Clankers JSONL",
+        "daemon sockets",
+        "TUI/session restore logic"
+      ]
+    },
+    {
+      "product": "embedded-product-workbench",
+      "cargo_manifest": "examples/embedded-product-workbench/Cargo.toml",
+      "source": "examples/embedded-product-workbench/src/main.rs",
+      "store_type": "ProductSessionStore",
+      "dto_types": [
+        "ProductSession",
+        "ProductMessage",
+        "ProductTurnReceipt"
+      ],
+      "restored_context": true,
+      "missing_session_fail_closed": true,
+      "owns_storage_dto": true,
+      "expected_follow_up_context": [
+        "user: Look up the launch code name, then remember it.",
+        "assistant: tool-use:lookup_project_fact",
+        "tool: tool-result:launch code name: Orchard",
+        "assistant: Stored the product fact: Orchard.",
+        "user: What launch code did the tool report?"
+      ],
+      "missing_session_error": "ProductError::MissingSession",
+      "forbidden_dependencies": [
+        "clankers-session",
+        "clankers-db",
+        "Clankers JSONL",
+        "daemon sockets",
+        "TUI/session restore logic"
+      ]
+    }
+  ],
+  "promotion_policy": "Record repeated product-owned session DTO/store shapes as convergence evidence; do not import clankers-session, clankers-db, JSONL restore shells, daemon sockets, or TUI/session restore logic into green SDK crates without a later OpenSpec."
+}

@@ -158,14 +158,17 @@
     }
   ],
   "schema": "clankers.embedded_lego.contracts.v1",
+  "session_resume_evidence_fixture": "examples/embedded-session-store/session-resume-evidence.json",
   "session_resume_evidence": [
     {
+      "evidence_source": "examples/embedded-session-store/session-resume-evidence.json",
       "missing_session_fail_closed": true,
       "owns_storage_dto": true,
       "product": "embedded-session-store",
       "restored_context": true
     },
     {
+      "evidence_source": "examples/embedded-session-store/session-resume-evidence.json",
       "missing_session_fail_closed": true,
       "owns_storage_dto": true,
       "product": "embedded-product-workbench",

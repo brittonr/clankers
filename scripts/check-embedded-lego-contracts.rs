@@ -38,6 +38,8 @@ const EVIDENCE_ARTIFACTS: &[&str] = &[
     "examples/embedded-product-workbench/src/main.rs",
     "scripts/check-real-product-dogfood.rs",
     "examples/embedded-session-store/src/main.rs",
+    "examples/embedded-session-store/session-resume-evidence.json",
+    "scripts/check-session-resume-brick.rs",
     "examples/embedded-provider-adapter/src/main.rs",
     "examples/embedded-provider-adapter/fixtures/provider-adapter-fixtures.json",
     "scripts/check-provider-adapter-kit.rs",
@@ -259,12 +261,22 @@ fn validate_provider_fixtures(policy: &Value, errors: &mut Vec<String>) {
 }
 
 fn validate_session_resume(policy: &Value, errors: &mut Vec<String>) {
+    let fixture = required_str(policy, "session_resume_evidence_fixture", errors);
+    if fixture != "examples/embedded-session-store/session-resume-evidence.json" {
+        errors.push("session_resume_evidence_fixture must point at the checked session resume fixture".to_string());
+    }
+    if !fixture.is_empty() && !Path::new(fixture).exists() {
+        errors.push(format!("session resume evidence fixture `{fixture}` does not exist"));
+    }
     let entries = array(policy, "session_resume_evidence", errors);
     if entries.len() < 2 {
         errors.push("session resume evidence must cover at least two product-style examples".to_string());
     }
     for entry in entries {
         let product = required_str(entry, "product", errors);
+        if required_str(entry, "evidence_source", errors) != fixture {
+            errors.push(format!("session evidence `{product}` must reference fixture `{fixture}`"));
+        }
         for flag in ["restored_context", "missing_session_fail_closed", "owns_storage_dto"] {
             if entry.get(flag).and_then(Value::as_bool) != Some(true) {
                 errors.push(format!("session evidence `{product}` must set {flag}=true"));
