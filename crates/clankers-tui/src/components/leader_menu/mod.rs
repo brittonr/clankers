@@ -427,6 +427,63 @@ mod tests {
         assert_eq!(foo_sub.items.len(), 1);
     }
 
+    #[test]
+    fn tui_action_menu_kit_validates_typed_actions_conflicts_and_hide_rules() {
+        use clanker_tui_types::Action;
+        use clanker_tui_types::ExtendedAction;
+        use clanker_tui_types::parse_action;
+
+        assert_eq!(parse_action("open-leader-menu"), Some(Action::Extended(ExtendedAction::OpenLeaderMenu)));
+        assert_eq!(parse_action("menu_close"), Some(Action::Core(clanker_tui_types::CoreAction::MenuClose)));
+        assert_eq!(parse_action("missing_secret_env_TOKEN"), None);
+
+        let product = TestContributor {
+            items: vec![
+                MenuContribution {
+                    key: 'r',
+                    label: "run recipe".into(),
+                    action: LeaderAction::Command("/run-recipe".into()),
+                    placement: MenuPlacement::Root,
+                    priority: PRIORITY_PLUGIN,
+                    source: "plugin:recipe".into(),
+                },
+                MenuContribution {
+                    key: 'h',
+                    label: "hideable".into(),
+                    action: LeaderAction::Command("/hidden".into()),
+                    placement: MenuPlacement::Submenu("recipe".into()),
+                    priority: PRIORITY_PLUGIN,
+                    source: "plugin:recipe".into(),
+                },
+            ],
+        };
+        let user_override = TestContributor {
+            items: vec![MenuContribution {
+                key: 'r',
+                label: "user run".into(),
+                action: LeaderAction::Action(Action::Extended(ExtendedAction::ToggleAutoTest)),
+                placement: MenuPlacement::Root,
+                priority: PRIORITY_USER,
+                source: "config".into(),
+            }],
+        };
+
+        let mut hidden = HiddenSet::new();
+        hidden.insert(('h', MenuPlacement::Submenu("recipe".into())));
+
+        let (mut menu, conflicts) = LeaderMenu::build(&[&product, &user_override], &hidden);
+        assert_eq!(conflicts.len(), 1);
+        assert_eq!(conflicts[0].winner, "config");
+        assert_eq!(conflicts[0].loser, "plugin:recipe");
+        assert_eq!(menu.root_def().items.len(), 1);
+        assert_eq!(menu.root_def().items[0].label, "user run");
+        assert!(menu.submenu_defs().iter().all(|submenu| submenu.items.iter().all(|item| item.key != 'h')));
+
+        menu.open();
+        let result = menu.handle_key(&key('r'));
+        assert_eq!(result, Some(LeaderAction::Action(Action::Extended(ExtendedAction::ToggleAutoTest))));
+    }
+
     // NOTE: default_menu_has_expected_structure test lives in main crate
     // (needs crate::slash_commands::builtin_command_infos)
 }
