@@ -43,6 +43,8 @@ clankers batch run --input prompts.jsonl --output eval.jsonl --format eval-jsonl
 
 Each input line is a JSON object with a non-empty `prompt`, optional string `id`, and optional object `metadata`. Batch runs accept local paths only, bound concurrency, preserve result order, and write safe JSONL, ShareGPT, or eval JSONL output. Daemon execution records deterministic per-job session ids and resumes each prompt through normal session persistence; `--resume` reads the sidecar manifest and skips completed job ids. Replay metadata records counts, prompt sizes, session/model handles, redaction status, and optional objective receipts without logging raw prompts or credentials.
 
+The `batch-eval-runner-kit` is the copyable brick for eval-oriented batch reuse: use a local JSONL fixture, explicit run id, eval JSONL export, deterministic resume manifest, objective metadata such as `expected_contains`, and fail-closed local-path validation. The checked drift rail is `scripts/check-batch-eval-runner-kit.rs`, and the focused fixture lives in `src/modes/batch.rs`.
+
 ## ACP IDE integration
 
 Expose a clankers session to ACP-compatible editors over foreground stdio:

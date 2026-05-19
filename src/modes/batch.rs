@@ -826,4 +826,58 @@ mod tests {
         assert_eq!(metadata["output_file"], "prompts-output.jsonl");
         assert!(!metadata.to_string().contains("/tmp/secret"));
     }
+
+    #[tokio::test]
+    async fn batch_eval_runner_kit_fixture_validates_manifest_resume_and_redaction() {
+        let cfg = BatchRunConfig::new("fixtures/eval.jsonl", "out/eval.jsonl", 2, TrajectoryFormat::EvalJsonl, true)
+            .with_execution(BatchExecutionMode::Daemon)
+            .with_run_id(Some("brick-eval".to_string()));
+        let jobs = parse_jsonl_jobs(
+            r#"{"id":"done","prompt":"already completed","metadata":{"expected_contains":"completed"}}
+{"id":"retry","prompt":"secret token should not enter metadata","metadata":{"expected_contains":"echo"}}"#,
+        )
+        .unwrap();
+        let previous_manifest = BatchRunManifest {
+            source: "batch_trajectory_runner".to_string(),
+            run_id: "brick-eval".to_string(),
+            status: "partial".to_string(),
+            execution: BatchExecutionMode::Daemon,
+            total: 2,
+            succeeded: 1,
+            failed: 1,
+            skipped: 0,
+            completed_job_ids: vec!["done".to_string()],
+            failed_job_ids: vec!["retry".to_string()],
+            session_ids: vec!["batch-brick-eval-done".to_string()],
+            redaction: "safe_metadata_only".to_string(),
+        };
+
+        let remaining = filter_resume_jobs(jobs, Some(&previous_manifest));
+        assert_eq!(remaining.len(), 1);
+        assert_eq!(remaining[0].id.as_deref(), Some("retry"));
+
+        let (summary, results) = run_batch_jobs(&cfg, remaining, &EchoExecutor).await.unwrap();
+        let manifest = build_run_manifest(&summary, &results);
+        let rendered = render_trajectory_results(TrajectoryFormat::EvalJsonl, &results).unwrap();
+
+        assert_eq!(summary.status, "ok");
+        assert_eq!(summary.execution, BatchExecutionMode::Daemon);
+        assert_eq!(manifest.completed_job_ids, vec!["retry"]);
+        assert_eq!(manifest.session_ids, vec!["batch-brick-eval-retry"]);
+        assert_eq!(results[0].objective.as_ref().unwrap().status, "scored");
+        assert_eq!(results[0].objective.as_ref().unwrap().score, Some(1.0));
+        assert!(rendered.contains(r#""run_id":"brick-eval""#));
+        assert!(rendered.contains(r#""redaction":"safe_metadata_only""#));
+        assert!(!serde_json::to_string(&manifest).unwrap().contains("secret token"));
+        assert!(!results[0].metadata.as_ref().unwrap().to_string().contains("secret token"));
+
+        let remote = BatchRunConfig::new(
+            "s3://bucket/eval.jsonl",
+            "out/eval.jsonl",
+            DEFAULT_BATCH_CONCURRENCY,
+            TrajectoryFormat::EvalJsonl,
+            true,
+        );
+        assert_eq!(remote.validate().unwrap_err(), BatchPolicyError::RemoteInputUnsupported);
+    }
 }
