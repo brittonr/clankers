@@ -161,11 +161,12 @@ scripts/check-embedded-agent-sdk.sh
 scripts/emit-embedded-sdk-release-receipt.rs --output target/embedded-sdk-release/receipt.json
 ```
 
-The receipt records the current commit/status, BLAKE3 hashes for the SDK guide, generated API inventory, canonical embedded composition spec, acceptance scripts, and standalone embedded examples, plus the green/yellow/red boundary classification. Capture it from a clean committed checkout before claiming product embedding readiness; dirty development runs remain useful because the receipt preserves `git status --short --branch` instead of hiding local changes.
+The receipt records the current commit/status, BLAKE3 hashes for the SDK guide, generated API inventory, canonical embedded composition spec, acceptance scripts, brick inventory stability policy/checker, and standalone embedded examples, plus the green/yellow/red boundary classification. Capture it from a clean committed checkout before claiming product embedding readiness; dirty development runs remain useful because the receipt preserves `git status --short --branch` instead of hiding local changes.
 
 Compatibility expectations:
 
-- Supported entrypoints should not be removed, renamed, or semantically repurposed without an explicit migration note.
+- Supported entrypoints should not be removed, renamed, or semantically repurposed without an explicit migration note and refreshed `scripts/check-brick-inventory-stability.rs` receipt.
+- Compatibility aliases are supported migration shims and must name the canonical replacement before they are removed.
 - Additions are allowed when they do not force forbidden shell/runtime dependencies into generic SDK crates.
 - Unsupported/internal exported items may change without migration notes and must not be advertised as stable embedding API.
 - Application-layer adapters that use `clankers-agent`, provider discovery, daemon, TUI, DB, prompts, or plugins are outside the generic SDK compatibility promise.

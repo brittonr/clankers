@@ -12,6 +12,7 @@ Support labels:
 
 - `supported` — stable embedding entrypoint for the current Clankers crate version line. Removing, renaming, or repurposing it requires an explicit migration note.
 - `optional-support` — supported when a host intentionally opts into the companion concern, such as prompt lifecycle or provider-neutral streaming contracts.
+- `compatibility-alias` — supported compatibility shim for an older brick name; it must name the canonical replacement in migration notes before removal.
 - `experimental` — public but not yet promised as stable embedding API.
 - `unsupported-internal` — public because of current crate layout or tests, but not an advertised stable embedded SDK entrypoint.
 

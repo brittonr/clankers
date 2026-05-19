@@ -41,7 +41,13 @@ const SOURCE_ROOTS: &[&str] = &[
     "crates/clankers-adapters/src",
 ];
 
-const VALID_STABILITIES: &[&str] = &["supported", "optional-support", "experimental", "unsupported-internal"];
+const VALID_STABILITIES: &[&str] = &[
+    "supported",
+    "optional-support",
+    "compatibility-alias",
+    "experimental",
+    "unsupported-internal",
+];
 
 #[derive(Debug, Clone, Eq, PartialEq, Ord, PartialOrd)]
 struct PublicItemKey {

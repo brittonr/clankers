@@ -2,7 +2,7 @@
 
 ### Requirement: Embedded brick contract stability [r[embedded-composition-kits.brick-contracts]]
 
-The system MUST extend this requirement with the next lego-readiness slice.
+The system MUST keep the public brick inventory explicit, content-addressed, and tied to migration evidence so advertised green SDK entrypoints cannot drift silently.
 
 #### Scenario: Supported brick inventory is explicit [r[embedded-composition-kits.brick-contracts.supported-brick-inventory-is-explicit]]
 

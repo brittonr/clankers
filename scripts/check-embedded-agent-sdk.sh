@@ -32,6 +32,7 @@ mkdir -p "${TMPDIR}"
 export TMPDIR
 
 run_step "${SCRIPT_DIR}/check-embedded-sdk-api.rs"
+run_step "${SCRIPT_DIR}/check-brick-inventory-stability.rs"
 run_step "${SCRIPT_DIR}/check-embedded-lego-contracts.rs"
 run_step "${SCRIPT_DIR}/check-real-product-dogfood.rs"
 run_step "${SCRIPT_DIR}/check-provider-adapter-kit.rs"
