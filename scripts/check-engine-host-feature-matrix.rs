@@ -12,7 +12,7 @@ fn main() {
         "MATRIX_AXIS_VALUES",
         "MATRIX_CRITICAL_TRIPLES",
         "MATRIX_CASES",
-        "engine_host_feature_matrix_executes_declared_cases_and_reports_axes",
+        "engine_host_feature_matrix_executes_declared_cases_and_execution_reports_axes",
         "engine_host_feature_matrix_freshness_covers_axes_and_critical_triples",
         "engine_host_feature_matrix_pairwise_policy_is_covered",
         "model_mode",
@@ -31,7 +31,9 @@ fn main() {
     let missing: Vec<_> = required.iter().copied().filter(|needle| !source.contains(needle)).collect();
     if !missing.is_empty() {
         eprintln!("engine-host feature matrix freshness failed:");
-        for item in missing { eprintln!("  - missing {item}"); }
+        for item in missing {
+            eprintln!("  - missing {item}");
+        }
         std::process::exit(1);
     }
 }
