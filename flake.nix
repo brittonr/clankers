@@ -262,6 +262,20 @@
             touch $out
           '';
 
+          openspec-review-gates = pkgs.runCommand "openspec-review-gates" {
+            nativeBuildInputs = [ rustToolchain pkgs.clang pkgs.mold ];
+            src = ./.;
+          } ''
+            cp -R $src source
+            chmod -R u+w source
+            cd source
+            export HOME="$TMPDIR/home"
+            export CARGO_HOME="$TMPDIR/cargo-home"
+            mkdir -p "$HOME" "$CARGO_HOME"
+            cargo -q -Zscript scripts/check-openspec-review-gates.rs
+            touch $out
+          '';
+
           e2e-fake = pkgs.runCommand "clankers-e2e-fake" {
             nativeBuildInputs = [
               pkgs.bash

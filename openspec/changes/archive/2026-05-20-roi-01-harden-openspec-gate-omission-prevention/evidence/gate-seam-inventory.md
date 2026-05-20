@@ -46,7 +46,7 @@ The checker should stay outside `vendor/openspec` for the first implementation. 
 
 ## Follow-up implementation shape
 
-1. Add fixture directories under `openspec/changes/roi-01-harden-openspec-gate-omission-prevention/fixtures/openspec-review-gates/`.
+1. Add fixture directories under the durable `scripts/fixtures/openspec-review-gates/` root so the checker remains runnable after archive.
 2. Add `scripts/check-openspec-review-gates.rs` with pure parsing/classification helpers and table-driven fixture assertions.
 3. Update authoring guidance to name the checker and contract classes.
 4. Verify with `./scripts/check-openspec-review-gates.rs`, `openspec validate roi-01-harden-openspec-gate-omission-prevention --strict --json`, and `git diff --check`.

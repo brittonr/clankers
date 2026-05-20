@@ -9,9 +9,12 @@ use std::path::Path;
 use std::path::PathBuf;
 use std::process::ExitCode;
 
-const FIXTURE_ROOT: &str =
-    "openspec/changes/roi-01-harden-openspec-gate-omission-prevention/fixtures/openspec-review-gates";
+const FIXTURE_ROOT: &str = "scripts/fixtures/openspec-review-gates";
 const ERROR_EXIT: u8 = 1;
+
+const GUIDANCE_PATH: &str = "openspec/AGENTS.md";
+const OPERATOR_GUIDE_PATH: &str = "docs/src/reference/openspec-review-gates.md";
+const FLAKE_PATH: &str = "flake.nix";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum ExpectedStatus {
@@ -107,6 +110,57 @@ fn run() -> Result<(), String> {
     }
 
     require(checked >= 5, "expected at least five review-gate fixtures")?;
+    verify_guidance_and_wiring()?;
+    Ok(())
+}
+
+fn verify_guidance_and_wiring() -> Result<(), String> {
+    let guidance =
+        fs::read_to_string(GUIDANCE_PATH).map_err(|error| format!("failed to read {GUIDANCE_PATH}: {error}"))?;
+    for required in [
+        "request shape",
+        "stream boundaries",
+        "retry policy",
+        "security/redaction policy",
+        "receipt fields",
+        "discovery visibility",
+        "fixture/helper/command",
+        "scripts/check-openspec-review-gates.rs",
+        "Artifact-Type: oracle-checkpoint",
+    ] {
+        require(guidance.contains(required), &format!("{GUIDANCE_PATH} must document {required:?}"))?;
+    }
+
+    let operator_guide = fs::read_to_string(OPERATOR_GUIDE_PATH)
+        .map_err(|error| format!("failed to read {OPERATOR_GUIDE_PATH}: {error}"))?;
+    for required in [
+        "scripts/check-openspec-review-gates.rs",
+        FIXTURE_ROOT,
+        "missing-deterministic-request-shape-task",
+        "missing-deterministic-stream-boundary-task",
+        "missing-deterministic-retry-policy-task",
+        "missing-oracle-checkpoint-task",
+        "invalid-oracle-checkpoint-evidence",
+        "Artifact-Type: oracle-checkpoint",
+        "Task-ID:",
+        "Covers:",
+        "Reviewed-Evidence:",
+        "Decision:",
+        "Follow-Up:",
+    ] {
+        require(operator_guide.contains(required), &format!("{OPERATOR_GUIDE_PATH} must document {required:?}"))?;
+    }
+
+    let flake = fs::read_to_string(FLAKE_PATH).map_err(|error| format!("failed to read {FLAKE_PATH}: {error}"))?;
+    require(
+        flake.contains("openspec-review-gates"),
+        "flake.nix must expose checks.<system>.openspec-review-gates",
+    )?;
+    require(
+        flake.contains("check-openspec-review-gates.rs"),
+        "flake.nix openspec review gate check must run the Rust checker",
+    )?;
+
     Ok(())
 }
 

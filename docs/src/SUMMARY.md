@@ -17,6 +17,7 @@
 - [Request Lifecycle](./reference/request-lifecycle.md)
 - [Durable Process Jobs](./reference/process-jobs.md)
 - [Provider Contracts](./reference/provider-contracts.md)
+- [OpenSpec Review Gates](./reference/openspec-review-gates.md)
 - [Release Readiness](./reference/release-readiness.md)
 - [Internal Readiness Checkpoint 2026-05-19](./reference/internal-readiness-2026-05-19.md)
 - [Embedded SDK Lego Checkpoint 2026-05-19](./reference/embedded-sdk-lego-checkpoint-2026-05-19.md)

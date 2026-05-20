@@ -6,6 +6,12 @@ Command:
 TMPDIR=/home/brittonr/.cargo-target/tmp RUSTC_WRAPPER= ./scripts/check-openspec-review-gates.rs
 ```
 
+Durable fixture root:
+
+```text
+scripts/fixtures/openspec-review-gates
+```
+
 Result: PASS
 
 Fixtures covered:
