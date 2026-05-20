@@ -1,4 +1,10 @@
-## ADDED Requirements
+# tui-visual-snapshot-stability Specification
+
+## Purpose
+
+This spec defines the canonical requirements for tui visual snapshot stability.
+
+## Requirements
 
 ### Requirement: Small-terminal startup structure snapshot is deterministic
 The system SHALL produce a deterministic startup structure snapshot for the 12x50 TUI visual test so `tests/tui/visual.rs::snapshot_small_terminal` does not fail from unexplained drift in normal test execution.

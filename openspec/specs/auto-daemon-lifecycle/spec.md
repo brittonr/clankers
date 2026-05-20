@@ -1,4 +1,10 @@
-## ADDED Requirements
+# auto-daemon-lifecycle Specification
+
+## Purpose
+
+This spec defines the canonical requirements for auto daemon lifecycle.
+
+## Requirements
 
 ### Requirement: Session cleanup on process exit
 The auto-daemon client SHALL kill its session when the process exits, whether via normal quit, Ctrl+C (SIGINT), SIGTERM, or panic unwind. The `KillSession` command MUST be sent to the daemon control socket before the process terminates.

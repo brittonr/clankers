@@ -1,4 +1,10 @@
-## ADDED Requirements
+# schedule-persistence Specification
+
+## Purpose
+
+This spec defines the canonical requirements for schedule persistence.
+
+## Requirements
 
 ### Requirement: Schedules persist to disk
 The ScheduleEngine SHALL save all schedules to a JSON file after every mutating operation (add, remove, pause, resume).

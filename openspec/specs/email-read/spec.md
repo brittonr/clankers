@@ -1,4 +1,10 @@
-## ADDED Requirements
+# email-read Specification
+
+## Purpose
+
+This spec defines the canonical requirements for email read.
+
+## Requirements
 
 ### Requirement: Read email by ID
 The `read_email` tool SHALL accept a required `id` parameter and return the full message content for that email.

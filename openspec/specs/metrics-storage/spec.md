@@ -1,4 +1,10 @@
-## ADDED Requirements
+# metrics-storage Specification
+
+## Purpose
+
+This spec defines the canonical requirements for metrics storage.
+
+## Requirements
 
 ### Requirement: Metrics persist in redb as summaries, rollups, and bounded recent events
 Clankers MUST persist metrics in redb using session summaries, daily rollups, and a bounded recent-event log.

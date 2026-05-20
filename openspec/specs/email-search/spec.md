@@ -1,4 +1,10 @@
-## ADDED Requirements
+# email-search Specification
+
+## Purpose
+
+This spec defines the canonical requirements for email search.
+
+## Requirements
 
 ### Requirement: Search email by filters
 The `search_email` tool SHALL accept optional filter parameters: `from`, `to`, `subject`, `query`, `mailbox`, `after`, `before`. All filters are AND-combined. If no filters are provided, the tool SHALL return the most recent messages.

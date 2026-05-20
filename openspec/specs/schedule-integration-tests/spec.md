@@ -1,4 +1,10 @@
-## ADDED Requirements
+# schedule-integration-tests Specification
+
+## Purpose
+
+This spec defines the canonical requirements for schedule integration tests.
+
+## Requirements
 
 ### Requirement: Tool CRUD operations tested
 Integration tests SHALL verify all ScheduleTool actions return correct results.

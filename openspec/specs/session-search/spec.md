@@ -1,4 +1,10 @@
-## ADDED Requirements
+# session-search Specification
+
+## Purpose
+
+This spec defines the canonical requirements for session search.
+
+## Requirements
 
 ### Requirement: Full-text search over session history
 The system SHALL maintain a full-text search index over all past session message content. The index SHALL support keyword queries and return results ranked by relevance.

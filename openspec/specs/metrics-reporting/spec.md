@@ -1,4 +1,10 @@
-## ADDED Requirements
+# metrics-reporting Specification
+
+## Purpose
+
+This spec defines the canonical requirements for metrics reporting.
+
+## Requirements
 
 ### Requirement: Users can query current-session and historical metrics
 Clankers MUST expose current-session and historical metrics through a shared reporting surface used by standalone mode and attach mode.

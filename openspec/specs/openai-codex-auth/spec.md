@@ -1,4 +1,10 @@
-## ADDED Requirements
+# openai-codex-auth Specification
+
+## Purpose
+
+This spec defines the canonical requirements for openai codex auth.
+
+## Requirements
 
 ### Requirement: Provider-aware auth commands support OpenAI Codex subscriptions
 

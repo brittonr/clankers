@@ -1,4 +1,10 @@
-## ADDED Requirements
+# quic-reconnect Specification
+
+## Purpose
+
+This spec defines the canonical requirements for quic reconnect.
+
+## Requirements
 
 ### Requirement: QUIC re-attach after disconnect
 A remote client that loses its QUIC stream SHALL be able to re-attach to the same session by opening a new bidirectional stream with a `DaemonRequest::Attach` containing the session ID.

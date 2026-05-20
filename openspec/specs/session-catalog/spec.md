@@ -1,4 +1,10 @@
-## ADDED Requirements
+# session-catalog Specification
+
+## Purpose
+
+This spec defines the canonical requirements for session catalog.
+
+## Requirements
 
 ### Requirement: Persistent session index
 The daemon SHALL maintain a redb-backed catalog of all sessions it manages. Each entry SHALL store the session ID, automerge file path, model name, creation timestamp, last-active timestamp, turn count, and lifecycle state (active, suspended, tombstoned).

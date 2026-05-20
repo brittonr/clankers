@@ -1,4 +1,10 @@
-## ADDED Requirements
+# anthropic-messages-endpoint Specification
+
+## Purpose
+
+This spec defines the canonical requirements for anthropic messages endpoint.
+
+## Requirements
 
 ### Requirement: Proxy accepts native Anthropic Messages API requests
 The proxy SHALL accept `POST /v1/messages` requests with a JSON body conforming to the Anthropic Messages API format. The request body MUST include `model`, `messages`, and `max_tokens` fields. The `stream` field MUST be `true`; the proxy SHALL reject non-streaming requests with HTTP 400.

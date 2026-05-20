@@ -1,4 +1,10 @@
-## ADDED Requirements
+# experiment-lifecycle Specification
+
+## Purpose
+
+This spec defines the canonical requirements for experiment lifecycle.
+
+## Requirements
 
 ### Requirement: Initialize experiment session
 The system SHALL provide an `init_experiment` tool that configures a new experiment session. It MUST accept: `name` (string, required), `metric_name` (string, required), `metric_unit` (string, optional), `direction` (string: "lower" or "higher", optional, default "lower"). It MUST write a config header line to `autoresearch.jsonl` in the working directory. If the file already exists with a config line, the tool MUST overwrite the config (to support re-initialization with a new baseline).

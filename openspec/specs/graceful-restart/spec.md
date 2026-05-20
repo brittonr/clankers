@@ -1,4 +1,10 @@
-## ADDED Requirements
+# graceful-restart Specification
+
+## Purpose
+
+This spec defines the canonical requirements for graceful restart.
+
+## Requirements
 
 ### Requirement: Checkpoint on shutdown
 When the daemon receives a shutdown signal (SIGINT, `daemon stop`, or `RestartDaemon`), it SHALL flush all active sessions: complete any in-flight tool executions, persist pending messages to the automerge file, and transition catalog entries from `active` to `suspended`.

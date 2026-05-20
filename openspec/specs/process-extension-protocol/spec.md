@@ -1,4 +1,10 @@
-## ADDED Requirements
+# process-extension-protocol Specification
+
+## Purpose
+
+This spec defines the canonical requirements for process extension protocol.
+
+## Requirements
 
 ### Requirement: Framed stdio plugin protocol
 The host and a stdio plugin SHALL communicate over frames encoded as `4-byte big-endian unsigned length` plus `UTF-8 JSON object`. Every JSON frame SHALL contain `type` and `plugin_protocol`. Protocol version `1` is required in the first change. Required frame shapes are:

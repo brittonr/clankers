@@ -1,4 +1,10 @@
-## MODIFIED Requirements
+# daemon-plugin-events Specification
+
+## Purpose
+
+This spec defines the canonical requirements for daemon plugin events.
+
+## Requirements
 
 ### Requirement: Agent events dispatched to plugins in daemon sessions
 The daemon SHALL forward plugin events to both active Extism plugins and active stdio plugins during session execution. Extism plugin subscriptions continue to come from the manifest. Stdio plugin subscriptions SHALL come from the live stdio connection. The forwarded payload shape SHALL remain `{"event": <name>, "data": {...}}`.

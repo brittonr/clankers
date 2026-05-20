@@ -1,4 +1,10 @@
-## MODIFIED Requirements
+# daemon-plugin-loading Specification
+
+## Purpose
+
+This spec defines the canonical requirements for daemon plugin loading.
+
+## Requirements
 
 ### Requirement: Daemon discovers and loads plugins at startup
 The daemon process SHALL create a shared plugin host, discover plugins from `~/.clankers/agent/plugins/`, `.clankers/plugins/`, and project-root `plugins/`, then initialize every enabled plugin according to its kind before any sessions are created. Extism plugins SHALL load through the existing WASM path. `kind: "stdio"` plugins SHALL be launched as supervised child processes and SHALL not be marked active until they complete the ready handshake.

@@ -1,4 +1,10 @@
-## ADDED Requirements
+# experiment-dashboard Specification
+
+## Purpose
+
+This spec defines the canonical requirements for experiment dashboard.
+
+## Requirements
 
 ### Requirement: TUI experiment dashboard widget
 The system SHALL provide a TUI widget that displays the current autoresearch session status. The widget MUST show: session name, primary metric name and direction, current best value, total runs, run breakdown by status (kept/discarded/crashed), and a table of recent results (run number, commit, metric, status, description).

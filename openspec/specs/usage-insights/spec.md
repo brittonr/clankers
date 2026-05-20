@@ -1,4 +1,10 @@
-## ADDED Requirements
+# usage-insights Specification
+
+## Purpose
+
+This spec defines the canonical requirements for usage insights.
+
+## Requirements
 
 ### Requirement: Aggregate usage report
 The system SHALL produce a structured usage report from historical session data. The report SHALL include: total sessions, total tokens (input/output), estimated cost, tool call frequency by tool name, model distribution by token usage, and daily activity counts.

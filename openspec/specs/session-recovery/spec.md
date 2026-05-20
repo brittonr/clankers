@@ -1,4 +1,10 @@
-## ADDED Requirements
+# session-recovery Specification
+
+## Purpose
+
+This spec defines the canonical requirements for session recovery.
+
+## Requirements
 
 ### Requirement: Recovery on startup
 On startup, the daemon SHALL read all `suspended` entries from the session catalog and register them in `DaemonState` as recoverable sessions. Actor processes SHALL NOT be spawned until a client attaches or a message arrives (lazy recovery).

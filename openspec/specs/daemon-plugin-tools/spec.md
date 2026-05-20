@@ -1,4 +1,10 @@
-## MODIFIED Requirements
+# daemon-plugin-tools Specification
+
+## Purpose
+
+This spec defines the canonical requirements for daemon plugin tools.
+
+## Requirements
 
 ### Requirement: Plugin tools registered in daemon sessions
 Daemon sessions SHALL include both static Extism plugin tools and live tools registered by active stdio plugins. Static Extism plugin tools SHALL continue to be wrapped in `PluginTool` (or `ValidatorTool` for exec-permission plugins), stdio tools SHALL be exposed through the process-backed plugin tool adapter, and plugin-provided tools SHALL appear at Specialty tier. A stdio plugin tool SHALL become callable only after registration, SHALL appear in `ToolList` output while the plugin connection is active, and SHALL be removed automatically on unregister, disconnect, or restart.
