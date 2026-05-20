@@ -58,6 +58,7 @@ use clankers_runtime::process_jobs::ProcessJobNotificationPolicyEngine;
 use clankers_runtime::process_jobs::ProcessJobNotificationPolicyState;
 use clankers_runtime::process_jobs::ProcessJobOperation;
 use clankers_runtime::process_jobs::ProcessJobOwnerScope;
+use clankers_runtime::process_jobs::ProcessJobProfileReceiptMetadata;
 use clankers_runtime::process_jobs::ProcessJobReceipt;
 use clankers_runtime::process_jobs::ProcessJobRedactionPolicy;
 use clankers_runtime::process_jobs::ProcessJobReleasedLogRef;
@@ -257,6 +258,7 @@ struct ProcessEntry {
     started_at: Instant,
     started_at_wall: DateTime<Utc>,
     backend_ref: Option<BackendRef>,
+    profile: Option<ProcessJobProfileReceiptMetadata>,
     output: std::sync::Mutex<Vec<String>>,
     poll_cursor: std::sync::Mutex<usize>,
     notification_policy: ProcessJobNotificationPolicy,
@@ -277,6 +279,7 @@ impl ProcessEntry {
         kill_tx: oneshot::Sender<()>,
         pid: Option<u32>,
         notification_policy: ProcessJobNotificationPolicy,
+        profile: Option<ProcessJobProfileReceiptMetadata>,
     ) -> Self {
         Self {
             id,
@@ -284,6 +287,7 @@ impl ProcessEntry {
             started_at: Instant::now(),
             started_at_wall: Utc::now(),
             backend_ref: pid.map(|pid| BackendRef(format!("pid:{pid}"))),
+            profile,
             output: std::sync::Mutex::new(Vec::new()),
             poll_cursor: std::sync::Mutex::new(0),
             notification_policy,
@@ -399,6 +403,7 @@ impl ProcessEntry {
             updated_at: Utc::now(),
             completed_at: self.status().is_done().then(Utc::now),
             log_refs: Vec::new(),
+            profile: self.profile.clone(),
         }
     }
 }
@@ -441,6 +446,7 @@ impl ProcessJobService for NativeProcessJobService {
             kill_tx,
             pid,
             request.notification_policy.clone(),
+            ProcessJobProfileReceiptMetadata::from_metadata(&request.metadata),
         ));
         let backend_ref = entry.backend_ref.clone();
         ProcessTool::insert(entry.clone());
@@ -456,6 +462,7 @@ impl ProcessJobService for NativeProcessJobService {
             status: Some(ProcessJobStatus::Running),
             backend_ref,
             log_refs: Vec::new(),
+            profile: ProcessJobProfileReceiptMetadata::from_metadata(&request.metadata),
             summary: format!(
                 "Started background process {} (pid: {})",
                 id.0,
@@ -491,6 +498,7 @@ impl ProcessJobService for NativeProcessJobService {
             status: Some(status_to_job_status(&entry.status())),
             backend_ref: entry.backend_ref.clone(),
             log_refs: Vec::new(),
+            profile: entry.profile.clone(),
             summary: if output.is_empty() {
                 "No new output.".to_string()
             } else {
@@ -637,6 +645,7 @@ impl ProcessJobService for NativeProcessJobService {
                 status: Some(ProcessJobStatus::LostAfterRestart),
                 backend_ref: Some(request.backend_ref),
                 log_refs: Vec::new(),
+                profile: None,
                 summary: format!("native pid {pid} is not signalable; refusing adoption"),
                 error: Some(ProcessJobError {
                     code: ProcessJobErrorCode::NotFound,
@@ -657,6 +666,7 @@ impl ProcessJobService for NativeProcessJobService {
             status: Some(ProcessJobStatus::ReattachedLogIncomplete),
             backend_ref: Some(BackendRef(format!("pid:{pid}"))),
             log_refs: Vec::new(),
+            profile: None,
             summary: format!(
                 "Adopted native pid {pid} as metadata-only process job; live stdout/stderr streams are unavailable"
             ),
@@ -801,6 +811,7 @@ impl<R: PueueRunner> ProcessJobService for PueueProcessJobService<R> {
             status: Some(ProcessJobStatus::Pending),
             backend_ref: Some(BackendRef(format!("pueue:{task_id}"))),
             log_refs: pueue_log_refs(&id),
+            profile: ProcessJobProfileReceiptMetadata::from_metadata(&request.metadata),
             summary: format!("Started pueue task {task_id} as {}", id.0),
             error: None,
         })
@@ -893,6 +904,7 @@ impl<R: PueueRunner> ProcessJobService for PueueProcessJobService<R> {
             status: Some(ProcessJobStatus::Killed),
             backend_ref: Some(BackendRef(format!("pueue:{task_id}"))),
             log_refs: Vec::new(),
+            profile: None,
             summary: format!("Kill requested for pueue task {task_id}"),
             error: None,
         })
@@ -908,6 +920,7 @@ impl<R: PueueRunner> ProcessJobService for PueueProcessJobService<R> {
             status: Some(ProcessJobStatus::Pending),
             backend_ref: Some(BackendRef(format!("pueue:{task_id}"))),
             log_refs: Vec::new(),
+            profile: None,
             summary: format!("Restart requested for pueue task {task_id}"),
             error: None,
         })
@@ -1021,6 +1034,7 @@ impl PueueTaskProjection {
             updated_at: self.updated_at,
             completed_at: self.completed_at,
             log_refs: pueue_log_refs(&id),
+            profile: None,
         }
     }
 
@@ -1033,6 +1047,7 @@ impl PueueTaskProjection {
             status: Some(self.status.clone()),
             backend_ref: Some(self.backend_ref()),
             log_refs: pueue_log_refs(&id),
+            profile: None,
             summary,
             error: None,
         }
@@ -1334,6 +1349,7 @@ impl<R: SystemdRunner> ProcessJobService for SystemdProcessJobService<R> {
             status: Some(ProcessJobStatus::Running),
             backend_ref: Some(BackendRef(format!("systemd:{unit}"))),
             log_refs: systemd_log_refs(&unit),
+            profile: ProcessJobProfileReceiptMetadata::from_metadata(&request.metadata),
             summary: format!("Started systemd transient unit {unit} as {}", id.0),
             error: None,
         })
@@ -1432,6 +1448,7 @@ impl<R: SystemdRunner> ProcessJobService for SystemdProcessJobService<R> {
             status: Some(ProcessJobStatus::Killed),
             backend_ref: Some(BackendRef(format!("systemd:{unit}"))),
             log_refs: systemd_log_refs(&unit),
+            profile: None,
             summary: format!("Cgroup kill requested for systemd unit {unit}"),
             error: None,
         })
@@ -1449,6 +1466,7 @@ impl<R: SystemdRunner> ProcessJobService for SystemdProcessJobService<R> {
             status: Some(ProcessJobStatus::Running),
             backend_ref: Some(BackendRef(format!("systemd:{unit}"))),
             log_refs: systemd_log_refs(&unit),
+            profile: None,
             summary: format!("Restart requested for systemd unit {unit}"),
             error: None,
         })
@@ -1548,6 +1566,7 @@ impl SystemdUnitProjection {
             updated_at: self.updated_at,
             completed_at: self.status.is_terminal().then_some(self.updated_at),
             log_refs: systemd_log_refs(&self.unit),
+            profile: None,
         }
     }
 
@@ -1560,6 +1579,7 @@ impl SystemdUnitProjection {
             status: Some(self.status.clone()),
             backend_ref: Some(self.backend_ref()),
             log_refs: systemd_log_refs(&self.unit),
+            profile: None,
             summary,
             error: None,
         }
@@ -1773,6 +1793,7 @@ fn native_receipt(
         status: Some(status_to_job_status(&entry.status())),
         backend_ref: entry.backend_ref.clone(),
         log_refs: Vec::new(),
+        profile: entry.profile.clone(),
         summary: summary.into(),
         error: None,
     }
@@ -2003,6 +2024,7 @@ fn stored_record_summary(record: &StoredProcessJobRecord) -> ProcessJobSummary {
         updated_at: record.updated_at,
         completed_at: record.completed_at,
         log_refs: record.log_refs.iter().map(stored_log_ref_to_job_log_ref).collect(),
+        profile: None,
     }
 }
 
@@ -2495,6 +2517,7 @@ impl ProcessTool {
             status: Some(ProcessJobStatus::Waiting),
             backend_ref: None,
             log_refs: Vec::new(),
+            profile: None,
             summary: summary.clone(),
             error: Some(ProcessJobError {
                 code: ProcessJobErrorCode::ConcurrencyLimitExceeded,
@@ -2878,8 +2901,15 @@ impl ProcessTool {
         let notification_policy = request.notification_policy.clone();
         let (kill_tx, kill_rx) = oneshot::channel();
         let id = Self::next_native_job_id(&request).0;
-        let entry =
-            Arc::new(ProcessEntry::new(id.clone(), display_command.clone(), stdin, kill_tx, pid, notification_policy));
+        let entry = Arc::new(ProcessEntry::new(
+            id.clone(),
+            display_command.clone(),
+            stdin,
+            kill_tx,
+            pid,
+            notification_policy,
+            ProcessJobProfileReceiptMetadata::from_metadata(&request.metadata),
+        ));
         Self::insert(entry.clone());
         admission.release();
 
@@ -2906,6 +2936,7 @@ impl ProcessTool {
             status: Some(ProcessJobStatus::Running),
             backend_ref: pid.map(|pid| BackendRef(format!("pid:{pid}"))),
             log_refs: Vec::new(),
+            profile: ProcessJobProfileReceiptMetadata::from_metadata(&request.metadata),
             summary: format!(
                 "Started background process {id} (pid: {})",
                 pid.map(|p| p.to_string()).unwrap_or_else(|| "unknown".to_string())
@@ -4006,9 +4037,17 @@ mod tests {
 
     #[tokio::test]
     async fn native_process_job_service_preserves_default_start_list_wait_flow() {
+        let mut request = native_start_request("printf service-ok");
+        request.metadata.insert("profile".to_string(), "ci-smoke".to_string());
+        request.metadata.insert("identity.profile.schema_version".to_string(), "1".to_string());
+        request
+            .metadata
+            .insert("identity.profile.source".to_string(), "workspace:.clankers/process-jobs.json".to_string());
+        request.metadata.insert("identity.profile.policy".to_string(), "workspace".to_string());
         let service = NativeProcessJobService;
-        let started = service.start(native_start_request("printf service-ok")).await.expect("start succeeds");
+        let started = service.start(request).await.expect("start succeeds");
         assert_eq!(started.backend, Some(ProcessJobBackendKind::Native));
+        assert_eq!(started.profile.as_ref().map(|profile| profile.profile_name.as_str()), Some("ci-smoke"));
         let id = started.id.clone().expect("receipt has stable process id");
 
         let listed = service
@@ -4018,9 +4057,17 @@ mod tests {
             })
             .await
             .expect("list succeeds");
-        assert!(listed.iter().any(|summary| summary.id == id && summary.backend == ProcessJobBackendKind::Native));
+        let listed_summary = listed
+            .iter()
+            .find(|summary| summary.id == id && summary.backend == ProcessJobBackendKind::Native)
+            .expect("native process is listed");
+        assert_eq!(
+            listed_summary.profile.as_ref().map(|profile| profile.profile_source.as_str()),
+            Some("workspace:.clankers/process-jobs.json")
+        );
 
         let waited = service.wait(id, Some(Duration::from_secs(2))).await.expect("wait succeeds");
+        assert_eq!(waited.profile.as_ref().map(|profile| profile.policy_source.as_str()), Some("workspace"));
         assert!(waited.summary.contains("service-ok"), "{}", waited.summary);
     }
 

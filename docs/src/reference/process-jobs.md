@@ -80,19 +80,27 @@ The module creates the process-job registry and log directories below the daemon
 
 ## Project job profiles
 
-The `process-job-profile-kit` is the copyable brick for backend-neutral process-job manifests. Project-defined profiles parse into backend-neutral `StartProcessJobRequest` values before any backend dispatch. A profile must set exactly one of `command` or `program`; `args` is valid only with `program`. Policy controls the default backend, allowed backends, maximum timeout/memory/CPU bounds, and allowed environment-variable prefixes. Secret-like environment keys such as `APP_TOKEN`, `APP_SECRET`, or `APP_KEY` fail closed before backend dispatch.
+The `process-job-profile-kit` is the copyable brick for backend-neutral process-job manifests. Project-defined profiles parse into backend-neutral `StartProcessJobRequest` values before any backend dispatch. A profile manifest is versioned with `schema_version: 1` and each profile must set exactly one of `command` or `program`; `args` is valid only with `program`.
 
-Reusable behavior lives in `ProjectProcessJobProfiles`, `ProjectProcessJobProfilePolicy`, `StartProcessJobRequest`, `ProcessJobIdentityEnvelope`, and `ProcessJobRedactionPolicy`. Product-owned behavior remains outside the brick: selecting a daemon/session, spawning native/pueue/systemd jobs, persisting receipts/logs, and notifying users. Resolving a profile is pure: it validates policy and returns a start request, but does not spawn a process, contact pueue/systemd, or write storage.
+Manifest discovery is deterministic and explicit: product shells collect global, workspace, and explicit manifest sources, then `ProjectProcessJobProfiles::resolve_from_sources` selects the highest-precedence source for the requested profile (`explicit` > `workspace` > `global`). Duplicate profile names at the same precedence fail closed instead of selecting by filesystem order.
+
+Policy controls the default backend, allowed backends, maximum timeout/memory/CPU/log bounds, allowed environment-variable prefixes, allowed working-directory prefixes, and allowed writable-path prefixes. Secret-like environment keys such as `APP_TOKEN`, `APP_SECRET`, or `APP_KEY` fail closed before backend dispatch. Writable paths outside policy fail closed before backend dispatch.
+
+Reusable behavior lives in `ProjectProcessJobProfiles`, `ProjectProcessJobProfileManifestSource`, `ProjectProcessJobProfilePolicy`, `ProjectProcessJobProfileValidationError`, `StartProcessJobRequest`, `ProcessJobIdentityEnvelope`, and `ProcessJobRedactionPolicy`. Product-owned behavior remains outside the brick: selecting a daemon/session, reading manifest files from disk, spawning native/pueue/systemd jobs, persisting receipts/logs, and notifying users. Resolving a profile is pure: it validates policy and returns a start request plus source/policy evidence, but does not spawn a process, contact pueue/systemd, or write storage.
+
+Safe profile identity metadata is copied into the resolved start request under `profile`, `identity.profile.schema_version`, `identity.profile.source`, and `identity.profile.policy`. Those keys are eligible for BLAKE3 identity envelopes and receipt/projection surfaces; raw environment values and backend locators are not.
 
 Profile JSON shape:
 
 ```json
 {
+  "schema_version": 1,
   "profiles": {
     "quick-check": {
       "backend": "native",
       "command": "cargo check --tests",
       "cwd": "/home/example/project",
+      "writable_paths": ["/home/example/project/target"],
       "notification_policy": { "notify_on_complete": true },
       "metadata": { "purpose": "developer-smoke" }
     }

@@ -9,6 +9,7 @@ use std::fs;
 fn main() {
     let process_jobs = fs::read_to_string("crates/clankers-runtime/src/process_jobs.rs")
         .expect("read process jobs runtime");
+    let process_tool = fs::read_to_string("src/tools/process.rs").expect("read process tool");
     require(
         &process_jobs,
         "process_job_profile_kit_validates_manifest_policy_identity_and_redaction",
@@ -41,6 +42,46 @@ fn main() {
     );
     require(
         &process_jobs,
+        "profile_manifest_sources_resolve_by_deterministic_precedence",
+        "deterministic manifest precedence fixture missing",
+    );
+    require(
+        &process_jobs,
+        "profile_manifest_sources_fail_closed_on_same_precedence_duplicates",
+        "same-precedence duplicate profile denial fixture missing",
+    );
+    require(
+        &process_jobs,
+        "profile_policy_rejects_paths_resources_and_unsupported_manifest_versions",
+        "path/resource/schema negative fixture missing",
+    );
+    require(
+        &process_jobs,
+        "ProjectProcessJobProfileValidationError",
+        "typed profile validation error missing",
+    );
+    require(
+        &process_jobs,
+        "ProcessJobProfileReceiptMetadata",
+        "safe profile receipt metadata missing",
+    );
+    require(
+        &process_tool,
+        "ProcessJobProfileReceiptMetadata::from_metadata(&request.metadata)",
+        "process tool must project safe profile metadata into start receipts",
+    );
+    require(
+        &process_tool,
+        "native_process_job_service_preserves_default_start_list_wait_flow",
+        "native service profile receipt/list regression missing",
+    );
+    require(
+        &process_jobs,
+        "PROCESS_JOB_PROFILE_METADATA_SOURCE",
+        "safe profile source metadata missing",
+    );
+    require(
+        &process_jobs,
         "PROCESS_JOB_REDACTED",
         "redaction assertion missing",
     );
@@ -64,6 +105,21 @@ fn main() {
     );
     require(
         &docs,
+        "Manifest discovery is deterministic and explicit",
+        "process jobs docs must state deterministic manifest precedence",
+    );
+    require(
+        &docs,
+        "Duplicate profile names at the same precedence fail closed",
+        "process jobs docs must state duplicate source denial",
+    );
+    require(
+        &docs,
+        "Safe profile identity metadata is copied into the resolved start request",
+        "process jobs docs must state safe profile metadata projection",
+    );
+    require(
+        &docs,
         "scripts/check-process-job-profile-kit.rs",
         "process jobs docs must name the drift rail",
     );
@@ -82,8 +138,13 @@ fn main() {
     );
     require(
         &spec,
-        "disallowed backend, malformed command shape, secret-like environment key, or resource limit above policy",
+        "disallowed backend, malformed command shape, secret-like environment key, resource limit above policy, disallowed cwd, disallowed writable path, or ambiguous manifest source",
         "canonical spec must require fail-closed policy cases",
+    );
+    require(
+        &spec,
+        "disallowed writable path",
+        "canonical spec must require writable path denial",
     );
 
     println!("process-job-profile-kit checker passed");
