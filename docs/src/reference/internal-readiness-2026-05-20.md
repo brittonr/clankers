@@ -24,12 +24,16 @@
   - yellow app-edge surfaces remain product-owned integration layers.
 - The process/job profile hardening change is archived and validated in the canonical `durable-process-jobs` spec.
 - The OpenSpec review-gate omission-prevention change is archived and validated in the canonical `openspec-review-gates` spec.
+- The full Clankers readiness harness passed against this checkpoint:
+  - run `20260520T161137Z-1226432`;
+  - `6` steps passed, `0` failed, `0` skipped;
+  - summary: `target/test-harness/runs/20260520T161137Z-1226432/summary.md`;
+  - results: `target/test-harness/runs/20260520T161137Z-1226432/results.json`.
 
 ## What this checkpoint does not prove
 
 - It does not claim unattended public production readiness.
 - It does not prove every host-dependent VM, flake, live-provider, network, or deployment surface is green on every machine.
-- It does not refresh the full Clankers harness; latest known full harness evidence remains run `20260519T193436Z-1932474`, `6/6` passed, `0` failed.
 - It does not change Remora dogfood primary selection; the proven Remora primary remains `openai-codex/gpt-5.3-codex` with required fallback `qwen36-aspen2`.
 
 ## Evidence locations
@@ -45,6 +49,5 @@
 
 ## Recommended next evidence
 
-1. Run a fresh full Clankers harness against this checkpoint.
-2. Run another report-only external-product dogfood target against this tag and preserve durable operator state.
-3. Address legacy repo-wide OpenSpec validation debt so `openspec validate --all --strict` can become a routine green gate.
+1. Run another report-only external-product dogfood target against this tag and preserve durable operator state.
+2. Address legacy repo-wide OpenSpec validation debt so `openspec validate --all --strict` can become a routine green gate.
