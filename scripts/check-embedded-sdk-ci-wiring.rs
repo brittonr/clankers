@@ -61,6 +61,16 @@ fn run() -> Result<(), String> {
         "release-readiness docs must include the embedded SDK receipt Nix check",
     )?;
 
+    let sdk_tutorial = read("docs/src/tutorials/embedded-agent-sdk.md")?;
+    require(
+        sdk_tutorial.contains("scripts/check-embedded-agent-sdk.rs` is the Rust-owned required acceptance rail"),
+        "embedded SDK tutorial must name the Rust rail as the required acceptance rail",
+    )?;
+    require(
+        sdk_tutorial.contains("scripts/check-embedded-agent-sdk.sh` remains only a compatibility wrapper"),
+        "embedded SDK tutorial must scope the shell wrapper as compatibility-only",
+    )?;
+
     Ok(())
 }
 

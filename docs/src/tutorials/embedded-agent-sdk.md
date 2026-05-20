@@ -111,7 +111,7 @@ Keep generic crates dependency-inverted:
 4. `clanker-message` stays provider/router-neutral. Provider-native request shaping belongs in host adapters.
 5. Application edge code may compose SDK crates with Clankers runtime crates, but that code is not part of the generic SDK surface.
 
-`scripts/check-embedded-agent-sdk.sh` is the required acceptance command for these rules. It composes API inventory, docs freshness, example execution, feature/default checks, dependency denylist checks, source boundary checks, embedded lego contract validation, release-receipt generation, and focused Clankers parity rails.
+`scripts/check-embedded-agent-sdk.rs` is the Rust-owned required acceptance rail for these rules. It composes API inventory, docs freshness, example execution, feature/default checks, dependency denylist checks, source boundary checks, embedded lego contract validation, release-receipt generation, and focused Clankers parity rails. `scripts/check-embedded-agent-sdk.sh` remains only a compatibility wrapper that delegates to the Rust rail.
 
 ## Lego contract policy and evidence
 
@@ -157,7 +157,7 @@ Clankers currently versions the SDK crates with the repository crate versions. S
 Product embedders should capture a release receipt after the acceptance rail succeeds:
 
 ```bash
-scripts/check-embedded-agent-sdk.sh
+scripts/check-embedded-agent-sdk.rs
 scripts/emit-embedded-sdk-release-receipt.rs --output target/embedded-sdk-release/receipt.json
 ```
 
@@ -178,7 +178,7 @@ Migration notes for SDK changes belong in this guide under this section until a 
 Before claiming embedded SDK readiness, run:
 
 ```bash
-scripts/check-embedded-agent-sdk.sh
+scripts/check-embedded-agent-sdk.rs
 ```
 
 That bundle must prove:
