@@ -11,9 +11,9 @@ Planning scaffold is complete. Implementation tasks remain open; do not archive 
 ## Phase 2: Gate fixtures and diagnostics
 
 - [x] [serial] I3: Inventory the current OpenSpec gate/check implementation and choose the narrow Rust/script seam for fixture-backed omission diagnostics [covers=openspec-review-gates.metrics-derived-omission-prevention.task-fixtures] [evidence=openspec/changes/roi-01-harden-openspec-gate-omission-prevention/evidence/gate-seam-inventory.md] ✅ 0h 09m (started: 2026-05-20T14:19:57Z → completed: 2026-05-20T14:28:40Z)
-- [ ] [parallel] I4: Add negative fixtures for vague task coverage of deterministic request/stream/retry contracts [covers=openspec-review-gates.deterministic-verification-tasks.vague-task]
-- [ ] [parallel] I5: Add positive fixtures proving concrete fixture/command-backed tasks satisfy deterministic verification obligations [covers=openspec-review-gates.deterministic-verification-tasks.fixture-task]
-- [ ] [parallel] I6: Add negative and positive fixtures for `H#` oracle checkpoint evidence, including missing/prose-only rejection [covers=openspec-review-gates.oracle-checkpoints.repeated-human-omission,openspec-review-gates.oracle-checkpoints.prose-only-rejected]
+- [x] [parallel] I4: Add negative fixtures for vague task coverage of deterministic request/stream/retry contracts [covers=openspec-review-gates.deterministic-verification-tasks.vague-task] [evidence=openspec/changes/roi-01-harden-openspec-gate-omission-prevention/evidence/review-gate-fixture-diagnostics.md] ✅ 0h 14m (started: 2026-05-20T14:58:33Z → completed: 2026-05-20T15:12:33Z)
+- [x] [parallel] I5: Add positive fixtures proving concrete fixture/command-backed tasks satisfy deterministic verification obligations [covers=openspec-review-gates.deterministic-verification-tasks.fixture-task] [evidence=openspec/changes/roi-01-harden-openspec-gate-omission-prevention/evidence/review-gate-fixture-diagnostics.md] ✅ 0h 14m (started: 2026-05-20T14:58:33Z → completed: 2026-05-20T15:12:33Z)
+- [x] [parallel] I6: Add negative and positive fixtures for `H#` oracle checkpoint evidence, including missing/prose-only rejection [covers=openspec-review-gates.oracle-checkpoints.repeated-human-omission,openspec-review-gates.oracle-checkpoints.prose-only-rejected] [evidence=openspec/changes/roi-01-harden-openspec-gate-omission-prevention/evidence/review-gate-fixture-diagnostics.md] ✅ 0h 14m (started: 2026-05-20T14:58:33Z → completed: 2026-05-20T15:12:33Z)
 
 ## Phase 3: Guidance and drift rails
 

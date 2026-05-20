@@ -1,0 +1,2 @@
+status=fail
+diagnostic=invalid-oracle-checkpoint-evidence

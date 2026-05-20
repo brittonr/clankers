@@ -1,0 +1,323 @@
+#!/usr/bin/env -S nix develop -c cargo -q -Zscript
+---cargo
+[package]
+edition = "2024"
+---
+
+use std::fs;
+use std::path::Path;
+use std::path::PathBuf;
+use std::process::ExitCode;
+
+const FIXTURE_ROOT: &str =
+    "openspec/changes/roi-01-harden-openspec-gate-omission-prevention/fixtures/openspec-review-gates";
+const ERROR_EXIT: u8 = 1;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ExpectedStatus {
+    Pass,
+    Fail,
+}
+
+#[derive(Debug)]
+struct FixtureExpectation {
+    status: ExpectedStatus,
+    diagnostics: Vec<String>,
+}
+
+#[derive(Debug)]
+struct FixtureReport {
+    name: String,
+    diagnostics: Vec<String>,
+}
+
+#[derive(Debug)]
+struct ContractCategory {
+    code: &'static str,
+    label: &'static str,
+    terms: &'static [&'static str],
+}
+
+const CONTRACT_CATEGORIES: &[ContractCategory] = &[
+    ContractCategory {
+        code: "missing-deterministic-request-shape-task",
+        label: "request shape",
+        terms: &["request shape", "request header", "request body", "exact request"],
+    },
+    ContractCategory {
+        code: "missing-deterministic-stream-boundary-task",
+        label: "stream boundary",
+        terms: &[
+            "stream boundary",
+            "stream boundaries",
+            "stream event boundary",
+            "stream event boundaries",
+            "sse",
+            "event-stream",
+        ],
+    },
+    ContractCategory {
+        code: "missing-deterministic-retry-policy-task",
+        label: "retry policy",
+        terms: &["retry policy", "retry count", "retry attempt", "backoff"],
+    },
+    ContractCategory {
+        code: "missing-deterministic-redaction-policy-task",
+        label: "redaction policy",
+        terms: &["redaction", "secret", "credential"],
+    },
+    ContractCategory {
+        code: "missing-deterministic-receipt-field-task",
+        label: "receipt field",
+        terms: &["receipt field", "receipt metadata", "receipt schema"],
+    },
+    ContractCategory {
+        code: "missing-deterministic-discovery-visibility-task",
+        label: "discovery visibility",
+        terms: &["discovery visibility", "catalog visibility", "discoverable"],
+    },
+];
+
+fn main() -> ExitCode {
+    match run() {
+        Ok(()) => {
+            println!("ok: openspec review-gate fixtures passed");
+            ExitCode::SUCCESS
+        }
+        Err(error) => {
+            eprintln!("error: {error}");
+            ExitCode::from(ERROR_EXIT)
+        }
+    }
+}
+
+fn run() -> Result<(), String> {
+    let fixture_root = Path::new(FIXTURE_ROOT);
+    let mut fixture_dirs = fixture_directories(fixture_root)?;
+    fixture_dirs.sort();
+    require(!fixture_dirs.is_empty(), "no openspec review-gate fixtures found")?;
+
+    let mut checked = 0usize;
+    for fixture_dir in fixture_dirs {
+        let expectation = read_expectation(&fixture_dir)?;
+        let report = evaluate_fixture(&fixture_dir)?;
+        compare_report(&report, &expectation)?;
+        println!("fixture {}: {:?} {:?}", report.name, expectation.status, report.diagnostics);
+        checked += 1;
+    }
+
+    require(checked >= 5, "expected at least five review-gate fixtures")?;
+    Ok(())
+}
+
+fn fixture_directories(root: &Path) -> Result<Vec<PathBuf>, String> {
+    let entries = fs::read_dir(root).map_err(|error| format!("read {}: {error}", root.display()))?;
+    let mut dirs = Vec::new();
+    for entry in entries {
+        let entry = entry.map_err(|error| format!("read fixture dir entry: {error}"))?;
+        let path = entry.path();
+        if path.is_dir() {
+            dirs.push(path);
+        }
+    }
+    Ok(dirs)
+}
+
+fn read_expectation(fixture_dir: &Path) -> Result<FixtureExpectation, String> {
+    let text = read_required(fixture_dir, "expect.txt")?;
+    let mut status = None;
+    let mut diagnostics = Vec::new();
+    for raw_line in text.lines() {
+        let line = raw_line.trim();
+        if line.is_empty() || line.starts_with('#') {
+            continue;
+        }
+        if let Some(value) = line.strip_prefix("status=") {
+            status = Some(match value.trim() {
+                "pass" => ExpectedStatus::Pass,
+                "fail" => ExpectedStatus::Fail,
+                other => return Err(format!("{} has unknown status {other:?}", fixture_dir.display())),
+            });
+            continue;
+        }
+        if let Some(value) = line.strip_prefix("diagnostic=") {
+            diagnostics.push(value.trim().to_owned());
+            continue;
+        }
+        return Err(format!("{} has unsupported expectation line {line:?}", fixture_dir.display()));
+    }
+    let status = status.ok_or_else(|| format!("{} missing status=...", fixture_dir.display()))?;
+    Ok(FixtureExpectation { status, diagnostics })
+}
+
+fn evaluate_fixture(fixture_dir: &Path) -> Result<FixtureReport, String> {
+    let name = fixture_dir
+        .file_name()
+        .and_then(|name| name.to_str())
+        .ok_or_else(|| format!("fixture path has no UTF-8 name: {}", fixture_dir.display()))?
+        .to_owned();
+    let design = read_optional(fixture_dir, "design.md")?;
+    let spec = read_optional(fixture_dir, "spec.md")?;
+    let tasks = read_required(fixture_dir, "tasks.md")?;
+    let artifact_text = format!("{design}\n{spec}");
+    let lower_artifact_text = artifact_text.to_lowercase();
+    let lower_tasks = tasks.to_lowercase();
+    let task_lines = task_lines(&tasks);
+
+    let mut diagnostics = Vec::new();
+    for category in CONTRACT_CATEGORIES {
+        if category_required(&lower_artifact_text, category) && !category_satisfied(category, &task_lines, &lower_tasks)
+        {
+            diagnostics.push(format!(
+                "{}: deterministic contract {:?} is not traced to an explicit fixture/helper/command task",
+                category.code, category.label
+            ));
+        }
+    }
+
+    if oracle_required(&lower_artifact_text) {
+        let oracle_tasks = oracle_tasks(&task_lines);
+        if oracle_tasks.is_empty() {
+            diagnostics
+                .push("missing-oracle-checkpoint-task: repeated human/oracle finding requires an H# task".to_owned());
+        } else {
+            for task in oracle_tasks {
+                match extract_evidence_path(task) {
+                    Some(evidence_path) => validate_oracle_evidence(fixture_dir, &evidence_path, &mut diagnostics),
+                    None => diagnostics.push(format!(
+                        "missing-oracle-checkpoint-evidence: oracle task lacks [evidence=...] marker: {task}"
+                    )),
+                }
+            }
+        }
+    }
+
+    diagnostics.sort();
+    diagnostics.dedup();
+    Ok(FixtureReport { name, diagnostics })
+}
+
+fn category_required(text: &str, category: &ContractCategory) -> bool {
+    category.terms.iter().any(|term| text.contains(term))
+}
+
+fn category_satisfied(category: &ContractCategory, task_lines: &[String], lower_tasks: &str) -> bool {
+    let category_is_named = category.terms.iter().any(|term| lower_tasks.contains(term));
+    if !category_is_named {
+        return false;
+    }
+    task_lines.iter().any(|line| {
+        let lower = line.to_lowercase();
+        category.terms.iter().any(|term| lower.contains(term)) && has_concrete_verification_marker(&lower)
+    })
+}
+
+fn has_concrete_verification_marker(line: &str) -> bool {
+    line.contains("[covers=")
+        && (line.contains("fixture")
+            || line.contains("helper")
+            || line.contains("command")
+            || line.contains("[evidence=")
+            || line.contains("golden")
+            || line.contains("scripts/"))
+}
+
+fn oracle_required(text: &str) -> bool {
+    (text.contains("human-routed") || text.contains("oracle") || text.contains("human/oracle"))
+        && (text.contains("repeated") || text.contains("review finding"))
+}
+
+fn task_lines(tasks: &str) -> Vec<String> {
+    tasks
+        .lines()
+        .map(str::trim)
+        .filter(|line| line.starts_with("- [") && line.contains(']'))
+        .map(ToOwned::to_owned)
+        .collect()
+}
+
+fn oracle_tasks(task_lines: &[String]) -> Vec<&String> {
+    task_lines
+        .iter()
+        .filter(|line| {
+            let lower = line.to_lowercase();
+            contains_h_task_id(line) || lower.contains("oracle-checkpoint") || lower.contains("human-routed")
+        })
+        .collect()
+}
+
+fn contains_h_task_id(line: &str) -> bool {
+    line.split(|character: char| !character.is_ascii_alphanumeric()).any(|token| {
+        token.len() >= 2 && token.starts_with('H') && token[1..].chars().all(|character| character.is_ascii_digit())
+    })
+}
+
+fn extract_evidence_path(task: &str) -> Option<String> {
+    let start = task.find("[evidence=")? + "[evidence=".len();
+    let rest = &task[start..];
+    let end = rest.find(']')?;
+    Some(rest[..end].to_owned())
+}
+
+fn validate_oracle_evidence(fixture_dir: &Path, evidence_path: &str, diagnostics: &mut Vec<String>) {
+    let path = fixture_dir.join(evidence_path);
+    let evidence = match fs::read_to_string(&path) {
+        Ok(text) => text,
+        Err(error) => {
+            diagnostics.push(format!("missing-oracle-checkpoint-evidence: failed to read {}: {error}", path.display()));
+            return;
+        }
+    };
+    for required in [
+        "Artifact-Type: oracle-checkpoint",
+        "Task-ID:",
+        "Covers:",
+        "Reviewed-Evidence:",
+        "Decision:",
+        "Follow-Up:",
+    ] {
+        if !evidence.contains(required) {
+            diagnostics.push(format!("invalid-oracle-checkpoint-evidence: {} missing {required:?}", path.display()));
+        }
+    }
+}
+
+fn compare_report(report: &FixtureReport, expectation: &FixtureExpectation) -> Result<(), String> {
+    let passed = report.diagnostics.is_empty();
+    match (expectation.status, passed) {
+        (ExpectedStatus::Pass, false) => {
+            return Err(format!("fixture {} expected pass but got diagnostics: {:?}", report.name, report.diagnostics));
+        }
+        (ExpectedStatus::Fail, true) => return Err(format!("fixture {} expected fail but passed", report.name)),
+        _ => {}
+    }
+
+    for expected in &expectation.diagnostics {
+        require(
+            report.diagnostics.iter().any(|diagnostic| diagnostic.contains(expected)),
+            &format!(
+                "fixture {} missing expected diagnostic substring {expected:?}; got {:?}",
+                report.name, report.diagnostics
+            ),
+        )?;
+    }
+    Ok(())
+}
+
+fn read_required(dir: &Path, name: &str) -> Result<String, String> {
+    let path = dir.join(name);
+    fs::read_to_string(&path).map_err(|error| format!("failed to read {}: {error}", path.display()))
+}
+
+fn read_optional(dir: &Path, name: &str) -> Result<String, String> {
+    let path = dir.join(name);
+    match fs::read_to_string(&path) {
+        Ok(text) => Ok(text),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(String::new()),
+        Err(error) => Err(format!("failed to read {}: {error}", path.display())),
+    }
+}
+
+fn require(condition: bool, message: &str) -> Result<(), String> {
+    if condition { Ok(()) } else { Err(message.to_owned()) }
+}

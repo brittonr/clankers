@@ -1,0 +1,4 @@
+status=fail
+diagnostic=missing-deterministic-request-shape-task
+diagnostic=missing-deterministic-stream-boundary-task
+diagnostic=missing-deterministic-retry-policy-task

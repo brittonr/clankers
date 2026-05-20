@@ -1,0 +1,2 @@
+status=fail
+diagnostic=missing-oracle-checkpoint-task
