@@ -50,7 +50,11 @@ The canonical specs below validated strictly during evidence capture:
 - `durable-process-jobs`: valid
 - `openspec-review-gates`: valid
 
-Repo-wide `openspec validate --all --strict` may still include legacy spec-format debt unrelated to this checkpoint; the canonical specs above are the release-evidence scope for recently hardened readiness surfaces.
+Post-bundle follow-up normalized legacy spec formatting and made the repo-wide strict OpenSpec gate green:
+
+- Command: `openspec validate --all --strict --json`
+- Result: `83` items, `0` invalid
+- Evidence file: `/tmp/clankers-openspec-all-green.json`
 
 ## External-product dogfood evidence
 
@@ -96,4 +100,23 @@ This checkpoint is suitable for internal/trusted dogfooding and embedded SDK rea
 5. a successful external-product Remora dogfood run with native primary/fallback proof fields; and
 6. clean operator receipts for the dogfood state.
 
-It does not claim unattended public production readiness. Host-dependent live/VM/flake rails remain optional additional evidence and should be recorded separately when run.
+It does not claim unattended public production readiness. Host-dependent live/VM/flake rails are optional additional evidence; the 2026-05-20 follow-up runs below passed after the release bundle was first written.
+
+## Optional live/VM/flake readiness evidence
+
+Additional host-dependent readiness rails were run after the deterministic bundle and are recorded separately because they depend on local services, Nix builders, and VM availability:
+
+- Live local-model rail: `./scripts/test-harness.sh live aspen2-qwen36`
+  - Run: `20260520T201602Z-2329773`
+  - Result: `1` passed, `0` failed, `0` skipped
+  - Log: `target/test-harness/runs/20260520T201602Z-2329773/logs/live_readiness_aspen2-qwen36.log`
+- VM rail: `./scripts/test-harness.sh vm all`
+  - Run: `20260520T201943Z-2415288`
+  - Result: `1` passed, `0` failed, `0` skipped
+  - Log: `target/test-harness/runs/20260520T201943Z-2415288/logs/vm_readiness_all.log`
+- Flake CI rail: `./scripts/test-harness.sh ci`
+  - Initial run `20260520T203921Z-2789216` exposed a real Nix source-filter issue in the `fmt` check: the sandboxed `cargo fmt --check` could not resolve the optional sibling `../../../ucan` manifest path.
+  - `flake.nix` now runs the fmt check from a writable source copy with a minimal sibling `ucan` manifest so Cargo metadata can evaluate the workspace without requiring the out-of-tree checkout.
+  - Rerun: `20260520T205229Z-3068420`
+  - Result: `1` passed, `0` failed, `0` skipped
+  - Log: `target/test-harness/runs/20260520T205229Z-3068420/logs/flake_readiness.log`

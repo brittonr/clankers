@@ -243,7 +243,19 @@
             nativeBuildInputs = [ rustToolchain ];
             src = ./.;
           } ''
-            cd $src
+            cp -R $src source
+            chmod -R u+w source
+            mkdir -p ucan/src
+            cat > ucan/Cargo.toml <<'EOF'
+            [package]
+            name = "ucan"
+            version = "0.1.0"
+            edition = "2024"
+            [lib]
+            path = "src/lib.rs"
+            EOF
+            touch ucan/src/lib.rs
+            cd source
             cargo fmt --check
             touch $out
           '';
