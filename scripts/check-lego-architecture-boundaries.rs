@@ -29,6 +29,9 @@ const CHANGE_TASKS: &str = "cairn/changes/lego-decoupling-boundaries/tasks.md";
 const CHANGE_SPEC: &str = "cairn/changes/lego-decoupling-boundaries/specs/lego-architecture-boundaries/spec.md";
 const PROCESS_TOOL: &str = "src/tools/process.rs";
 const PROCESS_TOOL_ADAPTER: &str = "src/tools/process/adapter.rs";
+const AGENT_TURN_MOD: &str = "crates/clankers-agent/src/turn/mod.rs";
+const AGENT_TURN_ADAPTERS: &str = "crates/clankers-agent/src/turn/adapters.rs";
+const AGENT_TURN_PORTS: &str = "crates/clankers-agent/src/turn/ports.rs";
 
 const AGENT_CONCRETE_DEPS: &[&str] = &[
     "clankers-config",
@@ -84,6 +87,7 @@ fn run() -> Result<PathBuf, String> {
     let controller_concrete = matching_deps(&controller_internal, CONTROLLER_CONCRETE_DEPS);
     let shared_dtos = shared_dto_crates(&reverse_map);
     let process_tool_adapter = process_tool_adapter_signature()?;
+    let agent_turn_ports = agent_turn_ports_signature()?;
 
     require_nonempty(&root_internal, "root internal dependency inventory")?;
     require_nonempty(&agent_concrete, "agent concrete dependency inventory")?;
@@ -113,6 +117,7 @@ fn run() -> Result<PathBuf, String> {
         },
         "most_shared_dto_crates": shared_dtos,
         "process_tool_adapter": process_tool_adapter,
+        "agent_turn_ports": agent_turn_ports,
     });
     validate_baseline(&signature)?;
 
@@ -122,6 +127,7 @@ fn run() -> Result<PathBuf, String> {
         "requirements": [
             "r[lego-architecture-boundaries.root-shell-thinness]",
             "r[lego-architecture-boundaries.process-tool-thin-adapter]",
+            "r[lego-architecture-boundaries.agent-uses-ports-not-concrete-systems]",
             "r[lego-architecture-boundaries.typed-architecture-rails]"
         ],
         "inventory_signature": signature,
@@ -133,7 +139,10 @@ fn run() -> Result<PathBuf, String> {
             hash_artifact(Path::new(CHANGE_TASKS))?,
             hash_artifact(Path::new(CHANGE_SPEC))?,
             hash_artifact(Path::new(PROCESS_TOOL))?,
-            hash_artifact(Path::new(PROCESS_TOOL_ADAPTER))?
+            hash_artifact(Path::new(PROCESS_TOOL_ADAPTER))?,
+            hash_artifact(Path::new(AGENT_TURN_MOD))?,
+            hash_artifact(Path::new(AGENT_TURN_ADAPTERS))?,
+            hash_artifact(Path::new(AGENT_TURN_PORTS))?
         ]
     });
 
@@ -147,6 +156,7 @@ fn validate_change_contracts() -> Result<(), String> {
     require_contains(&tasks, "r[lego-architecture-boundaries.root-shell-thinness]", "root shell task coverage")?;
     require_contains(&tasks, "r[lego-architecture-boundaries.typed-architecture-rails]", "typed rail task coverage")?;
     require_contains(&tasks, "process` tool JSON adapter boundary", "process tool adapter extraction task")?;
+    require_contains(&tasks, "Define agent turn ports", "agent turn port extraction task")?;
     require_contains(&spec, "dependency owner", "dependency owner requirement text")?;
     require_contains(&spec, "source crate, target crate", "typed dependency diagnostic scenario")?;
     require_contains(
@@ -290,6 +300,37 @@ fn process_tool_adapter_signature() -> Result<Value, String> {
         "storage_dto_references": 0,
         "request_parser_owner": "ProcessToolJsonAdapter",
         "fail_closed_negative_path": "unsupported action returns ToolResult error before backend dispatch"
+    }))
+}
+
+fn agent_turn_ports_signature() -> Result<Value, String> {
+    let turn_mod =
+        fs::read_to_string(AGENT_TURN_MOD).map_err(|error| format!("failed to read {AGENT_TURN_MOD}: {error}"))?;
+    let adapters = fs::read_to_string(AGENT_TURN_ADAPTERS)
+        .map_err(|error| format!("failed to read {AGENT_TURN_ADAPTERS}: {error}"))?;
+    let ports =
+        fs::read_to_string(AGENT_TURN_PORTS).map_err(|error| format!("failed to read {AGENT_TURN_PORTS}: {error}"))?;
+
+    require_contains(&turn_mod, "mod ports;", "agent turn ports module")?;
+    require_contains(&turn_mod, "ProviderModelPort::new(ctx.provider)", "provider adapter construction")?;
+    require_contains(&turn_mod, "ControllerToolPort", "tool adapter construction")?;
+    require_contains(&adapters, "model_port: &'a dyn AgentModelPort", "agent model host port field")?;
+    require_contains(&adapters, "tool_port: &'a dyn AgentToolPort", "agent tool host port field")?;
+    forbid_contains(&adapters, "provider: &'a dyn Provider", "agent model host concrete provider field")?;
+    forbid_contains(&adapters, "controller_tools: &'a HashMap", "agent tool host concrete tool map field")?;
+    require_contains(&ports, "trait AgentModelPort", "agent model port trait")?;
+    require_contains(&ports, "trait AgentToolPort", "agent tool port trait")?;
+    require_contains(&ports, "impl AgentModelPort for ProviderModelPort", "provider model port adapter")?;
+    require_contains(&ports, "impl AgentToolPort for ControllerToolPort", "controller tool port adapter")?;
+
+    Ok(json!({
+        "ports_module": AGENT_TURN_PORTS,
+        "model_port_trait": "AgentModelPort",
+        "tool_port_trait": "AgentToolPort",
+        "model_host_concrete_provider_fields": 0,
+        "tool_host_concrete_tool_map_fields": 0,
+        "provider_adapter": "ProviderModelPort",
+        "tool_adapter": "ControllerToolPort"
     }))
 }
 

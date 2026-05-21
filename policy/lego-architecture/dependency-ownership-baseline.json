@@ -20,6 +20,15 @@
       "owner": "turn orchestration shell; concrete systems should migrate behind model/tool/config/storage/hook/prompt/skill/cost ports",
       "package": "clankers-agent"
     },
+    "agent_turn_ports": {
+      "model_host_concrete_provider_fields": 0,
+      "model_port_trait": "AgentModelPort",
+      "ports_module": "crates/clankers-agent/src/turn/ports.rs",
+      "provider_adapter": "ProviderModelPort",
+      "tool_adapter": "ControllerToolPort",
+      "tool_host_concrete_tool_map_fields": 0,
+      "tool_port_trait": "AgentToolPort"
+    },
     "controller_crate": {
       "concrete_dependencies": [
         "clanker-tui-types",

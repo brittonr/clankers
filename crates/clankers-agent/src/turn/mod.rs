@@ -5,6 +5,7 @@ mod execution;
 mod message;
 mod model_switch;
 mod policy;
+mod ports;
 mod transcript;
 mod usage;
 
@@ -73,6 +74,8 @@ pub(crate) use policy::decide_model_completion;
 pub(crate) use policy::emit_engine_notice_effects;
 use policy::engine_failure_from_agent_error;
 use policy::engine_outcome_or_error;
+use ports::ControllerToolPort;
+use ports::ProviderModelPort;
 #[cfg(test)]
 use serde_json::Value;
 use tokio::sync::broadcast;
@@ -143,23 +146,28 @@ pub async fn run_turn_loop(
     )?;
 
     let transcript = TurnTranscript::new(std::mem::take(messages), config.model.clone());
+    let model_port = ProviderModelPort::new(ctx.provider);
+    let tool_port = ControllerToolPort {
+        controller_tools: ctx.controller_tools,
+        event_tx: ctx.event_tx,
+        cancel: ctx.cancel.clone(),
+        hook_pipeline: ctx.hook_pipeline.clone(),
+        session_id: ctx.session_id,
+        db: ctx.db.clone(),
+        capability_gate: ctx.capability_gate.clone(),
+        user_tool_filter: ctx.user_tool_filter.clone(),
+    };
 
     let mut model_host = AgentModelHost {
-        provider: ctx.provider,
+        model_port: &model_port,
         event_tx: ctx.event_tx,
         cancel: ctx.cancel.clone(),
         model_switch_slot: ctx.model_switch_slot,
         transcript: transcript.writer(),
     };
     let mut tool_host = AgentToolHost {
-        controller_tools: ctx.controller_tools,
+        tool_port: &tool_port,
         event_tx: ctx.event_tx,
-        cancel: ctx.cancel.clone(),
-        hook_pipeline: ctx.hook_pipeline,
-        session_id: ctx.session_id,
-        db: ctx.db,
-        capability_gate: ctx.capability_gate,
-        user_tool_filter: ctx.user_tool_filter,
         output_truncation: config.output_truncation.clone(),
         transcript: transcript.writer(),
     };

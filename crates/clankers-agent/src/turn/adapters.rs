@@ -1,4 +1,3 @@
-use std::collections::HashMap;
 use std::sync::Arc;
 
 use clankers_engine::EngineCorrelationId;
@@ -15,7 +14,6 @@ use clankers_engine_host::UsageObservation;
 use clankers_engine_host::UsageObservationKind;
 use clankers_engine_host::UsageObserver;
 use clankers_model_selection::cost_tracker::CostTracker;
-use clankers_provider::Provider;
 use clankers_tool_host::ToolExecutor;
 use clankers_tool_host::ToolHostOutcome;
 use tokio::sync::broadcast;
@@ -28,19 +26,18 @@ use super::check_model_switch;
 use super::completion_request_from_engine_request;
 use super::create_error_result;
 use super::engine_failure_from_agent_error;
-use super::execute_tools_parallel;
-use super::stream_model_request;
+use super::ports::AgentModelPort;
+use super::ports::AgentToolPort;
 use super::tool_result_message_to_host_outcome;
 use super::tool_use_count;
 use super::update_usage_tracking;
 use crate::events::AgentEvent;
 use crate::tool::ModelSwitchSlot;
-use crate::tool::Tool;
 
 const TURN_CANCELLED_REASON: &str = "turn cancelled";
 
 pub(crate) struct AgentModelHost<'a> {
-    pub(crate) provider: &'a dyn Provider,
+    pub(crate) model_port: &'a dyn AgentModelPort,
     pub(crate) event_tx: &'a broadcast::Sender<AgentEvent>,
     pub(crate) cancel: CancellationToken,
     pub(crate) model_switch_slot: Option<&'a ModelSwitchSlot>,
@@ -69,7 +66,7 @@ impl ModelHost for AgentModelHost<'_> {
             }
         };
 
-        match stream_model_request(self.provider, request, self.event_tx, &self.cancel).await {
+        match self.model_port.stream_model_request(request, self.event_tx, &self.cancel).await {
             Ok(collected) => {
                 let response = EngineModelResponse {
                     output: collected.content.clone(),
@@ -92,14 +89,8 @@ impl ModelHost for AgentModelHost<'_> {
 }
 
 pub(crate) struct AgentToolHost<'a> {
-    pub(crate) controller_tools: &'a HashMap<String, Arc<dyn Tool>>,
+    pub(crate) tool_port: &'a dyn AgentToolPort,
     pub(crate) event_tx: &'a broadcast::Sender<AgentEvent>,
-    pub(crate) cancel: CancellationToken,
-    pub(crate) hook_pipeline: Option<Arc<clankers_hooks::HookPipeline>>,
-    pub(crate) session_id: &'a str,
-    pub(crate) db: Option<clankers_db::Db>,
-    pub(crate) capability_gate: Option<Arc<dyn crate::tool::CapabilityGate>>,
-    pub(crate) user_tool_filter: Option<Vec<String>>,
     pub(crate) output_truncation: clanker_loop::OutputTruncationConfig,
     pub(crate) transcript: TurnTranscriptWriter,
 }
@@ -109,18 +100,7 @@ impl ToolExecutor for AgentToolHost<'_> {
         let call_id = call.call_id.0.clone();
         let tool_name = call.tool_name.clone();
         let tool_calls = vec![(call_id, tool_name, call.input)];
-        let mut messages = execute_tools_parallel(
-            self.controller_tools,
-            &tool_calls,
-            self.event_tx,
-            self.cancel.clone(),
-            self.hook_pipeline.clone(),
-            self.session_id,
-            self.db.clone(),
-            self.capability_gate.clone(),
-            self.user_tool_filter.clone(),
-        )
-        .await;
+        let mut messages = self.tool_port.execute_tools(&tool_calls).await;
         let message = messages.pop().unwrap_or_else(|| {
             create_error_result(
                 tool_calls[0].0.clone(),
