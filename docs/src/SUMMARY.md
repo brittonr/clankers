@@ -19,6 +19,7 @@
 - [Provider Contracts](./reference/provider-contracts.md)
 - [OpenSpec Review Gates](./reference/openspec-review-gates.md)
 - [Release Readiness](./reference/release-readiness.md)
+- [Release Evidence 2026-05-21](./reference/release-evidence-2026-05-21.md)
 - [Release Evidence 2026-05-20](./reference/release-evidence-2026-05-20.md)
 - [Internal Readiness Checkpoint 2026-05-20](./reference/internal-readiness-2026-05-20.md)
 - [Internal Readiness Checkpoint 2026-05-19](./reference/internal-readiness-2026-05-19.md)
