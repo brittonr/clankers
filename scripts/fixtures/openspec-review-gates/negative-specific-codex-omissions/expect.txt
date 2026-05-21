@@ -1,0 +1,5 @@
+status=fail
+diagnostic=missing-default-override-request-shape-task
+diagnostic=missing-active-account-task
+diagnostic=missing-entitlement-probe-retry-task
+diagnostic=missing-tool-call-delta-boundary-task

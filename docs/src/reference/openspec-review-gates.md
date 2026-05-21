@@ -32,12 +32,20 @@ The current deterministic contract categories are:
 - security/redaction policy
 - receipt fields
 - discovery visibility
+- default/override subcontracts, such as `text={"verbosity":"medium"}` plus explicit caller override behavior
+- active account persistence after provider-scoped login
+- entitlement probe retry and refresh-retry fixtures, including probe-specific header omissions
+- tool-call delta stream boundaries, especially raw `function_call_arguments.delta` to ordered input-JSON deltas
 
 The checker asserts representative diagnostics including:
 
 - `missing-deterministic-request-shape-task`
 - `missing-deterministic-stream-boundary-task`
 - `missing-deterministic-retry-policy-task`
+- `missing-default-override-request-shape-task`
+- `missing-active-account-task`
+- `missing-entitlement-probe-retry-task`
+- `missing-tool-call-delta-boundary-task`
 
 ## Oracle checkpoint guidance
 

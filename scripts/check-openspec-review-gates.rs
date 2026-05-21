@@ -79,6 +79,46 @@ const CONTRACT_CATEGORIES: &[ContractCategory] = &[
         label: "discovery visibility",
         terms: &["discovery visibility", "catalog visibility", "discoverable"],
     },
+    ContractCategory {
+        code: "missing-default-override-request-shape-task",
+        label: "request default/override",
+        terms: &[
+            "default/override",
+            "default and override",
+            "verbosity",
+            "text={\"verbosity\":\"medium\"}",
+        ],
+    },
+    ContractCategory {
+        code: "missing-active-account-task",
+        label: "active account persistence",
+        terms: &[
+            "active account",
+            "mark the requested account active",
+            "requested account active",
+        ],
+    },
+    ContractCategory {
+        code: "missing-entitlement-probe-retry-task",
+        label: "entitlement probe retry fixture",
+        terms: &[
+            "entitlement probe",
+            "probe retry",
+            "probe retries",
+            "refresh-retry probe",
+            "401 refresh-retry probe",
+        ],
+    },
+    ContractCategory {
+        code: "missing-tool-call-delta-boundary-task",
+        label: "tool-call delta stream boundary",
+        terms: &[
+            "function_call_arguments.delta",
+            "tool-call delta",
+            "tool call delta",
+            "inputjsondelta",
+        ],
+    },
 ];
 
 fn main() -> ExitCode {
@@ -124,6 +164,10 @@ fn verify_guidance_and_wiring() -> Result<(), String> {
         "security/redaction policy",
         "receipt fields",
         "discovery visibility",
+        "default/override",
+        "active account",
+        "entitlement probe",
+        "tool-call delta",
         "fixture/helper/command",
         "scripts/check-openspec-review-gates.rs",
         "Artifact-Type: oracle-checkpoint",
@@ -139,6 +183,10 @@ fn verify_guidance_and_wiring() -> Result<(), String> {
         "missing-deterministic-request-shape-task",
         "missing-deterministic-stream-boundary-task",
         "missing-deterministic-retry-policy-task",
+        "missing-default-override-request-shape-task",
+        "missing-active-account-task",
+        "missing-entitlement-probe-retry-task",
+        "missing-tool-call-delta-boundary-task",
         "missing-oracle-checkpoint-task",
         "invalid-oracle-checkpoint-evidence",
         "Artifact-Type: oracle-checkpoint",
