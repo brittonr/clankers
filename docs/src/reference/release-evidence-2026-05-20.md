@@ -27,9 +27,10 @@ Tagged-checkpoint harness evidence:
 - Full harness run: `20260520T161137Z-1226432`
 - Full harness status: `6` passed, `0` failed, `0` skipped
 
-Current-HEAD follow-up harness evidence after the post-tag OpenSpec, docs, and flake-readiness commits:
+Post-tag code-state follow-up harness evidence after the OpenSpec, docs, and flake-readiness commits:
 
-- Current HEAD: `c74241d6a3fdbe80f3b6aa3e1425fdbbb448f362`
+- Verified code commit: `c74241d6a3fdbe80f3b6aa3e1425fdbbb448f362`
+- Evidence-recording commit: `97d3a9a282790fc6775426f632bfc6606337e1d1`
 - Full harness summary: `target/test-harness/runs/20260520T221449Z-4182381/summary.md`
 - Full harness results: `target/test-harness/runs/20260520T221449Z-4182381/results.json`
 - Latest summary alias: `target/test-harness/summary.md`
