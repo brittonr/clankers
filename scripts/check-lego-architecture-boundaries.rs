@@ -27,6 +27,8 @@ const DEFAULT_OUTPUT: &str = "target/lego-architecture/dependency-ownership-inve
 const BASELINE: &str = "policy/lego-architecture/dependency-ownership-baseline.json";
 const CHANGE_TASKS: &str = "cairn/changes/lego-decoupling-boundaries/tasks.md";
 const CHANGE_SPEC: &str = "cairn/changes/lego-decoupling-boundaries/specs/lego-architecture-boundaries/spec.md";
+const PROCESS_TOOL: &str = "src/tools/process.rs";
+const PROCESS_TOOL_ADAPTER: &str = "src/tools/process/adapter.rs";
 
 const AGENT_CONCRETE_DEPS: &[&str] = &[
     "clankers-config",
@@ -81,6 +83,7 @@ fn run() -> Result<PathBuf, String> {
     let agent_concrete = matching_deps(&agent_internal, AGENT_CONCRETE_DEPS);
     let controller_concrete = matching_deps(&controller_internal, CONTROLLER_CONCRETE_DEPS);
     let shared_dtos = shared_dto_crates(&reverse_map);
+    let process_tool_adapter = process_tool_adapter_signature()?;
 
     require_nonempty(&root_internal, "root internal dependency inventory")?;
     require_nonempty(&agent_concrete, "agent concrete dependency inventory")?;
@@ -109,6 +112,7 @@ fn run() -> Result<PathBuf, String> {
             "owner": "session orchestration shell; translation, effect, continuation, persistence, and projection seams stay separately testable"
         },
         "most_shared_dto_crates": shared_dtos,
+        "process_tool_adapter": process_tool_adapter,
     });
     validate_baseline(&signature)?;
 
@@ -117,6 +121,7 @@ fn run() -> Result<PathBuf, String> {
         "change": "lego-decoupling-boundaries",
         "requirements": [
             "r[lego-architecture-boundaries.root-shell-thinness]",
+            "r[lego-architecture-boundaries.process-tool-thin-adapter]",
             "r[lego-architecture-boundaries.typed-architecture-rails]"
         ],
         "inventory_signature": signature,
@@ -126,7 +131,9 @@ fn run() -> Result<PathBuf, String> {
         "artifact_hashes": [
             hash_artifact(Path::new(BASELINE))?,
             hash_artifact(Path::new(CHANGE_TASKS))?,
-            hash_artifact(Path::new(CHANGE_SPEC))?
+            hash_artifact(Path::new(CHANGE_SPEC))?,
+            hash_artifact(Path::new(PROCESS_TOOL))?,
+            hash_artifact(Path::new(PROCESS_TOOL_ADAPTER))?
         ]
     });
 
@@ -139,8 +146,14 @@ fn validate_change_contracts() -> Result<(), String> {
     require_contains(&tasks, "dependency ownership inventory", "tasks I1/V1 dependency inventory")?;
     require_contains(&tasks, "r[lego-architecture-boundaries.root-shell-thinness]", "root shell task coverage")?;
     require_contains(&tasks, "r[lego-architecture-boundaries.typed-architecture-rails]", "typed rail task coverage")?;
+    require_contains(&tasks, "process` tool JSON adapter boundary", "process tool adapter extraction task")?;
     require_contains(&spec, "dependency owner", "dependency owner requirement text")?;
     require_contains(&spec, "source crate, target crate", "typed dependency diagnostic scenario")?;
+    require_contains(
+        &spec,
+        "adapter MUST NOT construct or mutate persisted database DTOs",
+        "process adapter storage DTO boundary",
+    )?;
     Ok(())
 }
 
@@ -251,6 +264,35 @@ fn shared_dto_crates(reverse_map: &BTreeMap<String, BTreeSet<String>>) -> Vec<Va
     dtos
 }
 
+fn process_tool_adapter_signature() -> Result<Value, String> {
+    let tool = fs::read_to_string(PROCESS_TOOL).map_err(|error| format!("failed to read {PROCESS_TOOL}: {error}"))?;
+    let adapter = fs::read_to_string(PROCESS_TOOL_ADAPTER)
+        .map_err(|error| format!("failed to read {PROCESS_TOOL_ADAPTER}: {error}"))?;
+    require_contains(&tool, "mod adapter;", "process tool adapter module")?;
+    require_contains(
+        &tool,
+        "ProcessToolJsonAdapter::process_job_tool_request(params)",
+        "process tool request parser delegation",
+    )?;
+    forbid_contains(&adapter, "clankers_db::", "process adapter storage DTO import")?;
+    forbid_contains(&adapter, "StoredProcessJob", "process adapter persisted DTO reference")?;
+    require_contains(
+        &adapter,
+        "pub(super) fn process_job_tool_request",
+        "process adapter typed request parser entrypoint",
+    )?;
+    require_contains(&adapter, "ProcessJobToolRequest::Start", "process adapter typed start projection")?;
+    require_contains(&adapter, "Unknown process action", "process adapter fail-closed unsupported action")?;
+    Ok(json!({
+        "adapter_module": PROCESS_TOOL_ADAPTER,
+        "tool_module": PROCESS_TOOL,
+        "storage_dto_imports": 0,
+        "storage_dto_references": 0,
+        "request_parser_owner": "ProcessToolJsonAdapter",
+        "fail_closed_negative_path": "unsupported action returns ToolResult error before backend dispatch"
+    }))
+}
+
 fn validate_baseline(signature: &Value) -> Result<(), String> {
     let text = fs::read_to_string(BASELINE).map_err(|error| format!("failed to read {BASELINE}: {error}; generate and commit the dependency ownership baseline before running the rail"))?;
     let baseline: Value =
@@ -287,6 +329,13 @@ fn require_nonempty<T>(items: &[T], label: &str) -> Result<(), String> {
 fn require_contains(haystack: &str, needle: &str, label: &str) -> Result<(), String> {
     if !haystack.contains(needle) {
         return Err(format!("missing {label}: {needle}"));
+    }
+    Ok(())
+}
+
+fn forbid_contains(haystack: &str, needle: &str, label: &str) -> Result<(), String> {
+    if haystack.contains(needle) {
+        return Err(format!("forbidden {label}: {needle}"));
     }
     Ok(())
 }

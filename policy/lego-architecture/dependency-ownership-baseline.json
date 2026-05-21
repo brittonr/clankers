@@ -83,6 +83,14 @@
         "package": "clankers-protocol"
       }
     ],
+    "process_tool_adapter": {
+      "adapter_module": "src/tools/process/adapter.rs",
+      "fail_closed_negative_path": "unsupported action returns ToolResult error before backend dispatch",
+      "request_parser_owner": "ProcessToolJsonAdapter",
+      "storage_dto_imports": 0,
+      "storage_dto_references": 0,
+      "tool_module": "src/tools/process.rs"
+    },
     "root_crate": {
       "internal_dependencies": [
         "clanker-message",
