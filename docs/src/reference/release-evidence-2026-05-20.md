@@ -20,11 +20,25 @@ This bundle indexes the durable evidence for the `internal-readiness-2026-05-20`
 
 ## Deterministic harness evidence
 
-- Full harness summary: `target/test-harness/summary.md`
-- Full harness results: `target/test-harness/results.json`
+Tagged-checkpoint harness evidence:
+
+- Full harness summary: `target/test-harness/runs/20260520T161137Z-1226432/summary.md`
+- Full harness results: `target/test-harness/runs/20260520T161137Z-1226432/results.json`
 - Full harness run: `20260520T161137Z-1226432`
 - Full harness status: `6` passed, `0` failed, `0` skipped
-- Harness steps that passed:
+
+Current-HEAD follow-up harness evidence after the post-tag OpenSpec, docs, and flake-readiness commits:
+
+- Current HEAD: `c74241d6a3fdbe80f3b6aa3e1425fdbbb448f362`
+- Full harness summary: `target/test-harness/runs/20260520T221449Z-4182381/summary.md`
+- Full harness results: `target/test-harness/runs/20260520T221449Z-4182381/results.json`
+- Latest summary alias: `target/test-harness/summary.md`
+- Latest results alias: `target/test-harness/results.json`
+- Full harness run: `20260520T221449Z-4182381`
+- Full harness status: `6` passed, `0` failed, `0` skipped
+
+Harness steps that passed in both full runs:
+
   - `cargo fmt --check`
   - `cargo check --tests`
   - `cargo nextest run --workspace --no-fail-fast`
