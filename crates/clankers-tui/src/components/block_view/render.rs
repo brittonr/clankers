@@ -470,3 +470,80 @@ pub fn render_active_block<'a>(
 
     lines
 }
+
+#[cfg(test)]
+mod tests {
+    use std::collections::HashMap;
+
+    use chrono::TimeZone;
+    use chrono::Utc;
+    use clanker_tui_types::ConversationBlock;
+    use clanker_tui_types::PlainHighlighter;
+
+    use super::*;
+    use crate::components::progress_renderer::ProgressRenderer;
+    use crate::components::streaming_output::StreamingOutputManager;
+    use crate::theme::Theme;
+
+    fn plain_text(lines: &[Line<'_>]) -> String {
+        lines
+            .iter()
+            .map(|line| line.spans.iter().map(|span| span.content.as_ref()).collect::<String>())
+            .collect::<Vec<_>>()
+            .join("\n")
+    }
+
+    fn streaming_block() -> ConversationBlock {
+        ConversationBlock::new(
+            0,
+            "show streaming".to_string(),
+            Utc.with_ymd_and_hms(2026, 5, 21, 12, 0, 0).single().expect("valid timestamp"),
+        )
+    }
+
+    #[test]
+    fn active_block_renders_live_thinking_and_text_before_content_block_stop() {
+        let mut streaming_outputs = StreamingOutputManager::new();
+        let lines = render_active_block(
+            &streaming_block(),
+            "first thought",
+            "partial answer",
+            true,
+            &Theme::dark(),
+            80,
+            &HashMap::new(),
+            &ProgressRenderer::new(),
+            &mut streaming_outputs,
+            0,
+            &PlainHighlighter,
+        );
+
+        let rendered = plain_text(&lines);
+        assert!(rendered.contains("thinking: first thought"), "rendered output:\n{rendered}");
+        assert!(rendered.contains("partial answer"), "rendered output:\n{rendered}");
+        assert!(rendered.contains("streaming…"), "rendered output:\n{rendered}");
+    }
+
+    #[test]
+    fn active_block_respects_show_thinking_while_still_streaming_text() {
+        let mut streaming_outputs = StreamingOutputManager::new();
+        let lines = render_active_block(
+            &streaming_block(),
+            "hidden thought",
+            "visible answer",
+            false,
+            &Theme::dark(),
+            80,
+            &HashMap::new(),
+            &ProgressRenderer::new(),
+            &mut streaming_outputs,
+            0,
+            &PlainHighlighter,
+        );
+
+        let rendered = plain_text(&lines);
+        assert!(!rendered.contains("hidden thought"), "rendered output:\n{rendered}");
+        assert!(rendered.contains("visible answer"), "rendered output:\n{rendered}");
+        assert!(rendered.contains("streaming…"), "rendered output:\n{rendered}");
+    }
+}
