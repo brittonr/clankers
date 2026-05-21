@@ -1,0 +1,126 @@
+{
+  "change": "lego-decoupling-boundaries",
+  "inventory_signature": {
+    "agent_crate": {
+      "concrete_dependencies": [
+        "clanker-router",
+        "clanker-tui-types",
+        "clankers-config",
+        "clankers-db",
+        "clankers-hooks",
+        "clankers-model-selection",
+        "clankers-procmon",
+        "clankers-prompts",
+        "clankers-provider",
+        "clankers-skills",
+        "clankers-util"
+      ],
+      "concrete_dependency_count": 11,
+      "internal_dependency_count": 18,
+      "owner": "turn orchestration shell; concrete systems should migrate behind model/tool/config/storage/hook/prompt/skill/cost ports",
+      "package": "clankers-agent"
+    },
+    "controller_crate": {
+      "concrete_dependencies": [
+        "clanker-tui-types",
+        "clankers-agent",
+        "clankers-config",
+        "clankers-db",
+        "clankers-hooks",
+        "clankers-protocol",
+        "clankers-provider",
+        "clankers-session"
+      ],
+      "concrete_dependency_count": 8,
+      "internal_dependency_count": 11,
+      "owner": "session orchestration shell; translation, effect, continuation, persistence, and projection seams stay separately testable",
+      "package": "clankers-controller"
+    },
+    "most_shared_dto_crates": [
+      {
+        "dependent_count": 11,
+        "dependents": [
+          "clanker-router",
+          "clankers",
+          "clankers-adapters",
+          "clankers-agent",
+          "clankers-controller",
+          "clankers-engine",
+          "clankers-engine-host",
+          "clankers-provider",
+          "clankers-session",
+          "clankers-tool-host",
+          "clankers-util"
+        ],
+        "owner": "shared DTO/display/protocol type; inward dependencies require explicit edge justification",
+        "package": "clanker-message"
+      },
+      {
+        "dependent_count": 10,
+        "dependents": [
+          "clankers",
+          "clankers-agent",
+          "clankers-config",
+          "clankers-controller",
+          "clankers-model-selection",
+          "clankers-plugin",
+          "clankers-procmon",
+          "clankers-provider",
+          "clankers-tui",
+          "clankers-util"
+        ],
+        "owner": "shared DTO/display/protocol type; inward dependencies require explicit edge justification",
+        "package": "clanker-tui-types"
+      },
+      {
+        "dependent_count": 3,
+        "dependents": [
+          "clankers",
+          "clankers-controller",
+          "clankers-tui"
+        ],
+        "owner": "shared DTO/display/protocol type; inward dependencies require explicit edge justification",
+        "package": "clankers-protocol"
+      }
+    ],
+    "root_crate": {
+      "internal_dependencies": [
+        "clanker-message",
+        "clanker-router",
+        "clanker-tui-types",
+        "clankers-agent",
+        "clankers-agent-defs",
+        "clankers-artifacts",
+        "clankers-autoresearch",
+        "clankers-config",
+        "clankers-controller",
+        "clankers-core",
+        "clankers-db",
+        "clankers-hooks",
+        "clankers-matrix",
+        "clankers-model-selection",
+        "clankers-nix",
+        "clankers-plugin",
+        "clankers-procmon",
+        "clankers-prompts",
+        "clankers-protocol",
+        "clankers-provider",
+        "clankers-runtime",
+        "clankers-session",
+        "clankers-skills",
+        "clankers-tool-host",
+        "clankers-tts",
+        "clankers-tui",
+        "clankers-ucan",
+        "clankers-util",
+        "clankers-zellij",
+        "openspec"
+      ],
+      "internal_dependency_count": 30,
+      "owner": "product-shell wiring only; reusable behavior must move behind workspace brick APIs",
+      "package": "clankers"
+    }
+  },
+  "purpose": "Initial typed Cargo metadata baseline before lego decoupling refactors.",
+  "schema": "clankers.lego_architecture.dependency_ownership_baseline.v1"
+}

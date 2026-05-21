@@ -1,6 +1,6 @@
 ## Tasks
 
-- [ ] [serial] I1: Add a dependency ownership inventory that reports root-crate internal dependency count, agent concrete dependency count, controller concrete dependency count, and most-shared DTO crates before refactoring begins [r[lego-architecture-boundaries.root-shell-thinness]] [r[lego-architecture-boundaries.typed-architecture-rails]]
+- [x] [serial] I1: Add a dependency ownership inventory that reports root-crate internal dependency count, agent concrete dependency count, controller concrete dependency count, and most-shared DTO crates before refactoring begins [r[lego-architecture-boundaries.root-shell-thinness]] [r[lego-architecture-boundaries.typed-architecture-rails]]
 - [ ] [serial] I2: Extract the `process` tool JSON adapter boundary so request parsing/projection lives outside runtime policy, persistence, backend dispatch, and notification decisions [r[lego-architecture-boundaries.process-tool-thin-adapter]]
 - [ ] [parallel] I3: Add positive and negative process-job fixtures proving typed DTO receipt behavior without raw tool JSON or storage DTO coupling in the tool adapter [r[lego-architecture-boundaries.process-tool-thin-adapter]]
 - [ ] [serial] I4: Define agent turn ports for provider calls, tool execution, config, storage, hooks, prompts, skills, and cost tracking, then migrate `clankers-agent` call sites behind those ports without changing turn fixtures [r[lego-architecture-boundaries.agent-uses-ports-not-concrete-systems]]
@@ -9,7 +9,7 @@
 - [ ] [parallel] I7: Add neutral domain event and receipt DTOs for agent/controller/runtime outputs, then require TUI, daemon protocol, Matrix, and attach paths to project from those DTOs [r[lego-architecture-boundaries.display-and-protocol-types-do-not-leak-inward]]
 - [ ] [parallel] I8: Extract shared session command/effect/ack policy used by standalone, daemon, local attach, and remote attach paths [r[lego-architecture-boundaries.attach-parity-uses-shared-policy-core]]
 - [ ] [serial] I9: Replace or augment brittle string-presence rails with typed Cargo metadata, Rust AST, fixture, or manifest checks for every boundary defined by this change [r[lego-architecture-boundaries.typed-architecture-rails]]
-- [ ] [serial] V1: Run the dependency ownership inventory and commit its sanitized baseline output or summary [r[lego-architecture-boundaries.root-shell-thinness]] [r[lego-architecture-boundaries.typed-architecture-rails]]
+- [x] [serial] V1: Run the dependency ownership inventory and commit its sanitized baseline output or summary [r[lego-architecture-boundaries.root-shell-thinness]] [r[lego-architecture-boundaries.typed-architecture-rails]]
 - [ ] [serial] V2: Run focused process-job adapter tests including one positive operation and one fail-closed request/projection case [r[lego-architecture-boundaries.process-tool-thin-adapter]]
 - [ ] [serial] V3: Run agent turn fixture parity after port extraction [r[lego-architecture-boundaries.agent-uses-ports-not-concrete-systems]]
 - [ ] [serial] V4: Run controller seam fixtures for input translation, effect interpretation, event translation, continuation, and transport projection [r[lego-architecture-boundaries.controller-seams-are-single-purpose]]
