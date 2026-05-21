@@ -1,6 +1,6 @@
 # Release Readiness
 
-Use this checklist when turning a Clankers change into a release candidate or when making a production-readiness claim. The pure gates stay credential-free; the live gate intentionally uses the local Lemonade/Qwen3.6 OpenAI-compatible endpoint rather than an OpenAI OAuth-backed account.
+Use this checklist when turning a Clankers change into a release candidate or when making a production-readiness claim. The pure gates stay credential-free; for Clankers testing, dogfood, and release-readiness slices that require a live model, qwen on aspen2 is the primary live testing model path. That live gate intentionally uses the local Lemonade/Qwen3.6 OpenAI-compatible endpoint rather than an OpenAI OAuth-backed account.
 
 ## Baseline gate
 
@@ -38,7 +38,7 @@ CLANKERS_RUN_LIVE_READINESS=1 \
 ./scripts/test-harness.sh live aspen2-qwen36
 ```
 
-This runs `tests/aspen2_qwen36_integration.rs` against the aspen2 Lemonade OpenAI-compatible Qwen 3.6 endpoint. Defaults:
+This runs `tests/aspen2_qwen36_integration.rs` against the aspen2 Lemonade OpenAI-compatible Qwen 3.6 endpoint. Treat qwen on aspen2 as the primary live testing model for this workstream; do not substitute Codex/OpenAI OAuth smoke checks unless the task explicitly asks for that provider. Defaults:
 
 - `ASPEN2_QWEN36_BASE_URL=http://aspen2:13305/v1`
 - `ASPEN2_QWEN36_MODEL=user.Qwen3.6-35B-A3B`

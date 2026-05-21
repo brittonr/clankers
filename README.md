@@ -25,7 +25,7 @@ Useful focused tiers:
 ./scripts/test-harness.sh e2e api              # fake-provider prompt/tool/json checks
 ./scripts/test-harness.sh e2e fast             # local CLI/config/auth checks
 ./scripts/test-harness.sh live local-model     # optional live local-model checks, self-skips when unavailable
-./scripts/test-harness.sh live aspen2-qwen36   # aspen2 Qwen 3.6 OpenAI-compatible streaming check
+./scripts/test-harness.sh live aspen2-qwen36   # primary live testing model: aspen2 Qwen 3.6 OpenAI-compatible streaming check
 ./scripts/test-harness.sh vm smoke             # vm-smoke only
 ./scripts/test-harness.sh vm core              # smoke, remote daemon, session recovery
 ./scripts/test-harness.sh vm module            # daemon/router/integration NixOS module VMs

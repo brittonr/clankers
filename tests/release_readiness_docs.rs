@@ -21,6 +21,8 @@ fn release_readiness_doc_names_required_harness_gates() {
     for required in [
         "./scripts/test-harness.sh full",
         "./scripts/test-harness.sh live aspen2-qwen36",
+        "primary live testing model",
+        "qwen on aspen2",
         "target/test-harness/summary.md",
         "target/test-harness/results.json",
         "Lemonade",
