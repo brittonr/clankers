@@ -45,6 +45,15 @@
       "owner": "session orchestration shell; translation, effect, continuation, persistence, and projection seams stay separately testable",
       "package": "clankers-controller"
     },
+    "controller_effect_interpretation": {
+      "agent_runtime_references": 0,
+      "interpretation_module": "crates/clankers-controller/src/effect_interpretation.rs",
+      "prompt_projection": "interpret_prompt_request",
+      "protocol_projection_references": 0,
+      "shell_module": "crates/clankers-controller/src/core_effects.rs",
+      "thinking_projection": "interpret_thinking_change",
+      "tool_filter_projection": "interpret_tool_filter_application"
+    },
     "most_shared_dto_crates": [
       {
         "dependent_count": 11,

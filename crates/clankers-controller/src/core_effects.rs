@@ -2,7 +2,6 @@ use clankers_core::CompletionStatus;
 use clankers_core::CoreEffect;
 use clankers_core::CoreLogicalEvent;
 use clankers_core::CoreOutcome;
-use clankers_core::CoreThinkingLevel;
 use clankers_core::ToolFilterApplied;
 use clankers_protocol::DaemonEvent;
 
@@ -11,13 +10,9 @@ use crate::PostPromptAction;
 use crate::SessionController;
 use crate::core_engine_composition::AcceptedPromptKind;
 use crate::core_engine_composition::AcceptedPromptStart;
+use crate::effect_interpretation;
+use crate::effect_interpretation::ThinkingEffectExecution;
 use crate::loop_mode::LoopConfig;
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct ThinkingEffectExecution {
-    pub previous: CoreThinkingLevel,
-    pub current: CoreThinkingLevel,
-}
 
 #[allow(dead_code)]
 const FOLLOW_UP_IMAGE_COUNT: u32 = 0;
@@ -113,111 +108,74 @@ impl SessionController {
         requested_text: &str,
         requested_image_count: u32,
     ) -> AcceptedEnginePrompt {
-        let mut accepted_prompt = None;
-        let mut saw_busy_change = false;
+        let accepted_prompt =
+            effect_interpretation::interpret_prompt_request(&effects, requested_text, requested_image_count)
+                .map(AcceptedEnginePrompt::UserPrompt);
 
-        for effect in effects {
-            match effect {
-                CoreEffect::EmitLogicalEvent(CoreLogicalEvent::BusyChanged { busy: true }) => {
-                    saw_busy_change = true;
-                }
-                CoreEffect::StartPrompt {
-                    effect_id,
-                    prompt_text,
-                    image_count,
-                } => {
-                    debug_assert_eq!(prompt_text, requested_text);
-                    debug_assert_eq!(image_count, requested_image_count);
-                    accepted_prompt = Some(AcceptedEnginePrompt::UserPrompt(AcceptedPromptStart {
-                        core_effect_id: effect_id,
-                        kind: AcceptedPromptKind::UserPrompt,
-                        prompt_text,
-                        image_count,
-                    }));
-                }
-                _ => {}
-            }
-        }
-
-        debug_assert!(saw_busy_change, "prompt request must emit a busy logical event");
+        debug_assert!(
+            effect_interpretation::has_busy_change(&effects, true),
+            "prompt request must emit a busy logical event"
+        );
         accepted_prompt.expect("prompt request must yield a start effect")
     }
 
     pub(crate) fn execute_prompt_completion_effects(&mut self, effects: Vec<CoreEffect>) {
-        let mut saw_busy_change = false;
-
-        for effect in effects {
-            match effect {
-                CoreEffect::EmitLogicalEvent(CoreLogicalEvent::BusyChanged { busy: false }) => {
-                    saw_busy_change = true;
-                }
-                CoreEffect::EmitLogicalEvent(CoreLogicalEvent::LoopStateChanged {
-                    active_loop_state: None,
-                }) if self.active_loop_id.is_some() => {
+        for effect in &effects {
+            if let CoreEffect::EmitLogicalEvent(CoreLogicalEvent::LoopStateChanged {
+                active_loop_state: None,
+            }) = effect
+            {
+                if self.active_loop_id.is_some() {
                     self.finish_loop("failed (error)");
                 }
-                _ => {}
             }
         }
 
-        debug_assert!(saw_busy_change, "prompt completion must emit a busy logical event");
+        debug_assert!(
+            effect_interpretation::has_busy_change(&effects, false),
+            "prompt completion must emit a busy logical event"
+        );
     }
 
     pub(crate) fn execute_thinking_effects(&mut self, effects: Vec<CoreEffect>) -> ThinkingEffectExecution {
-        let mut thinking_change = None;
-
-        for effect in effects {
-            match effect {
-                CoreEffect::ApplyThinkingLevel { level } => {
-                    if let Some(agent) = self.agent.as_mut() {
-                        agent.apply_controller_thinking_level(Self::provider_thinking_level(level));
-                    }
-                }
-                CoreEffect::EmitLogicalEvent(CoreLogicalEvent::ThinkingLevelChanged { previous, current }) => {
-                    thinking_change = Some(ThinkingEffectExecution { previous, current });
-                }
-                _ => {}
+        for level in effect_interpretation::applied_thinking_levels(&effects) {
+            if let Some(agent) = self.agent.as_mut() {
+                agent.apply_controller_thinking_level(Self::provider_thinking_level(level));
             }
         }
 
-        thinking_change.expect("thinking level change must emit a logical event")
+        effect_interpretation::interpret_thinking_change(&effects)
+            .expect("thinking level change must emit a logical event")
     }
 
     pub(crate) fn execute_tool_filter_request_effects(&mut self, effects: Vec<CoreEffect>) -> bool {
-        let mut saw_apply_tool_filter = false;
         let mut all_feedback_applied = true;
 
-        for effect in effects {
-            if let CoreEffect::ApplyToolFilter {
-                effect_id,
-                disabled_tools,
-            } = effect
-            {
-                saw_apply_tool_filter = true;
-                if let Some(rebuilder) = self.tool_rebuilder.as_ref() {
-                    let filtered = rebuilder.rebuild_filtered(&disabled_tools);
-                    if let Some(agent) = self.agent.as_mut() {
-                        agent.apply_core_filtered_tools(filtered);
-                    }
+        if let Some(application) = effect_interpretation::interpret_tool_filter_application(&effects) {
+            if let Some(rebuilder) = self.tool_rebuilder.as_ref() {
+                let filtered = rebuilder.rebuild_filtered(&application.disabled_tools);
+                if let Some(agent) = self.agent.as_mut() {
+                    agent.apply_core_filtered_tools(filtered);
                 }
-
-                let applied = self.apply_tool_filter_feedback(ToolFilterApplied {
-                    effect_id,
-                    applied_disabled_tool_set: disabled_tools,
-                });
-                all_feedback_applied &= applied;
             }
+
+            let applied = self.apply_tool_filter_feedback(ToolFilterApplied {
+                effect_id: application.effect_id,
+                applied_disabled_tool_set: application.disabled_tools,
+            });
+            all_feedback_applied &= applied;
         }
 
-        debug_assert!(saw_apply_tool_filter, "disabled-tools transition must emit ApplyToolFilter");
+        debug_assert!(
+            effect_interpretation::interpret_tool_filter_application(&effects).is_some(),
+            "disabled-tools transition must emit ApplyToolFilter"
+        );
         all_feedback_applied
     }
 
     pub(crate) fn execute_tool_filter_feedback_effects(&mut self, effects: Vec<CoreEffect>) {
-        for effect in effects {
-            if let CoreEffect::EmitLogicalEvent(CoreLogicalEvent::DisabledToolsChanged { disabled_tools }) = effect {
-                self.emit(DaemonEvent::DisabledToolsChanged { tools: disabled_tools });
-            }
+        if let Some(disabled_tools) = effect_interpretation::disabled_tools_changed(&effects) {
+            self.emit(DaemonEvent::DisabledToolsChanged { tools: disabled_tools });
         }
     }
 

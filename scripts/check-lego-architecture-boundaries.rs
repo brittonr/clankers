@@ -32,6 +32,8 @@ const PROCESS_TOOL_ADAPTER: &str = "src/tools/process/adapter.rs";
 const AGENT_TURN_MOD: &str = "crates/clankers-agent/src/turn/mod.rs";
 const AGENT_TURN_ADAPTERS: &str = "crates/clankers-agent/src/turn/adapters.rs";
 const AGENT_TURN_PORTS: &str = "crates/clankers-agent/src/turn/ports.rs";
+const CONTROLLER_CORE_EFFECTS: &str = "crates/clankers-controller/src/core_effects.rs";
+const CONTROLLER_EFFECT_INTERPRETATION: &str = "crates/clankers-controller/src/effect_interpretation.rs";
 
 const AGENT_CONCRETE_DEPS: &[&str] = &[
     "clankers-config",
@@ -88,6 +90,7 @@ fn run() -> Result<PathBuf, String> {
     let shared_dtos = shared_dto_crates(&reverse_map);
     let process_tool_adapter = process_tool_adapter_signature()?;
     let agent_turn_ports = agent_turn_ports_signature()?;
+    let controller_effect_interpretation = controller_effect_interpretation_signature()?;
 
     require_nonempty(&root_internal, "root internal dependency inventory")?;
     require_nonempty(&agent_concrete, "agent concrete dependency inventory")?;
@@ -118,6 +121,7 @@ fn run() -> Result<PathBuf, String> {
         "most_shared_dto_crates": shared_dtos,
         "process_tool_adapter": process_tool_adapter,
         "agent_turn_ports": agent_turn_ports,
+        "controller_effect_interpretation": controller_effect_interpretation,
     });
     validate_baseline(&signature)?;
 
@@ -128,6 +132,7 @@ fn run() -> Result<PathBuf, String> {
             "r[lego-architecture-boundaries.root-shell-thinness]",
             "r[lego-architecture-boundaries.process-tool-thin-adapter]",
             "r[lego-architecture-boundaries.agent-uses-ports-not-concrete-systems]",
+            "r[lego-architecture-boundaries.controller-seams-are-single-purpose]",
             "r[lego-architecture-boundaries.typed-architecture-rails]"
         ],
         "inventory_signature": signature,
@@ -142,7 +147,9 @@ fn run() -> Result<PathBuf, String> {
             hash_artifact(Path::new(PROCESS_TOOL_ADAPTER))?,
             hash_artifact(Path::new(AGENT_TURN_MOD))?,
             hash_artifact(Path::new(AGENT_TURN_ADAPTERS))?,
-            hash_artifact(Path::new(AGENT_TURN_PORTS))?
+            hash_artifact(Path::new(AGENT_TURN_PORTS))?,
+            hash_artifact(Path::new(CONTROLLER_CORE_EFFECTS))?,
+            hash_artifact(Path::new(CONTROLLER_EFFECT_INTERPRETATION))?
         ]
     });
 
@@ -157,6 +164,7 @@ fn validate_change_contracts() -> Result<(), String> {
     require_contains(&tasks, "r[lego-architecture-boundaries.typed-architecture-rails]", "typed rail task coverage")?;
     require_contains(&tasks, "process` tool JSON adapter boundary", "process tool adapter extraction task")?;
     require_contains(&tasks, "Define agent turn ports", "agent turn port extraction task")?;
+    require_contains(&tasks, "Split controller seams", "controller seam split task")?;
     require_contains(&spec, "dependency owner", "dependency owner requirement text")?;
     require_contains(&spec, "source crate, target crate", "typed dependency diagnostic scenario")?;
     require_contains(
@@ -164,6 +172,7 @@ fn validate_change_contracts() -> Result<(), String> {
         "adapter MUST NOT construct or mutate persisted database DTOs",
         "process adapter storage DTO boundary",
     )?;
+    require_contains(&spec, "Controller seams are single-purpose", "controller seam single-purpose requirement")?;
     Ok(())
 }
 
@@ -331,6 +340,51 @@ fn agent_turn_ports_signature() -> Result<Value, String> {
         "tool_host_concrete_tool_map_fields": 0,
         "provider_adapter": "ProviderModelPort",
         "tool_adapter": "ControllerToolPort"
+    }))
+}
+
+fn controller_effect_interpretation_signature() -> Result<Value, String> {
+    let core_effects = fs::read_to_string(CONTROLLER_CORE_EFFECTS)
+        .map_err(|error| format!("failed to read {CONTROLLER_CORE_EFFECTS}: {error}"))?;
+    let interpretation = fs::read_to_string(CONTROLLER_EFFECT_INTERPRETATION)
+        .map_err(|error| format!("failed to read {CONTROLLER_EFFECT_INTERPRETATION}: {error}"))?;
+
+    require_contains(
+        &core_effects,
+        "effect_interpretation::interpret_prompt_request",
+        "controller prompt effect interpretation seam",
+    )?;
+    require_contains(
+        &core_effects,
+        "effect_interpretation::interpret_thinking_change",
+        "controller thinking effect interpretation seam",
+    )?;
+    require_contains(
+        &core_effects,
+        "effect_interpretation::interpret_tool_filter_application",
+        "controller tool filter effect interpretation seam",
+    )?;
+    require_contains(
+        &interpretation,
+        "Pure interpretation seam for clankers-core effects",
+        "controller effect interpretation module purpose",
+    )?;
+    require_contains(&interpretation, "struct ToolFilterApplication", "typed tool-filter effect projection")?;
+    require_contains(&interpretation, "interpret_prompt_request", "typed prompt effect projection")?;
+    require_contains(&interpretation, "interpret_thinking_change", "typed thinking effect projection")?;
+    require_contains(&interpretation, "disabled_tools_changed", "typed disabled-tools event projection")?;
+    forbid_contains(&interpretation, "SessionController", "pure effect interpretation controller mutation")?;
+    forbid_contains(&interpretation, "DaemonEvent", "pure effect interpretation protocol projection")?;
+    forbid_contains(&interpretation, "clankers_agent", "pure effect interpretation agent runtime dependency")?;
+
+    Ok(json!({
+        "interpretation_module": CONTROLLER_EFFECT_INTERPRETATION,
+        "shell_module": CONTROLLER_CORE_EFFECTS,
+        "prompt_projection": "interpret_prompt_request",
+        "thinking_projection": "interpret_thinking_change",
+        "tool_filter_projection": "interpret_tool_filter_application",
+        "protocol_projection_references": 0,
+        "agent_runtime_references": 0
     }))
 }
 
