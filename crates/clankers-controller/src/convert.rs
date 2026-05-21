@@ -5,110 +5,100 @@
 
 use chrono::DateTime;
 use chrono::Utc;
-use clankers_agent::ToolResultContent;
 use clankers_agent::events::AgentEvent;
 use clankers_protocol::event::DaemonEvent;
 use clankers_protocol::types::ImageData;
-use clankers_provider::streaming::ContentDelta;
+
+use crate::domain_event::ControllerDomainEvent;
+use crate::domain_event::DomainImage;
+use crate::domain_event::agent_event_to_domain_event;
 
 /// Translate an AgentEvent into a DaemonEvent (or None for events clients
 /// don't need, like Context, BeforeAgentStart, TurnStart, etc.).
 pub fn agent_event_to_daemon_event(event: &AgentEvent) -> Option<DaemonEvent> {
+    agent_event_to_domain_event(event).map(domain_event_to_daemon_event)
+}
+
+fn domain_event_to_daemon_event(event: ControllerDomainEvent) -> DaemonEvent {
     match event {
-        // ── Lifecycle ────────────────────────────────
-        AgentEvent::AgentStart => Some(DaemonEvent::AgentStart),
-        AgentEvent::AgentEnd { .. } => Some(DaemonEvent::AgentEnd),
-
-        // ── Streaming ────────────────────────────────
-        AgentEvent::ContentBlockStart { content_block, .. } => {
-            let is_thinking = matches!(content_block, clankers_provider::message::Content::Thinking { .. });
-            Some(DaemonEvent::ContentBlockStart { is_thinking })
-        }
-        AgentEvent::ContentBlockStop { .. } => Some(DaemonEvent::ContentBlockStop),
-        AgentEvent::MessageUpdate { delta, .. } => match delta {
-            ContentDelta::TextDelta { text } => Some(DaemonEvent::TextDelta { text: text.clone() }),
-            ContentDelta::ThinkingDelta { thinking } => Some(DaemonEvent::ThinkingDelta { text: thinking.clone() }),
-            _ => None,
-        },
-
-        // ── Tool events ──────────────────────────────
-        AgentEvent::ToolCall {
+        ControllerDomainEvent::AgentStart => DaemonEvent::AgentStart,
+        ControllerDomainEvent::AgentEnd => DaemonEvent::AgentEnd,
+        ControllerDomainEvent::ContentBlockStart { is_thinking } => DaemonEvent::ContentBlockStart { is_thinking },
+        ControllerDomainEvent::ContentBlockStop => DaemonEvent::ContentBlockStop,
+        ControllerDomainEvent::TextDelta { text } => DaemonEvent::TextDelta { text },
+        ControllerDomainEvent::ThinkingDelta { text } => DaemonEvent::ThinkingDelta { text },
+        ControllerDomainEvent::ToolCall {
             tool_name,
             call_id,
             input,
-        } => Some(DaemonEvent::ToolCall {
-            tool_name: tool_name.clone(),
-            call_id: call_id.clone(),
-            input: input.clone(),
-        }),
-        AgentEvent::ToolExecutionStart { call_id, tool_name } => Some(DaemonEvent::ToolStart {
-            call_id: call_id.clone(),
-            tool_name: tool_name.clone(),
-        }),
-        AgentEvent::ToolExecutionUpdate { call_id, partial } => {
-            let (text, images) = extract_tool_content(&partial.content);
-            Some(DaemonEvent::ToolOutput {
-                call_id: call_id.clone(),
-                text,
-                images,
-            })
-        }
-        AgentEvent::ToolExecutionEnd {
+        } => DaemonEvent::ToolCall {
+            tool_name,
             call_id,
-            result,
+            input,
+        },
+        ControllerDomainEvent::ToolStart { call_id, tool_name } => DaemonEvent::ToolStart { call_id, tool_name },
+        ControllerDomainEvent::ToolOutput { call_id, text, images } => DaemonEvent::ToolOutput {
+            call_id,
+            text,
+            images: images.into_iter().map(domain_image_to_protocol_image).collect(),
+        },
+        ControllerDomainEvent::ToolProgressUpdate { call_id, message } => DaemonEvent::ToolProgressUpdate {
+            call_id,
+            progress: serde_json::json!({ "message": message }),
+        },
+        ControllerDomainEvent::ToolChunk {
+            call_id,
+            content,
+            content_type,
+        } => DaemonEvent::ToolChunk {
+            call_id,
+            content,
+            content_type,
+        },
+        ControllerDomainEvent::ToolDone {
+            call_id,
+            text,
+            images,
             is_error,
-        } => {
-            let (text, images) = extract_tool_content(&result.content);
-            Some(DaemonEvent::ToolDone {
-                call_id: call_id.clone(),
-                text,
-                images,
-                is_error: *is_error,
-            })
-        }
-        AgentEvent::ToolProgressUpdate { call_id, progress } => {
-            // ToolProgress contains Instant which isn't serializable.
-            // Serialize the message field only.
-            let progress_json = serde_json::json!({
-                "message": progress.message,
-            });
-            Some(DaemonEvent::ToolProgressUpdate {
-                call_id: call_id.clone(),
-                progress: progress_json,
-            })
-        }
-        AgentEvent::ToolResultChunk { call_id, chunk } => Some(DaemonEvent::ToolChunk {
-            call_id: call_id.clone(),
-            content: chunk.content.clone(),
-            content_type: chunk.content_type.clone(),
-        }),
-
-        // ── Session events ───────────────────────────
-        AgentEvent::UserInput {
+        } => DaemonEvent::ToolDone {
+            call_id,
+            text,
+            images: images.into_iter().map(domain_image_to_protocol_image).collect(),
+            is_error,
+        },
+        ControllerDomainEvent::UserInput {
             text,
             agent_msg_count,
-            timestamp,
-        } => Some(DaemonEvent::UserInput {
-            text: text.clone(),
-            agent_msg_count: *agent_msg_count,
-            timestamp: timestamp.to_rfc3339(),
-        }),
-        AgentEvent::SessionCompaction {
+            timestamp_rfc3339,
+        } => DaemonEvent::UserInput {
+            text,
+            agent_msg_count,
+            timestamp: timestamp_rfc3339,
+        },
+        ControllerDomainEvent::SessionCompaction {
             compacted_count,
             tokens_saved,
-        } => Some(DaemonEvent::SessionCompaction {
-            compacted_count: *compacted_count,
-            tokens_saved: *tokens_saved,
-        }),
-        AgentEvent::UsageUpdate { cumulative_usage, .. } => Some(DaemonEvent::UsageUpdate {
-            input_tokens: cumulative_usage.input_tokens as u64,
-            output_tokens: cumulative_usage.output_tokens as u64,
-            cache_read: cumulative_usage.cache_read_input_tokens as u64,
-            model: String::new(), // filled in by controller if needed
-        }),
+        } => DaemonEvent::SessionCompaction {
+            compacted_count,
+            tokens_saved,
+        },
+        ControllerDomainEvent::UsageUpdate {
+            input_tokens,
+            output_tokens,
+            cache_read,
+        } => DaemonEvent::UsageUpdate {
+            input_tokens,
+            output_tokens,
+            cache_read,
+            model: String::new(),
+        },
+    }
+}
 
-        // Events the daemon doesn't forward to clients
-        _ => None,
+fn domain_image_to_protocol_image(image: DomainImage) -> ImageData {
+    ImageData {
+        data: image.data,
+        media_type: image.media_type,
     }
 }
 
@@ -382,32 +372,11 @@ fn parse_user_input_timestamp(timestamp: &str) -> DateTime<Utc> {
     }
 }
 
-/// Extract text and images from ToolResult content.
-fn extract_tool_content(content: &[ToolResultContent]) -> (String, Vec<ImageData>) {
-    let mut text = String::new();
-    let mut images = Vec::new();
-    for c in content {
-        match c {
-            ToolResultContent::Text { text: t } => {
-                if !text.is_empty() {
-                    text.push('\n');
-                }
-                text.push_str(t);
-            }
-            ToolResultContent::Image { media_type, data } => {
-                images.push(ImageData {
-                    data: data.clone(),
-                    media_type: media_type.clone(),
-                });
-            }
-        }
-    }
-    (text, images)
-}
-
 #[cfg(test)]
 mod tests {
     use clankers_agent::ToolResult;
+    use clankers_agent::ToolResultContent;
+    use clankers_provider::streaming::ContentDelta;
 
     use super::*;
 
@@ -605,7 +574,7 @@ mod tests {
             },
         ];
 
-        let (text, images) = extract_tool_content(&content);
+        let (text, images) = crate::domain_event::tool_content_to_domain_parts(&content);
         assert_eq!(text, "line1\nline2");
         assert_eq!(images.len(), 1);
         assert_eq!(images[0].media_type, "image/png");

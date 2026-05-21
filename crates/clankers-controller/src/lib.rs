@@ -40,6 +40,7 @@ pub mod confirm;
 pub mod convert;
 pub mod core_effects;
 pub(crate) mod core_engine_composition;
+pub(crate) mod domain_event;
 pub(crate) mod effect_interpretation;
 pub mod event_processing;
 pub mod loop_mode;

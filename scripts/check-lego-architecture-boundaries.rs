@@ -33,6 +33,8 @@ const AGENT_TURN_MOD: &str = "crates/clankers-agent/src/turn/mod.rs";
 const AGENT_TURN_ADAPTERS: &str = "crates/clankers-agent/src/turn/adapters.rs";
 const AGENT_TURN_PORTS: &str = "crates/clankers-agent/src/turn/ports.rs";
 const CONTROLLER_CORE_EFFECTS: &str = "crates/clankers-controller/src/core_effects.rs";
+const CONTROLLER_CONVERT: &str = "crates/clankers-controller/src/convert.rs";
+const CONTROLLER_DOMAIN_EVENT: &str = "crates/clankers-controller/src/domain_event.rs";
 const CONTROLLER_EFFECT_INTERPRETATION: &str = "crates/clankers-controller/src/effect_interpretation.rs";
 const PROVIDER_ROUTER_BRIDGE: &str = "crates/clankers-provider/src/router_request_bridge.rs";
 const PROVIDER_ROUTER_ADAPTER: &str = "crates/clankers-provider/src/router.rs";
@@ -95,6 +97,7 @@ fn run() -> Result<PathBuf, String> {
     let agent_turn_ports = agent_turn_ports_signature()?;
     let controller_effect_interpretation = controller_effect_interpretation_signature()?;
     let provider_router_bridge = provider_router_bridge_signature()?;
+    let controller_domain_event = controller_domain_event_signature()?;
 
     require_nonempty(&root_internal, "root internal dependency inventory")?;
     require_nonempty(&agent_concrete, "agent concrete dependency inventory")?;
@@ -127,6 +130,7 @@ fn run() -> Result<PathBuf, String> {
         "agent_turn_ports": agent_turn_ports,
         "controller_effect_interpretation": controller_effect_interpretation,
         "provider_router_bridge": provider_router_bridge,
+        "controller_domain_event": controller_domain_event,
     });
     validate_baseline(&signature)?;
 
@@ -138,6 +142,7 @@ fn run() -> Result<PathBuf, String> {
             "r[lego-architecture-boundaries.process-tool-thin-adapter]",
             "r[lego-architecture-boundaries.agent-uses-ports-not-concrete-systems]",
             "r[lego-architecture-boundaries.controller-seams-are-single-purpose]",
+            "r[lego-architecture-boundaries.display-and-protocol-types-do-not-leak-inward]",
             "r[lego-architecture-boundaries.typed-architecture-rails]"
         ],
         "inventory_signature": signature,
@@ -154,6 +159,8 @@ fn run() -> Result<PathBuf, String> {
             hash_artifact(Path::new(AGENT_TURN_ADAPTERS))?,
             hash_artifact(Path::new(AGENT_TURN_PORTS))?,
             hash_artifact(Path::new(CONTROLLER_CORE_EFFECTS))?,
+            hash_artifact(Path::new(CONTROLLER_CONVERT))?,
+            hash_artifact(Path::new(CONTROLLER_DOMAIN_EVENT))?,
             hash_artifact(Path::new(CONTROLLER_EFFECT_INTERPRETATION))?,
             hash_artifact(Path::new(PROVIDER_ROUTER_BRIDGE))?,
             hash_artifact(Path::new(PROVIDER_ROUTER_ADAPTER))?,
@@ -174,6 +181,7 @@ fn validate_change_contracts() -> Result<(), String> {
     require_contains(&tasks, "Define agent turn ports", "agent turn port extraction task")?;
     require_contains(&tasks, "Split controller seams", "controller seam split task")?;
     require_contains(&tasks, "Assign provider/router ownership", "provider/router ownership task")?;
+    require_contains(&tasks, "neutral domain event and receipt DTOs", "neutral domain event task")?;
     require_contains(&spec, "dependency owner", "dependency owner requirement text")?;
     require_contains(&spec, "source crate, target crate", "typed dependency diagnostic scenario")?;
     require_contains(
@@ -183,6 +191,7 @@ fn validate_change_contracts() -> Result<(), String> {
     )?;
     require_contains(&spec, "Controller seams are single-purpose", "controller seam single-purpose requirement")?;
     require_contains(&spec, "Provider/router has one owner per concern", "provider/router single-owner requirement")?;
+    require_contains(&spec, "Display and protocol types do not leak inward", "display/protocol edge requirement")?;
     Ok(())
 }
 
@@ -441,6 +450,56 @@ fn provider_router_bridge_signature() -> Result<Value, String> {
         "local_adapter_duplicate_message_projection": 0,
         "rpc_adapter_duplicate_message_projection": 0,
         "summary_context_preserved": true
+    }))
+}
+
+fn controller_domain_event_signature() -> Result<Value, String> {
+    let domain_event = fs::read_to_string(CONTROLLER_DOMAIN_EVENT)
+        .map_err(|error| format!("failed to read {CONTROLLER_DOMAIN_EVENT}: {error}"))?;
+    let convert = fs::read_to_string(CONTROLLER_CONVERT)
+        .map_err(|error| format!("failed to read {CONTROLLER_CONVERT}: {error}"))?;
+
+    require_contains(
+        &domain_event,
+        "Neutral controller domain events projected from agent/runtime events",
+        "controller domain event seam purpose",
+    )?;
+    require_contains(&domain_event, "enum ControllerDomainEvent", "neutral controller event enum")?;
+    require_contains(&domain_event, "struct DomainImage", "neutral image receipt DTO")?;
+    require_contains(
+        &domain_event,
+        "agent_event_to_domain_event",
+        "agent/runtime event to neutral domain event projection",
+    )?;
+    require_contains(&domain_event, "tool_content_to_domain_parts", "neutral tool receipt projection")?;
+    require_contains(
+        &domain_event,
+        "projects_agent_streaming_without_protocol_or_tui_types",
+        "neutral streaming projection fixture",
+    )?;
+    require_contains(
+        &domain_event,
+        "projects_tool_receipts_to_neutral_text_and_images",
+        "neutral receipt projection fixture",
+    )?;
+    forbid_contains(&domain_event, "DaemonEvent", "domain event protocol DTO leakage")?;
+    forbid_contains(&domain_event, "TuiEvent", "domain event TUI DTO leakage")?;
+    forbid_contains(&domain_event, "clankers_protocol", "domain event protocol crate dependency")?;
+    forbid_contains(&domain_event, "clanker_tui_types", "domain event TUI crate dependency")?;
+    require_contains(
+        &convert,
+        "agent_event_to_domain_event(event).map(domain_event_to_daemon_event)",
+        "protocol projection delegates through neutral domain event seam",
+    )?;
+
+    Ok(json!({
+        "domain_event_module": CONTROLLER_DOMAIN_EVENT,
+        "protocol_projection_module": CONTROLLER_CONVERT,
+        "neutral_event_enum": "ControllerDomainEvent",
+        "neutral_receipt_dto": "DomainImage",
+        "protocol_references_in_domain_module": 0,
+        "tui_references_in_domain_module": 0,
+        "protocol_projection_owner": "convert::domain_event_to_daemon_event"
     }))
 }
 
