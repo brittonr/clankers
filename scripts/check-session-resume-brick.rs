@@ -19,7 +19,7 @@ const ERROR_EXIT: u8 = 1;
 const FIXTURE: &str = "examples/embedded-session-store/session-resume-evidence.json";
 const POLICY: &str = "policy/embedded-lego/lego-contracts.json";
 const DOCS: &str = "docs/src/tutorials/embedded-agent-sdk.md";
-const SPEC: &str = "openspec/specs/embedded-composition-kits/spec.md";
+const SPEC: &str = "cairn/specs/embedded-composition-kits/spec.md";
 const DEFAULT_OUTPUT: &str = "target/embedded-sdk-release/session-resume-brick-receipt.json";
 const FORBIDDEN_SOURCE_TOKENS: &[&str] = &[
     "clankers_session",

@@ -22,7 +22,7 @@ A routine Nix check is also exposed as `checks.<system>.openspec-review-gates`.
 
 ## Deterministic verification task guidance
 
-When `proposal.md`, `design.md`, or delta specs require exact contracts, the task ledger must include explicit `V#` or implementation/verification tasks with `[covers=...]` and a concrete fixture, helper, command, golden file, script, or evidence path. Generic text such as "test the feature" is not enough.
+When `proposal.md`, `design.md`, or delta specs require exact contracts, the task ledger must include explicit `V#` or implementation/verification tasks with `[covers=...]` and a concrete fixture, helper, command, golden file, script, or evidence path. Treat this as the required fixture/helper/command proof point; generic text such as "test the feature" is not enough.
 
 The current deterministic contract categories are:
 

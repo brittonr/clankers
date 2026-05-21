@@ -111,7 +111,7 @@ This checkpoint is suitable for internal/trusted dogfooding and embedded SDK rea
 1. a clean tagged Clankers commit;
 2. a fresh full deterministic harness pass;
 3. a regenerated embedded SDK receipt for the tagged commit;
-4. strict validation of the canonical readiness-related OpenSpec specs;
+4. strict validation of the canonical readiness-related Cairn specs;
 5. a successful external-product Remora dogfood run with native primary/fallback proof fields; and
 6. clean operator receipts for the dogfood state.
 

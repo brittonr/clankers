@@ -1,8 +1,8 @@
 ## Open
 
-- [x] **snix Integration** — In-process Nix evaluation, store ref annotation, flake ref parsing. (`openspec/changes/_done/snix-integration/`)
-- [x] **Matrix Daemon v2** — Daemon-integrated Matrix: heartbeat scheduler, trigger pipes, idle reaper, `allowed_users`, `!` command prefix, `<sendfile>` uploads. (`openspec/changes/_done/matrix-daemon-v2/`)
-- [ ] **UCAN Auth** — Capability-based auth for daemon/remote access with delegation chains. (`openspec/changes/ucan-auth/`)
+- [x] **snix Integration** — In-process Nix evaluation, store ref annotation, flake ref parsing. (legacy lifecycle item; migrated OpenSpec tree to `cairn/`)
+- [x] **Matrix Daemon v2** — Daemon-integrated Matrix: heartbeat scheduler, trigger pipes, idle reaper, `allowed_users`, `!` command prefix, `<sendfile>` uploads. (legacy lifecycle item; migrated OpenSpec tree to `cairn/`)
+- [ ] **UCAN Auth** — Capability-based auth for daemon/remote access with delegation chains. (track future lifecycle work under `cairn/changes/`)
 
 ## Done
 

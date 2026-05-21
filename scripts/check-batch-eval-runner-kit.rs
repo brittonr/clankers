@@ -9,7 +9,7 @@ use std::fs;
 fn main() {
     let source = fs::read_to_string("src/modes/batch.rs").expect("read batch runner source");
     let docs = fs::read_to_string("docs/src/getting-started/quickstart.md").expect("read quickstart docs");
-    let spec = fs::read_to_string("openspec/specs/batch-trajectory-runner/spec.md")
+    let spec = fs::read_to_string("cairn/specs/batch-trajectory-runner/spec.md")
         .expect("read batch trajectory spec");
 
     let required_source = [
@@ -34,7 +34,7 @@ fn main() {
 
     assert_contains("src/modes/batch.rs", &source, &required_source);
     assert_contains("docs/src/getting-started/quickstart.md", &docs, &required_docs);
-    assert_contains("openspec/specs/batch-trajectory-runner/spec.md", &spec, &required_spec);
+    assert_contains("cairn/specs/batch-trajectory-runner/spec.md", &spec, &required_spec);
 }
 
 fn assert_contains(path: &str, haystack: &str, needles: &[&str]) {

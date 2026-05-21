@@ -10,7 +10,7 @@ fn main() {
     let slash_tests = fs::read_to_string("src/slash_commands/tests.rs").expect("read slash command tests");
     let attach = fs::read_to_string("src/modes/attach/commands.rs").expect("read attach command routing");
     let docs = fs::read_to_string("docs/src/reference/commands.md").expect("read slash command docs");
-    let spec = fs::read_to_string("openspec/specs/slash-command-composition/spec.md")
+    let spec = fs::read_to_string("cairn/specs/slash-command-composition/spec.md")
         .expect("read slash command composition spec");
 
     assert_contains(
@@ -48,7 +48,7 @@ fn main() {
         ],
     );
     assert_contains(
-        "openspec/specs/slash-command-composition/spec.md",
+        "cairn/specs/slash-command-composition/spec.md",
         &spec,
         &[
             "Slash command kit detects conflicts and route drift",

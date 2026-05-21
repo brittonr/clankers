@@ -12,7 +12,7 @@ use std::process::ExitCode;
 const FIXTURE_ROOT: &str = "scripts/fixtures/openspec-review-gates";
 const ERROR_EXIT: u8 = 1;
 
-const GUIDANCE_PATH: &str = "openspec/AGENTS.md";
+const GUIDANCE_PATH: &str = "docs/src/reference/openspec-review-gates.md";
 const OPERATOR_GUIDE_PATH: &str = "docs/src/reference/openspec-review-gates.md";
 const FLAKE_PATH: &str = "flake.nix";
 

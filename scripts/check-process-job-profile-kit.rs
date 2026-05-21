@@ -124,7 +124,7 @@ fn main() {
         "process jobs docs must name the drift rail",
     );
 
-    let spec = fs::read_to_string("openspec/specs/durable-process-jobs/spec.md")
+    let spec = fs::read_to_string("cairn/specs/durable-process-jobs/spec.md")
         .expect("read durable process jobs spec");
     require(
         &spec,

@@ -30,7 +30,7 @@ fn main() {
     require(&docs, "streaming/replay", "documented streaming/replay boundary");
     require(&docs, "app-edge", "documented app-edge boundary");
 
-    let spec = fs::read_to_string("openspec/specs/daemon-event-translation/spec.md")
+    let spec = fs::read_to_string("cairn/specs/daemon-event-translation/spec.md")
         .expect("read promoted OpenSpec");
     require(&spec, "daemon-event-translation-kit", "promoted OpenSpec requirement");
     require(&spec, "streaming-replay", "OpenSpec streaming/replay scenario");

@@ -17,7 +17,7 @@
 - The embedded SDK release receipt was regenerated after the branch was clean/aligned with `origin/main`.
 - The receipt records schema `clankers.embedded_sdk.release_receipt.v1`.
 - The receipt records git status `## main...origin/main`.
-- The receipt hashes 50 embedded SDK evidence artifacts under docs, examples, OpenSpec specs, policy, and release/check scripts.
+- The receipt hashes 50 embedded SDK evidence artifacts under docs, examples, Cairn specs, policy, and release/check scripts.
 - The embedded SDK boundary remains explicit:
   - green generic SDK crates include `clanker-message`, `clankers-engine`, `clankers-engine-host`, `clankers-tool-host`, `clankers-adapters`, and the optional prompt lifecycle reducer in `clankers-core`;
   - red exclusions keep daemon protocol clients, TUI, provider discovery/router/OAuth stores, session database ownership, plugin supervision, Matrix, iroh/P2P, built-in tool bundles, live credentials, network access, daemon startup, and shell-global service lookup outside the generic SDK boundary;
@@ -41,9 +41,9 @@
 - Embedded SDK receipt: `target/embedded-sdk-release/receipt.json`
 - Embedded SDK acceptance rail: `scripts/check-embedded-agent-sdk.rs`
 - Routine Nix receipt check: `checks.<system>.embedded-sdk-release-receipt`
-- Canonical embedded SDK spec: `openspec/specs/embedded-composition-kits/spec.md`
-- Canonical process/job spec: `openspec/specs/durable-process-jobs/spec.md`
-- Canonical review-gates spec: `openspec/specs/openspec-review-gates/spec.md`
+- Canonical embedded SDK spec: `cairn/specs/embedded-composition-kits/spec.md`
+- Canonical process/job spec: `cairn/specs/durable-process-jobs/spec.md`
+- Canonical review-gates spec: `cairn/specs/openspec-review-gates/spec.md`
 - Full harness summary: `target/test-harness/summary.md`
 - Full harness results: `target/test-harness/results.json`
 

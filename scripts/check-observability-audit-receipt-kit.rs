@@ -58,7 +58,7 @@ fn main() {
         "request lifecycle docs must describe redaction boundary",
     );
 
-    let spec = fs::read_to_string("openspec/specs/session-metrics-capture/spec.md")
+    let spec = fs::read_to_string("cairn/specs/session-metrics-capture/spec.md")
         .expect("read session metrics spec");
     require(
         &spec,

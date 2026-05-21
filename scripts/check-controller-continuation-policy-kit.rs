@@ -58,7 +58,7 @@ fn main() {
         "request lifecycle docs must describe fail-closed stale effect behavior",
     );
 
-    let spec = fs::read_to_string("openspec/specs/controller-continuation-policy/spec.md")
+    let spec = fs::read_to_string("cairn/specs/controller-continuation-policy/spec.md")
         .expect("read controller continuation spec");
     require(
         &spec,

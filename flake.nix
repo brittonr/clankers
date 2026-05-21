@@ -31,9 +31,14 @@
       url = "git+ssh://git@github.com/OnixResearch/ucan.git";
       flake = false;
     };
+
+    cairn = {
+      url = "git+ssh://git@github.com/OnixResearch/cairn.git";
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
   };
 
-  outputs = { self, nixpkgs, unit2nix, rust-overlay, flake-utils, subwayrat-src, ratcore-src, ucan-src, ... }:
+  outputs = { self, nixpkgs, unit2nix, rust-overlay, flake-utils, subwayrat-src, ratcore-src, ucan-src, cairn, ... }:
     {
       nixosModules = {
         clankers-daemon = import ./nix/modules/clankers-daemon.nix;
@@ -205,6 +210,7 @@
         packages = {
           default = clankersPkg;
           clankers = clankersPkg;
+          cairn = cairn.packages.${system}.default;
           clanker-router = routerBuild.rootCrate.build;
           all = ws.allWorkspaceMembers;
           docs = clankers-docs;

@@ -33,7 +33,7 @@ fn main() {
     require(&docs, "typed `Action`", "documented typed action boundary");
     require(&docs, "hidden-menu", "documented hide-rule negative path");
 
-    let spec = fs::read_to_string("openspec/specs/tui-action-menu-composition/spec.md")
+    let spec = fs::read_to_string("cairn/specs/tui-action-menu-composition/spec.md")
         .expect("read promoted OpenSpec");
     require(&spec, "tui-action-menu-kit", "promoted OpenSpec requirement");
     require(&spec, "conflict-resolution", "OpenSpec conflict scenario");

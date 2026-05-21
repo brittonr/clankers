@@ -74,7 +74,7 @@ fn main() {
         "request lifecycle docs must describe fail-closed chain guards",
     );
 
-    let spec = fs::read_to_string("openspec/specs/self-evolution-control/spec.md")
+    let spec = fs::read_to_string("cairn/specs/self-evolution-control/spec.md")
         .expect("read self-evolution spec");
     require(
         &spec,

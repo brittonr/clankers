@@ -58,7 +58,7 @@ const VERIFICATION_COMMANDS: &[&str] = &[
 const DIRECT_ARTIFACTS: &[&str] = &[
     "docs/src/tutorials/embedded-agent-sdk.md",
     "docs/src/generated/embedded-sdk-api.md",
-    "openspec/specs/embedded-composition-kits/spec.md",
+    "cairn/specs/embedded-composition-kits/spec.md",
     "scripts/check-embedded-agent-sdk.rs",
     "scripts/check-embedded-sdk-ci-wiring.rs",
     "scripts/emit-embedded-sdk-release-receipt.rs",
