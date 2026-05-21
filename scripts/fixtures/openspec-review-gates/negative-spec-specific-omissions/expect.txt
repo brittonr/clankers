@@ -1,0 +1,4 @@
+status=fail
+diagnostic=missing-omitted-provider-default-spec
+diagnostic=missing-malformed-account-claim-spec
+diagnostic=missing-provider-scoped-status-spec

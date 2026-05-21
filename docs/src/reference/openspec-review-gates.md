@@ -61,6 +61,20 @@ The checker asserts representative diagnostics including:
 - `missing-retry-policy-design`
 - `missing-verification-plan-design`
 
+## Spec-stage completeness guidance
+
+When `proposal.md` or `design.md` promises compatibility, error handling, status behavior, docs/help behavior, or acceptance boundaries, delta specs must encode those promises as explicit requirements/scenarios. The checker currently guards repeated omissions for:
+
+- omitted-provider default behavior: commands without an explicit provider continue to use Anthropic defaults
+- malformed account-claim behavior: missing or malformed `chatgpt_account_id` claim material is specified before use
+- provider-scoped status behavior: explicit `status --provider openai-codex` behavior is specified rather than only `--all`
+
+The checker asserts representative diagnostics including:
+
+- `missing-omitted-provider-default-spec`
+- `missing-malformed-account-claim-spec`
+- `missing-provider-scoped-status-spec`
+
 ## Oracle checkpoint guidance
 
 Repeated human-routed or oracle-routed review findings require an explicit `H#` task when mechanical checks cannot decide the claim. Do not close these with summary prose alone.

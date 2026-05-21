@@ -49,6 +49,14 @@ struct DesignCategory {
     required_terms: &'static [&'static str],
 }
 
+#[derive(Debug)]
+struct SpecCategory {
+    code: &'static str,
+    label: &'static str,
+    trigger_terms: &'static [&'static str],
+    required_terms: &'static [&'static str],
+}
+
 const CONTRACT_CATEGORIES: &[ContractCategory] = &[
     ContractCategory {
         code: "missing-deterministic-request-shape-task",
@@ -156,6 +164,37 @@ const DESIGN_CATEGORIES: &[DesignCategory] = &[
     },
 ];
 
+const SPEC_CATEGORIES: &[SpecCategory] = &[
+    SpecCategory {
+        code: "missing-omitted-provider-default-spec",
+        label: "omitted-provider default behavior",
+        trigger_terms: &[
+            "omitted-provider",
+            "omitted provider",
+            "provider omitted",
+            "anthropic defaults",
+        ],
+        required_terms: &["omitted", "provider", "anthropic"],
+    },
+    SpecCategory {
+        code: "missing-malformed-account-claim-spec",
+        label: "malformed account-claim behavior",
+        trigger_terms: &[
+            "missing or malformed claim",
+            "malformed claim",
+            "chatgpt_account_id",
+            "chatgpt-account-id",
+        ],
+        required_terms: &["malformed", "claim", "chatgpt"],
+    },
+    SpecCategory {
+        code: "missing-provider-scoped-status-spec",
+        label: "provider-scoped status behavior",
+        trigger_terms: &["status --provider"],
+        required_terms: &["status", "provider", "openai-codex"],
+    },
+];
+
 fn main() -> ExitCode {
     match run() {
         Ok(()) => {
@@ -206,6 +245,9 @@ fn verify_guidance_and_wiring() -> Result<(), String> {
         "reasoning signature retention",
         "retry policy bounds",
         "scenario-complete verification plan",
+        "omitted-provider default behavior",
+        "malformed account-claim behavior",
+        "provider-scoped status behavior",
         "fixture/helper/command",
         "scripts/check-openspec-review-gates.rs",
         "Artifact-Type: oracle-checkpoint",
@@ -228,6 +270,9 @@ fn verify_guidance_and_wiring() -> Result<(), String> {
         "missing-reasoning-signature-design",
         "missing-retry-policy-design",
         "missing-verification-plan-design",
+        "missing-omitted-provider-default-spec",
+        "missing-malformed-account-claim-spec",
+        "missing-provider-scoped-status-spec",
         "missing-oracle-checkpoint-task",
         "invalid-oracle-checkpoint-evidence",
         "Artifact-Type: oracle-checkpoint",
@@ -306,7 +351,9 @@ fn evaluate_fixture(fixture_dir: &Path) -> Result<FixtureReport, String> {
     let artifact_text = format!("{proposal}\n{design}\n{spec}");
     let lower_artifact_text = artifact_text.to_lowercase();
     let lower_design_source_text = format!("{proposal}\n{spec}").to_lowercase();
+    let lower_spec_source_text = format!("{proposal}\n{design}").to_lowercase();
     let lower_design = design.to_lowercase();
+    let lower_spec = spec.to_lowercase();
     let lower_tasks = tasks.to_lowercase();
     let task_lines = task_lines(&tasks);
 
@@ -327,6 +374,17 @@ fn evaluate_fixture(fixture_dir: &Path) -> Result<FixtureReport, String> {
         {
             diagnostics.push(format!(
                 "{}: design contract {:?} is not defined with concrete storage/policy/verification details",
+                category.code, category.label
+            ));
+        }
+    }
+
+    for category in SPEC_CATEGORIES {
+        if spec_category_required(&lower_spec_source_text, category)
+            && !spec_category_satisfied(&lower_spec, category)
+        {
+            diagnostics.push(format!(
+                "{}: spec contract {:?} is not encoded as an explicit delta requirement/scenario",
                 category.code, category.label
             ));
         }
@@ -364,6 +422,14 @@ fn design_category_required(text: &str, category: &DesignCategory) -> bool {
 
 fn design_category_satisfied(design: &str, category: &DesignCategory) -> bool {
     category.required_terms.iter().all(|term| design.contains(term))
+}
+
+fn spec_category_required(text: &str, category: &SpecCategory) -> bool {
+    category.trigger_terms.iter().any(|term| text.contains(term))
+}
+
+fn spec_category_satisfied(spec: &str, category: &SpecCategory) -> bool {
+    category.required_terms.iter().all(|term| spec.contains(term))
 }
 
 fn category_satisfied(category: &ContractCategory, task_lines: &[String], lower_tasks: &str) -> bool {
