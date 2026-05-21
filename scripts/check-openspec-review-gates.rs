@@ -41,6 +41,14 @@ struct ContractCategory {
     terms: &'static [&'static str],
 }
 
+#[derive(Debug)]
+struct DesignCategory {
+    code: &'static str,
+    label: &'static str,
+    trigger_terms: &'static [&'static str],
+    required_terms: &'static [&'static str],
+}
+
 const CONTRACT_CATEGORIES: &[ContractCategory] = &[
     ContractCategory {
         code: "missing-deterministic-request-shape-task",
@@ -121,6 +129,33 @@ const CONTRACT_CATEGORIES: &[ContractCategory] = &[
     },
 ];
 
+const DESIGN_CATEGORIES: &[DesignCategory] = &[
+    DesignCategory {
+        code: "missing-reasoning-signature-design",
+        label: "reasoning signature retention",
+        trigger_terms: &["reasoning signature", "signature retention"],
+        required_terms: &["store", "reuse", "later turn"],
+    },
+    DesignCategory {
+        code: "missing-retry-policy-design",
+        label: "retry policy bounds",
+        trigger_terms: &["retry policy", "429", "5xx", "401 refresh", "backoff"],
+        required_terms: &["3 retries", "1s/2s/4s", "exactly one 401", "one refresh"],
+    },
+    DesignCategory {
+        code: "missing-verification-plan-design",
+        label: "scenario-complete verification plan",
+        trigger_terms: &[
+            "verification plan",
+            "acceptance evidence",
+            "proactive refresh",
+            "provider-scoped status",
+            "discovery hiding",
+        ],
+        required_terms: &["proactive refresh", "401", "429", "provider-scoped status", "discovery hiding"],
+    },
+];
+
 fn main() -> ExitCode {
     match run() {
         Ok(()) => {
@@ -168,6 +203,9 @@ fn verify_guidance_and_wiring() -> Result<(), String> {
         "active account",
         "entitlement probe",
         "tool-call delta",
+        "reasoning signature retention",
+        "retry policy bounds",
+        "scenario-complete verification plan",
         "fixture/helper/command",
         "scripts/check-openspec-review-gates.rs",
         "Artifact-Type: oracle-checkpoint",
@@ -187,6 +225,9 @@ fn verify_guidance_and_wiring() -> Result<(), String> {
         "missing-active-account-task",
         "missing-entitlement-probe-retry-task",
         "missing-tool-call-delta-boundary-task",
+        "missing-reasoning-signature-design",
+        "missing-retry-policy-design",
+        "missing-verification-plan-design",
         "missing-oracle-checkpoint-task",
         "invalid-oracle-checkpoint-evidence",
         "Artifact-Type: oracle-checkpoint",
@@ -258,11 +299,14 @@ fn evaluate_fixture(fixture_dir: &Path) -> Result<FixtureReport, String> {
         .and_then(|name| name.to_str())
         .ok_or_else(|| format!("fixture path has no UTF-8 name: {}", fixture_dir.display()))?
         .to_owned();
+    let proposal = read_optional(fixture_dir, "proposal.md")?;
     let design = read_optional(fixture_dir, "design.md")?;
     let spec = read_optional(fixture_dir, "spec.md")?;
     let tasks = read_required(fixture_dir, "tasks.md")?;
-    let artifact_text = format!("{design}\n{spec}");
+    let artifact_text = format!("{proposal}\n{design}\n{spec}");
     let lower_artifact_text = artifact_text.to_lowercase();
+    let lower_design_source_text = format!("{proposal}\n{spec}").to_lowercase();
+    let lower_design = design.to_lowercase();
     let lower_tasks = tasks.to_lowercase();
     let task_lines = task_lines(&tasks);
 
@@ -272,6 +316,17 @@ fn evaluate_fixture(fixture_dir: &Path) -> Result<FixtureReport, String> {
         {
             diagnostics.push(format!(
                 "{}: deterministic contract {:?} is not traced to an explicit fixture/helper/command task",
+                category.code, category.label
+            ));
+        }
+    }
+
+    for category in DESIGN_CATEGORIES {
+        if design_category_required(&lower_design_source_text, category)
+            && !design_category_satisfied(&lower_design, category)
+        {
+            diagnostics.push(format!(
+                "{}: design contract {:?} is not defined with concrete storage/policy/verification details",
                 category.code, category.label
             ));
         }
@@ -301,6 +356,14 @@ fn evaluate_fixture(fixture_dir: &Path) -> Result<FixtureReport, String> {
 
 fn category_required(text: &str, category: &ContractCategory) -> bool {
     category.terms.iter().any(|term| text.contains(term))
+}
+
+fn design_category_required(text: &str, category: &DesignCategory) -> bool {
+    category.trigger_terms.iter().any(|term| text.contains(term))
+}
+
+fn design_category_satisfied(design: &str, category: &DesignCategory) -> bool {
+    category.required_terms.iter().all(|term| design.contains(term))
 }
 
 fn category_satisfied(category: &ContractCategory, task_lines: &[String], lower_tasks: &str) -> bool {

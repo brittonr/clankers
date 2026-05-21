@@ -47,6 +47,20 @@ The checker asserts representative diagnostics including:
 - `missing-entitlement-probe-retry-task`
 - `missing-tool-call-delta-boundary-task`
 
+## Design-stage completeness guidance
+
+When `proposal.md` or delta specs require concrete design behavior, `design.md` must define the storage seam, policy bounds, and scenario-complete verification plan rather than using umbrella prose. The checker currently guards repeated omissions for:
+
+- reasoning signature retention: where signatures are stored and how they are reused on a later turn
+- retry policy bounds: exact 429/5xx retry count, `1s/2s/4s` backoff, exactly one 401 refresh retry, and one refresh cycle per request
+- scenario-complete verification plan: proactive refresh, 401 retry, 429 retry, provider-scoped status, and discovery hiding cases
+
+The checker asserts representative diagnostics including:
+
+- `missing-reasoning-signature-design`
+- `missing-retry-policy-design`
+- `missing-verification-plan-design`
+
 ## Oracle checkpoint guidance
 
 Repeated human-routed or oracle-routed review findings require an explicit `H#` task when mechanical checks cannot decide the claim. Do not close these with summary prose alone.

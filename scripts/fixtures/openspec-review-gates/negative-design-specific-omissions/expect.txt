@@ -1,0 +1,4 @@
+status=fail
+diagnostic=missing-reasoning-signature-design
+diagnostic=missing-retry-policy-design
+diagnostic=missing-verification-plan-design

@@ -1,0 +1,7 @@
+# Tasks
+
+- [x] D1 [serial] r[openspec-review-gates.design-stage-omission-prevention.design-categories] Add design-stage omission categories and diagnostics to the review-gate checker. Completed 2026-05-21T15:53:41Z in `scripts/check-openspec-review-gates.rs`.
+- [x] D2 [serial] r[openspec-review-gates.design-stage-omission-prevention.design-fixtures] Add paired sanitized fixtures for vague and concrete design coverage. Completed 2026-05-21T15:53:41Z under `scripts/fixtures/openspec-review-gates/{negative-design-specific-omissions,positive-design-specific-coverage}`.
+- [x] D3 [serial] r[openspec-review-gates.design-stage-omission-prevention.design-docs] Document the design-stage diagnostics and operator guidance. Completed 2026-05-21T15:53:41Z in `docs/src/reference/openspec-review-gates.md`.
+- [x] D4 [serial] r[openspec-review-gates.design-stage-omission-prevention.design-fixtures] Run the focused review-gate fixture script and formatting checks. Completed 2026-05-21T15:53:41Z with `TMPDIR=/home/brittonr/.cargo-target/tmp RUSTC_WRAPPER= ./scripts/check-openspec-review-gates.rs` and `cargo fmt --check`.
+- [x] D5 [serial] r[openspec-review-gates.design-stage-omission-prevention.design-docs] Run docs build, Cairn gates/validate, diff checks, then sync/archive and commit. Docs build, Cairn proposal/design/tasks gates, `nix run .#cairn -- validate --root .`, and `git diff --check` passed before sync/archive on 2026-05-21T15:53:41Z; sync/archive/commit follow after this ledger update.
