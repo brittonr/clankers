@@ -1,0 +1,211 @@
+//! Single clankers-provider owned bridge into `clanker_router::CompletionRequest`.
+//!
+//! Provider/router ownership rule: this module is the only clankers-provider
+//! place that translates clankers-native `AgentMessage` history into the
+//! router's provider-native JSON message surface. Backends behind
+//! `clanker-router` still own final provider HTTP body construction.
+
+use serde_json::json;
+
+use crate::CompletionRequest;
+use crate::message::AgentMessage;
+use crate::message::Content;
+use crate::message::ImageSource;
+
+const BRANCH_SUMMARY_MESSAGE_PREFIX: &str = "Branch summary";
+const COMPACTION_SUMMARY_MESSAGE_PREFIX: &str = "Compaction summary";
+
+pub(crate) fn build_router_request(request: CompletionRequest) -> clanker_router::CompletionRequest {
+    clanker_router::CompletionRequest {
+        model: request.model,
+        messages: messages_to_router_json(&request.messages),
+        system_prompt: request.system_prompt,
+        max_tokens: request.max_tokens,
+        temperature: request.temperature,
+        tools: request.tools,
+        thinking: request.thinking,
+        no_cache: request.no_cache,
+        cache_ttl: request.cache_ttl,
+        extra_params: request.extra_params,
+    }
+}
+
+fn messages_to_router_json(messages: &[AgentMessage]) -> Vec<serde_json::Value> {
+    let mut out = Vec::new();
+    for message in messages {
+        match message {
+            AgentMessage::User(user) => {
+                let content: Vec<serde_json::Value> = user.content.iter().map(content_to_router_json).collect();
+                out.push(json!({"role": "user", "content": content}));
+            }
+            AgentMessage::Assistant(assistant) => {
+                let content: Vec<serde_json::Value> = assistant.content.iter().map(content_to_router_json).collect();
+                out.push(json!({"role": "assistant", "content": content}));
+            }
+            AgentMessage::ToolResult(result) => {
+                let content_blocks: Vec<serde_json::Value> =
+                    result.content.iter().map(content_to_router_json).collect();
+                let mut block = json!({
+                    "type": "tool_result",
+                    "tool_use_id": result.call_id,
+                    "content": content_blocks,
+                });
+                if result.is_error {
+                    block["is_error"] = json!(true);
+                }
+                out.push(json!({"role": "user", "content": [block]}));
+            }
+            AgentMessage::BranchSummary(summary) => {
+                out.push(summary_to_router_json(BRANCH_SUMMARY_MESSAGE_PREFIX, &summary.summary));
+            }
+            AgentMessage::CompactionSummary(summary) => {
+                out.push(summary_to_router_json(COMPACTION_SUMMARY_MESSAGE_PREFIX, &summary.summary));
+            }
+            AgentMessage::BashExecution(_) | AgentMessage::Custom(_) => {}
+        }
+    }
+    out
+}
+
+fn summary_to_router_json(prefix: &str, summary: &str) -> serde_json::Value {
+    json!({
+        "role": "user",
+        "content": [{"type": "text", "text": format!("[{prefix}]\n{summary}")}],
+    })
+}
+
+fn content_to_router_json(content: &Content) -> serde_json::Value {
+    match content {
+        Content::Text { text } => json!({"type": "text", "text": text}),
+        Content::Image { source } => match source {
+            ImageSource::Base64 { media_type, data } => json!({
+                "type": "image",
+                "source": {"type": "base64", "media_type": media_type, "data": data}
+            }),
+            ImageSource::Url { url } => json!({"type": "text", "text": format!("[Image URL: {}]", url)}),
+        },
+        Content::Thinking { thinking, signature } => {
+            json!({"type": "thinking", "thinking": thinking, "signature": signature})
+        }
+        Content::ToolUse { id, name, input } => {
+            json!({"type": "tool_use", "id": id, "name": name, "input": input})
+        }
+        Content::ToolResult {
+            tool_use_id,
+            content,
+            is_error,
+        } => {
+            let blocks: Vec<serde_json::Value> = content.iter().map(content_to_router_json).collect();
+            let mut value = json!({"type": "tool_result", "tool_use_id": tool_use_id, "content": blocks});
+            if let Some(true) = is_error {
+                value["is_error"] = json!(true);
+            }
+            value
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::collections::HashMap;
+
+    use chrono::Utc;
+    use serde_json::json;
+
+    use super::*;
+    use crate::message::AssistantMessage;
+    use crate::message::BranchSummaryMessage;
+    use crate::message::CompactionSummaryMessage;
+    use crate::message::MessageId;
+    use crate::message::StopReason;
+    use crate::message::ToolResultMessage;
+    use crate::message::UserMessage;
+
+    fn request(messages: Vec<AgentMessage>) -> CompletionRequest {
+        CompletionRequest {
+            model: "openai-codex/gpt-5.3-codex".to_string(),
+            messages,
+            system_prompt: Some("Be helpful".to_string()),
+            max_tokens: Some(128),
+            temperature: Some(0.2),
+            tools: vec![],
+            thinking: None,
+            no_cache: false,
+            cache_ttl: Some("1h".to_string()),
+            extra_params: HashMap::from([("_session_id".to_string(), json!("session-router-bridge"))]),
+        }
+    }
+
+    #[test]
+    fn builds_router_request_with_provider_native_message_json() {
+        let router_request = build_router_request(request(vec![
+            AgentMessage::User(UserMessage {
+                id: MessageId::new("user-1"),
+                content: vec![Content::Text {
+                    text: "hello".to_string(),
+                }],
+                timestamp: Utc::now(),
+            }),
+            AgentMessage::Assistant(AssistantMessage {
+                id: MessageId::new("assistant-1"),
+                content: vec![Content::ToolUse {
+                    id: "call_1:item_1".to_string(),
+                    name: "read_file".to_string(),
+                    input: json!({"path":"README.md"}),
+                }],
+                model: "test-model".to_string(),
+                usage: clanker_message::Usage::default(),
+                stop_reason: StopReason::ToolUse,
+                timestamp: Utc::now(),
+            }),
+            AgentMessage::ToolResult(ToolResultMessage {
+                id: MessageId::new("tool-result-1"),
+                call_id: "call_1:item_1".to_string(),
+                tool_name: "read_file".to_string(),
+                content: vec![Content::Text {
+                    text: "contents".to_string(),
+                }],
+                is_error: false,
+                details: None,
+                timestamp: Utc::now(),
+            }),
+        ]));
+
+        assert_eq!(router_request.extra_params.get("_session_id"), Some(&json!("session-router-bridge")));
+        assert_eq!(
+            router_request.messages[0],
+            json!({
+                "role": "user",
+                "content": [{"type": "text", "text": "hello"}],
+            })
+        );
+        assert_eq!(router_request.messages[1]["role"], json!("assistant"));
+        assert_eq!(router_request.messages[1]["content"][0]["type"], json!("tool_use"));
+        assert_eq!(router_request.messages[2]["role"], json!("user"));
+        assert_eq!(router_request.messages[2]["content"][0]["type"], json!("tool_result"));
+    }
+
+    #[test]
+    fn preserves_branch_and_compaction_summaries_as_user_context() {
+        let router_request = build_router_request(request(vec![
+            AgentMessage::BranchSummary(BranchSummaryMessage {
+                id: MessageId::new("branch-1"),
+                from_id: MessageId::new("user-1"),
+                summary: "branch state".to_string(),
+                timestamp: Utc::now(),
+            }),
+            AgentMessage::CompactionSummary(CompactionSummaryMessage {
+                id: MessageId::new("compaction-1"),
+                compacted_ids: vec![MessageId::new("user-1")],
+                summary: "compact state".to_string(),
+                tokens_saved: 42,
+                timestamp: Utc::now(),
+            }),
+        ]));
+
+        assert_eq!(router_request.messages.len(), 2);
+        assert_eq!(router_request.messages[0]["role"], json!("user"));
+        assert_eq!(router_request.messages[0]["content"][0]["text"], json!("[Branch summary]\nbranch state"));
+        assert_eq!(router_request.messages[1]["content"][0]["text"], json!("[Compaction summary]\ncompact state"));
+    }
+}

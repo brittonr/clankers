@@ -34,6 +34,9 @@ const AGENT_TURN_ADAPTERS: &str = "crates/clankers-agent/src/turn/adapters.rs";
 const AGENT_TURN_PORTS: &str = "crates/clankers-agent/src/turn/ports.rs";
 const CONTROLLER_CORE_EFFECTS: &str = "crates/clankers-controller/src/core_effects.rs";
 const CONTROLLER_EFFECT_INTERPRETATION: &str = "crates/clankers-controller/src/effect_interpretation.rs";
+const PROVIDER_ROUTER_BRIDGE: &str = "crates/clankers-provider/src/router_request_bridge.rs";
+const PROVIDER_ROUTER_ADAPTER: &str = "crates/clankers-provider/src/router.rs";
+const PROVIDER_RPC_ADAPTER: &str = "crates/clankers-provider/src/rpc_provider.rs";
 
 const AGENT_CONCRETE_DEPS: &[&str] = &[
     "clankers-config",
@@ -91,6 +94,7 @@ fn run() -> Result<PathBuf, String> {
     let process_tool_adapter = process_tool_adapter_signature()?;
     let agent_turn_ports = agent_turn_ports_signature()?;
     let controller_effect_interpretation = controller_effect_interpretation_signature()?;
+    let provider_router_bridge = provider_router_bridge_signature()?;
 
     require_nonempty(&root_internal, "root internal dependency inventory")?;
     require_nonempty(&agent_concrete, "agent concrete dependency inventory")?;
@@ -122,6 +126,7 @@ fn run() -> Result<PathBuf, String> {
         "process_tool_adapter": process_tool_adapter,
         "agent_turn_ports": agent_turn_ports,
         "controller_effect_interpretation": controller_effect_interpretation,
+        "provider_router_bridge": provider_router_bridge,
     });
     validate_baseline(&signature)?;
 
@@ -149,7 +154,10 @@ fn run() -> Result<PathBuf, String> {
             hash_artifact(Path::new(AGENT_TURN_ADAPTERS))?,
             hash_artifact(Path::new(AGENT_TURN_PORTS))?,
             hash_artifact(Path::new(CONTROLLER_CORE_EFFECTS))?,
-            hash_artifact(Path::new(CONTROLLER_EFFECT_INTERPRETATION))?
+            hash_artifact(Path::new(CONTROLLER_EFFECT_INTERPRETATION))?,
+            hash_artifact(Path::new(PROVIDER_ROUTER_BRIDGE))?,
+            hash_artifact(Path::new(PROVIDER_ROUTER_ADAPTER))?,
+            hash_artifact(Path::new(PROVIDER_RPC_ADAPTER))?
         ]
     });
 
@@ -165,6 +173,7 @@ fn validate_change_contracts() -> Result<(), String> {
     require_contains(&tasks, "process` tool JSON adapter boundary", "process tool adapter extraction task")?;
     require_contains(&tasks, "Define agent turn ports", "agent turn port extraction task")?;
     require_contains(&tasks, "Split controller seams", "controller seam split task")?;
+    require_contains(&tasks, "Assign provider/router ownership", "provider/router ownership task")?;
     require_contains(&spec, "dependency owner", "dependency owner requirement text")?;
     require_contains(&spec, "source crate, target crate", "typed dependency diagnostic scenario")?;
     require_contains(
@@ -173,6 +182,7 @@ fn validate_change_contracts() -> Result<(), String> {
         "process adapter storage DTO boundary",
     )?;
     require_contains(&spec, "Controller seams are single-purpose", "controller seam single-purpose requirement")?;
+    require_contains(&spec, "Provider/router has one owner per concern", "provider/router single-owner requirement")?;
     Ok(())
 }
 
@@ -385,6 +395,52 @@ fn controller_effect_interpretation_signature() -> Result<Value, String> {
         "tool_filter_projection": "interpret_tool_filter_application",
         "protocol_projection_references": 0,
         "agent_runtime_references": 0
+    }))
+}
+
+fn provider_router_bridge_signature() -> Result<Value, String> {
+    let bridge = fs::read_to_string(PROVIDER_ROUTER_BRIDGE)
+        .map_err(|error| format!("failed to read {PROVIDER_ROUTER_BRIDGE}: {error}"))?;
+    let router_adapter = fs::read_to_string(PROVIDER_ROUTER_ADAPTER)
+        .map_err(|error| format!("failed to read {PROVIDER_ROUTER_ADAPTER}: {error}"))?;
+    let rpc_adapter = fs::read_to_string(PROVIDER_RPC_ADAPTER)
+        .map_err(|error| format!("failed to read {PROVIDER_RPC_ADAPTER}: {error}"))?;
+
+    require_contains(
+        &bridge,
+        "Single clankers-provider owned bridge into `clanker_router::CompletionRequest`",
+        "provider/router bridge ownership doc",
+    )?;
+    require_contains(&bridge, "pub(crate) fn build_router_request", "provider/router bridge entrypoint")?;
+    require_contains(&bridge, "messages_to_router_json", "provider/router message projection owner")?;
+    require_contains(&bridge, "Branch summary", "branch summary preservation fixture")?;
+    require_contains(&bridge, "Compaction summary", "compaction summary preservation fixture")?;
+    require_contains(
+        &router_adapter,
+        "crate::router_request_bridge::build_router_request(request)",
+        "local router adapter delegates request projection",
+    )?;
+    require_contains(
+        &rpc_adapter,
+        "crate::router_request_bridge::build_router_request(request)",
+        "rpc router adapter delegates request projection",
+    )?;
+    forbid_contains(
+        &router_adapter,
+        "fn messages_to_router_json",
+        "local router adapter duplicate message projection",
+    )?;
+    forbid_contains(&rpc_adapter, "fn convert_messages_to_api", "rpc router adapter duplicate message projection")?;
+    forbid_contains(&rpc_adapter, "fn content_to_json", "rpc router adapter duplicate content projection")?;
+
+    Ok(json!({
+        "bridge_module": PROVIDER_ROUTER_BRIDGE,
+        "local_adapter_module": PROVIDER_ROUTER_ADAPTER,
+        "rpc_adapter_module": PROVIDER_RPC_ADAPTER,
+        "request_projection_owner": "router_request_bridge::build_router_request",
+        "local_adapter_duplicate_message_projection": 0,
+        "rpc_adapter_duplicate_message_projection": 0,
+        "summary_context_preserved": true
     }))
 }
 

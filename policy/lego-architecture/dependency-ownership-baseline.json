@@ -109,6 +109,15 @@
       "storage_dto_references": 0,
       "tool_module": "src/tools/process.rs"
     },
+    "provider_router_bridge": {
+      "bridge_module": "crates/clankers-provider/src/router_request_bridge.rs",
+      "local_adapter_duplicate_message_projection": 0,
+      "local_adapter_module": "crates/clankers-provider/src/router.rs",
+      "request_projection_owner": "router_request_bridge::build_router_request",
+      "rpc_adapter_duplicate_message_projection": 0,
+      "rpc_adapter_module": "crates/clankers-provider/src/rpc_provider.rs",
+      "summary_context_preserved": true
+    },
     "root_crate": {
       "internal_dependencies": [
         "clanker-message",

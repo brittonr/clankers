@@ -86,18 +86,7 @@ impl RpcProvider {
 }
 
 fn build_router_request(request: CompletionRequest) -> clanker_router::CompletionRequest {
-    clanker_router::CompletionRequest {
-        model: request.model,
-        messages: convert_messages_to_api(&request.messages),
-        system_prompt: request.system_prompt,
-        max_tokens: request.max_tokens,
-        temperature: request.temperature,
-        tools: request.tools,
-        thinking: request.thinking,
-        no_cache: request.no_cache,
-        cache_ttl: request.cache_ttl,
-        extra_params: request.extra_params,
-    }
+    crate::router_request_bridge::build_router_request(request)
 }
 
 #[async_trait]
@@ -136,82 +125,6 @@ impl Provider for RpcProvider {
 
     async fn reload_credentials(&self) {
         // Daemon manages its own credentials
-    }
-}
-
-/// Convert clankers AgentMessage list → Anthropic API format JSON values.
-///
-/// The router's CompletionRequest expects messages in provider-native format
-/// (e.g. `{"role": "user", "content": "..."}`) not clankers's internal enum format.
-fn convert_messages_to_api(messages: &[crate::message::AgentMessage]) -> Vec<serde_json::Value> {
-    use serde_json::json;
-
-    use crate::message::AgentMessage;
-
-    let mut out = Vec::new();
-    for msg in messages {
-        match msg {
-            AgentMessage::User(user) => {
-                let content: Vec<serde_json::Value> = user.content.iter().map(content_to_json).collect();
-                out.push(json!({"role": "user", "content": content}));
-            }
-            AgentMessage::Assistant(assistant) => {
-                let content: Vec<serde_json::Value> = assistant.content.iter().map(content_to_json).collect();
-                out.push(json!({"role": "assistant", "content": content}));
-            }
-            AgentMessage::ToolResult(result) => {
-                let content_blocks: Vec<serde_json::Value> = result.content.iter().map(content_to_json).collect();
-                let mut block = json!({
-                    "type": "tool_result",
-                    "tool_use_id": result.call_id,
-                    "content": content_blocks,
-                });
-                if result.is_error {
-                    block["is_error"] = json!(true);
-                }
-                out.push(json!({"role": "user", "content": [block]}));
-            }
-            // Skip metadata messages — not sent to the LLM
-            _ => {}
-        }
-    }
-    out
-}
-
-/// Convert a single Content block to Anthropic API JSON.
-fn content_to_json(content: &crate::message::Content) -> serde_json::Value {
-    use serde_json::json;
-
-    use crate::message::Content;
-    use crate::message::ImageSource;
-
-    match content {
-        Content::Text { text } => json!({"type": "text", "text": text}),
-        Content::Image { source } => match source {
-            ImageSource::Base64 { media_type, data } => json!({
-                "type": "image",
-                "source": {"type": "base64", "media_type": media_type, "data": data}
-            }),
-            ImageSource::Url { url } => json!({"type": "text", "text": format!("[Image URL: {}]", url)}),
-        },
-        Content::Thinking { thinking, signature } => {
-            json!({"type": "thinking", "thinking": thinking, "signature": signature})
-        }
-        Content::ToolUse { id, name, input } => json!({
-            "type": "tool_use", "id": id, "name": name, "input": input
-        }),
-        Content::ToolResult {
-            tool_use_id,
-            content,
-            is_error,
-        } => {
-            let blocks: Vec<serde_json::Value> = content.iter().map(content_to_json).collect();
-            let mut v = json!({"type": "tool_result", "tool_use_id": tool_use_id, "content": blocks});
-            if let Some(true) = is_error {
-                v["is_error"] = json!(true);
-            }
-            v
-        }
     }
 }
 
