@@ -3,6 +3,10 @@ use clankers_protocol::DaemonEvent;
 use clankers_protocol::SessionCommand;
 use tracing::warn;
 
+use crate::modes::session_command_policy;
+use crate::modes::session_command_policy::LocalSessionEffect;
+use crate::modes::session_command_policy::SessionAckPolicy;
+use crate::modes::session_command_policy::SessionCommandEffect;
 use crate::slash_commands;
 use crate::tui::app::App;
 
@@ -31,16 +35,21 @@ pub(crate) struct AttachParityTracker {
 }
 
 impl AttachParityTracker {
+    #[cfg(test)]
     pub(crate) fn expect_thinking_ack_message(&mut self) {
-        self.thinking_ack_messages_to_suppress += 1;
+        self.expect_ack(SessionAckPolicy::ThinkingLevel);
     }
 
     pub(crate) fn expect_disabled_tools_message(&mut self) {
-        self.disabled_tools_messages_to_suppress += 1;
+        self.expect_ack(SessionAckPolicy::DisabledTools);
     }
 
-    pub(crate) fn expect_manual_compaction(&mut self) {
-        self.manual_compactions_to_suppress += 1;
+    pub(crate) fn expect_ack(&mut self, policy: SessionAckPolicy) {
+        match policy {
+            SessionAckPolicy::ThinkingLevel => self.thinking_ack_messages_to_suppress += 1,
+            SessionAckPolicy::DisabledTools => self.disabled_tools_messages_to_suppress += 1,
+            SessionAckPolicy::ManualCompaction => self.manual_compactions_to_suppress += 1,
+        }
     }
 
     pub(crate) fn should_suppress(&mut self, event: &DaemonEvent) -> bool {
@@ -60,7 +69,7 @@ impl AttachParityTracker {
             return false;
         }
 
-        let should_suppress = is_thinking_ack_message(event);
+        let should_suppress = session_command_policy::ack_matches(SessionAckPolicy::ThinkingLevel, event);
         if should_suppress {
             self.thinking_ack_messages_to_suppress -= 1;
         }
@@ -72,10 +81,7 @@ impl AttachParityTracker {
             return false;
         }
 
-        let should_suppress = matches!(
-            event,
-            DaemonEvent::SystemMessage { text, is_error: false } if text.starts_with("Disabled tools updated:")
-        );
+        let should_suppress = session_command_policy::ack_matches(SessionAckPolicy::DisabledTools, event);
         if should_suppress {
             self.disabled_tools_messages_to_suppress -= 1;
         }
@@ -87,7 +93,7 @@ impl AttachParityTracker {
             return false;
         }
 
-        let should_suppress = matches!(event, DaemonEvent::SessionCompaction { .. });
+        let should_suppress = session_command_policy::ack_matches(SessionAckPolicy::ManualCompaction, event);
         if should_suppress {
             self.manual_compactions_to_suppress -= 1;
         }
@@ -96,8 +102,9 @@ impl AttachParityTracker {
 }
 
 /// Decide how attach mode should handle a slash command.
+#[cfg(test)]
 pub(crate) fn is_thinking_ack_message(event: &DaemonEvent) -> bool {
-    matches!(event, DaemonEvent::SystemMessage { text, is_error: false } if text.starts_with("Thinking"))
+    session_command_policy::is_thinking_ack_message(event)
 }
 
 pub(crate) fn route_attach_slash(command: &str, args: &str) -> AttachSlashRoute {
@@ -270,34 +277,36 @@ fn flush_attach_agent_commands(
     while let Ok(agent_cmd) = cmd_rx.try_recv() {
         match agent_cmd {
             crate::modes::interactive::AgentCommand::SetThinkingLevel(level) => {
-                bridge_attach_thinking_level_change(
+                dispatch_session_command_effect(
                     app,
                     client,
                     parity_tracker,
-                    SessionCommand::SetThinkingLevel {
-                        level: level.label().to_string(),
-                    },
-                    level,
+                    session_command_policy::set_thinking_level_effect(level),
                 );
             }
             crate::modes::interactive::AgentCommand::CycleThinkingLevel => {
-                let next_level = app.thinking_level.next();
-                bridge_attach_thinking_level_change(
+                dispatch_session_command_effect(
                     app,
                     client,
                     parity_tracker,
-                    SessionCommand::CycleThinkingLevel,
-                    next_level,
+                    session_command_policy::cycle_thinking_level_effect(app.thinking_level),
                 );
             }
             crate::modes::interactive::AgentCommand::SetDisabledTools(disabled) => {
-                let tools = apply_standalone_disabled_tools(app, disabled);
-                parity_tracker.expect_disabled_tools_message();
-                client.send(SessionCommand::SetDisabledTools { tools });
+                dispatch_session_command_effect(
+                    app,
+                    client,
+                    parity_tracker,
+                    session_command_policy::disabled_tools_effect(disabled),
+                );
             }
             crate::modes::interactive::AgentCommand::CompressContext => {
-                parity_tracker.expect_manual_compaction();
-                client.send(SessionCommand::CompactHistory);
+                dispatch_session_command_effect(
+                    app,
+                    client,
+                    parity_tracker,
+                    session_command_policy::manual_compaction_effect(),
+                );
             }
             other => {
                 if let Some(session_command) = translate_attach_agent_command(other) {
@@ -317,32 +326,60 @@ pub(super) fn bridge_attach_thinking_level_change(
     session_command: SessionCommand,
     level: crate::provider::ThinkingLevel,
 ) {
-    apply_standalone_thinking_level(app, level);
-    parity_tracker.expect_thinking_ack_message();
-    client.send(session_command);
+    let mut effect = session_command_policy::set_thinking_level_effect(level);
+    effect.command = Some(session_command);
+    dispatch_session_command_effect(app, client, parity_tracker, effect);
+}
+
+fn dispatch_session_command_effect(
+    app: &mut App,
+    client: &ClientAdapter,
+    parity_tracker: &mut AttachParityTracker,
+    effect: SessionCommandEffect,
+) {
+    apply_local_session_effect(app, effect.local);
+    parity_tracker.expect_ack(effect.ack);
+    if let Some(command) = effect.command {
+        client.send(command);
+    }
+}
+
+fn apply_local_session_effect(app: &mut App, effect: Option<LocalSessionEffect>) {
+    match effect {
+        Some(LocalSessionEffect::ThinkingLevel { level, message }) => {
+            app.thinking_enabled = level.is_enabled();
+            app.thinking_level = level;
+            app.push_system(message, false);
+        }
+        Some(LocalSessionEffect::DisabledTools { tools }) => {
+            app.disabled_tools = tools.into_iter().collect();
+        }
+        None => {}
+    }
 }
 
 pub(super) fn apply_standalone_disabled_tools(
     app: &mut App,
     disabled: impl IntoIterator<Item = String>,
 ) -> Vec<String> {
-    let mut tools: Vec<String> = disabled.into_iter().collect();
-    tools.sort();
-    app.disabled_tools = tools.iter().cloned().collect();
+    let effect = session_command_policy::disabled_tools_effect(disabled);
+    let tools = match effect.local.clone() {
+        Some(LocalSessionEffect::DisabledTools { tools }) => tools,
+        _ => Vec::new(),
+    };
+    apply_local_session_effect(app, effect.local);
     tools
 }
 
+#[cfg(test)]
 pub(super) fn apply_standalone_thinking_level(app: &mut App, level: crate::provider::ThinkingLevel) {
-    app.thinking_enabled = level.is_enabled();
-    app.thinking_level = level;
-    app.push_system(format_attach_thinking_message(level), false);
+    let effect = session_command_policy::set_thinking_level_effect(level);
+    apply_local_session_effect(app, effect.local);
 }
 
+#[cfg(test)]
 pub(crate) fn format_attach_thinking_message(level: crate::provider::ThinkingLevel) -> String {
-    match level.budget_tokens() {
-        Some(tokens) => format!("Thinking: {} ({} tokens)", level.label(), tokens),
-        None => "Thinking: off".to_string(),
-    }
+    session_command_policy::thinking_level_message(level)
 }
 
 pub(crate) fn confirm_bash_command(request_id: String, approved: bool) -> SessionCommand {

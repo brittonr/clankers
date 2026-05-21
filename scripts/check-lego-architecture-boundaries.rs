@@ -39,6 +39,9 @@ const CONTROLLER_EFFECT_INTERPRETATION: &str = "crates/clankers-controller/src/e
 const PROVIDER_ROUTER_BRIDGE: &str = "crates/clankers-provider/src/router_request_bridge.rs";
 const PROVIDER_ROUTER_ADAPTER: &str = "crates/clankers-provider/src/router.rs";
 const PROVIDER_RPC_ADAPTER: &str = "crates/clankers-provider/src/rpc_provider.rs";
+const SESSION_COMMAND_POLICY: &str = "src/modes/session_command_policy.rs";
+const ATTACH_COMMANDS: &str = "src/modes/attach/commands.rs";
+const AGENT_TASK: &str = "src/modes/agent_task.rs";
 
 const AGENT_CONCRETE_DEPS: &[&str] = &[
     "clankers-config",
@@ -98,6 +101,7 @@ fn run() -> Result<PathBuf, String> {
     let controller_effect_interpretation = controller_effect_interpretation_signature()?;
     let provider_router_bridge = provider_router_bridge_signature()?;
     let controller_domain_event = controller_domain_event_signature()?;
+    let session_command_policy = session_command_policy_signature()?;
 
     require_nonempty(&root_internal, "root internal dependency inventory")?;
     require_nonempty(&agent_concrete, "agent concrete dependency inventory")?;
@@ -131,6 +135,7 @@ fn run() -> Result<PathBuf, String> {
         "controller_effect_interpretation": controller_effect_interpretation,
         "provider_router_bridge": provider_router_bridge,
         "controller_domain_event": controller_domain_event,
+        "session_command_policy": session_command_policy,
     });
     validate_baseline(&signature)?;
 
@@ -143,6 +148,7 @@ fn run() -> Result<PathBuf, String> {
             "r[lego-architecture-boundaries.agent-uses-ports-not-concrete-systems]",
             "r[lego-architecture-boundaries.controller-seams-are-single-purpose]",
             "r[lego-architecture-boundaries.display-and-protocol-types-do-not-leak-inward]",
+            "r[lego-architecture-boundaries.attach-parity-uses-shared-policy-core]",
             "r[lego-architecture-boundaries.typed-architecture-rails]"
         ],
         "inventory_signature": signature,
@@ -164,7 +170,10 @@ fn run() -> Result<PathBuf, String> {
             hash_artifact(Path::new(CONTROLLER_EFFECT_INTERPRETATION))?,
             hash_artifact(Path::new(PROVIDER_ROUTER_BRIDGE))?,
             hash_artifact(Path::new(PROVIDER_ROUTER_ADAPTER))?,
-            hash_artifact(Path::new(PROVIDER_RPC_ADAPTER))?
+            hash_artifact(Path::new(PROVIDER_RPC_ADAPTER))?,
+            hash_artifact(Path::new(SESSION_COMMAND_POLICY))?,
+            hash_artifact(Path::new(ATTACH_COMMANDS))?,
+            hash_artifact(Path::new(AGENT_TASK))?
         ]
     });
 
@@ -182,6 +191,7 @@ fn validate_change_contracts() -> Result<(), String> {
     require_contains(&tasks, "Split controller seams", "controller seam split task")?;
     require_contains(&tasks, "Assign provider/router ownership", "provider/router ownership task")?;
     require_contains(&tasks, "neutral domain event and receipt DTOs", "neutral domain event task")?;
+    require_contains(&tasks, "shared session command/effect/ack policy", "session command policy task")?;
     require_contains(&spec, "dependency owner", "dependency owner requirement text")?;
     require_contains(&spec, "source crate, target crate", "typed dependency diagnostic scenario")?;
     require_contains(
@@ -192,6 +202,7 @@ fn validate_change_contracts() -> Result<(), String> {
     require_contains(&spec, "Controller seams are single-purpose", "controller seam single-purpose requirement")?;
     require_contains(&spec, "Provider/router has one owner per concern", "provider/router single-owner requirement")?;
     require_contains(&spec, "Display and protocol types do not leak inward", "display/protocol edge requirement")?;
+    require_contains(&spec, "Attach parity uses shared policy core", "attach parity shared policy requirement")?;
     Ok(())
 }
 
@@ -500,6 +511,72 @@ fn controller_domain_event_signature() -> Result<Value, String> {
         "protocol_references_in_domain_module": 0,
         "tui_references_in_domain_module": 0,
         "protocol_projection_owner": "convert::domain_event_to_daemon_event"
+    }))
+}
+
+fn session_command_policy_signature() -> Result<Value, String> {
+    let policy = fs::read_to_string(SESSION_COMMAND_POLICY)
+        .map_err(|error| format!("failed to read {SESSION_COMMAND_POLICY}: {error}"))?;
+    let attach =
+        fs::read_to_string(ATTACH_COMMANDS).map_err(|error| format!("failed to read {ATTACH_COMMANDS}: {error}"))?;
+    let agent_task = fs::read_to_string(AGENT_TASK).map_err(|error| format!("failed to read {AGENT_TASK}: {error}"))?;
+
+    require_contains(
+        &policy,
+        "Shared session command/effect/ack policy",
+        "session command policy module purpose",
+    )?;
+    require_contains(&policy, "enum LocalSessionEffect", "typed local session effect DTO")?;
+    require_contains(&policy, "enum SessionAckPolicy", "typed session ack policy DTO")?;
+    require_contains(&policy, "struct SessionCommandEffect", "typed session command effect DTO")?;
+    require_contains(&policy, "set_thinking_level_effect", "shared thinking set effect")?;
+    require_contains(&policy, "cycle_thinking_level_effect", "shared thinking cycle effect")?;
+    require_contains(&policy, "disabled_tools_effect", "shared disabled-tools effect")?;
+    require_contains(&policy, "manual_compaction_effect", "shared compaction effect")?;
+    require_contains(&policy, "ack_matches", "shared ack matcher")?;
+    require_contains(
+        &policy,
+        "thinking_effect_projects_local_message_command_and_ack_policy",
+        "positive shared policy fixture",
+    )?;
+    require_contains(&policy, "ack_policy_matches_only_expected_daemon_ack_shape", "negative ack fixture")?;
+    require_contains(
+        &attach,
+        "dispatch_session_command_effect",
+        "attach command shell delegates through shared effect dispatcher",
+    )?;
+    require_contains(
+        &attach,
+        "session_command_policy::cycle_thinking_level_effect(app.thinking_level)",
+        "attach cycle thinking delegates to shared policy",
+    )?;
+    require_contains(
+        &attach,
+        "session_command_policy::ack_matches(SessionAckPolicy::ThinkingLevel, event)",
+        "attach ack suppression delegates to shared policy",
+    )?;
+    require_contains(
+        &agent_task,
+        "session_command_policy::thinking_level_message(level)",
+        "standalone thinking message delegates to shared policy",
+    )?;
+
+    Ok(json!({
+        "policy_module": SESSION_COMMAND_POLICY,
+        "attach_adapter_module": ATTACH_COMMANDS,
+        "standalone_agent_task_module": AGENT_TASK,
+        "local_effect_dto": "LocalSessionEffect",
+        "ack_policy_dto": "SessionAckPolicy",
+        "effect_dto": "SessionCommandEffect",
+        "shared_effects": [
+            "set_thinking_level_effect",
+            "cycle_thinking_level_effect",
+            "disabled_tools_effect",
+            "manual_compaction_effect"
+        ],
+        "ack_matcher": "ack_matches",
+        "positive_fixture": "thinking_effect_projects_local_message_command_and_ack_policy",
+        "negative_fixture": "ack_policy_matches_only_expected_daemon_ack_shape"
     }))
 }
 

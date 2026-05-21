@@ -1,4 +1,79 @@
 {
+  "artifact_hashes": [
+    {
+      "blake3": "81c29fecdac1c9723dfab64249618d21c34e79fb59fc79b35ce718e0ad5034a5",
+      "path": "policy/lego-architecture/dependency-ownership-baseline.json"
+    },
+    {
+      "blake3": "9f0346e9d0f59113f6b9e0407e58081d490b6cb69529ef9b9cf9aa93ee23229d",
+      "path": "cairn/changes/lego-decoupling-boundaries/tasks.md"
+    },
+    {
+      "blake3": "9a73c2487cb5d4ff90a9f4782544d82cd488c2b6b8eaf1d8f3bebbae6c36b3e9",
+      "path": "cairn/changes/lego-decoupling-boundaries/specs/lego-architecture-boundaries/spec.md"
+    },
+    {
+      "blake3": "6fc6b9c00fa01de8ed924660c905b8c4e29f7710e6ad7e830fed3626c0bb394a",
+      "path": "src/tools/process.rs"
+    },
+    {
+      "blake3": "90dbf8f6702e8366eeb468a0aa1325efc88688f75da83d6f95d347aa9c8b0cc9",
+      "path": "src/tools/process/adapter.rs"
+    },
+    {
+      "blake3": "182756bf047fd1800228eb83414ac6f053ee3c646367bac46e64bfde94fc6612",
+      "path": "crates/clankers-agent/src/turn/mod.rs"
+    },
+    {
+      "blake3": "10f8ef249fe40c908f5507014c435c91cc24a7bcaebd9ba8c7465e3ed18b5741",
+      "path": "crates/clankers-agent/src/turn/adapters.rs"
+    },
+    {
+      "blake3": "46491f3f4d4d64ddff7a95eb0feb907e9065eff4f12e8d02b93b603b53a417e0",
+      "path": "crates/clankers-agent/src/turn/ports.rs"
+    },
+    {
+      "blake3": "18a037b3946e21f38e7a4bd7ace9abf0050d03c19c5c3ad7cf30e016f1b05404",
+      "path": "crates/clankers-controller/src/core_effects.rs"
+    },
+    {
+      "blake3": "47e829a44702dc376a4fa7b2848a45fef1adfe0157ac6d65c0cde6b3ac82030c",
+      "path": "crates/clankers-controller/src/convert.rs"
+    },
+    {
+      "blake3": "ef4543ee0dc28fe3805d34bb5f9c306338938dd113a328341337c5dfedb5ca8b",
+      "path": "crates/clankers-controller/src/domain_event.rs"
+    },
+    {
+      "blake3": "dd38bad6d596d461519edd8b8c158b548d360b1a559b720c2d67e6904f115bdf",
+      "path": "crates/clankers-controller/src/effect_interpretation.rs"
+    },
+    {
+      "blake3": "85c8b37e53f98ec7ff70e1a69e34f8e3710d5114916a74fe2a5e825604320571",
+      "path": "crates/clankers-provider/src/router_request_bridge.rs"
+    },
+    {
+      "blake3": "9a090fd03f5f684f2d6c6fc905a96634212f0f4e4f0e0072d71086245d1bf661",
+      "path": "crates/clankers-provider/src/router.rs"
+    },
+    {
+      "blake3": "fbdbbb0faeede8922a50b28f7b4fd23391552ea6b8ed268d17697198c546e043",
+      "path": "crates/clankers-provider/src/rpc_provider.rs"
+    },
+    {
+      "blake3": "30c8c2f1c7439c64bf133d7f682f39ec4086648bec81a01c8a4bc3dbde6ad511",
+      "path": "src/modes/session_command_policy.rs"
+    },
+    {
+      "blake3": "bf2bc01c241fee3c0e28563924760f63a24c60a49f07d0aab4da065d6ea8933c",
+      "path": "src/modes/attach/commands.rs"
+    },
+    {
+      "blake3": "f6fdfd7b00a6af595570eadae78f1fd586a7ce778edc97edf4cf971b752e27aa",
+      "path": "src/modes/agent_task.rs"
+    }
+  ],
+  "baseline": "policy/lego-architecture/dependency-ownership-baseline.json",
   "change": "lego-decoupling-boundaries",
   "inventory_signature": {
     "agent_crate": {
@@ -163,8 +238,38 @@
       "internal_dependency_count": 30,
       "owner": "product-shell wiring only; reusable behavior must move behind workspace brick APIs",
       "package": "clankers"
+    },
+    "session_command_policy": {
+      "ack_matcher": "ack_matches",
+      "ack_policy_dto": "SessionAckPolicy",
+      "attach_adapter_module": "src/modes/attach/commands.rs",
+      "effect_dto": "SessionCommandEffect",
+      "local_effect_dto": "LocalSessionEffect",
+      "negative_fixture": "ack_policy_matches_only_expected_daemon_ack_shape",
+      "policy_module": "src/modes/session_command_policy.rs",
+      "positive_fixture": "thinking_effect_projects_local_message_command_and_ack_policy",
+      "shared_effects": [
+        "set_thinking_level_effect",
+        "cycle_thinking_level_effect",
+        "disabled_tools_effect",
+        "manual_compaction_effect"
+      ],
+      "standalone_agent_task_module": "src/modes/agent_task.rs"
     }
   },
-  "purpose": "Initial typed Cargo metadata baseline before lego decoupling refactors.",
-  "schema": "clankers.lego_architecture.dependency_ownership_baseline.v1"
+  "rail_kind": "typed cargo metadata inventory",
+  "requirements": [
+    "r[lego-architecture-boundaries.root-shell-thinness]",
+    "r[lego-architecture-boundaries.process-tool-thin-adapter]",
+    "r[lego-architecture-boundaries.agent-uses-ports-not-concrete-systems]",
+    "r[lego-architecture-boundaries.controller-seams-are-single-purpose]",
+    "r[lego-architecture-boundaries.display-and-protocol-types-do-not-leak-inward]",
+    "r[lego-architecture-boundaries.attach-parity-uses-shared-policy-core]",
+    "r[lego-architecture-boundaries.typed-architecture-rails]"
+  ],
+  "schema": "clankers.lego_architecture.dependency_ownership_baseline.v1",
+  "source_artifacts": [
+    "cairn/changes/lego-decoupling-boundaries/tasks.md",
+    "cairn/changes/lego-decoupling-boundaries/specs/lego-architecture-boundaries/spec.md"
+  ]
 }

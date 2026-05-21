@@ -76,11 +76,21 @@ pub(crate) fn spawn_agent_task(
                 AgentCommand::SetCompactionSummary(summary) => agent.set_latest_compaction_summary(summary),
                 AgentCommand::SetThinkingLevel(level) => {
                     let level = agent.set_thinking_level(level);
-                    done_tx.send(TaskResult::ThinkingToggled(thinking_msg(&level), level)).ok();
+                    done_tx
+                        .send(TaskResult::ThinkingToggled(
+                            crate::modes::session_command_policy::thinking_level_message(level),
+                            level,
+                        ))
+                        .ok();
                 }
                 AgentCommand::CycleThinkingLevel => {
                     let level = agent.cycle_thinking_level();
-                    done_tx.send(TaskResult::ThinkingToggled(thinking_msg(&level), level)).ok();
+                    done_tx
+                        .send(TaskResult::ThinkingToggled(
+                            crate::modes::session_command_policy::thinking_level_message(level),
+                            level,
+                        ))
+                        .ok();
                 }
                 AgentCommand::SetSystemPrompt(prompt) => {
                     agent.set_system_prompt(prompt);
@@ -358,16 +368,6 @@ pub(crate) async fn rewrite_prompt(
         original.to_string()
     } else {
         improved
-    }
-}
-
-/// Format a thinking level change into a user-facing message.
-#[allow(clippy::needless_pass_by_value)]
-fn thinking_msg(level: &crate::provider::ThinkingLevel) -> String {
-    if level.is_enabled() {
-        format!("Thinking: {} ({} tokens)", level.label(), level.budget_tokens().unwrap_or(0))
-    } else {
-        "Thinking: off".to_string()
     }
 }
 
