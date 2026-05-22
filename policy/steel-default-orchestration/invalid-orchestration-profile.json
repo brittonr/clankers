@@ -1,0 +1,45 @@
+{
+  "schema": "clankers.steel_default_orchestration.profile.v1",
+  "name": "invalid-steel-default",
+  "enabled": true,
+  "default": true,
+  "planning_seam": "steel.host.everything",
+  "rollout_stage": "default",
+  "fallback_mode": "ambient",
+  "script": {
+    "id": "bad-script",
+    "source_kind": "repo-file",
+    "path": "policy/steel-default-orchestration/scripts/default-plan-turn.scm",
+    "blake3": ""
+  },
+  "runtime_budget": {
+    "steel_profile": "trusted-orchestration",
+    "max_source_bytes": 4096,
+    "max_output_bytes": 2048,
+    "max_host_calls": 4,
+    "max_steps": 512,
+    "max_plan_items": 8,
+    "max_input_bytes": 8192
+  },
+  "allowed_host_actions": [
+    {
+      "name": "steel.host.plan_turn",
+      "dynamic_runtime_action": "host_function:*",
+      "target_prefix": "/",
+      "required_session_capabilities": [],
+      "ucan_ability": "*"
+    }
+  ],
+  "receipt_policy": {
+    "schema": "clankers.steel_default_orchestration.receipt.v1",
+    "destination_prefix": "/tmp/receipts",
+    "redaction": "secret_bearing",
+    "safe_fields": ["schema", "credential", "provider_payload"],
+    "redacted_fields": ["raw_prompt"]
+  },
+  "audit": {
+    "owner": "steel-script",
+    "review_required": false,
+    "expansion_requires_profile_update": false
+  }
+}

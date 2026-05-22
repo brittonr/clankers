@@ -1,0 +1,67 @@
+{
+  "allowed_host_actions": [
+    {
+      "dynamic_runtime_action": "host_function:steel.host.plan_turn",
+      "name": "steel.host.plan_turn",
+      "required_session_capabilities": [
+        "steel-orchestration",
+        "turn-planning"
+      ],
+      "target_prefix": "turn:",
+      "ucan_ability": "clankers/steel/orchestrate.plan_turn"
+    }
+  ],
+  "audit": {
+    "expansion_requires_profile_update": true,
+    "owner": "rust-host",
+    "review_required": true
+  },
+  "default": true,
+  "enabled": true,
+  "fallback_mode": "rust_native",
+  "name": "steel-plan-turn-default",
+  "planning_seam": "steel.host.plan_turn",
+  "receipt_policy": {
+    "destination_prefix": "target/steel-default-orchestration",
+    "redacted_fields": [
+      "raw_prompt",
+      "provider_payload",
+      "compact_ucan",
+      "raw_proof",
+      "credential",
+      "script_source",
+      "tool_body",
+      "absolute_path"
+    ],
+    "redaction": "metadata_only",
+    "safe_fields": [
+      "schema",
+      "status",
+      "seam",
+      "profile",
+      "script_hash",
+      "policy_hash",
+      "plan_hash",
+      "fallback_status",
+      "receipt_hash"
+    ],
+    "schema": "clankers.steel_default_orchestration.receipt.v1"
+  },
+  "rollout_stage": "default",
+  "runtime_budget": {
+    "max_host_calls": 4,
+    "max_input_bytes": 8192,
+    "max_output_bytes": 2048,
+    "max_plan_items": 8,
+    "max_source_bytes": 4096,
+    "max_steps": 512,
+    "steel_profile": "trusted-orchestration"
+  },
+  "schema": "clankers.steel_default_orchestration.profile.v1",
+  "script": {
+    "blake3": "b3:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "id": "default-plan-turn-v1",
+    "path": "policy/steel-default-orchestration/scripts/default-plan-turn.scm",
+    "source_kind": "repo-file"
+  }
+}

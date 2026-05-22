@@ -1,0 +1,27 @@
+# Steel Default Orchestration
+
+Steel Scheme can be selected as the default planner for reviewed Clankers orchestration seams, starting with `steel.host.plan_turn`. This does not make Steel an authority boundary. Steel proposes typed plans; Rust remains the authority for I/O, provider calls, tool execution, daemon/session state, mutation, verification, rollback, and receipts.
+
+## Layer split
+
+- Nickel declares the orchestration profile: enabled/default state, exact seam, script identity and hash, runtime budget, fallback mode, allowed host actions, rollout stage, and receipt redaction.
+- UCAN-style grants provide runtime delegated authority for the selected seam and target resources.
+- Steel Scheme runs only through the Clankers-owned Steel runtime wrapper and emits typed plan data.
+- Rust parses the plan, builds dynamic-runtime envelopes, authorizes every effect, emits receipts, and chooses fallback/block behavior.
+- Wasm remains the untrusted/tool execution boundary when a plan selects a Wasm tool.
+
+## Default seam behavior
+
+The first reviewed default seam is low-risk turn planning / tool-candidate ordering through `steel.host.plan_turn`. A profile may run in comparison mode or default mode, but every selected action still crosses the dynamic-runtime authorization seam. Extra seams require separate reviewed profile entries, fixtures, and receipts; they do not inherit authority from `steel.host.plan_turn`.
+
+## Fallback and kill switch
+
+If Steel is disabled, malformed, over budget, or fails to evaluate, Rust-native planning is used only when Nickel policy says `fallback_mode = "rust_native"`. If policy says `fallback_mode = "block"`, the planning decision blocks with a stable receipt and no host effect. Fallback must not loosen Steel runtime budgets or silently grant provider, credential, daemon, TUI, filesystem, shell, git, network, or native-tool access.
+
+## Receipt review
+
+Receipts include schema/status, seam, profile, script hash, policy hash, plan hash, Steel runtime receipt hash, authorization receipt summaries, Rust-native fallback status, and redaction decisions. Receipts must not include raw prompts, provider payloads, compact UCAN tokens, raw proofs, credentials, script source, tool bodies, or uncontrolled absolute paths.
+
+## Security wording
+
+Steel default orchestration is a constrained embedded interpreter and planner seam with no ambient authority. It is not an OS/process sandbox. Safety depends on Rust host-function gates, Nickel policy, UCAN authority, dynamic-runtime authorization, bounded profiles, and deterministic receipts.
