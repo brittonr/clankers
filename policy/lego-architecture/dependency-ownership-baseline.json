@@ -1,11 +1,11 @@
 {
   "artifact_hashes": [
     {
-      "blake3": "81c29fecdac1c9723dfab64249618d21c34e79fb59fc79b35ce718e0ad5034a5",
+      "blake3": "52c6e8d6e3282c5971f04ec5ff84ad07bd5bb63ca230f94350913c374a0321a6",
       "path": "policy/lego-architecture/dependency-ownership-baseline.json"
     },
     {
-      "blake3": "9f0346e9d0f59113f6b9e0407e58081d490b6cb69529ef9b9cf9aa93ee23229d",
+      "blake3": "e799878844dd2b911159284698cd9c8116231b6a1dbb7ff8c7d7dd48a7c7073b",
       "path": "cairn/changes/lego-decoupling-boundaries/tasks.md"
     },
     {
@@ -102,7 +102,8 @@
       "provider_adapter": "ProviderModelPort",
       "tool_adapter": "ControllerToolPort",
       "tool_host_concrete_tool_map_fields": 0,
-      "tool_port_trait": "AgentToolPort"
+      "tool_port_trait": "AgentToolPort",
+      "typed_rail_kind": "Rust AST module, trait, impl, and struct-field checks"
     },
     "controller_crate": {
       "concrete_dependencies": [
@@ -127,7 +128,8 @@
       "protocol_projection_module": "crates/clankers-controller/src/convert.rs",
       "protocol_projection_owner": "convert::domain_event_to_daemon_event",
       "protocol_references_in_domain_module": 0,
-      "tui_references_in_domain_module": 0
+      "tui_references_in_domain_module": 0,
+      "typed_rail_kind": "Rust AST enum, struct, function, path, and forbidden edge-dependency checks"
     },
     "controller_effect_interpretation": {
       "agent_runtime_references": 0,
@@ -136,7 +138,8 @@
       "protocol_projection_references": 0,
       "shell_module": "crates/clankers-controller/src/core_effects.rs",
       "thinking_projection": "interpret_thinking_change",
-      "tool_filter_projection": "interpret_tool_filter_application"
+      "tool_filter_projection": "interpret_tool_filter_application",
+      "typed_rail_kind": "Rust AST function, struct, path, and forbidden dependency checks"
     },
     "most_shared_dto_crates": [
       {
@@ -191,7 +194,8 @@
       "request_parser_owner": "ProcessToolJsonAdapter",
       "storage_dto_imports": 0,
       "storage_dto_references": 0,
-      "tool_module": "src/tools/process.rs"
+      "tool_module": "src/tools/process.rs",
+      "typed_rail_kind": "Rust AST module, method, path, and forbidden dependency checks"
     },
     "provider_router_bridge": {
       "bridge_module": "crates/clankers-provider/src/router_request_bridge.rs",
@@ -200,7 +204,8 @@
       "request_projection_owner": "router_request_bridge::build_router_request",
       "rpc_adapter_duplicate_message_projection": 0,
       "rpc_adapter_module": "crates/clankers-provider/src/rpc_provider.rs",
-      "summary_context_preserved": true
+      "summary_context_preserved": true,
+      "typed_rail_kind": "Rust AST function ownership and call-path checks"
     },
     "root_crate": {
       "internal_dependencies": [
@@ -254,10 +259,11 @@
         "disabled_tools_effect",
         "manual_compaction_effect"
       ],
-      "standalone_agent_task_module": "src/modes/agent_task.rs"
+      "standalone_agent_task_module": "src/modes/agent_task.rs",
+      "typed_rail_kind": "Rust AST enum, struct, function, and call-path checks"
     }
   },
-  "rail_kind": "typed cargo metadata inventory",
+  "rail_kind": "typed cargo metadata plus Rust AST boundary rails",
   "requirements": [
     "r[lego-architecture-boundaries.root-shell-thinness]",
     "r[lego-architecture-boundaries.process-tool-thin-adapter]",

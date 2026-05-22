@@ -8,7 +8,7 @@
 - [x] [serial] I6: Assign provider/router ownership so exactly one layer builds provider-native request bodies and exactly one layer owns routing/fallback/cooldown decisions [r[lego-architecture-boundaries.provider-router-has-one-owner-per-concern]]
 - [x] [parallel] I7: Add neutral domain event and receipt DTOs for agent/controller/runtime outputs, then require TUI, daemon protocol, Matrix, and attach paths to project from those DTOs [r[lego-architecture-boundaries.display-and-protocol-types-do-not-leak-inward]]
 - [x] [parallel] I8: Extract shared session command/effect/ack policy used by standalone, daemon, local attach, and remote attach paths [r[lego-architecture-boundaries.attach-parity-uses-shared-policy-core]]
-- [ ] [serial] I9: Replace or augment brittle string-presence rails with typed Cargo metadata, Rust AST, fixture, or manifest checks for every boundary defined by this change [r[lego-architecture-boundaries.typed-architecture-rails]]
+- [x] [serial] I9: Replace or augment brittle string-presence rails with typed Cargo metadata, Rust AST, fixture, or manifest checks for every boundary defined by this change [r[lego-architecture-boundaries.typed-architecture-rails]]
 - [x] [serial] V1: Run the dependency ownership inventory and commit its sanitized baseline output or summary [r[lego-architecture-boundaries.root-shell-thinness]] [r[lego-architecture-boundaries.typed-architecture-rails]]
 - [x] [serial] V2: Run focused process-job adapter tests including one positive operation and one fail-closed request/projection case [r[lego-architecture-boundaries.process-tool-thin-adapter]]
 - [x] [serial] V3: Run agent turn fixture parity after port extraction [r[lego-architecture-boundaries.agent-uses-ports-not-concrete-systems]]

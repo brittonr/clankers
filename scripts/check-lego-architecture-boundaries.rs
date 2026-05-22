@@ -6,6 +6,7 @@ edition = "2024"
 [dependencies]
 blake3 = "1"
 serde_json = "1"
+syn = { version = "2", features = ["full", "visit"] }
 ---
 
 use std::collections::BTreeMap;
@@ -18,6 +19,7 @@ use std::process::ExitCode;
 
 use serde_json::Value;
 use serde_json::json;
+use syn::visit::Visit;
 
 const ERROR_EXIT: u8 = 1;
 const ROOT_PACKAGE: &str = "clankers";
@@ -152,7 +154,7 @@ fn run() -> Result<PathBuf, String> {
             "r[lego-architecture-boundaries.typed-architecture-rails]"
         ],
         "inventory_signature": signature,
-        "rail_kind": "typed cargo metadata inventory",
+        "rail_kind": "typed cargo metadata plus Rust AST boundary rails",
         "baseline": BASELINE,
         "source_artifacts": [CHANGE_TASKS, CHANGE_SPEC],
         "artifact_hashes": [
@@ -314,22 +316,28 @@ fn shared_dto_crates(reverse_map: &BTreeMap<String, BTreeSet<String>>) -> Vec<Va
 }
 
 fn process_tool_adapter_signature() -> Result<Value, String> {
-    let tool = fs::read_to_string(PROCESS_TOOL).map_err(|error| format!("failed to read {PROCESS_TOOL}: {error}"))?;
-    let adapter = fs::read_to_string(PROCESS_TOOL_ADAPTER)
-        .map_err(|error| format!("failed to read {PROCESS_TOOL_ADAPTER}: {error}"))?;
+    let tool_file = read_rust_file(PROCESS_TOOL)?;
+    let adapter_file = read_rust_file(PROCESS_TOOL_ADAPTER)?;
+    let tool = &tool_file.source;
+    let adapter = &adapter_file.source;
+    require_rust_mod(&tool_file, "adapter", "process tool adapter module")?;
     require_contains(&tool, "mod adapter;", "process tool adapter module")?;
     require_contains(
         &tool,
         "ProcessToolJsonAdapter::process_job_tool_request(params)",
         "process tool request parser delegation",
     )?;
+    forbid_rust_path(&adapter_file, "clankers_db", "process adapter storage DTO import")?;
+    forbid_rust_path(&adapter_file, "StoredProcessJob", "process adapter persisted DTO reference")?;
     forbid_contains(&adapter, "clankers_db::", "process adapter storage DTO import")?;
     forbid_contains(&adapter, "StoredProcessJob", "process adapter persisted DTO reference")?;
+    require_rust_method(&adapter_file, "process_job_tool_request", "process adapter typed request parser entrypoint")?;
     require_contains(
         &adapter,
         "pub(super) fn process_job_tool_request",
         "process adapter typed request parser entrypoint",
     )?;
+    require_rust_path(&adapter_file, "ProcessJobToolRequest::Start", "process adapter typed start projection")?;
     require_contains(&adapter, "ProcessJobToolRequest::Start", "process adapter typed start projection")?;
     require_contains(&adapter, "Unknown process action", "process adapter fail-closed unsupported action")?;
     Ok(json!({
@@ -338,25 +346,35 @@ fn process_tool_adapter_signature() -> Result<Value, String> {
         "storage_dto_imports": 0,
         "storage_dto_references": 0,
         "request_parser_owner": "ProcessToolJsonAdapter",
-        "fail_closed_negative_path": "unsupported action returns ToolResult error before backend dispatch"
+        "fail_closed_negative_path": "unsupported action returns ToolResult error before backend dispatch",
+        "typed_rail_kind": "Rust AST module, method, path, and forbidden dependency checks"
     }))
 }
 
 fn agent_turn_ports_signature() -> Result<Value, String> {
-    let turn_mod =
-        fs::read_to_string(AGENT_TURN_MOD).map_err(|error| format!("failed to read {AGENT_TURN_MOD}: {error}"))?;
-    let adapters = fs::read_to_string(AGENT_TURN_ADAPTERS)
-        .map_err(|error| format!("failed to read {AGENT_TURN_ADAPTERS}: {error}"))?;
-    let ports =
-        fs::read_to_string(AGENT_TURN_PORTS).map_err(|error| format!("failed to read {AGENT_TURN_PORTS}: {error}"))?;
+    let turn_mod_file = read_rust_file(AGENT_TURN_MOD)?;
+    let adapters_file = read_rust_file(AGENT_TURN_ADAPTERS)?;
+    let ports_file = read_rust_file(AGENT_TURN_PORTS)?;
+    let turn_mod = &turn_mod_file.source;
+    let adapters = &adapters_file.source;
+    let ports = &ports_file.source;
 
+    require_rust_mod(&turn_mod_file, "ports", "agent turn ports module")?;
     require_contains(&turn_mod, "mod ports;", "agent turn ports module")?;
     require_contains(&turn_mod, "ProviderModelPort::new(ctx.provider)", "provider adapter construction")?;
     require_contains(&turn_mod, "ControllerToolPort", "tool adapter construction")?;
+    require_struct_field_type_path(&adapters_file, "AgentModelHost", "model_port", "AgentModelPort", "agent model host port field")?;
+    require_struct_field_type_path(&adapters_file, "AgentToolHost", "tool_port", "AgentToolPort", "agent tool host port field")?;
     require_contains(&adapters, "model_port: &'a dyn AgentModelPort", "agent model host port field")?;
     require_contains(&adapters, "tool_port: &'a dyn AgentToolPort", "agent tool host port field")?;
+    forbid_struct_field_type_path(&adapters_file, "AgentModelHost", "provider", "Provider", "agent model host concrete provider field")?;
+    forbid_struct_field_type_path(&adapters_file, "AgentToolHost", "controller_tools", "HashMap", "agent tool host concrete tool map field")?;
     forbid_contains(&adapters, "provider: &'a dyn Provider", "agent model host concrete provider field")?;
     forbid_contains(&adapters, "controller_tools: &'a HashMap", "agent tool host concrete tool map field")?;
+    require_rust_trait(&ports_file, "AgentModelPort", "agent model port trait")?;
+    require_rust_trait(&ports_file, "AgentToolPort", "agent tool port trait")?;
+    require_rust_impl(&ports_file, "AgentModelPort", "ProviderModelPort", "provider model port adapter")?;
+    require_rust_impl(&ports_file, "AgentToolPort", "ControllerToolPort", "controller tool port adapter")?;
     require_contains(&ports, "trait AgentModelPort", "agent model port trait")?;
     require_contains(&ports, "trait AgentToolPort", "agent tool port trait")?;
     require_contains(&ports, "impl AgentModelPort for ProviderModelPort", "provider model port adapter")?;
@@ -369,16 +387,20 @@ fn agent_turn_ports_signature() -> Result<Value, String> {
         "model_host_concrete_provider_fields": 0,
         "tool_host_concrete_tool_map_fields": 0,
         "provider_adapter": "ProviderModelPort",
-        "tool_adapter": "ControllerToolPort"
+        "tool_adapter": "ControllerToolPort",
+        "typed_rail_kind": "Rust AST module, trait, impl, and struct-field checks"
     }))
 }
 
 fn controller_effect_interpretation_signature() -> Result<Value, String> {
-    let core_effects = fs::read_to_string(CONTROLLER_CORE_EFFECTS)
-        .map_err(|error| format!("failed to read {CONTROLLER_CORE_EFFECTS}: {error}"))?;
-    let interpretation = fs::read_to_string(CONTROLLER_EFFECT_INTERPRETATION)
-        .map_err(|error| format!("failed to read {CONTROLLER_EFFECT_INTERPRETATION}: {error}"))?;
+    let core_effects_file = read_rust_file(CONTROLLER_CORE_EFFECTS)?;
+    let interpretation_file = read_rust_file(CONTROLLER_EFFECT_INTERPRETATION)?;
+    let core_effects = &core_effects_file.source;
+    let interpretation = &interpretation_file.source;
 
+    require_rust_path(&core_effects_file, "effect_interpretation::interpret_prompt_request", "controller prompt effect interpretation seam")?;
+    require_rust_path(&core_effects_file, "effect_interpretation::interpret_thinking_change", "controller thinking effect interpretation seam")?;
+    require_rust_path(&core_effects_file, "effect_interpretation::interpret_tool_filter_application", "controller tool filter effect interpretation seam")?;
     require_contains(
         &core_effects,
         "effect_interpretation::interpret_prompt_request",
@@ -399,10 +421,17 @@ fn controller_effect_interpretation_signature() -> Result<Value, String> {
         "Pure interpretation seam for clankers-core effects",
         "controller effect interpretation module purpose",
     )?;
+    require_rust_struct(&interpretation_file, "ToolFilterApplication", "typed tool-filter effect projection")?;
+    require_rust_fn(&interpretation_file, "interpret_prompt_request", "typed prompt effect projection")?;
+    require_rust_fn(&interpretation_file, "interpret_thinking_change", "typed thinking effect projection")?;
+    require_rust_fn(&interpretation_file, "disabled_tools_changed", "typed disabled-tools event projection")?;
     require_contains(&interpretation, "struct ToolFilterApplication", "typed tool-filter effect projection")?;
     require_contains(&interpretation, "interpret_prompt_request", "typed prompt effect projection")?;
     require_contains(&interpretation, "interpret_thinking_change", "typed thinking effect projection")?;
     require_contains(&interpretation, "disabled_tools_changed", "typed disabled-tools event projection")?;
+    forbid_rust_path(&interpretation_file, "SessionController", "pure effect interpretation controller mutation")?;
+    forbid_rust_path(&interpretation_file, "DaemonEvent", "pure effect interpretation protocol projection")?;
+    forbid_rust_path(&interpretation_file, "clankers_agent", "pure effect interpretation agent runtime dependency")?;
     forbid_contains(&interpretation, "SessionController", "pure effect interpretation controller mutation")?;
     forbid_contains(&interpretation, "DaemonEvent", "pure effect interpretation protocol projection")?;
     forbid_contains(&interpretation, "clankers_agent", "pure effect interpretation agent runtime dependency")?;
@@ -414,18 +443,23 @@ fn controller_effect_interpretation_signature() -> Result<Value, String> {
         "thinking_projection": "interpret_thinking_change",
         "tool_filter_projection": "interpret_tool_filter_application",
         "protocol_projection_references": 0,
-        "agent_runtime_references": 0
+        "agent_runtime_references": 0,
+        "typed_rail_kind": "Rust AST function, struct, path, and forbidden dependency checks"
     }))
 }
 
 fn provider_router_bridge_signature() -> Result<Value, String> {
-    let bridge = fs::read_to_string(PROVIDER_ROUTER_BRIDGE)
-        .map_err(|error| format!("failed to read {PROVIDER_ROUTER_BRIDGE}: {error}"))?;
-    let router_adapter = fs::read_to_string(PROVIDER_ROUTER_ADAPTER)
-        .map_err(|error| format!("failed to read {PROVIDER_ROUTER_ADAPTER}: {error}"))?;
-    let rpc_adapter = fs::read_to_string(PROVIDER_RPC_ADAPTER)
-        .map_err(|error| format!("failed to read {PROVIDER_RPC_ADAPTER}: {error}"))?;
+    let bridge_file = read_rust_file(PROVIDER_ROUTER_BRIDGE)?;
+    let router_adapter_file = read_rust_file(PROVIDER_ROUTER_ADAPTER)?;
+    let rpc_adapter_file = read_rust_file(PROVIDER_RPC_ADAPTER)?;
+    let bridge = &bridge_file.source;
+    let router_adapter = &router_adapter_file.source;
+    let rpc_adapter = &rpc_adapter_file.source;
 
+    require_rust_fn(&bridge_file, "build_router_request", "provider/router bridge entrypoint")?;
+    require_rust_fn(&bridge_file, "messages_to_router_json", "provider/router message projection owner")?;
+    require_rust_path(&router_adapter_file, "crate::router_request_bridge::build_router_request", "local router adapter delegates request projection")?;
+    require_rust_path(&rpc_adapter_file, "crate::router_request_bridge::build_router_request", "rpc router adapter delegates request projection")?;
     require_contains(
         &bridge,
         "Single clankers-provider owned bridge into `clanker_router::CompletionRequest`",
@@ -445,6 +479,9 @@ fn provider_router_bridge_signature() -> Result<Value, String> {
         "crate::router_request_bridge::build_router_request(request)",
         "rpc router adapter delegates request projection",
     )?;
+    forbid_rust_fn(&router_adapter_file, "messages_to_router_json", "local router adapter duplicate message projection")?;
+    forbid_rust_fn(&rpc_adapter_file, "convert_messages_to_api", "rpc router adapter duplicate message projection")?;
+    forbid_rust_fn(&rpc_adapter_file, "content_to_json", "rpc router adapter duplicate content projection")?;
     forbid_contains(
         &router_adapter,
         "fn messages_to_router_json",
@@ -460,15 +497,27 @@ fn provider_router_bridge_signature() -> Result<Value, String> {
         "request_projection_owner": "router_request_bridge::build_router_request",
         "local_adapter_duplicate_message_projection": 0,
         "rpc_adapter_duplicate_message_projection": 0,
-        "summary_context_preserved": true
+        "summary_context_preserved": true,
+        "typed_rail_kind": "Rust AST function ownership and call-path checks"
     }))
 }
 
 fn controller_domain_event_signature() -> Result<Value, String> {
-    let domain_event = fs::read_to_string(CONTROLLER_DOMAIN_EVENT)
-        .map_err(|error| format!("failed to read {CONTROLLER_DOMAIN_EVENT}: {error}"))?;
-    let convert = fs::read_to_string(CONTROLLER_CONVERT)
-        .map_err(|error| format!("failed to read {CONTROLLER_CONVERT}: {error}"))?;
+    let domain_event_file = read_rust_file(CONTROLLER_DOMAIN_EVENT)?;
+    let convert_file = read_rust_file(CONTROLLER_CONVERT)?;
+    let domain_event = &domain_event_file.source;
+    let convert = &convert_file.source;
+
+    require_rust_enum(&domain_event_file, "ControllerDomainEvent", "neutral controller event enum")?;
+    require_rust_struct(&domain_event_file, "DomainImage", "neutral image receipt DTO")?;
+    require_rust_fn(&domain_event_file, "agent_event_to_domain_event", "agent/runtime event to neutral domain event projection")?;
+    require_rust_fn(&domain_event_file, "tool_content_to_domain_parts", "neutral tool receipt projection")?;
+    forbid_rust_path(&domain_event_file, "DaemonEvent", "domain event protocol DTO leakage")?;
+    forbid_rust_path(&domain_event_file, "TuiEvent", "domain event TUI DTO leakage")?;
+    forbid_rust_path(&domain_event_file, "clankers_protocol", "domain event protocol crate dependency")?;
+    forbid_rust_path(&domain_event_file, "clanker_tui_types", "domain event TUI crate dependency")?;
+    require_rust_path(&convert_file, "agent_event_to_domain_event", "protocol projection delegates through neutral domain event seam")?;
+    require_rust_path(&convert_file, "domain_event_to_daemon_event", "protocol projection delegates through neutral domain event seam")?;
 
     require_contains(
         &domain_event,
@@ -510,16 +559,28 @@ fn controller_domain_event_signature() -> Result<Value, String> {
         "neutral_receipt_dto": "DomainImage",
         "protocol_references_in_domain_module": 0,
         "tui_references_in_domain_module": 0,
-        "protocol_projection_owner": "convert::domain_event_to_daemon_event"
+        "protocol_projection_owner": "convert::domain_event_to_daemon_event",
+        "typed_rail_kind": "Rust AST enum, struct, function, path, and forbidden edge-dependency checks"
     }))
 }
 
 fn session_command_policy_signature() -> Result<Value, String> {
-    let policy = fs::read_to_string(SESSION_COMMAND_POLICY)
-        .map_err(|error| format!("failed to read {SESSION_COMMAND_POLICY}: {error}"))?;
-    let attach =
-        fs::read_to_string(ATTACH_COMMANDS).map_err(|error| format!("failed to read {ATTACH_COMMANDS}: {error}"))?;
-    let agent_task = fs::read_to_string(AGENT_TASK).map_err(|error| format!("failed to read {AGENT_TASK}: {error}"))?;
+    let policy_file = read_rust_file(SESSION_COMMAND_POLICY)?;
+    let attach_file = read_rust_file(ATTACH_COMMANDS)?;
+    let agent_task_file = read_rust_file(AGENT_TASK)?;
+    let policy = &policy_file.source;
+    let attach = &attach_file.source;
+    let agent_task = &agent_task_file.source;
+
+    require_rust_enum(&policy_file, "LocalSessionEffect", "typed local session effect DTO")?;
+    require_rust_enum(&policy_file, "SessionAckPolicy", "typed session ack policy DTO")?;
+    require_rust_struct(&policy_file, "SessionCommandEffect", "typed session command effect DTO")?;
+    for function in ["set_thinking_level_effect", "cycle_thinking_level_effect", "disabled_tools_effect", "manual_compaction_effect", "ack_matches"] {
+        require_rust_fn(&policy_file, function, "shared session command policy function")?;
+    }
+    require_rust_path(&attach_file, "session_command_policy::cycle_thinking_level_effect", "attach cycle thinking delegates to shared policy")?;
+    require_rust_path(&attach_file, "session_command_policy::ack_matches", "attach ack suppression delegates to shared policy")?;
+    require_rust_path(&agent_task_file, "session_command_policy::thinking_level_message", "standalone thinking message delegates to shared policy")?;
 
     require_contains(
         &policy,
@@ -576,8 +637,181 @@ fn session_command_policy_signature() -> Result<Value, String> {
         ],
         "ack_matcher": "ack_matches",
         "positive_fixture": "thinking_effect_projects_local_message_command_and_ack_policy",
-        "negative_fixture": "ack_policy_matches_only_expected_daemon_ack_shape"
+        "negative_fixture": "ack_policy_matches_only_expected_daemon_ack_shape",
+        "typed_rail_kind": "Rust AST enum, struct, function, and call-path checks"
     }))
+}
+
+
+struct RustFile {
+    source: String,
+    ast: syn::File,
+}
+
+fn read_rust_file(path: &str) -> Result<RustFile, String> {
+    let source = fs::read_to_string(path).map_err(|error| format!("failed to read {path}: {error}"))?;
+    let ast = syn::parse_file(&source).map_err(|error| format!("failed to parse Rust AST for {path}: {error}"))?;
+    Ok(RustFile { source, ast })
+}
+
+fn require_rust_mod(file: &RustFile, name: &str, label: &str) -> Result<(), String> {
+    if file.ast.items.iter().any(|item| matches!(item, syn::Item::Mod(item) if item.ident == name)) {
+        return Ok(());
+    }
+    Err(format!("missing {label}: Rust module `{name}`"))
+}
+
+fn require_rust_fn(file: &RustFile, name: &str, label: &str) -> Result<(), String> {
+    if file.ast.items.iter().any(|item| matches!(item, syn::Item::Fn(item) if item.sig.ident == name)) {
+        return Ok(());
+    }
+    Err(format!("missing {label}: Rust function `{name}`"))
+}
+
+fn forbid_rust_fn(file: &RustFile, name: &str, label: &str) -> Result<(), String> {
+    if file.ast.items.iter().any(|item| matches!(item, syn::Item::Fn(item) if item.sig.ident == name)) {
+        return Err(format!("forbidden {label}: Rust function `{name}`"));
+    }
+    Ok(())
+}
+
+fn require_rust_method(file: &RustFile, name: &str, label: &str) -> Result<(), String> {
+    for item in &file.ast.items {
+        let syn::Item::Impl(item_impl) = item else { continue };
+        if item_impl.items.iter().any(|item| matches!(item, syn::ImplItem::Fn(function) if function.sig.ident == name)) {
+            return Ok(());
+        }
+    }
+    Err(format!("missing {label}: Rust method `{name}`"))
+}
+
+fn require_rust_struct(file: &RustFile, name: &str, label: &str) -> Result<(), String> {
+    if file.ast.items.iter().any(|item| matches!(item, syn::Item::Struct(item) if item.ident == name)) {
+        return Ok(());
+    }
+    Err(format!("missing {label}: Rust struct `{name}`"))
+}
+
+fn require_rust_enum(file: &RustFile, name: &str, label: &str) -> Result<(), String> {
+    if file.ast.items.iter().any(|item| matches!(item, syn::Item::Enum(item) if item.ident == name)) {
+        return Ok(());
+    }
+    Err(format!("missing {label}: Rust enum `{name}`"))
+}
+
+fn require_rust_trait(file: &RustFile, name: &str, label: &str) -> Result<(), String> {
+    if file.ast.items.iter().any(|item| matches!(item, syn::Item::Trait(item) if item.ident == name)) {
+        return Ok(());
+    }
+    Err(format!("missing {label}: Rust trait `{name}`"))
+}
+
+fn require_rust_impl(file: &RustFile, trait_name: &str, type_name: &str, label: &str) -> Result<(), String> {
+    for item in &file.ast.items {
+        let syn::Item::Impl(item_impl) = item else { continue };
+        let Some((_, trait_path, _)) = &item_impl.trait_ else { continue };
+        if path_ends_with(trait_path, trait_name) && type_mentions_path(&item_impl.self_ty, type_name) {
+            return Ok(());
+        }
+    }
+    Err(format!("missing {label}: Rust impl `{trait_name}` for `{type_name}`"))
+}
+
+fn require_struct_field_type_path(
+    file: &RustFile,
+    struct_name: &str,
+    field_name: &str,
+    type_path: &str,
+    label: &str,
+) -> Result<(), String> {
+    match struct_field_type_mentions(file, struct_name, field_name, type_path) {
+        Some(true) => Ok(()),
+        Some(false) => Err(format!("missing {label}: field `{struct_name}.{field_name}` does not reference `{type_path}`")),
+        None => Err(format!("missing {label}: field `{struct_name}.{field_name}`")),
+    }
+}
+
+fn forbid_struct_field_type_path(
+    file: &RustFile,
+    struct_name: &str,
+    field_name: &str,
+    type_path: &str,
+    label: &str,
+) -> Result<(), String> {
+    if struct_field_type_mentions(file, struct_name, field_name, type_path) == Some(true) {
+        return Err(format!("forbidden {label}: field `{struct_name}.{field_name}` references `{type_path}`"));
+    }
+    Ok(())
+}
+
+fn struct_field_type_mentions(file: &RustFile, struct_name: &str, field_name: &str, type_path: &str) -> Option<bool> {
+    for item in &file.ast.items {
+        let syn::Item::Struct(item_struct) = item else { continue };
+        if item_struct.ident != struct_name {
+            continue;
+        }
+        let syn::Fields::Named(fields) = &item_struct.fields else { return None };
+        for field in &fields.named {
+            if field.ident.as_ref().is_some_and(|ident| ident == field_name) {
+                return Some(type_mentions_path(&field.ty, type_path));
+            }
+        }
+    }
+    None
+}
+
+fn require_rust_path(file: &RustFile, path: &str, label: &str) -> Result<(), String> {
+    if rust_paths(file).iter().any(|actual| path_matches(actual, path)) {
+        return Ok(());
+    }
+    Err(format!("missing {label}: Rust path `{path}`"))
+}
+
+fn forbid_rust_path(file: &RustFile, path: &str, label: &str) -> Result<(), String> {
+    if rust_paths(file).iter().any(|actual| path_matches(actual, path)) {
+        return Err(format!("forbidden {label}: Rust path `{path}`"));
+    }
+    Ok(())
+}
+
+fn rust_paths(file: &RustFile) -> BTreeSet<String> {
+    let mut collector = PathCollector::default();
+    collector.visit_file(&file.ast);
+    collector.paths
+}
+
+#[derive(Default)]
+struct PathCollector {
+    paths: BTreeSet<String>,
+}
+
+impl<'ast> Visit<'ast> for PathCollector {
+    fn visit_path(&mut self, path: &'ast syn::Path) {
+        self.paths.insert(path_to_string(path));
+        syn::visit::visit_path(self, path);
+    }
+}
+
+fn type_mentions_path(ty: &syn::Type, expected: &str) -> bool {
+    let mut collector = PathCollector::default();
+    collector.visit_type(ty);
+    collector.paths.iter().any(|actual| path_matches(actual, expected))
+}
+
+fn path_ends_with(path: &syn::Path, expected: &str) -> bool {
+    path_matches(&path_to_string(path), expected)
+}
+
+fn path_to_string(path: &syn::Path) -> String {
+    path.segments
+        .iter()
+        .map(|segment| segment.ident.to_string())
+        .collect::<Vec<_>>()
+        .join("::")
+}
+
+fn path_matches(actual: &str, expected: &str) -> bool {
+    actual == expected || actual.ends_with(&format!("::{expected}"))
 }
 
 fn validate_baseline(signature: &Value) -> Result<(), String> {
