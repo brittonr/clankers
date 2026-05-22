@@ -7,6 +7,8 @@
 
 use std::sync::Arc;
 use std::sync::Mutex;
+use std::sync::atomic::AtomicUsize;
+use std::sync::atomic::Ordering;
 
 use clankers_agent::Agent;
 use clankers_agent::events::AgentEvent;
@@ -15,6 +17,7 @@ use clankers_controller::SessionController;
 use clankers_controller::config::ControllerConfig;
 use clankers_controller::loop_mode::LoopConfig;
 use clankers_protocol::DaemonEvent;
+use clankers_protocol::SessionCommand;
 use clankers_provider::message::AgentMessage;
 use clankers_provider::message::Content;
 use clankers_provider::message::MessageId;
@@ -23,6 +26,10 @@ use clankers_provider::message::UserMessage;
 // ── Test helpers ─────────────────────────────────────────────────────────
 
 struct MockProvider;
+
+struct CountingProvider {
+    calls: Arc<AtomicUsize>,
+}
 
 #[derive(Clone)]
 struct CapturingSummaryProvider {
@@ -45,6 +52,32 @@ impl clankers_provider::Provider for MockProvider {
     }
     fn name(&self) -> &str {
         "mock"
+    }
+}
+
+#[async_trait::async_trait]
+impl clankers_provider::Provider for CountingProvider {
+    async fn complete(
+        &self,
+        _: clankers_provider::CompletionRequest,
+        tx: tokio::sync::mpsc::Sender<clankers_provider::streaming::StreamEvent>,
+    ) -> clankers_provider::error::Result<()> {
+        self.calls.fetch_add(1, Ordering::SeqCst);
+        tx.send(clankers_provider::streaming::StreamEvent::ContentBlockDelta {
+            index: 0,
+            delta: clankers_provider::streaming::ContentDelta::TextDelta {
+                text: "provider-ok".to_string(),
+            },
+        })
+        .await
+        .ok();
+        Ok(())
+    }
+    fn models(&self) -> &[clankers_provider::Model] {
+        &[]
+    }
+    fn name(&self) -> &str {
+        "counting"
     }
 }
 
@@ -129,6 +162,91 @@ fn make_daemon_controller() -> SessionController {
         session_id: "test-daemon".to_string(),
         model: "test-model".to_string(),
         ..Default::default()
+    })
+}
+
+fn make_steel_smoke_controller(settings: clankers_config::settings::Settings) -> (SessionController, Arc<AtomicUsize>) {
+    let calls = Arc::new(AtomicUsize::new(0));
+    let provider = Arc::new(CountingProvider { calls: calls.clone() });
+    let agent = Agent::new(provider, vec![], settings, "test-model".to_string(), "You are a test.".to_string());
+    let controller = SessionController::new(agent, ControllerConfig {
+        session_id: "steel-smoke-session".to_string(),
+        model: "test-model".to_string(),
+        ..Default::default()
+    });
+    (controller, calls)
+}
+
+fn steel_smoke_settings(
+    temp: &tempfile::TempDir,
+    mutate: impl FnOnce(&mut clankers_config::settings::SteelTurnPlanningSettings),
+) -> clankers_config::settings::Settings {
+    let script = "(host \"steel.host.plan_turn\")\n";
+    let profile = serde_json::json!({
+        "schema": "clankers.steel_default_orchestration.profile.v1",
+        "name": "runtime-smoke",
+        "enabled": true,
+        "default": true,
+        "planning_seam": "steel.host.plan_turn",
+        "rollout_stage": "comparison",
+        "fallback_mode": "rust_native",
+        "script": { "id": "runtime-smoke-plan-turn" },
+        "runtime_budget": { "max_input_bytes": 4096 },
+        "allowed_host_actions": [{
+            "name": "steel.host.plan_turn",
+            "required_session_capabilities": ["steel.turn.plan"],
+            "ucan_ability": "clankers.turn.plan"
+        }],
+        "receipt_policy": { "destination_prefix": "target/steel-turn-planning-runtime-smoke" }
+    });
+    let profile_bytes = serde_json::to_vec_pretty(&profile).expect("profile JSON should serialize");
+    let profile_path = temp.path().join("profile.json");
+    let script_path = temp.path().join("plan-turn.scm");
+    std::fs::write(&profile_path, &profile_bytes).expect("profile fixture should write");
+    std::fs::write(&script_path, script).expect("script fixture should write");
+
+    let mut steel = clankers_config::settings::SteelTurnPlanningSettings {
+        enabled: true,
+        profile_path: Some(profile_path.to_string_lossy().into_owned()),
+        script_path: Some(script_path.to_string_lossy().into_owned()),
+        script_blake3: Some(clankers_artifacts::ArtifactHash::digest(script.as_bytes()).prefixed()),
+        profile_blake3: Some(clankers_artifacts::ArtifactHash::digest(&profile_bytes).prefixed()),
+        rollout_stage: Some(clankers_config::settings::SteelTurnPlanningRolloutStage::Comparison),
+        fallback_mode: Some(clankers_config::settings::SteelTurnPlanningFallbackMode::RustNative),
+        planning_seam: Some("steel.host.plan_turn".to_string()),
+        session_capabilities: vec![
+            "steel.turn.plan".to_string(),
+            "steel-orchestration".to_string(),
+            "turn-planning".to_string(),
+        ],
+        granted_ucan_abilities: vec!["clankers.turn.plan".to_string()],
+        disabled_actions: Vec::new(),
+        receipt_prefix: Some("target/steel-turn-planning-runtime-smoke".to_string()),
+        max_input_bytes: Some(4096),
+        max_source_bytes: 4096,
+    };
+    mutate(&mut steel);
+    let mut settings = clankers_config::settings::Settings::default();
+    settings.steel_turn_planning = steel;
+    settings
+}
+
+fn steel_receipt_events(events: &[DaemonEvent]) -> Vec<String> {
+    events
+        .iter()
+        .filter_map(|event| match event {
+            DaemonEvent::SystemMessage { text, .. } if text.contains("steel.host.plan_turn receipt") => {
+                Some(text.clone())
+            }
+            _ => None,
+        })
+        .collect()
+}
+
+fn prompt_done_error(events: &[DaemonEvent]) -> Option<&str> {
+    events.iter().find_map(|event| match event {
+        DaemonEvent::PromptDone { error: Some(error) } => Some(error.as_str()),
+        _ => None,
     })
 }
 
@@ -585,12 +703,80 @@ async fn daemon_set_model_round_trip() {
 async fn daemon_get_system_prompt_round_trip() {
     let mut ctrl = make_daemon_controller();
     ctrl.handle_command(clankers_protocol::SessionCommand::GetSystemPrompt).await;
-
     let events = ctrl.drain_events();
     assert!(events.iter().any(|e| matches!(
         e,
         DaemonEvent::SystemPromptResponse { prompt } if prompt == "You are a test."
     )));
+}
+
+#[tokio::test]
+async fn steel_runtime_smoke_prompt_command_emits_redacted_receipt() {
+    let temp = tempfile::TempDir::new().expect("tempdir should exist");
+    let settings = steel_smoke_settings(&temp, |_| {});
+    let (mut ctrl, calls) = make_steel_smoke_controller(settings);
+    let raw_prompt = "runtime smoke prompt should not appear in receipt";
+
+    ctrl.handle_command(SessionCommand::Prompt {
+        text: raw_prompt.to_string(),
+        images: Vec::new(),
+    })
+    .await;
+    let events = ctrl.drain_events();
+    let receipts = steel_receipt_events(&events);
+
+    assert_eq!(calls.load(Ordering::SeqCst), 1, "comparison rollout should still call Rust-owned provider");
+    assert!(matches!(events.last(), Some(DaemonEvent::PromptDone { error: None })));
+    assert!(
+        receipts.iter().any(|receipt| receipt.contains("status=Authorized")
+            && receipt.contains("planner=SteelScheme")
+            && receipt.contains("fallback=NotNeeded")),
+        "Steel runtime smoke should emit authorized receipt: {receipts:?}"
+    );
+    assert!(receipts.iter().all(|receipt| !receipt.contains(raw_prompt)));
+    assert!(receipts.iter().all(|receipt| !receipt.contains("(host")));
+    assert!(receipts.iter().all(|receipt| !receipt.contains("runtime-smoke-plan-turn")));
+}
+
+#[tokio::test]
+async fn steel_runtime_smoke_hash_mismatch_fails_closed_before_receipt() {
+    let temp = tempfile::TempDir::new().expect("tempdir should exist");
+    let settings = steel_smoke_settings(&temp, |steel| {
+        steel.script_blake3 = Some(clankers_artifacts::ArtifactHash::digest(b"wrong-script").prefixed());
+    });
+    let (mut ctrl, calls) = make_steel_smoke_controller(settings);
+
+    ctrl.handle_command(SessionCommand::Prompt {
+        text: "blocked prompt".to_string(),
+        images: Vec::new(),
+    })
+    .await;
+    let events = ctrl.drain_events();
+
+    assert_eq!(calls.load(Ordering::SeqCst), 0, "hash mismatch must fail before provider call");
+    assert!(prompt_done_error(&events).is_some_and(|error| error.contains("Steel script hash mismatch")));
+    assert!(steel_receipt_events(&events).is_empty(), "invalid activation must not emit success receipt");
+}
+
+#[tokio::test]
+async fn steel_runtime_smoke_missing_authority_fails_closed_before_receipt() {
+    let temp = tempfile::TempDir::new().expect("tempdir should exist");
+    let settings = steel_smoke_settings(&temp, |steel| {
+        steel.session_capabilities.clear();
+        steel.granted_ucan_abilities.clear();
+    });
+    let (mut ctrl, calls) = make_steel_smoke_controller(settings);
+
+    ctrl.handle_command(SessionCommand::Prompt {
+        text: "blocked prompt".to_string(),
+        images: Vec::new(),
+    })
+    .await;
+    let events = ctrl.drain_events();
+
+    assert_eq!(calls.load(Ordering::SeqCst), 0, "missing authority must fail before provider call");
+    assert!(prompt_done_error(&events).is_some_and(|error| error.contains("missing Steel session capability")));
+    assert!(steel_receipt_events(&events).is_empty(), "invalid authority must not emit success receipt");
 }
 
 #[tokio::test]

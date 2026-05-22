@@ -72,6 +72,13 @@ impl SessionController {
         }
         self.metrics.process(event);
 
+        if let AgentEvent::SystemMessage { message } = event {
+            self.outgoing.push(DaemonEvent::SystemMessage {
+                text: message.clone(),
+                is_error: false,
+            });
+        }
+
         // 2. In embedded mode, seed prompt correlation from the real prompt-start event.
         if self.agent.is_none()
             && !self.core_state.busy
