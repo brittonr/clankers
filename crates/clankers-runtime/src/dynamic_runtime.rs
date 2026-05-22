@@ -696,6 +696,65 @@ mod tests {
     }
 
     #[test]
+    fn hot_reloaded_steel_script_cannot_enlarge_profile_budget() {
+        let mut oversized = fake_steel_request();
+        oversized.script_id = "hot-reload-budget".to_string();
+        oversized.route_hint = "oversized prompt analysis".to_string();
+        oversized.input_summary = "x".repeat(2048);
+
+        let receipt = run_fake_steel_orchestration(&fake_steel_profile(), &oversized, &context());
+
+        assert_eq!(receipt.selected_action.input_bytes, 2048);
+        assert_eq!(receipt.authorization_receipt.status, DynamicRuntimeActionStatus::PolicyDenied);
+        assert_eq!(receipt.authorization_receipt.reason, DynamicRuntimeActionReason::InputTooLarge);
+        assert!(!receipt.authorization_receipt.writes_performed);
+    }
+
+    #[test]
+    fn hot_reloaded_steel_profile_cannot_gain_new_capabilities_without_session_policy() {
+        let mut expanded_profile = fake_steel_profile();
+        expanded_profile.required_session_capabilities.push("provider_credentials".to_string());
+        expanded_profile.default_ucan_ability = "clankers/provider.call".to_string();
+        expanded_profile.allowed_host_functions.insert("steel.host.provider_call".to_string());
+
+        let mut request = fake_steel_request();
+        request.script_id = "hot-reload-capability".to_string();
+        request.route_hint = "provider call".to_string();
+        request.target_resource = "provider:anthropic".to_string();
+        request.requested_host_function = "steel.host.provider_call".to_string();
+
+        let receipt = run_fake_steel_orchestration(&expanded_profile, &request, &context());
+
+        assert_eq!(receipt.selected_action.action_name, "steel.host.provider_call");
+        assert_eq!(receipt.authorization_receipt.status, DynamicRuntimeActionStatus::PolicyDenied);
+        assert_eq!(receipt.authorization_receipt.reason, DynamicRuntimeActionReason::UnsupportedAction);
+        assert!(!receipt.authorization_receipt.writes_performed);
+    }
+
+    #[test]
+    fn hot_reloaded_steel_profile_cannot_gain_ucan_backed_capability_without_session_grant() {
+        let mut expanded_context = context();
+        expanded_context.allowed_actions.insert("host_function:steel.host.provider_call".to_string());
+        expanded_context.granted_ucan_abilities.insert("clankers/provider.call".to_string());
+
+        let mut expanded_profile = fake_steel_profile();
+        expanded_profile.required_session_capabilities.push("provider_credentials".to_string());
+        expanded_profile.default_ucan_ability = "clankers/provider.call".to_string();
+        expanded_profile.allowed_host_functions.insert("steel.host.provider_call".to_string());
+
+        let mut request = fake_steel_request();
+        request.route_hint = "provider call".to_string();
+        request.target_resource = "provider:anthropic".to_string();
+        request.requested_host_function = "steel.host.provider_call".to_string();
+
+        let receipt = run_fake_steel_orchestration(&expanded_profile, &request, &expanded_context);
+
+        assert_eq!(receipt.authorization_receipt.status, DynamicRuntimeActionStatus::PolicyDenied);
+        assert_eq!(receipt.authorization_receipt.reason, DynamicRuntimeActionReason::MissingSessionCapability);
+        assert!(!receipt.authorization_receipt.writes_performed);
+    }
+
+    #[test]
     fn steel_ambient_access_matrix_fails_before_host_effects() {
         let profile = fake_steel_profile();
         let context = context();
