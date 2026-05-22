@@ -1,16 +1,20 @@
 {
   "artifact_hashes": [
     {
-      "blake3": "52c6e8d6e3282c5971f04ec5ff84ad07bd5bb63ca230f94350913c374a0321a6",
+      "blake3": "9480b4a447a38dfd89c05a328c5eef1bce324a7b139004c4a37a56bf0e1ae6fe",
       "path": "policy/lego-architecture/dependency-ownership-baseline.json"
     },
     {
       "blake3": "e799878844dd2b911159284698cd9c8116231b6a1dbb7ff8c7d7dd48a7c7073b",
-      "path": "cairn/changes/lego-decoupling-boundaries/tasks.md"
+      "path": "cairn/archive/2026-05-21-lego-decoupling-boundaries/tasks.md"
     },
     {
       "blake3": "9a73c2487cb5d4ff90a9f4782544d82cd488c2b6b8eaf1d8f3bebbae6c36b3e9",
-      "path": "cairn/changes/lego-decoupling-boundaries/specs/lego-architecture-boundaries/spec.md"
+      "path": "cairn/archive/2026-05-21-lego-decoupling-boundaries/specs/lego-architecture-boundaries/spec.md"
+    },
+    {
+      "blake3": "aa76617385e0c1d1aaebb1de59f492bd2019562f2d90b8d257e2c6c4144007c9",
+      "path": "cairn/specs/lego-architecture-boundaries/spec.md"
     },
     {
       "blake3": "6fc6b9c00fa01de8ed924660c905b8c4e29f7710e6ad7e830fed3626c0bb394a",
@@ -275,7 +279,8 @@
   ],
   "schema": "clankers.lego_architecture.dependency_ownership_baseline.v1",
   "source_artifacts": [
-    "cairn/changes/lego-decoupling-boundaries/tasks.md",
-    "cairn/changes/lego-decoupling-boundaries/specs/lego-architecture-boundaries/spec.md"
+    "cairn/archive/2026-05-21-lego-decoupling-boundaries/tasks.md",
+    "cairn/archive/2026-05-21-lego-decoupling-boundaries/specs/lego-architecture-boundaries/spec.md",
+    "cairn/specs/lego-architecture-boundaries/spec.md"
   ]
 }

@@ -27,8 +27,12 @@ const AGENT_PACKAGE: &str = "clankers-agent";
 const CONTROLLER_PACKAGE: &str = "clankers-controller";
 const DEFAULT_OUTPUT: &str = "target/lego-architecture/dependency-ownership-inventory.json";
 const BASELINE: &str = "policy/lego-architecture/dependency-ownership-baseline.json";
-const CHANGE_TASKS: &str = "cairn/changes/lego-decoupling-boundaries/tasks.md";
-const CHANGE_SPEC: &str = "cairn/changes/lego-decoupling-boundaries/specs/lego-architecture-boundaries/spec.md";
+const CHANGE_TASKS_ACTIVE: &str = "cairn/changes/lego-decoupling-boundaries/tasks.md";
+const CHANGE_SPEC_ACTIVE: &str = "cairn/changes/lego-decoupling-boundaries/specs/lego-architecture-boundaries/spec.md";
+const CHANGE_TASKS_ARCHIVE: &str = "cairn/archive/2026-05-21-lego-decoupling-boundaries/tasks.md";
+const CHANGE_SPEC_ARCHIVE: &str =
+    "cairn/archive/2026-05-21-lego-decoupling-boundaries/specs/lego-architecture-boundaries/spec.md";
+const ACCEPTED_SPEC: &str = "cairn/specs/lego-architecture-boundaries/spec.md";
 const PROCESS_TOOL: &str = "src/tools/process.rs";
 const PROCESS_TOOL_ADAPTER: &str = "src/tools/process/adapter.rs";
 const AGENT_TURN_MOD: &str = "crates/clankers-agent/src/turn/mod.rs";
@@ -141,6 +145,8 @@ fn run() -> Result<PathBuf, String> {
     });
     validate_baseline(&signature)?;
 
+    let change_tasks = change_tasks_path()?;
+    let change_spec = change_spec_path()?;
     let receipt = json!({
         "schema": "clankers.lego_architecture.dependency_ownership_inventory.v1",
         "change": "lego-decoupling-boundaries",
@@ -156,11 +162,12 @@ fn run() -> Result<PathBuf, String> {
         "inventory_signature": signature,
         "rail_kind": "typed cargo metadata plus Rust AST boundary rails",
         "baseline": BASELINE,
-        "source_artifacts": [CHANGE_TASKS, CHANGE_SPEC],
+        "source_artifacts": [change_tasks, change_spec, ACCEPTED_SPEC],
         "artifact_hashes": [
             hash_artifact(Path::new(BASELINE))?,
-            hash_artifact(Path::new(CHANGE_TASKS))?,
-            hash_artifact(Path::new(CHANGE_SPEC))?,
+            hash_artifact(Path::new(change_tasks))?,
+            hash_artifact(Path::new(change_spec))?,
+            hash_artifact(Path::new(ACCEPTED_SPEC))?,
             hash_artifact(Path::new(PROCESS_TOOL))?,
             hash_artifact(Path::new(PROCESS_TOOL_ADAPTER))?,
             hash_artifact(Path::new(AGENT_TURN_MOD))?,
@@ -183,8 +190,10 @@ fn run() -> Result<PathBuf, String> {
 }
 
 fn validate_change_contracts() -> Result<(), String> {
-    let tasks = fs::read_to_string(CHANGE_TASKS).map_err(|error| format!("failed to read {CHANGE_TASKS}: {error}"))?;
-    let spec = fs::read_to_string(CHANGE_SPEC).map_err(|error| format!("failed to read {CHANGE_SPEC}: {error}"))?;
+    let tasks_path = change_tasks_path()?;
+    let spec_path = change_spec_path()?;
+    let tasks = fs::read_to_string(tasks_path).map_err(|error| format!("failed to read {tasks_path}: {error}"))?;
+    let spec = fs::read_to_string(spec_path).map_err(|error| format!("failed to read {spec_path}: {error}"))?;
     require_contains(&tasks, "dependency ownership inventory", "tasks I1/V1 dependency inventory")?;
     require_contains(&tasks, "r[lego-architecture-boundaries.root-shell-thinness]", "root shell task coverage")?;
     require_contains(&tasks, "r[lego-architecture-boundaries.typed-architecture-rails]", "typed rail task coverage")?;
@@ -206,6 +215,24 @@ fn validate_change_contracts() -> Result<(), String> {
     require_contains(&spec, "Display and protocol types do not leak inward", "display/protocol edge requirement")?;
     require_contains(&spec, "Attach parity uses shared policy core", "attach parity shared policy requirement")?;
     Ok(())
+}
+
+fn change_tasks_path() -> Result<&'static str, String> {
+    first_existing_path(CHANGE_TASKS_ACTIVE, CHANGE_TASKS_ARCHIVE, "lego decoupling tasks")
+}
+
+fn change_spec_path() -> Result<&'static str, String> {
+    first_existing_path(CHANGE_SPEC_ACTIVE, CHANGE_SPEC_ARCHIVE, "lego decoupling spec")
+}
+
+fn first_existing_path(active: &'static str, archived: &'static str, label: &str) -> Result<&'static str, String> {
+    if Path::new(active).exists() {
+        return Ok(active);
+    }
+    if Path::new(archived).exists() {
+        return Ok(archived);
+    }
+    Err(format!("missing {label}: checked {active} and {archived}"))
 }
 
 fn cargo_metadata() -> Result<Value, String> {
