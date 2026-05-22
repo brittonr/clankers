@@ -36,6 +36,7 @@
     "required": false,
     "audience_binding": "none",
     "deny_wildcard_resources": false,
+    "max_delegation_depth": 999,
     "safe_receipt_fields": ["raw_proof"]
   },
   "receipt": {

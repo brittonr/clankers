@@ -9,9 +9,9 @@
 ## UCAN and host enforcement
 
 - [x] [serial] I4: Define stable UCAN ability/resource vocabulary for propose/apply/commit/rollback mutation operations and the safe receipt metadata shape [r[steel-self-mutation-policy.ucan-authority]]
-- [ ] [parallel] I5: Add authority validation that rejects missing, expired, revoked, wrong-audience, wrong-resource, wrong-verb, or over-delegated UCAN proofs before mutation [r[steel-self-mutation-policy.ucan-authority.denied]]
-- [ ] [serial] I6: Implement typed Steel host-function DTOs for proposing, applying, committing, and rolling back mutation requests without exposing raw filesystem/process/git/network/provider/credential authority [r[steel-self-mutation-policy.host-functions]]
-- [ ] [serial] I7: Route host functions through Rust enforcement code that checks Nickel policy, UCAN authority, disabled-tool/session capability parity, approval state, and target normalization before writing [r[steel-self-mutation-policy.host-functions.apply-through-rust]]
+- [x] [parallel] I5: Add authority validation that rejects missing, expired, revoked, wrong-audience, wrong-resource, wrong-verb, or over-delegated UCAN proofs before mutation [r[steel-self-mutation-policy.ucan-authority.denied]]
+- [x] [serial] I6: Implement typed Steel host-function DTOs for proposing, applying, committing, and rolling back mutation requests without exposing raw filesystem/process/git/network/provider/credential authority [r[steel-self-mutation-policy.host-functions]]
+- [ ] [serial] I7: Route host functions through Rust enforcement code that checks Nickel policy, UCAN authority, disabled-tool/session capability parity, approval state, and target normalization before writing; first pure enforcement core now covers exported policy, UCAN, approval state, target normalization, and byte-write patch gating before any host write [r[steel-self-mutation-policy.host-functions.apply-through-rust]]
 
 ## Mutation safety and receipts
 
@@ -22,8 +22,8 @@
 
 ## Verification and documentation
 
-- [ ] [parallel] V1: Add deterministic positive fixtures for a bounded skill or prompt mutation where Nickel policy and UCAN authorization match and verification passes [r[steel-self-mutation-policy.verification-fixtures.positive]]
-- [ ] [parallel] V2: Add deterministic negative fixtures for path escape, missing/expired/wrong-resource UCAN, unauthorized verb, raw ambient write, failed verification, and stale rollback target; first policy-shape fixture covers path escape, unauthorized verb, ambient authority, missing UCAN requirement, and missing receipt policy hash [r[steel-self-mutation-policy.verification-fixtures.negative]]
+- [x] [parallel] V1: Add deterministic positive fixtures for a bounded skill or prompt mutation where Nickel policy and UCAN authorization match and verification passes; current fixture authorizes a bounded prompt apply request through the Rust preflight decision core [r[steel-self-mutation-policy.verification-fixtures.positive]]
+- [ ] [parallel] V2: Add deterministic negative fixtures for path escape, missing/expired/wrong-resource UCAN, unauthorized verb, raw ambient write, failed verification, and stale rollback target; current policy/core fixtures cover path escape, unauthorized verb, ambient authority, missing/expired/revoked/wrong-audience/wrong-resource/wrong-verb/over-delegated UCAN, wildcard resources, missing approval, missing patch, missing UCAN requirement, and missing receipt policy hash [r[steel-self-mutation-policy.verification-fixtures.negative]]
 - [x] [parallel] V3: Add architecture checks proving runtime enforcement consumes exported policy data or generated fixtures, while generic SDK/engine crates do not perform live Nickel evaluation for per-call mutation authority [r[steel-self-mutation-policy.nickel-policy.runtime-boundary]]
 - [ ] [parallel] V4: Add Steel runtime tests proving mutation profiles still deny raw filesystem, shell, git, network, provider, credential, daemon, TUI, and native-tool access outside typed host functions [r[steel-self-mutation-policy.host-functions.raw-write-denied]]
 - [ ] [parallel] V5: Add receipt redaction tests proving compact UCAN tokens, raw proofs, credentials, provider payloads, oversized patch bodies, and uncontrolled absolute-path dumps are never emitted [r[steel-self-mutation-policy.receipts-and-preflight.safe-receipt]]

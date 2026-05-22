@@ -137,6 +137,7 @@ let ReceiptPolicy = {
     required = true,
     audience_binding = "session-or-daemon-instance",
     deny_wildcard_resources = true,
+    max_delegation_depth = 1,
     safe_receipt_fields = ["ability", "resource", "issuer_fingerprint", "audience_fingerprint", "expiry_status", "delegation_depth", "authorization_outcome"],
   },
   receipt | ReceiptPolicy = {

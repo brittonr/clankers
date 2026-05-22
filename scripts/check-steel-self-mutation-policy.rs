@@ -39,6 +39,7 @@ const REQUIRED_NICKEL_MARKERS: &[&str] = &[
     "RuntimeProfile",
     "ReceiptPolicy",
     "deny_wildcard_resources",
+    "max_delegation_depth",
     "safe_receipt_fields",
 ];
 const FORBIDDEN_RECEIPT_MARKERS: &[&str] = &[
@@ -95,6 +96,7 @@ fn run() -> Result<PathBuf, String> {
         POLICY_JSON,
         POLICY_NICKEL,
         INVALID_POLICY_JSON,
+        "crates/clankers-runtime/src/steel_mutation.rs",
         "scripts/check-steel-self-mutation-policy.rs",
     ]
     .iter()
@@ -251,6 +253,10 @@ fn validate_ucan(policy: &Value, errors: &mut Vec<String>) {
     }
     if ucan.get("deny_wildcard_resources").and_then(Value::as_bool) != Some(true) {
         errors.push("ucan.deny_wildcard_resources must be true".to_string());
+    }
+    let max_delegation_depth = required_u64(ucan, "max_delegation_depth", errors);
+    if max_delegation_depth == 0 || max_delegation_depth > 8 {
+        errors.push("ucan.max_delegation_depth must be bounded and nonzero".to_string());
     }
     let safe_fields = string_set(ucan, "safe_receipt_fields", errors);
     for required in ["ability", "resource", "expiry_status", "authorization_outcome"] {

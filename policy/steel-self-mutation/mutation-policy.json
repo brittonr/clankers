@@ -173,6 +173,7 @@
   "ucan": {
     "audience_binding": "session-or-daemon-instance",
     "deny_wildcard_resources": true,
+    "max_delegation_depth": 1,
     "required": true,
     "safe_receipt_fields": [
       "ability",

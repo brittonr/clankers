@@ -42,6 +42,7 @@ pub mod prompt;
 pub mod runtime;
 pub mod services;
 pub mod session;
+pub mod steel_mutation;
 pub mod tools;
 
 #[cfg(test)]
