@@ -72,6 +72,82 @@ pub struct DynamicRuntimeAuthorizationContext {
     pub max_input_bytes: u64,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum SteelAmbientAccessKind {
+    Filesystem,
+    Shell,
+    Git,
+    Network,
+    Provider,
+    Credential,
+    Daemon,
+    Tui,
+    NativeTool,
+}
+
+impl SteelAmbientAccessKind {
+    #[must_use]
+    pub fn all() -> [Self; 9] {
+        [
+            Self::Filesystem,
+            Self::Shell,
+            Self::Git,
+            Self::Network,
+            Self::Provider,
+            Self::Credential,
+            Self::Daemon,
+            Self::Tui,
+            Self::NativeTool,
+        ]
+    }
+
+    #[must_use]
+    pub const fn host_function_name(self) -> &'static str {
+        match self {
+            Self::Filesystem => "steel.ambient.fs",
+            Self::Shell => "steel.ambient.shell",
+            Self::Git => "steel.ambient.git",
+            Self::Network => "steel.ambient.network",
+            Self::Provider => "steel.ambient.provider",
+            Self::Credential => "steel.ambient.credential",
+            Self::Daemon => "steel.ambient.daemon",
+            Self::Tui => "steel.ambient.tui",
+            Self::NativeTool => "steel.ambient.native_tool",
+        }
+    }
+
+    #[must_use]
+    pub const fn target_resource(self) -> &'static str {
+        match self {
+            Self::Filesystem => "fs:ambient",
+            Self::Shell => "process:shell",
+            Self::Git => "git:ambient",
+            Self::Network => "network:ambient",
+            Self::Provider => "provider:ambient",
+            Self::Credential => "credential:ambient",
+            Self::Daemon => "daemon:ambient",
+            Self::Tui => "tui:ambient",
+            Self::NativeTool => "native-tool:ambient",
+        }
+    }
+
+    #[must_use]
+    pub const fn route_hint(self) -> &'static str {
+        match self {
+            Self::Filesystem => "raw filesystem",
+            Self::Shell => "shell command",
+            Self::Git => "git operation",
+            Self::Network => "network request",
+            Self::Provider => "provider call",
+            Self::Credential => "credential read",
+            Self::Daemon => "daemon access",
+            Self::Tui => "tui mutation",
+            Self::NativeTool => "native tool",
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct FakeSteelOrchestrationProfile {
     pub runtime_profile: String,
@@ -174,6 +250,19 @@ pub fn authorize_dynamic_runtime_action(
 }
 
 #[must_use]
+pub fn steel_ambient_access_negative_fixtures() -> Vec<FakeSteelOrchestrationRequest> {
+    SteelAmbientAccessKind::all()
+        .into_iter()
+        .map(|kind| FakeSteelOrchestrationRequest {
+            script_id: "ambient-deny-matrix".to_string(),
+            route_hint: kind.route_hint().to_string(),
+            target_resource: kind.target_resource().to_string(),
+            requested_host_function: kind.host_function_name().to_string(),
+            input_summary: format!("attempted ambient {} access", kind.route_hint()),
+        })
+        .collect()
+}
+
 pub fn run_fake_steel_orchestration(
     profile: &FakeSteelOrchestrationProfile,
     request: &FakeSteelOrchestrationRequest,
@@ -604,5 +693,43 @@ mod tests {
             denied_by_session.authorization_receipt.reason,
             DynamicRuntimeActionReason::MissingSessionCapability
         );
+    }
+
+    #[test]
+    fn steel_ambient_access_matrix_fails_before_host_effects() {
+        let profile = fake_steel_profile();
+        let context = context();
+        let denied = steel_ambient_access_negative_fixtures();
+
+        assert_eq!(denied.len(), SteelAmbientAccessKind::all().len());
+        for request in denied {
+            let receipt = run_fake_steel_orchestration(&profile, &request, &context);
+            assert_eq!(
+                receipt.authorization_receipt.status,
+                DynamicRuntimeActionStatus::PolicyDenied,
+                "{} should be policy denied",
+                receipt.selected_action.action_name
+            );
+            assert_eq!(receipt.authorization_receipt.reason, DynamicRuntimeActionReason::UnsupportedAction);
+            assert!(!receipt.authorization_receipt.writes_performed);
+            assert!(!profile.allowed_host_functions.contains(&receipt.selected_action.action_name));
+            assert!(receipt.selected_action.target_resource.contains(':'));
+        }
+    }
+
+    #[test]
+    fn steel_ambient_access_matrix_does_not_leak_raw_attempts() {
+        let profile = fake_steel_profile();
+        let context = context();
+
+        for request in steel_ambient_access_negative_fixtures() {
+            let raw_summary = request.input_summary.clone();
+            let receipt = run_fake_steel_orchestration(&profile, &request, &context);
+            let serialized = serde_json::to_string(&receipt).expect("ambient receipt json");
+            assert!(!serialized.contains(&raw_summary));
+            assert!(!serialized.contains("Bearer"));
+            assert!(!serialized.contains("password"));
+            assert!(!serialized.contains("token"));
+        }
     }
 }
