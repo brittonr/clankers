@@ -17,6 +17,7 @@ pub const STEEL_MUTATION_POLICY_SCHEMA: &str = "clankers.steel_self_mutation.pol
 pub const STEEL_MUTATION_RECEIPT_SCHEMA: &str = "clankers.steel_self_mutation.receipt.v1";
 pub const STEEL_MUTATION_DECISION_SCHEMA: &str = "clankers.steel_self_mutation.decision.v1";
 pub const STEEL_MUTATION_PREFLIGHT_SCHEMA: &str = "clankers.steel_self_mutation.preflight.v1";
+pub const STEEL_MUTATION_APPLY_SCHEMA: &str = "clankers.steel_self_mutation.apply.v1";
 const STEEL_MUTATION_SESSION_CAPABILITY: &str = "steel-self-mutation";
 const WORKSPACE_MUTATION_SESSION_CAPABILITY: &str = "workspace-mutation";
 
@@ -100,7 +101,7 @@ pub struct SteelMutationPatch {
     pub body_blake3: String,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum SteelMutationPatchFormat {
     UnifiedDiff,
@@ -301,6 +302,125 @@ pub struct SteelMutationCheckpointPlan {
     pub policy_hash: ArtifactHash,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SteelMutationPatchPayload {
+    pub format: SteelMutationPatchFormat,
+    pub body: Vec<u8>,
+}
+
+impl SteelMutationPatchPayload {
+    #[must_use]
+    pub fn full_replace(body: impl Into<Vec<u8>>) -> Self {
+        Self {
+            format: SteelMutationPatchFormat::FullReplace,
+            body: body.into(),
+        }
+    }
+
+    #[must_use]
+    pub fn body_hash(&self) -> ArtifactHash {
+        ArtifactHash::digest(&self.body)
+    }
+
+    #[must_use]
+    pub fn bytes(&self) -> u64 {
+        self.body.len() as u64
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SteelMutationApplyReceipt {
+    pub schema: String,
+    pub status: SteelMutationApplyStatus,
+    pub reason_code: SteelMutationApplyReason,
+    pub safe_message: String,
+    pub preflight: SteelMutationHostPreflightReceipt,
+    pub normalized_path: Option<String>,
+    pub policy_hash: ArtifactHash,
+    pub target_hash_before: Option<ArtifactHash>,
+    pub backup_hash: Option<ArtifactHash>,
+    pub patch_hash: Option<ArtifactHash>,
+    pub target_hash_after: Option<ArtifactHash>,
+    pub verification: SteelMutationVerificationReceipt,
+    pub writes_performed: bool,
+}
+
+impl SteelMutationApplyReceipt {
+    #[must_use]
+    pub fn receipt_hash(&self) -> ArtifactHash {
+        let bytes = serde_json::to_vec(self).expect("Steel mutation apply receipt serializes");
+        ArtifactHash::digest(&bytes)
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum SteelMutationApplyStatus {
+    Applied,
+    Blocked,
+    FailedVerification,
+    FailedWrite,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum SteelMutationApplyReason {
+    Applied,
+    PreflightNotReady,
+    MissingPatchDescriptor,
+    PatchFormatMismatch,
+    PatchHashMismatch,
+    PatchSizeMismatch,
+    UnsupportedPatchFormat,
+    StaleTargetHash,
+    TargetReadFailed,
+    TargetWriteFailed,
+    VerificationFailed,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SteelMutationVerificationReceipt {
+    pub profile: Option<String>,
+    pub status: SteelMutationVerificationStatus,
+    pub safe_summary: String,
+}
+
+impl SteelMutationVerificationReceipt {
+    #[must_use]
+    pub fn skipped(message: impl Into<String>) -> Self {
+        Self {
+            profile: None,
+            status: SteelMutationVerificationStatus::Skipped,
+            safe_summary: message.into(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum SteelMutationVerificationStatus {
+    Passed,
+    Failed,
+    Skipped,
+}
+
+pub trait SteelMutationTargetStore {
+    fn read_target(&self, normalized_path: &str) -> Result<Vec<u8>, SteelMutationIoError>;
+    fn write_target(&mut self, normalized_path: &str, bytes: &[u8]) -> Result<(), SteelMutationIoError>;
+}
+
+pub trait SteelMutationVerifier {
+    fn verify(&self, profile: &str, normalized_path: &str) -> SteelMutationVerificationReceipt;
+}
+
+#[derive(Debug, Error, Clone, PartialEq, Eq)]
+pub enum SteelMutationIoError {
+    #[error("target is unavailable")]
+    Unavailable,
+    #[error("target IO failed: {message}")]
+    Failed { message: String },
+}
+
 #[derive(Debug, Error, Clone, PartialEq, Eq)]
 pub enum SteelMutationPolicyParseError {
     #[error("failed to parse Steel mutation policy: {message}")]
@@ -378,6 +498,194 @@ pub fn preflight_steel_mutation_host_function(
         SteelMutationHostPreflightStatus::Ready,
         SteelMutationHostPreflightReason::Ready,
         "Steel mutation host function is ready for imperative shell execution",
+    )
+}
+
+#[must_use]
+pub fn apply_steel_mutation_host_function(
+    policy: &SteelMutationPolicy,
+    request: &SteelMutationRequest,
+    context: &SteelMutationHostContext,
+    payload: &SteelMutationPatchPayload,
+    target_store: &mut dyn SteelMutationTargetStore,
+    verifier: &dyn SteelMutationVerifier,
+) -> SteelMutationApplyReceipt {
+    let preflight = preflight_steel_mutation_host_function(policy, request, context);
+    if preflight.status != SteelMutationHostPreflightStatus::Ready {
+        return apply_receipt(
+            preflight,
+            SteelMutationApplyStatus::Blocked,
+            SteelMutationApplyReason::PreflightNotReady,
+            "mutation apply blocked before writing by host preflight",
+            None,
+            None,
+            None,
+            None,
+            SteelMutationVerificationReceipt::skipped("preflight was not ready"),
+            false,
+        );
+    }
+    let Some(descriptor) = request.patch.as_ref() else {
+        return apply_receipt(
+            preflight,
+            SteelMutationApplyStatus::Blocked,
+            SteelMutationApplyReason::MissingPatchDescriptor,
+            "mutation apply requires a patch descriptor",
+            None,
+            None,
+            None,
+            None,
+            SteelMutationVerificationReceipt::skipped("missing patch descriptor"),
+            false,
+        );
+    };
+    let patch_hash = payload.body_hash();
+    if descriptor.format != payload.format {
+        return apply_receipt(
+            preflight,
+            SteelMutationApplyStatus::Blocked,
+            SteelMutationApplyReason::PatchFormatMismatch,
+            "patch payload format does not match authorized descriptor",
+            None,
+            None,
+            Some(patch_hash),
+            None,
+            SteelMutationVerificationReceipt::skipped("patch format mismatch"),
+            false,
+        );
+    }
+    if descriptor.bytes != payload.bytes() {
+        return apply_receipt(
+            preflight,
+            SteelMutationApplyStatus::Blocked,
+            SteelMutationApplyReason::PatchSizeMismatch,
+            "patch payload size does not match authorized descriptor",
+            None,
+            None,
+            Some(patch_hash),
+            None,
+            SteelMutationVerificationReceipt::skipped("patch size mismatch"),
+            false,
+        );
+    }
+    if descriptor.body_blake3 != patch_hash.prefixed() {
+        return apply_receipt(
+            preflight,
+            SteelMutationApplyStatus::Blocked,
+            SteelMutationApplyReason::PatchHashMismatch,
+            "patch payload hash does not match authorized descriptor",
+            None,
+            None,
+            Some(patch_hash),
+            None,
+            SteelMutationVerificationReceipt::skipped("patch hash mismatch"),
+            false,
+        );
+    }
+    if payload.format != SteelMutationPatchFormat::FullReplace {
+        return apply_receipt(
+            preflight,
+            SteelMutationApplyStatus::Blocked,
+            SteelMutationApplyReason::UnsupportedPatchFormat,
+            "only full-replace payloads are currently executable by the host apply shell",
+            None,
+            None,
+            Some(patch_hash),
+            None,
+            SteelMutationVerificationReceipt::skipped("unsupported patch format"),
+            false,
+        );
+    }
+    let Some(path) = preflight.normalized_path.clone() else {
+        return apply_receipt(
+            preflight,
+            SteelMutationApplyStatus::Blocked,
+            SteelMutationApplyReason::PreflightNotReady,
+            "preflight did not produce a normalized target path",
+            None,
+            None,
+            Some(patch_hash),
+            None,
+            SteelMutationVerificationReceipt::skipped("missing normalized path"),
+            false,
+        );
+    };
+    let target_before = match target_store.read_target(&path) {
+        Ok(bytes) => bytes,
+        Err(_) => {
+            return apply_receipt(
+                preflight,
+                SteelMutationApplyStatus::FailedWrite,
+                SteelMutationApplyReason::TargetReadFailed,
+                "failed to read target before mutation",
+                None,
+                None,
+                Some(patch_hash),
+                None,
+                SteelMutationVerificationReceipt::skipped("target read failed"),
+                false,
+            );
+        }
+    };
+    let before_hash = ArtifactHash::digest(&target_before);
+    if preflight.target_hash != Some(before_hash) {
+        return apply_receipt(
+            preflight,
+            SteelMutationApplyStatus::Blocked,
+            SteelMutationApplyReason::StaleTargetHash,
+            "target hash changed after preflight checkpoint capture",
+            Some(before_hash),
+            None,
+            Some(patch_hash),
+            None,
+            SteelMutationVerificationReceipt::skipped("stale target hash"),
+            false,
+        );
+    }
+    if target_store.write_target(&path, &payload.body).is_err() {
+        return apply_receipt(
+            preflight,
+            SteelMutationApplyStatus::FailedWrite,
+            SteelMutationApplyReason::TargetWriteFailed,
+            "failed to write target mutation payload",
+            Some(before_hash),
+            Some(before_hash),
+            Some(patch_hash),
+            None,
+            SteelMutationVerificationReceipt::skipped("target write failed"),
+            false,
+        );
+    }
+    let after_hash = ArtifactHash::digest(&payload.body);
+    let verification = match preflight.verification_profile.as_deref() {
+        Some(profile) => verifier.verify(profile, &path),
+        None => SteelMutationVerificationReceipt::skipped("no verification profile selected"),
+    };
+    if verification.status != SteelMutationVerificationStatus::Passed {
+        return apply_receipt(
+            preflight,
+            SteelMutationApplyStatus::FailedVerification,
+            SteelMutationApplyReason::VerificationFailed,
+            "mutation payload was written but verification failed",
+            Some(before_hash),
+            Some(before_hash),
+            Some(patch_hash),
+            Some(after_hash),
+            verification,
+            true,
+        );
+    }
+    apply_receipt(
+        preflight,
+        SteelMutationApplyStatus::Applied,
+        SteelMutationApplyReason::Applied,
+        "mutation payload was written and verification passed",
+        Some(before_hash),
+        Some(before_hash),
+        Some(patch_hash),
+        Some(after_hash),
+        verification,
+        true,
     )
 }
 
@@ -510,6 +818,35 @@ pub fn authorize_steel_mutation(policy: &SteelMutationPolicy, request: &SteelMut
         preflight_profile: Some(target.preflight_profile.clone()),
         verification_profile: Some(target.verification_profile.clone()),
         rollback_required: target.rollback_required,
+    }
+}
+
+fn apply_receipt(
+    preflight: SteelMutationHostPreflightReceipt,
+    status: SteelMutationApplyStatus,
+    reason_code: SteelMutationApplyReason,
+    message: impl Into<String>,
+    target_hash_before: Option<ArtifactHash>,
+    backup_hash: Option<ArtifactHash>,
+    patch_hash: Option<ArtifactHash>,
+    target_hash_after: Option<ArtifactHash>,
+    verification: SteelMutationVerificationReceipt,
+    writes_performed: bool,
+) -> SteelMutationApplyReceipt {
+    SteelMutationApplyReceipt {
+        schema: STEEL_MUTATION_APPLY_SCHEMA.to_string(),
+        status,
+        reason_code,
+        safe_message: message.into(),
+        normalized_path: preflight.normalized_path.clone(),
+        policy_hash: preflight.policy_hash,
+        preflight,
+        target_hash_before,
+        backup_hash,
+        patch_hash,
+        target_hash_after,
+        verification,
+        writes_performed,
     }
 }
 
@@ -827,6 +1164,172 @@ mod tests {
         SteelMutationHostContext::new(ArtifactHash::digest(EXPORTED_POLICY.as_bytes()))
             .with_session_capabilities([STEEL_MUTATION_SESSION_CAPABILITY, WORKSPACE_MUTATION_SESSION_CAPABILITY])
             .with_target_hash(ArtifactHash::digest(b"current target bytes"))
+    }
+
+    fn full_replace_request(new_body: &[u8]) -> SteelMutationRequest {
+        let mut request = base_request();
+        request.patch = Some(SteelMutationPatch {
+            format: SteelMutationPatchFormat::FullReplace,
+            bytes: new_body.len() as u64,
+            body_blake3: ArtifactHash::digest(new_body).prefixed(),
+        });
+        request
+    }
+
+    struct MemoryTargetStore {
+        path: String,
+        bytes: Vec<u8>,
+        fail_write: bool,
+    }
+
+    impl MemoryTargetStore {
+        fn new(path: &str, bytes: &[u8]) -> Self {
+            Self {
+                path: path.to_string(),
+                bytes: bytes.to_vec(),
+                fail_write: false,
+            }
+        }
+    }
+
+    impl SteelMutationTargetStore for MemoryTargetStore {
+        fn read_target(&self, normalized_path: &str) -> Result<Vec<u8>, SteelMutationIoError> {
+            if normalized_path == self.path {
+                Ok(self.bytes.clone())
+            } else {
+                Err(SteelMutationIoError::Unavailable)
+            }
+        }
+
+        fn write_target(&mut self, normalized_path: &str, bytes: &[u8]) -> Result<(), SteelMutationIoError> {
+            if self.fail_write {
+                return Err(SteelMutationIoError::Failed {
+                    message: "forced write failure".to_string(),
+                });
+            }
+            if normalized_path != self.path {
+                return Err(SteelMutationIoError::Unavailable);
+            }
+            self.bytes = bytes.to_vec();
+            Ok(())
+        }
+    }
+
+    struct FixedVerifier {
+        status: SteelMutationVerificationStatus,
+    }
+
+    impl SteelMutationVerifier for FixedVerifier {
+        fn verify(&self, profile: &str, normalized_path: &str) -> SteelMutationVerificationReceipt {
+            SteelMutationVerificationReceipt {
+                profile: Some(profile.to_string()),
+                status: self.status.clone(),
+                safe_summary: format!("{profile} checked {normalized_path}"),
+            }
+        }
+    }
+
+    #[test]
+    fn apply_shell_writes_full_replace_and_records_backup_and_verification_hashes() {
+        let new_body = b"updated prompt bytes";
+        let request = full_replace_request(new_body);
+        let mut store = MemoryTargetStore::new("crates/clankers-prompts/src/lib.rs", b"current target bytes");
+        let verifier = FixedVerifier {
+            status: SteelMutationVerificationStatus::Passed,
+        };
+
+        let receipt = apply_steel_mutation_host_function(
+            &policy(),
+            &request,
+            &host_context(),
+            &SteelMutationPatchPayload::full_replace(new_body.to_vec()),
+            &mut store,
+            &verifier,
+        );
+
+        assert_eq!(receipt.schema, STEEL_MUTATION_APPLY_SCHEMA);
+        assert_eq!(receipt.status, SteelMutationApplyStatus::Applied);
+        assert_eq!(receipt.reason_code, SteelMutationApplyReason::Applied);
+        assert!(receipt.writes_performed);
+        assert_eq!(store.bytes, new_body);
+        assert_eq!(receipt.target_hash_before, Some(ArtifactHash::digest(b"current target bytes")));
+        assert_eq!(receipt.backup_hash, Some(ArtifactHash::digest(b"current target bytes")));
+        assert_eq!(receipt.patch_hash, Some(ArtifactHash::digest(new_body)));
+        assert_eq!(receipt.target_hash_after, Some(ArtifactHash::digest(new_body)));
+        assert_eq!(receipt.verification.status, SteelMutationVerificationStatus::Passed);
+        assert!(receipt.receipt_hash().prefixed().starts_with("b3:"));
+    }
+
+    #[test]
+    fn apply_shell_blocks_payload_hash_mismatch_before_write() {
+        let mut store = MemoryTargetStore::new("crates/clankers-prompts/src/lib.rs", b"current target bytes");
+        let verifier = FixedVerifier {
+            status: SteelMutationVerificationStatus::Passed,
+        };
+
+        let receipt = apply_steel_mutation_host_function(
+            &policy(),
+            &full_replace_request(b"aaaaaaaa"),
+            &host_context(),
+            &SteelMutationPatchPayload::full_replace(b"bbbbbbbb".to_vec()),
+            &mut store,
+            &verifier,
+        );
+
+        assert_eq!(receipt.status, SteelMutationApplyStatus::Blocked);
+        assert_eq!(receipt.reason_code, SteelMutationApplyReason::PatchHashMismatch);
+        assert!(!receipt.writes_performed);
+        assert_eq!(store.bytes, b"current target bytes");
+    }
+
+    #[test]
+    fn apply_shell_blocks_stale_target_hash_before_write() {
+        let new_body = b"updated prompt bytes";
+        let request = full_replace_request(new_body);
+        let mut store = MemoryTargetStore::new("crates/clankers-prompts/src/lib.rs", b"operator edited bytes");
+        let verifier = FixedVerifier {
+            status: SteelMutationVerificationStatus::Passed,
+        };
+
+        let receipt = apply_steel_mutation_host_function(
+            &policy(),
+            &request,
+            &host_context(),
+            &SteelMutationPatchPayload::full_replace(new_body.to_vec()),
+            &mut store,
+            &verifier,
+        );
+
+        assert_eq!(receipt.status, SteelMutationApplyStatus::Blocked);
+        assert_eq!(receipt.reason_code, SteelMutationApplyReason::StaleTargetHash);
+        assert!(!receipt.writes_performed);
+        assert_eq!(store.bytes, b"operator edited bytes");
+    }
+
+    #[test]
+    fn apply_shell_records_failed_verification_after_write_without_success_claim() {
+        let new_body = b"updated prompt bytes";
+        let request = full_replace_request(new_body);
+        let mut store = MemoryTargetStore::new("crates/clankers-prompts/src/lib.rs", b"current target bytes");
+        let verifier = FixedVerifier {
+            status: SteelMutationVerificationStatus::Failed,
+        };
+
+        let receipt = apply_steel_mutation_host_function(
+            &policy(),
+            &request,
+            &host_context(),
+            &SteelMutationPatchPayload::full_replace(new_body.to_vec()),
+            &mut store,
+            &verifier,
+        );
+
+        assert_eq!(receipt.status, SteelMutationApplyStatus::FailedVerification);
+        assert_eq!(receipt.reason_code, SteelMutationApplyReason::VerificationFailed);
+        assert!(receipt.writes_performed);
+        assert_eq!(store.bytes, new_body);
+        assert_eq!(receipt.verification.status, SteelMutationVerificationStatus::Failed);
+        assert_eq!(receipt.backup_hash, Some(ArtifactHash::digest(b"current target bytes")));
     }
 
     #[test]
