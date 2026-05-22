@@ -124,6 +124,14 @@ pub struct Settings {
     #[serde(default, rename = "externalMemory", alias = "external_memory")]
     pub external_memory: ExternalMemorySettings,
 
+    /// Optional Steel Scheme turn-planning activation profile.
+    ///
+    /// Missing config remains disabled. Enabling only selects a reviewed
+    /// profile/script binding; Rust still validates hashes and session/UCAN
+    /// authority before constructing the turn adapter.
+    #[serde(default, rename = "steelTurnPlanning", alias = "steel_turn_planning")]
+    pub steel_turn_planning: SteelTurnPlanningSettings,
+
     /// Hook system configuration.
     #[serde(default)]
     pub hooks: clankers_hooks::HooksConfig,
@@ -577,6 +585,182 @@ fn default_external_memory_max_results() -> usize {
 }
 
 // ---------------------------------------------------------------------------
+// Steel turn-planning activation settings
+// ---------------------------------------------------------------------------
+
+/// Optional settings for activating the reviewed Steel Scheme turn-planning seam.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SteelTurnPlanningSettings {
+    /// Enable config-driven construction of `AgentTurnSteelPlanningConfig`.
+    #[serde(default)]
+    pub enabled: bool,
+    /// Reviewed Nickel-exported profile JSON path.
+    #[serde(default)]
+    pub profile_path: Option<String>,
+    /// Reviewed Steel Scheme script path.
+    #[serde(default)]
+    pub script_path: Option<String>,
+    /// Expected BLAKE3 hash for the script source (`b3:<hex>`).
+    #[serde(default)]
+    pub script_blake3: Option<String>,
+    /// Expected BLAKE3 hash for the profile JSON (`b3:<hex>`). When absent,
+    /// Rust computes and records the profile hash without treating config as authority.
+    #[serde(default)]
+    pub profile_blake3: Option<String>,
+    /// Optional rollout override. Missing means use the reviewed profile.
+    #[serde(default)]
+    pub rollout_stage: Option<SteelTurnPlanningRolloutStage>,
+    /// Optional fallback override. Missing means use the reviewed profile.
+    #[serde(default)]
+    pub fallback_mode: Option<SteelTurnPlanningFallbackMode>,
+    /// Optional seam override. The only supported value is `steel.host.plan_turn`.
+    #[serde(default)]
+    pub planning_seam: Option<String>,
+    /// Session capabilities actually available to this session.
+    #[serde(default)]
+    pub session_capabilities: Vec<String>,
+    /// UCAN abilities actually granted to this session/script context.
+    #[serde(default)]
+    pub granted_ucan_abilities: Vec<String>,
+    /// Host actions disabled by user/session policy.
+    #[serde(default)]
+    pub disabled_actions: Vec<String>,
+    /// Optional receipt destination prefix. Must remain under `target/`.
+    #[serde(default)]
+    pub receipt_prefix: Option<String>,
+    /// Optional max turn input bytes override.
+    #[serde(default)]
+    pub max_input_bytes: Option<u64>,
+    /// Optional max script bytes guard.
+    #[serde(default = "default_steel_turn_planning_max_source_bytes")]
+    pub max_source_bytes: u64,
+}
+
+impl Default for SteelTurnPlanningSettings {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            profile_path: None,
+            script_path: None,
+            script_blake3: None,
+            profile_blake3: None,
+            rollout_stage: None,
+            fallback_mode: None,
+            planning_seam: None,
+            session_capabilities: Vec::new(),
+            granted_ucan_abilities: Vec::new(),
+            disabled_actions: Vec::new(),
+            receipt_prefix: None,
+            max_input_bytes: None,
+            max_source_bytes: default_steel_turn_planning_max_source_bytes(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum SteelTurnPlanningRolloutStage {
+    Disabled,
+    Comparison,
+    Default,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum SteelTurnPlanningFallbackMode {
+    RustNative,
+    Block,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum SteelTurnPlanningConfigError {
+    MissingProfilePath,
+    MissingScriptPath,
+    BlankProfilePath,
+    BlankScriptPath,
+    BlankHash,
+    BlankCapability,
+    BlankUcanAbility,
+    BlankDisabledAction,
+    NonPositiveMaxInputBytes,
+    NonPositiveMaxSourceBytes,
+    ReceiptOutsideTarget,
+}
+
+impl std::fmt::Display for SteelTurnPlanningConfigError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::MissingProfilePath => f.write_str("enabled Steel turn planning requires `profilePath`"),
+            Self::MissingScriptPath => f.write_str("enabled Steel turn planning requires `scriptPath`"),
+            Self::BlankProfilePath => f.write_str("Steel turn planning `profilePath` cannot be blank"),
+            Self::BlankScriptPath => f.write_str("Steel turn planning `scriptPath` cannot be blank"),
+            Self::BlankHash => f.write_str("Steel turn planning hashes cannot be blank"),
+            Self::BlankCapability => f.write_str("Steel turn planning session capabilities cannot be blank"),
+            Self::BlankUcanAbility => f.write_str("Steel turn planning UCAN abilities cannot be blank"),
+            Self::BlankDisabledAction => f.write_str("Steel turn planning disabled actions cannot be blank"),
+            Self::NonPositiveMaxInputBytes => {
+                f.write_str("Steel turn planning `maxInputBytes` must be greater than zero")
+            }
+            Self::NonPositiveMaxSourceBytes => {
+                f.write_str("Steel turn planning `maxSourceBytes` must be greater than zero")
+            }
+            Self::ReceiptOutsideTarget => f.write_str("Steel turn planning `receiptPrefix` must stay under target/"),
+        }
+    }
+}
+
+impl std::error::Error for SteelTurnPlanningConfigError {}
+
+impl SteelTurnPlanningSettings {
+    pub fn validate(&self) -> Result<(), SteelTurnPlanningConfigError> {
+        if !self.enabled {
+            return Ok(());
+        }
+        match self.profile_path.as_deref() {
+            Some(path) if path.trim().is_empty() => return Err(SteelTurnPlanningConfigError::BlankProfilePath),
+            None => return Err(SteelTurnPlanningConfigError::MissingProfilePath),
+            Some(_) => {}
+        }
+        match self.script_path.as_deref() {
+            Some(path) if path.trim().is_empty() => return Err(SteelTurnPlanningConfigError::BlankScriptPath),
+            None => return Err(SteelTurnPlanningConfigError::MissingScriptPath),
+            Some(_) => {}
+        }
+        if self.script_blake3.as_deref().is_some_and(|hash| hash.trim().is_empty())
+            || self.profile_blake3.as_deref().is_some_and(|hash| hash.trim().is_empty())
+        {
+            return Err(SteelTurnPlanningConfigError::BlankHash);
+        }
+        if self.session_capabilities.iter().any(|capability| capability.trim().is_empty()) {
+            return Err(SteelTurnPlanningConfigError::BlankCapability);
+        }
+        if self.granted_ucan_abilities.iter().any(|ability| ability.trim().is_empty()) {
+            return Err(SteelTurnPlanningConfigError::BlankUcanAbility);
+        }
+        if self.disabled_actions.iter().any(|action| action.trim().is_empty()) {
+            return Err(SteelTurnPlanningConfigError::BlankDisabledAction);
+        }
+        if matches!(self.max_input_bytes, Some(0)) {
+            return Err(SteelTurnPlanningConfigError::NonPositiveMaxInputBytes);
+        }
+        if self.max_source_bytes == 0 {
+            return Err(SteelTurnPlanningConfigError::NonPositiveMaxSourceBytes);
+        }
+        if let Some(prefix) = &self.receipt_prefix
+            && !prefix.starts_with("target/")
+        {
+            return Err(SteelTurnPlanningConfigError::ReceiptOutsideTarget);
+        }
+        Ok(())
+    }
+}
+
+fn default_steel_turn_planning_max_source_bytes() -> u64 {
+    4096
+}
+
+// ---------------------------------------------------------------------------
 // Leader menu user config
 // ---------------------------------------------------------------------------
 
@@ -821,6 +1005,7 @@ impl Default for Settings {
             mcp: McpSettings::default(),
             browser_automation: BrowserAutomationSettings::default(),
             external_memory: ExternalMemorySettings::default(),
+            steel_turn_planning: SteelTurnPlanningSettings::default(),
             hooks: clankers_hooks::HooksConfig::default(),
             auto_test_command: None,
             no_cache: false,
@@ -966,6 +1151,46 @@ mod tests {
         let json = r"{}";
         let settings: Settings = serde_json::from_str(json).unwrap();
         assert!(settings.disabled_tools.is_empty());
+        assert!(!settings.steel_turn_planning.enabled);
+        assert!(settings.steel_turn_planning.validate().is_ok());
+    }
+
+    #[test]
+    fn steel_turn_planning_from_json_validates_authority_shape() {
+        let json = r#"{
+            "steelTurnPlanning": {
+                "enabled": true,
+                "profilePath": "policy/steel-default-orchestration/orchestration-profile.json",
+                "scriptPath": "policy/steel-default-orchestration/scripts/default-plan-turn.scm",
+                "scriptBlake3": "b3:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                "rolloutStage": "comparison",
+                "fallbackMode": "rust_native",
+                "sessionCapabilities": ["steel-orchestration", "turn-planning"],
+                "grantedUcanAbilities": ["clankers/steel/orchestrate.plan_turn"],
+                "receiptPrefix": "target/steel-turn-planning-config-activation"
+            }
+        }"#;
+        let settings: Settings = serde_json::from_str(json).unwrap();
+        let steel = settings.steel_turn_planning;
+        assert!(steel.enabled);
+        assert_eq!(steel.rollout_stage, Some(SteelTurnPlanningRolloutStage::Comparison));
+        assert_eq!(steel.fallback_mode, Some(SteelTurnPlanningFallbackMode::RustNative));
+        steel.validate().expect("valid Steel turn-planning activation settings");
+    }
+
+    #[test]
+    fn steel_turn_planning_validation_rejects_enabled_without_profile() {
+        let settings: Settings = serde_json::from_str(r#"{"steelTurnPlanning":{"enabled":true}}"#).unwrap();
+        assert_eq!(settings.steel_turn_planning.validate(), Err(SteelTurnPlanningConfigError::MissingProfilePath));
+    }
+
+    #[test]
+    fn steel_turn_planning_validation_rejects_receipts_outside_target() {
+        let settings: Settings = serde_json::from_str(
+            r#"{"steelTurnPlanning":{"enabled":true,"profilePath":"profile.json","scriptPath":"script.scm","receiptPrefix":"/tmp/leak"}}"#,
+        )
+        .unwrap();
+        assert_eq!(settings.steel_turn_planning.validate(), Err(SteelTurnPlanningConfigError::ReceiptOutsideTarget));
     }
 
     #[test]

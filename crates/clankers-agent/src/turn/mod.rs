@@ -35,6 +35,7 @@ use clankers_engine::EngineModelResponse;
 #[cfg(test)]
 use clankers_engine::EngineOutcome;
 use clankers_engine::EnginePromptSubmission;
+#[cfg(test)]
 use clankers_engine::EngineState;
 #[cfg(test)]
 use clankers_engine::EngineTerminalFailure;
@@ -89,6 +90,7 @@ use steel_planning::AgentTurnPlanningRequest;
 pub use steel_planning::AgentTurnSteelPlanningConfig;
 use steel_planning::emit_agent_turn_planning_receipt;
 use steel_planning::plan_agent_turn;
+pub use steel_planning::steel_turn_planning_config_from_settings;
 use tokio::sync::broadcast;
 use tokio_util::sync::CancellationToken;
 use transcript::TurnTranscript;

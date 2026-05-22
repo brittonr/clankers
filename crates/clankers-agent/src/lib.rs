@@ -62,6 +62,7 @@ pub use self::tool::ToolResult;
 pub use self::tool::ToolResultContent;
 pub use self::tool::model_switch_slot;
 use self::turn::TurnConfig;
+use self::turn::steel_turn_planning_config_from_settings;
 
 /// The main agent that manages the conversation loop
 const NO_SKILL_NUDGE_COUNT: usize = 0;
@@ -346,7 +347,7 @@ impl Agent {
             output_truncation: self.output_truncation_config(),
             no_cache: self.settings.no_cache,
             cache_ttl: self.settings.cache_ttl.clone(),
-            steel_turn_planning: None,
+            steel_turn_planning: self.steel_turn_planning_config()?,
         };
 
         let result = turn::run_turn_loop(
@@ -734,7 +735,7 @@ impl Agent {
                 output_truncation: self.output_truncation_config(),
                 no_cache: self.settings.no_cache,
                 cache_ttl: self.settings.cache_ttl.clone(),
-                steel_turn_planning: None,
+                steel_turn_planning: self.steel_turn_planning_config()?,
             };
 
             let result = turn::run_turn_loop(
@@ -775,6 +776,17 @@ impl Agent {
             .ok();
 
         Ok(())
+    }
+
+    fn steel_turn_planning_config(&self) -> Result<Option<turn::AgentTurnSteelPlanningConfig>> {
+        let base_dir = std::env::current_dir().map_err(|error| AgentError::Agent {
+            message: format!("failed to resolve Steel turn planning base directory: {error}"),
+        })?;
+        steel_turn_planning_config_from_settings(&self.settings.steel_turn_planning, &base_dir).map_err(|error| {
+            AgentError::Agent {
+                message: format!("Steel turn planning activation failed closed: {error}"),
+            }
+        })
     }
 
     fn maybe_emit_skill_creation_nudge(&mut self) {
