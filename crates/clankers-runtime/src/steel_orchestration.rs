@@ -8,6 +8,17 @@
 
 use std::collections::BTreeSet;
 
+use basalt::CallableContractDescriptor;
+use basalt::CapabilityGrant as BasaltCapabilityGrant;
+use basalt::ContractBackendKind;
+use basalt::ContractEffectClass;
+use basalt::ContractEnvelope;
+use basalt::SteelEvaluationReceipt;
+use basalt::SteelEvaluationRequest;
+use basalt::steel_receipt_hash as basalt_steel_receipt_hash;
+use basalt::steel_request_hash as basalt_steel_request_hash;
+use basalt::validate_steel_evaluation_receipt;
+use basalt::validate_steel_evaluation_request;
 use clankers_artifacts::ArtifactHash;
 use serde::Deserialize;
 use serde::Serialize;
@@ -34,6 +45,8 @@ pub const STEEL_ORCHESTRATION_PLAN_SCHEMA: &str = "clankers.steel_orchestration.
 pub const STEEL_ORCHESTRATION_RECEIPT_SCHEMA: &str = "clankers.steel_orchestration.receipt.v1";
 pub const DEFAULT_TURN_PLANNING_SEAM: &str = "steel.host.plan_turn";
 const DEFAULT_RECEIPT_PREFIX: &str = "target/steel-default-orchestration";
+const BASALT_STEEL_INPUT_SCHEMA: &str = "clankers.steel_orchestration.input.v1";
+const BASALT_STEEL_CONTRACT_VERSION: &str = "clankers.steel_orchestration.contract.v1";
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SteelOrchestrationProfile {
@@ -162,6 +175,8 @@ pub enum OrchestrationIssueCode {
     FallbackDisabled,
     NoCandidateActions,
     UnauthorizedAction,
+    BasaltRequestInvalid,
+    BasaltReceiptInvalid,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -179,6 +194,12 @@ pub struct OrchestrationPlanReceipt {
     pub policy_hash: ArtifactHash,
     pub plan_hash: Option<ArtifactHash>,
     pub steel_receipt_hash: Option<ArtifactHash>,
+    pub basalt_request_schema: Option<String>,
+    pub basalt_request_hash: Option<String>,
+    pub basalt_receipt_schema: Option<String>,
+    pub basalt_receipt_hash: Option<String>,
+    pub basalt_receipt_valid: bool,
+    pub basalt_receipt_reason: Option<String>,
     pub rust_native_decision_class: Option<String>,
     pub authorization_receipts: Vec<DynamicRuntimeActionReceipt>,
     pub safe_summary: String,
@@ -193,6 +214,29 @@ pub enum RustNativeFallbackStatus {
     Used,
     Disabled,
     Unavailable,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct BasaltSteelContractEvidence {
+    pub request_schema: String,
+    pub request_hash: String,
+    pub receipt_schema: String,
+    pub receipt_hash: Option<String>,
+    pub receipt_valid: bool,
+    pub receipt_reason: String,
+}
+
+impl BasaltSteelContractEvidence {
+    fn request_only(request: &SteelEvaluationRequest, reason: impl Into<String>) -> Self {
+        Self {
+            request_schema: request.envelope.contract_version.clone(),
+            request_hash: basalt_steel_request_hash(request),
+            receipt_schema: request.envelope.receipt_schema_version.clone(),
+            receipt_hash: None,
+            receipt_valid: false,
+            receipt_reason: reason.into(),
+        }
+    }
 }
 
 #[must_use]
@@ -214,6 +258,7 @@ pub fn plan_turn_with_steel_or_fallback(
             OrchestrationIssueCode::SteelDisabled,
             "Steel orchestration disabled; Rust-native planner selected",
             input,
+            None,
         );
     }
     if profile.planning_seam != DEFAULT_TURN_PLANNING_SEAM {
@@ -225,6 +270,24 @@ pub fn plan_turn_with_steel_or_fallback(
             OrchestrationIssueCode::UnsupportedSeam,
             "selected Steel planning seam is not implemented by this adapter",
             fallback_decision_class,
+            None,
+        );
+    }
+
+    let basalt_request = basalt_steel_evaluation_request(profile, input);
+    let basalt_request_receipt = validate_steel_evaluation_request(&basalt_request);
+    if !basalt_request_receipt.accepted {
+        let evidence =
+            BasaltSteelContractEvidence::request_only(&basalt_request, basalt_request_receipt.reason.clone());
+        return fallback_or_block(
+            profile,
+            input,
+            &fallback_plan,
+            None,
+            OrchestrationIssueCode::BasaltRequestInvalid,
+            "Basalt Steel evaluation request failed validation before contract-backed planning",
+            fallback_decision_class,
+            Some(evidence),
         );
     }
 
@@ -256,6 +319,10 @@ pub fn plan_turn_with_steel_or_fallback(
             issue,
             "Steel script evaluation failed before a typed plan was authorized",
             fallback_decision_class,
+            Some(BasaltSteelContractEvidence::request_only(
+                &basalt_request,
+                "Steel runtime did not return a Basalt receipt",
+            )),
         );
     }
     let Some(output) = steel_receipt.output.as_deref() else {
@@ -267,6 +334,10 @@ pub fn plan_turn_with_steel_or_fallback(
             OrchestrationIssueCode::MalformedPlan,
             "Steel planner returned no typed plan payload",
             fallback_decision_class,
+            Some(BasaltSteelContractEvidence::request_only(
+                &basalt_request,
+                "Steel runtime returned no typed plan payload",
+            )),
         );
     };
     let Ok(steel_plan) = parse_steel_plan_payload(profile, input, output) else {
@@ -278,8 +349,14 @@ pub fn plan_turn_with_steel_or_fallback(
             OrchestrationIssueCode::MalformedPlan,
             "Steel planner output did not match the typed plan schema",
             fallback_decision_class,
+            Some(BasaltSteelContractEvidence::request_only(
+                &basalt_request,
+                "Steel planner output did not match the typed plan schema",
+            )),
         );
     };
+    let basalt_evidence =
+        basalt_contract_evidence(profile, input, &basalt_request, true, "Steel plan parsed as typed data");
     authorize_plan_receipt(
         profile,
         &steel_plan,
@@ -290,6 +367,7 @@ pub fn plan_turn_with_steel_or_fallback(
         OrchestrationIssueCode::Ok,
         "Steel plan parsed as typed data; Rust authorization receipts decide effects",
         input,
+        Some(basalt_evidence),
     )
 }
 
@@ -400,6 +478,7 @@ fn authorize_plan_receipt(
     prior_issue: OrchestrationIssueCode,
     safe_summary: &str,
     input: &TurnPlanningInput,
+    basalt_evidence: Option<BasaltSteelContractEvidence>,
 ) -> OrchestrationPlanReceipt {
     if plan.decisions.is_empty() {
         return orchestration_receipt(
@@ -413,6 +492,7 @@ fn authorize_plan_receipt(
             rust_native_decision_class,
             Vec::new(),
             "no candidate actions were available for planning".to_string(),
+            basalt_evidence,
         );
     }
     let context = authorization_context(profile, input);
@@ -443,6 +523,7 @@ fn authorize_plan_receipt(
         rust_native_decision_class,
         authorization_receipts,
         safe_summary.to_string(),
+        basalt_evidence,
     )
 }
 
@@ -454,6 +535,7 @@ fn fallback_or_block(
     issue_code: OrchestrationIssueCode,
     safe_summary: &str,
     rust_native_decision_class: Option<String>,
+    basalt_evidence: Option<BasaltSteelContractEvidence>,
 ) -> OrchestrationPlanReceipt {
     match profile.fallback_mode {
         OrchestrationFallbackMode::RustNative => authorize_plan_receipt(
@@ -466,6 +548,7 @@ fn fallback_or_block(
             issue_code,
             safe_summary,
             input,
+            basalt_evidence,
         ),
         OrchestrationFallbackMode::Block => orchestration_receipt(
             profile,
@@ -478,8 +561,102 @@ fn fallback_or_block(
             rust_native_decision_class,
             Vec::new(),
             safe_summary.to_string(),
+            basalt_evidence,
         ),
     }
+}
+
+fn basalt_steel_evaluation_request(
+    profile: &SteelOrchestrationProfile,
+    input: &TurnPlanningInput,
+) -> SteelEvaluationRequest {
+    let required_capability = basalt_required_capability(profile, input);
+    SteelEvaluationRequest {
+        envelope: ContractEnvelope::new(
+            ContractBackendKind::Steel.as_str(),
+            DEFAULT_TURN_PLANNING_SEAM,
+            BASALT_STEEL_CONTRACT_VERSION,
+            profile.script_hash.prefixed(),
+            BASALT_STEEL_INPUT_SCHEMA,
+            STEEL_ORCHESTRATION_PLAN_SCHEMA,
+            "basalt.steel.receipt.v1",
+        ),
+        input: serde_json::json!({
+            "seam": DEFAULT_TURN_PLANNING_SEAM,
+            "turn_id": route_slug(&input.turn_id),
+            "prompt_hash": input.prompt_hash.prefixed(),
+            "prompt_bytes": input.prompt_bytes,
+            "candidate_count": input.candidate_actions.len(),
+            "disabled_action_count": input.disabled_actions.len(),
+            "script_hash": profile.script_hash.prefixed(),
+            "policy_hash": profile.policy_hash.prefixed(),
+        }),
+        max_input_bytes: profile.max_input_bytes as usize,
+        callable: Some(CallableContractDescriptor {
+            callable_id: DEFAULT_TURN_PLANNING_SEAM.to_string(),
+            arity: 1,
+            argument_contracts: vec![BASALT_STEEL_INPUT_SCHEMA.to_string()],
+            return_contract: STEEL_ORCHESTRATION_PLAN_SCHEMA.to_string(),
+            required_capabilities: vec![required_capability],
+            effect_class: ContractEffectClass::HostEffect,
+            content_hash: profile.script_hash.prefixed(),
+            redaction_class: "metadata_only".to_string(),
+        }),
+        requested_host_capability: None,
+    }
+}
+
+fn basalt_contract_evidence(
+    profile: &SteelOrchestrationProfile,
+    input: &TurnPlanningInput,
+    request: &SteelEvaluationRequest,
+    allowed: bool,
+    reason: &str,
+) -> BasaltSteelContractEvidence {
+    let required_capability = basalt_required_capability(profile, input);
+    let checked_capabilities =
+        if input.granted_ucan_abilities.iter().any(|ability| ability == &profile.required_ucan_ability) {
+            vec![required_capability.clone()]
+        } else {
+            Vec::new()
+        };
+    let mut receipt = SteelEvaluationReceipt {
+        backend: ContractBackendKind::Steel.as_str().to_string(),
+        contract_id: DEFAULT_TURN_PLANNING_SEAM.to_string(),
+        normalized_source_hash: profile.script_hash.prefixed(),
+        request_hash: basalt_steel_request_hash(request),
+        allowed,
+        reason: reason.to_string(),
+        caveat_evidence: std::collections::BTreeMap::from([
+            ("seam".to_string(), DEFAULT_TURN_PLANNING_SEAM.to_string()),
+            ("profile".to_string(), profile.name.clone()),
+            ("rollout_stage".to_string(), format!("{:?}", profile.rollout_stage)),
+        ]),
+        effect_class: ContractEffectClass::HostEffect,
+        required_capabilities: vec![required_capability],
+        checked_capabilities,
+        receipt_hash: None,
+    };
+    let receipt_hash = basalt_steel_receipt_hash(&receipt);
+    receipt.receipt_hash = Some(receipt_hash.clone());
+    let validation = validate_steel_evaluation_receipt(&receipt);
+    BasaltSteelContractEvidence {
+        request_schema: request.envelope.contract_version.clone(),
+        request_hash: receipt.request_hash,
+        receipt_schema: request.envelope.receipt_schema_version.clone(),
+        receipt_hash: Some(receipt_hash),
+        receipt_valid: validation.accepted,
+        receipt_reason: validation.reason,
+    }
+}
+
+fn basalt_required_capability(profile: &SteelOrchestrationProfile, input: &TurnPlanningInput) -> BasaltCapabilityGrant {
+    let resource = input
+        .candidate_actions
+        .first()
+        .map(|candidate| candidate.target_resource.as_str())
+        .unwrap_or("session:unknown");
+    BasaltCapabilityGrant::new(resource, profile.required_ucan_ability.as_str())
 }
 
 fn authorization_context(
@@ -501,6 +678,7 @@ fn authorization_context(
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 fn orchestration_receipt(
     profile: &SteelOrchestrationProfile,
     status: OrchestrationPlanStatus,
@@ -512,6 +690,7 @@ fn orchestration_receipt(
     rust_native_decision_class: Option<String>,
     authorization_receipts: Vec<DynamicRuntimeActionReceipt>,
     safe_summary: String,
+    basalt_evidence: Option<BasaltSteelContractEvidence>,
 ) -> OrchestrationPlanReceipt {
     let material = OrchestrationReceiptHashMaterial {
         schema: STEEL_ORCHESTRATION_RECEIPT_SCHEMA,
@@ -527,6 +706,9 @@ fn orchestration_receipt(
         policy_hash: profile.policy_hash,
         plan_hash,
         steel_receipt_hash,
+        basalt_request_hash: basalt_evidence.as_ref().map(|evidence| evidence.request_hash.as_str()),
+        basalt_receipt_hash: basalt_evidence.as_ref().and_then(|evidence| evidence.receipt_hash.as_deref()),
+        basalt_receipt_valid: basalt_evidence.as_ref().is_some_and(|evidence| evidence.receipt_valid),
         rust_native_decision_class: rust_native_decision_class.as_deref(),
         authorization_receipt_hashes: authorization_receipts.iter().map(|receipt| receipt.receipt_hash).collect(),
         safe_summary: &safe_summary,
@@ -547,6 +729,12 @@ fn orchestration_receipt(
         policy_hash: profile.policy_hash,
         plan_hash,
         steel_receipt_hash,
+        basalt_request_schema: basalt_evidence.as_ref().map(|evidence| evidence.request_schema.clone()),
+        basalt_request_hash: basalt_evidence.as_ref().map(|evidence| evidence.request_hash.clone()),
+        basalt_receipt_schema: basalt_evidence.as_ref().map(|evidence| evidence.receipt_schema.clone()),
+        basalt_receipt_hash: basalt_evidence.as_ref().and_then(|evidence| evidence.receipt_hash.clone()),
+        basalt_receipt_valid: basalt_evidence.as_ref().is_some_and(|evidence| evidence.receipt_valid),
+        basalt_receipt_reason: basalt_evidence.as_ref().map(|evidence| evidence.receipt_reason.clone()),
         rust_native_decision_class,
         authorization_receipts,
         safe_summary,
@@ -577,6 +765,9 @@ struct OrchestrationReceiptHashMaterial<'a> {
     policy_hash: ArtifactHash,
     plan_hash: Option<ArtifactHash>,
     steel_receipt_hash: Option<ArtifactHash>,
+    basalt_request_hash: Option<&'a str>,
+    basalt_receipt_hash: Option<&'a str>,
+    basalt_receipt_valid: bool,
     rust_native_decision_class: Option<&'a str>,
     authorization_receipt_hashes: Vec<ArtifactHash>,
     safe_summary: &'a str,
@@ -667,6 +858,12 @@ mod tests {
         assert!(!receipt.authorization_receipts[0].writes_performed);
         assert!(receipt.plan_hash.is_some());
         assert!(receipt.steel_receipt_hash.is_some());
+        assert_eq!(receipt.basalt_request_schema.as_deref(), Some(BASALT_STEEL_CONTRACT_VERSION));
+        assert!(receipt.basalt_request_hash.as_deref().is_some_and(|hash| hash.starts_with("blake3:")));
+        assert_eq!(receipt.basalt_receipt_schema.as_deref(), Some("basalt.steel.receipt.v1"));
+        assert!(receipt.basalt_receipt_hash.as_deref().is_some_and(|hash| hash.starts_with("blake3:")));
+        assert!(receipt.basalt_receipt_valid);
+        assert_eq!(receipt.basalt_receipt_reason.as_deref(), Some("accepted"));
     }
 
     #[test]
@@ -730,6 +927,11 @@ mod tests {
         let denied = plan_turn_with_steel_or_fallback(&profile(), &input);
         assert_eq!(denied.status, OrchestrationPlanStatus::Denied);
         assert_eq!(denied.authorization_receipts[0].status, DynamicRuntimeActionStatus::UcanDenied);
+        assert!(!denied.basalt_receipt_valid);
+        assert_eq!(
+            denied.basalt_receipt_reason.as_deref(),
+            Some("Steel allow receipt lacks required UCAN authority evidence")
+        );
     }
 
     #[test]
