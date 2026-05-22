@@ -6,7 +6,9 @@
 //! Nickel policy plus safe UCAN metadata before any shell code may write bytes.
 
 use std::collections::BTreeMap;
+use std::collections::BTreeSet;
 
+use clankers_artifacts::ArtifactHash;
 use serde::Deserialize;
 use serde::Serialize;
 use thiserror::Error;
@@ -14,6 +16,9 @@ use thiserror::Error;
 pub const STEEL_MUTATION_POLICY_SCHEMA: &str = "clankers.steel_self_mutation.policy.v1";
 pub const STEEL_MUTATION_RECEIPT_SCHEMA: &str = "clankers.steel_self_mutation.receipt.v1";
 pub const STEEL_MUTATION_DECISION_SCHEMA: &str = "clankers.steel_self_mutation.decision.v1";
+pub const STEEL_MUTATION_PREFLIGHT_SCHEMA: &str = "clankers.steel_self_mutation.preflight.v1";
+const STEEL_MUTATION_SESSION_CAPABILITY: &str = "steel-self-mutation";
+const WORKSPACE_MUTATION_SESSION_CAPABILITY: &str = "workspace-mutation";
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SteelMutationPolicy {
@@ -183,6 +188,119 @@ pub struct SteelMutationSafeUcanMetadata {
     pub authorization_outcome: SteelMutationDecisionOutcome,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SteelMutationHostContext {
+    pub policy_hash: ArtifactHash,
+    pub session_capabilities: Vec<String>,
+    pub disabled_tools: Vec<String>,
+    pub target_hash: Option<ArtifactHash>,
+    pub repository_dirty: bool,
+    pub checkpoint_id: Option<String>,
+}
+
+impl SteelMutationHostContext {
+    #[must_use]
+    pub fn new(policy_hash: ArtifactHash) -> Self {
+        Self {
+            policy_hash,
+            session_capabilities: Vec::new(),
+            disabled_tools: Vec::new(),
+            target_hash: None,
+            repository_dirty: false,
+            checkpoint_id: None,
+        }
+    }
+
+    #[must_use]
+    pub fn with_session_capabilities<I, S>(mut self, capabilities: I) -> Self
+    where
+        I: IntoIterator<Item = S>,
+        S: Into<String>,
+    {
+        self.session_capabilities = capabilities.into_iter().map(Into::into).collect();
+        self.session_capabilities.sort();
+        self.session_capabilities.dedup();
+        self
+    }
+
+    #[must_use]
+    pub fn with_disabled_tools<I, S>(mut self, tools: I) -> Self
+    where
+        I: IntoIterator<Item = S>,
+        S: Into<String>,
+    {
+        self.disabled_tools = tools.into_iter().map(Into::into).collect();
+        self.disabled_tools.sort();
+        self.disabled_tools.dedup();
+        self
+    }
+
+    #[must_use]
+    pub fn with_target_hash(mut self, hash: ArtifactHash) -> Self {
+        self.target_hash = Some(hash);
+        self
+    }
+
+    #[must_use]
+    pub fn with_dirty_repository(mut self, checkpoint_id: Option<String>) -> Self {
+        self.repository_dirty = true;
+        self.checkpoint_id = checkpoint_id;
+        self
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SteelMutationHostPreflightReceipt {
+    pub schema: String,
+    pub status: SteelMutationHostPreflightStatus,
+    pub reason_code: SteelMutationHostPreflightReason,
+    pub safe_message: String,
+    pub decision: SteelMutationDecision,
+    pub host_function: Option<String>,
+    pub normalized_path: Option<String>,
+    pub policy_hash: ArtifactHash,
+    pub target_hash: Option<ArtifactHash>,
+    pub checkpoint: SteelMutationCheckpointPlan,
+    pub verification_profile: Option<String>,
+    pub safe_ucan_metadata: Option<SteelMutationSafeUcanMetadata>,
+    pub writes_performed: bool,
+}
+
+impl SteelMutationHostPreflightReceipt {
+    #[must_use]
+    pub fn receipt_hash(&self) -> ArtifactHash {
+        let bytes = serde_json::to_vec(self).expect("Steel mutation preflight receipt serializes");
+        ArtifactHash::digest(&bytes)
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum SteelMutationHostPreflightStatus {
+    Ready,
+    Denied,
+    Blocked,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum SteelMutationHostPreflightReason {
+    Ready,
+    DecisionDenied,
+    MissingSessionCapability,
+    DisabledHostFunction,
+    DirtyRepositoryNeedsCheckpoint,
+    MissingTargetHash,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SteelMutationCheckpointPlan {
+    pub required: bool,
+    pub checkpoint_id: Option<String>,
+    pub target_hash: Option<ArtifactHash>,
+    pub policy_hash: ArtifactHash,
+}
+
 #[derive(Debug, Error, Clone, PartialEq, Eq)]
 pub enum SteelMutationPolicyParseError {
     #[error("failed to parse Steel mutation policy: {message}")]
@@ -193,6 +311,74 @@ pub fn parse_steel_mutation_policy(text: &str) -> Result<SteelMutationPolicy, St
     serde_json::from_str(text).map_err(|error| SteelMutationPolicyParseError::Json {
         message: error.to_string(),
     })
+}
+
+#[must_use]
+pub fn preflight_steel_mutation_host_function(
+    policy: &SteelMutationPolicy,
+    request: &SteelMutationRequest,
+    context: &SteelMutationHostContext,
+) -> SteelMutationHostPreflightReceipt {
+    let decision = authorize_steel_mutation(policy, request);
+    let checkpoint = checkpoint_plan(&decision, context);
+    if decision.outcome == SteelMutationDecisionOutcome::Denied {
+        return host_preflight_receipt(
+            decision,
+            context,
+            checkpoint,
+            SteelMutationHostPreflightStatus::Denied,
+            SteelMutationHostPreflightReason::DecisionDenied,
+            "Rust host denied mutation before preflight planning",
+        );
+    }
+    if let Some(missing) = missing_required_capability(&decision, request, context) {
+        return host_preflight_receipt(
+            decision,
+            context,
+            checkpoint,
+            SteelMutationHostPreflightStatus::Blocked,
+            SteelMutationHostPreflightReason::MissingSessionCapability,
+            format!("session lacks required mutation capability `{missing}`"),
+        );
+    }
+    if host_function_is_disabled(&decision, request, context) {
+        return host_preflight_receipt(
+            decision,
+            context,
+            checkpoint,
+            SteelMutationHostPreflightStatus::Blocked,
+            SteelMutationHostPreflightReason::DisabledHostFunction,
+            "requested Steel mutation host function is disabled for this session",
+        );
+    }
+    if context.repository_dirty && context.checkpoint_id.is_none() {
+        return host_preflight_receipt(
+            decision,
+            context,
+            checkpoint,
+            SteelMutationHostPreflightStatus::Blocked,
+            SteelMutationHostPreflightReason::DirtyRepositoryNeedsCheckpoint,
+            "dirty repository requires an explicit checkpoint before mutation",
+        );
+    }
+    if decision.rollback_required && context.target_hash.is_none() {
+        return host_preflight_receipt(
+            decision,
+            context,
+            checkpoint,
+            SteelMutationHostPreflightStatus::Blocked,
+            SteelMutationHostPreflightReason::MissingTargetHash,
+            "rollback-required mutation must capture a target hash before writing",
+        );
+    }
+    host_preflight_receipt(
+        decision,
+        context,
+        checkpoint,
+        SteelMutationHostPreflightStatus::Ready,
+        SteelMutationHostPreflightReason::Ready,
+        "Steel mutation host function is ready for imperative shell execution",
+    )
 }
 
 #[must_use]
@@ -325,6 +511,81 @@ pub fn authorize_steel_mutation(policy: &SteelMutationPolicy, request: &SteelMut
         verification_profile: Some(target.verification_profile.clone()),
         rollback_required: target.rollback_required,
     }
+}
+
+fn host_preflight_receipt(
+    decision: SteelMutationDecision,
+    context: &SteelMutationHostContext,
+    checkpoint: SteelMutationCheckpointPlan,
+    status: SteelMutationHostPreflightStatus,
+    reason_code: SteelMutationHostPreflightReason,
+    message: impl Into<String>,
+) -> SteelMutationHostPreflightReceipt {
+    let host_function = decision.host_function.clone();
+    let normalized_path = decision.normalized_path.clone();
+    let verification_profile = decision.verification_profile.clone();
+    let safe_ucan_metadata = decision.safe_ucan_metadata.clone();
+    SteelMutationHostPreflightReceipt {
+        schema: STEEL_MUTATION_PREFLIGHT_SCHEMA.to_string(),
+        status,
+        reason_code,
+        safe_message: message.into(),
+        decision,
+        host_function,
+        normalized_path,
+        policy_hash: context.policy_hash,
+        target_hash: context.target_hash,
+        checkpoint,
+        verification_profile,
+        safe_ucan_metadata,
+        writes_performed: false,
+    }
+}
+
+fn checkpoint_plan(
+    decision: &SteelMutationDecision,
+    context: &SteelMutationHostContext,
+) -> SteelMutationCheckpointPlan {
+    SteelMutationCheckpointPlan {
+        required: decision.rollback_required,
+        checkpoint_id: context.checkpoint_id.clone(),
+        target_hash: context.target_hash,
+        policy_hash: context.policy_hash,
+    }
+}
+
+fn missing_required_capability(
+    decision: &SteelMutationDecision,
+    request: &SteelMutationRequest,
+    context: &SteelMutationHostContext,
+) -> Option<&'static str> {
+    let capabilities = context.session_capabilities.iter().map(String::as_str).collect::<BTreeSet<_>>();
+    if !capabilities.contains(STEEL_MUTATION_SESSION_CAPABILITY) {
+        return Some(STEEL_MUTATION_SESSION_CAPABILITY);
+    }
+    if decision.host_function.as_deref() != Some("steel.host.propose_mutation")
+        && request.patch.is_some()
+        && !capabilities.contains(WORKSPACE_MUTATION_SESSION_CAPABILITY)
+    {
+        return Some(WORKSPACE_MUTATION_SESSION_CAPABILITY);
+    }
+    None
+}
+
+fn host_function_is_disabled(
+    decision: &SteelMutationDecision,
+    request: &SteelMutationRequest,
+    context: &SteelMutationHostContext,
+) -> bool {
+    let Some(host_function) = decision.host_function.as_deref() else {
+        return false;
+    };
+    context.disabled_tools.iter().any(|disabled| {
+        disabled == host_function
+            || disabled == "steel.host.*"
+            || disabled == "steel-self-mutation"
+            || disabled == &request.verb
+    })
 }
 
 fn target_class<'a>(policy: &'a SteelMutationPolicy, name: &str) -> Option<&'a SteelMutationTargetClass> {
@@ -560,6 +821,68 @@ mod tests {
                 revoked: false,
             }),
         }
+    }
+
+    fn host_context() -> SteelMutationHostContext {
+        SteelMutationHostContext::new(ArtifactHash::digest(EXPORTED_POLICY.as_bytes()))
+            .with_session_capabilities([STEEL_MUTATION_SESSION_CAPABILITY, WORKSPACE_MUTATION_SESSION_CAPABILITY])
+            .with_target_hash(ArtifactHash::digest(b"current target bytes"))
+    }
+
+    #[test]
+    fn preflight_receipt_is_ready_without_writing_when_policy_ucan_and_session_capabilities_pass() {
+        let receipt = preflight_steel_mutation_host_function(&policy(), &base_request(), &host_context());
+
+        assert_eq!(receipt.schema, STEEL_MUTATION_PREFLIGHT_SCHEMA);
+        assert_eq!(receipt.status, SteelMutationHostPreflightStatus::Ready);
+        assert_eq!(receipt.reason_code, SteelMutationHostPreflightReason::Ready);
+        assert_eq!(receipt.host_function.as_deref(), Some("steel.host.apply_mutation"));
+        assert_eq!(receipt.normalized_path.as_deref(), Some("crates/clankers-prompts/src/lib.rs"));
+        assert_eq!(receipt.verification_profile.as_deref(), Some("prompt-schema-and-smoke"));
+        assert!(receipt.checkpoint.required);
+        assert_eq!(receipt.checkpoint.target_hash, host_context().target_hash);
+        assert!(!receipt.writes_performed);
+        assert!(receipt.receipt_hash().prefixed().starts_with("b3:"));
+    }
+
+    #[test]
+    fn preflight_blocks_when_session_lacks_mutation_capability() {
+        let context = SteelMutationHostContext::new(ArtifactHash::digest(EXPORTED_POLICY.as_bytes()))
+            .with_session_capabilities([WORKSPACE_MUTATION_SESSION_CAPABILITY])
+            .with_target_hash(ArtifactHash::digest(b"current target bytes"));
+        let receipt = preflight_steel_mutation_host_function(&policy(), &base_request(), &context);
+
+        assert_eq!(receipt.status, SteelMutationHostPreflightStatus::Blocked);
+        assert_eq!(receipt.reason_code, SteelMutationHostPreflightReason::MissingSessionCapability);
+        assert_eq!(receipt.decision.outcome, SteelMutationDecisionOutcome::Allowed);
+        assert!(!receipt.writes_performed);
+    }
+
+    #[test]
+    fn preflight_blocks_disabled_host_function_and_dirty_uncheckpointed_repo() {
+        let disabled_context = host_context().with_disabled_tools(["steel.host.apply_mutation"]);
+        let disabled = preflight_steel_mutation_host_function(&policy(), &base_request(), &disabled_context);
+        assert_eq!(disabled.status, SteelMutationHostPreflightStatus::Blocked);
+        assert_eq!(disabled.reason_code, SteelMutationHostPreflightReason::DisabledHostFunction);
+
+        let dirty_context = host_context().with_dirty_repository(None);
+        let dirty = preflight_steel_mutation_host_function(&policy(), &base_request(), &dirty_context);
+        assert_eq!(dirty.status, SteelMutationHostPreflightStatus::Blocked);
+        assert_eq!(dirty.reason_code, SteelMutationHostPreflightReason::DirtyRepositoryNeedsCheckpoint);
+        assert_eq!(dirty.checkpoint.checkpoint_id, None);
+    }
+
+    #[test]
+    fn preflight_blocks_rollback_required_request_without_target_hash() {
+        let context = SteelMutationHostContext::new(ArtifactHash::digest(EXPORTED_POLICY.as_bytes()))
+            .with_session_capabilities([STEEL_MUTATION_SESSION_CAPABILITY, WORKSPACE_MUTATION_SESSION_CAPABILITY]);
+        let receipt = preflight_steel_mutation_host_function(&policy(), &base_request(), &context);
+
+        assert_eq!(receipt.status, SteelMutationHostPreflightStatus::Blocked);
+        assert_eq!(receipt.reason_code, SteelMutationHostPreflightReason::MissingTargetHash);
+        assert!(receipt.checkpoint.required);
+        assert_eq!(receipt.target_hash, None);
+        assert!(!receipt.writes_performed);
     }
 
     #[test]
