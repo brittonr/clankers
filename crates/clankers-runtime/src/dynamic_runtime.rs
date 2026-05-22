@@ -172,6 +172,57 @@ pub struct FakeSteelOrchestrationReceipt {
     pub authorization_receipt: DynamicRuntimeActionReceipt,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct WasmToolExecutionProfile {
+    pub runtime_profile: String,
+    pub allowed_imports: BTreeSet<String>,
+    pub required_session_capabilities: Vec<String>,
+    pub required_ucan_ability: String,
+    pub max_memory_pages: u32,
+    pub max_fuel: u64,
+    pub max_time_ms: u64,
+    pub input_schema: String,
+    pub output_schema: String,
+    pub receipt_prefix: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct WasmToolExecutionRequest {
+    pub tool_name: String,
+    pub target_resource: String,
+    pub required_imports: Vec<String>,
+    pub input_summary: String,
+    pub requested_memory_pages: u32,
+    pub requested_fuel: u64,
+    pub requested_time_ms: u64,
+    pub input_schema: String,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum WasmToolExecutionStatus {
+    Completed,
+    Blocked,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct WasmToolExecutionReceipt {
+    pub status: WasmToolExecutionStatus,
+    pub authorization_receipt: DynamicRuntimeActionReceipt,
+    pub used_imports: Vec<String>,
+    pub memory_pages: u32,
+    pub fuel: u64,
+    pub time_ms: u64,
+    pub output_hash: Option<ArtifactHash>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct CrossLayerFixtureReceipt {
+    pub nickel_profile_validated: bool,
+    pub steel_route_receipt: FakeSteelOrchestrationReceipt,
+    pub wasm_execution_receipt: WasmToolExecutionReceipt,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum DynamicRuntimeActionStatus {
@@ -261,6 +312,120 @@ pub fn steel_ambient_access_negative_fixtures() -> Vec<FakeSteelOrchestrationReq
             input_summary: format!("attempted ambient {} access", kind.route_hint()),
         })
         .collect()
+}
+
+#[must_use]
+pub fn run_fake_wasm_tool_execution(
+    profile: &WasmToolExecutionProfile,
+    request: &WasmToolExecutionRequest,
+    context: &DynamicRuntimeAuthorizationContext,
+) -> WasmToolExecutionReceipt {
+    let input_hash = ArtifactHash::digest(request.input_summary.as_bytes());
+    let envelope = DynamicRuntimeActionEnvelope {
+        schema: DYNAMIC_RUNTIME_ACTION_SCHEMA.to_string(),
+        action_id: format!("wasm:{}", route_slug(&request.tool_name)),
+        runtime: DynamicRuntimeKind::Wasm,
+        runtime_profile: profile.runtime_profile.clone(),
+        action_kind: DynamicRuntimeActionKind::Tool,
+        action_name: request.tool_name.clone(),
+        target_resource: request.target_resource.clone(),
+        receipt_destination: format!(
+            "{}/{}.json",
+            profile.receipt_prefix.trim_end_matches('/'),
+            route_slug(&request.tool_name)
+        ),
+        required_ucan_ability: profile.required_ucan_ability.clone(),
+        required_session_capabilities: profile.required_session_capabilities.clone(),
+        input_hash,
+        input_bytes: request.input_summary.len() as u64,
+        redaction: DynamicRuntimeRedactionClass::MetadataOnly,
+    };
+
+    let (authorization_receipt, status) = if request.input_schema != profile.input_schema {
+        (
+            dynamic_runtime_receipt(
+                &envelope,
+                DynamicRuntimeActionStatus::InvalidEnvelope,
+                DynamicRuntimeActionReason::MissingRequiredField,
+                "Wasm tool input schema did not match the execution profile".to_string(),
+            ),
+            WasmToolExecutionStatus::Blocked,
+        )
+    } else if request.required_imports.iter().any(|import| !profile.allowed_imports.contains(import)) {
+        (
+            dynamic_runtime_receipt(
+                &envelope,
+                DynamicRuntimeActionStatus::PolicyDenied,
+                DynamicRuntimeActionReason::UnsupportedAction,
+                "Wasm tool requested an import not exposed by the profile".to_string(),
+            ),
+            WasmToolExecutionStatus::Blocked,
+        )
+    } else if request.requested_memory_pages > profile.max_memory_pages
+        || request.requested_fuel > profile.max_fuel
+        || request.requested_time_ms > profile.max_time_ms
+    {
+        (
+            dynamic_runtime_receipt(
+                &envelope,
+                DynamicRuntimeActionStatus::PolicyDenied,
+                DynamicRuntimeActionReason::InputTooLarge,
+                "Wasm tool exceeded memory, fuel, or time budget".to_string(),
+            ),
+            WasmToolExecutionStatus::Blocked,
+        )
+    } else {
+        let receipt = authorize_dynamic_runtime_action(&envelope, context);
+        let status = if receipt.status == DynamicRuntimeActionStatus::Allowed {
+            WasmToolExecutionStatus::Completed
+        } else {
+            WasmToolExecutionStatus::Blocked
+        };
+        (receipt, status)
+    };
+
+    let output_hash = if status == WasmToolExecutionStatus::Completed {
+        Some(ArtifactHash::digest(
+            format!("{}:{}:{:?}", request.tool_name, profile.output_schema, authorization_receipt.receipt_hash)
+                .as_bytes(),
+        ))
+    } else {
+        None
+    };
+
+    WasmToolExecutionReceipt {
+        status,
+        authorization_receipt,
+        used_imports: sorted_unique(request.required_imports.clone()),
+        memory_pages: request.requested_memory_pages,
+        fuel: request.requested_fuel,
+        time_ms: request.requested_time_ms,
+        output_hash,
+    }
+}
+
+#[must_use]
+pub fn run_cross_layer_fixture(
+    steel_profile: &FakeSteelOrchestrationProfile,
+    steel_request: &FakeSteelOrchestrationRequest,
+    wasm_profile: &WasmToolExecutionProfile,
+    wasm_request: &WasmToolExecutionRequest,
+    context: &DynamicRuntimeAuthorizationContext,
+) -> CrossLayerFixtureReceipt {
+    let steel_route_receipt = run_fake_steel_orchestration(steel_profile, steel_request, context);
+    let wasm_execution_receipt =
+        if steel_route_receipt.authorization_receipt.status == DynamicRuntimeActionStatus::Allowed {
+            run_fake_wasm_tool_execution(wasm_profile, wasm_request, context)
+        } else {
+            let mut blocked_request = wasm_request.clone();
+            blocked_request.input_summary = "blocked before Wasm dispatch".to_string();
+            run_fake_wasm_tool_execution(wasm_profile, &blocked_request, context)
+        };
+    CrossLayerFixtureReceipt {
+        nickel_profile_validated: true,
+        steel_route_receipt,
+        wasm_execution_receipt,
+    }
 }
 
 pub fn run_fake_steel_orchestration(
@@ -752,6 +917,144 @@ mod tests {
         assert_eq!(receipt.authorization_receipt.status, DynamicRuntimeActionStatus::PolicyDenied);
         assert_eq!(receipt.authorization_receipt.reason, DynamicRuntimeActionReason::MissingSessionCapability);
         assert!(!receipt.authorization_receipt.writes_performed);
+    }
+
+    fn wasm_profile() -> WasmToolExecutionProfile {
+        WasmToolExecutionProfile {
+            runtime_profile: "wasm-tool/default".to_string(),
+            allowed_imports: BTreeSet::from(["clock.monotonic".to_string(), "input.json".to_string()]),
+            required_session_capabilities: vec!["wasm_tool_execute".to_string()],
+            required_ucan_ability: "clankers/wasm/tool.execute".to_string(),
+            max_memory_pages: 8,
+            max_fuel: 10_000,
+            max_time_ms: 250,
+            input_schema: "schema:tool-input/v1".to_string(),
+            output_schema: "schema:tool-output/v1".to_string(),
+            receipt_prefix: "target/polyglot-agent/wasm".to_string(),
+        }
+    }
+
+    fn wasm_request() -> WasmToolExecutionRequest {
+        WasmToolExecutionRequest {
+            tool_name: "wasm.safe_tool".to_string(),
+            target_resource: "tool:wasm.safe_tool".to_string(),
+            required_imports: vec!["input.json".to_string()],
+            input_summary: "bounded generated-code input".to_string(),
+            requested_memory_pages: 4,
+            requested_fuel: 5_000,
+            requested_time_ms: 100,
+            input_schema: "schema:tool-input/v1".to_string(),
+        }
+    }
+
+    fn wasm_context() -> DynamicRuntimeAuthorizationContext {
+        DynamicRuntimeAuthorizationContext {
+            allowed_runtime_profiles: BTreeSet::from(["wasm-tool/default".to_string()]),
+            allowed_actions: BTreeSet::from(["tool:wasm.safe_tool".to_string()]),
+            granted_ucan_abilities: BTreeSet::from(["clankers/wasm/tool.execute".to_string()]),
+            session_capabilities: BTreeSet::from(["wasm_tool_execute".to_string()]),
+            disabled_actions: BTreeSet::new(),
+            max_input_bytes: 1024,
+        }
+    }
+
+    #[test]
+    fn fake_wasm_tool_executes_with_explicit_imports_and_budgets() {
+        let receipt = run_fake_wasm_tool_execution(&wasm_profile(), &wasm_request(), &wasm_context());
+
+        assert_eq!(receipt.status, WasmToolExecutionStatus::Completed);
+        assert_eq!(receipt.authorization_receipt.status, DynamicRuntimeActionStatus::Allowed);
+        assert_eq!(receipt.used_imports, vec!["input.json"]);
+        assert_eq!(receipt.memory_pages, 4);
+        assert_eq!(receipt.fuel, 5_000);
+        assert_eq!(receipt.time_ms, 100);
+        assert!(receipt.output_hash.is_some());
+        assert!(!receipt.authorization_receipt.writes_performed);
+    }
+
+    #[test]
+    fn fake_wasm_negative_fixtures_fail_closed_before_execution() {
+        let profile = wasm_profile();
+        let context = wasm_context();
+
+        let mut missing_import = wasm_request();
+        missing_import.required_imports.push("network.tcp".to_string());
+        let missing_import_receipt = run_fake_wasm_tool_execution(&profile, &missing_import, &context);
+        assert_eq!(missing_import_receipt.status, WasmToolExecutionStatus::Blocked);
+        assert_eq!(missing_import_receipt.authorization_receipt.reason, DynamicRuntimeActionReason::UnsupportedAction);
+        assert!(missing_import_receipt.output_hash.is_none());
+
+        let mut over_budget = wasm_request();
+        over_budget.requested_fuel = profile.max_fuel + 1;
+        let over_budget_receipt = run_fake_wasm_tool_execution(&profile, &over_budget, &context);
+        assert_eq!(over_budget_receipt.status, WasmToolExecutionStatus::Blocked);
+        assert_eq!(over_budget_receipt.authorization_receipt.reason, DynamicRuntimeActionReason::InputTooLarge);
+
+        let mut malformed = wasm_request();
+        malformed.input_schema = "schema:wrong".to_string();
+        let malformed_receipt = run_fake_wasm_tool_execution(&profile, &malformed, &context);
+        assert_eq!(malformed_receipt.authorization_receipt.status, DynamicRuntimeActionStatus::InvalidEnvelope);
+        assert_eq!(malformed_receipt.authorization_receipt.reason, DynamicRuntimeActionReason::MissingRequiredField);
+
+        let mut missing_capability = context.clone();
+        missing_capability.session_capabilities.clear();
+        let missing_capability_receipt = run_fake_wasm_tool_execution(&profile, &wasm_request(), &missing_capability);
+        assert_eq!(missing_capability_receipt.status, WasmToolExecutionStatus::Blocked);
+        assert_eq!(
+            missing_capability_receipt.authorization_receipt.reason,
+            DynamicRuntimeActionReason::MissingSessionCapability
+        );
+    }
+
+    #[test]
+    fn cross_layer_fixture_routes_steel_to_wasm_with_redacted_receipts() {
+        let mut steel_profile = fake_steel_profile();
+        steel_profile.allowed_host_functions.insert("steel.host.dispatch_wasm_tool".to_string());
+        steel_profile.default_ucan_ability = "clankers/wasm/tool.execute".to_string();
+        steel_profile.required_session_capabilities = vec!["wasm_tool_execute".to_string()];
+
+        let steel_request = FakeSteelOrchestrationRequest {
+            script_id: "steel-to-wasm".to_string(),
+            route_hint: "dispatch wasm".to_string(),
+            target_resource: "tool:wasm.safe_tool".to_string(),
+            requested_host_function: "steel.host.dispatch_wasm_tool".to_string(),
+            input_summary: "choose generated code tool with private prompt".to_string(),
+        };
+        let mut context = wasm_context();
+        context.allowed_runtime_profiles.insert("steel-orchestrator/default".to_string());
+        context.allowed_actions.insert("host_function:steel.host.dispatch_wasm_tool".to_string());
+
+        let receipt =
+            run_cross_layer_fixture(&steel_profile, &steel_request, &wasm_profile(), &wasm_request(), &context);
+
+        assert!(receipt.nickel_profile_validated);
+        assert_eq!(receipt.steel_route_receipt.authorization_receipt.status, DynamicRuntimeActionStatus::Allowed);
+        assert_eq!(receipt.wasm_execution_receipt.status, WasmToolExecutionStatus::Completed);
+        let serialized = serde_json::to_string(&receipt).expect("cross-layer receipt json");
+        assert!(!serialized.contains("private prompt"));
+        assert!(!serialized.contains("bounded generated-code input"));
+        assert!(!serialized.contains("Bearer"));
+        assert!(!serialized.contains("token"));
+    }
+
+    #[test]
+    fn cross_layer_policy_and_ucan_denials_fail_closed() {
+        let profile = wasm_profile();
+        let request = wasm_request();
+
+        let mut no_ucan = wasm_context();
+        no_ucan.granted_ucan_abilities.clear();
+        let no_ucan_receipt = run_fake_wasm_tool_execution(&profile, &request, &no_ucan);
+        assert_eq!(no_ucan_receipt.authorization_receipt.status, DynamicRuntimeActionStatus::UcanDenied);
+        assert_eq!(no_ucan_receipt.authorization_receipt.reason, DynamicRuntimeActionReason::MissingUcanAbility);
+        assert_eq!(no_ucan_receipt.status, WasmToolExecutionStatus::Blocked);
+
+        let mut ucan_but_no_policy = wasm_context();
+        ucan_but_no_policy.allowed_actions.clear();
+        let policy_receipt = run_fake_wasm_tool_execution(&profile, &request, &ucan_but_no_policy);
+        assert_eq!(policy_receipt.authorization_receipt.status, DynamicRuntimeActionStatus::PolicyDenied);
+        assert_eq!(policy_receipt.authorization_receipt.reason, DynamicRuntimeActionReason::UnsupportedAction);
+        assert_eq!(policy_receipt.status, WasmToolExecutionStatus::Blocked);
     }
 
     #[test]

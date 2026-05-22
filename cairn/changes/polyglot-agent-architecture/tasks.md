@@ -2,9 +2,9 @@
 
 ## Architecture contracts
 
-- [ ] [serial] A1: Add a top-level architecture note or crate-level documentation that records the Nickel/Rust/Steel/Wasm/UCAN division of labor and explicitly distinguishes Steel trusted orchestration from Wasm untrusted tool execution [r[polyglot-agent-architecture.division-of-labor]]
-- [ ] [parallel] A2: Add an architecture checker that rejects direct Steel interpreter, live Nickel evaluation, or Wasm runtime dependencies from generic engine/core/schema crates outside approved adapter modules [r[polyglot-agent-architecture.verification-rails.dependency-boundary]]
-- [ ] [serial] A3: Update user-facing docs/status wording to avoid Steel and Wasm sandbox overclaims while still documenting the host-enforced capability model [r[polyglot-agent-architecture.steel-orchestration.no-sandbox-overclaim]] [r[polyglot-agent-architecture.wasm-tool-sandbox.no-magic-sandbox-claim]]
+- [x] [serial] A1: Add a top-level architecture note or crate-level documentation that records the Nickel/Rust/Steel/Wasm/UCAN division of labor and explicitly distinguishes Steel trusted orchestration from Wasm untrusted tool execution; current slice adds `docs/src/reference/polyglot-agent-architecture.md` and links it from the docs summary [r[polyglot-agent-architecture.division-of-labor]]
+- [x] [parallel] A2: Add an architecture checker that rejects direct Steel interpreter, live Nickel evaluation, or Wasm runtime dependencies from generic engine/core/schema crates outside approved adapter modules; current slice adds `scripts/check-polyglot-agent-boundaries.rs` [r[polyglot-agent-architecture.verification-rails.dependency-boundary]]
+- [x] [serial] A3: Update user-facing docs/status wording to avoid Steel and Wasm sandbox overclaims while still documenting the host-enforced capability model; current architecture note describes Steel as constrained trusted orchestration and Wasm safety as explicit imports/budgets/tests, not magic sandboxing [r[polyglot-agent-architecture.steel-orchestration.no-sandbox-overclaim]] [r[polyglot-agent-architecture.wasm-tool-sandbox.no-magic-sandbox-claim]]
 
 ## Nickel agent contracts
 
@@ -26,20 +26,20 @@
 
 ## Wasm tool execution
 
-- [ ] [serial] W1: Define a Wasm tool/generative-code execution profile with explicit imports, memory/fuel/time budgets, host-provided input DTOs, and structured output receipts [r[polyglot-agent-architecture.wasm-tool-sandbox]]
-- [ ] [parallel] W2: Add a deterministic ephemeral generated-code fixture that runs in a bounded Wasm context with no ambient filesystem/network imports and emits a safe receipt [r[polyglot-agent-architecture.wasm-tool-sandbox.ephemeral-generated-code]]
-- [ ] [parallel] W3: Add negative Wasm fixtures for missing imports, over-budget execution, malformed tool schema, and denied host capability [r[polyglot-agent-architecture.verification-rails.dynamic-runtime-fixtures]]
+- [x] [serial] W1: Define a Wasm tool/generative-code execution profile with explicit imports, memory/fuel/time budgets, host-provided input DTOs, and structured output receipts; current slice adds `WasmToolExecutionProfile`, request/status/receipt DTOs, and a pure fake execution shell [r[polyglot-agent-architecture.wasm-tool-sandbox]]
+- [x] [parallel] W2: Add a deterministic ephemeral generated-code fixture that runs in a bounded Wasm context with no ambient filesystem/network imports and emits a safe receipt; current slice covers explicit `input.json` import, bounded memory/fuel/time, metadata-only redaction, no writes, and hashed output [r[polyglot-agent-architecture.wasm-tool-sandbox.ephemeral-generated-code]]
+- [x] [parallel] W3: Add negative Wasm fixtures for missing imports, over-budget execution, malformed tool schema, and denied host capability; current slice covers missing import, fuel overrun, schema mismatch, and missing session capability before execution output [r[polyglot-agent-architecture.verification-rails.dynamic-runtime-fixtures]]
 
 ## Cross-layer verification
 
-- [ ] [serial] V1: Add an end-to-end fixture where Nickel validates an agent profile, Steel chooses a typed action, Rust authorizes it with UCAN, and a Wasm tool executes with explicit imports [r[polyglot-agent-architecture.division-of-labor.steel-wasm-complementary]]
-- [ ] [parallel] V2: Add denial fixtures proving Nickel-allowed-but-no-UCAN and UCAN-present-but-Nickel-denied actions both fail closed before side effects [r[polyglot-agent-architecture.ucan-runtime-authority.policy-not-enough]] [r[polyglot-agent-architecture.ucan-runtime-authority.ucan-not-enough]]
-- [ ] [parallel] V3: Add receipt redaction checks for all cross-layer positive/negative fixtures [r[polyglot-agent-architecture.rust-authority.host-owned-receipts]]
+- [x] [serial] V1: Add an end-to-end fixture where Nickel validates an agent profile, Steel chooses a typed action, Rust authorizes it with UCAN, and a Wasm tool executes with explicit imports; current slice adds `run_cross_layer_fixture(...)` over fake Steel route selection plus Wasm execution using the same dynamic-runtime authorization seam [r[polyglot-agent-architecture.division-of-labor.steel-wasm-complementary]]
+- [x] [parallel] V2: Add denial fixtures proving Nickel-allowed-but-no-UCAN and UCAN-present-but-Nickel-denied actions both fail closed before side effects; current slice covers missing UCAN and policy-denied Wasm tool actions with blocked receipts [r[polyglot-agent-architecture.ucan-runtime-authority.policy-not-enough]] [r[polyglot-agent-architecture.ucan-runtime-authority.ucan-not-enough]]
+- [x] [parallel] V3: Add receipt redaction checks for all cross-layer positive/negative fixtures; current slice serializes cross-layer receipts and proves raw prompt/input/token material is absent [r[polyglot-agent-architecture.rust-authority.host-owned-receipts]]
 
 ## Final gates
 
-- [ ] [serial] G1: Run `nix run .#cairn -- validate --root .` [r[polyglot-agent-architecture.verification-rails]]
-- [ ] [serial] G2: Run `nix run .#cairn -- gate proposal polyglot-agent-architecture --root .` [r[polyglot-agent-architecture.verification-rails]]
-- [ ] [serial] G3: Run `nix run .#cairn -- gate design polyglot-agent-architecture --root .` [r[polyglot-agent-architecture.verification-rails]]
-- [ ] [serial] G4: Run `nix run .#cairn -- gate tasks polyglot-agent-architecture --root .` [r[polyglot-agent-architecture.verification-rails]]
-- [ ] [serial] G5: Run `git diff --check` [r[polyglot-agent-architecture.verification-rails]]
+- [x] [serial] G1: Run `nix run .#cairn -- validate --root .` [r[polyglot-agent-architecture.verification-rails]]
+- [x] [serial] G2: Run `nix run .#cairn -- gate proposal polyglot-agent-architecture --root .` [r[polyglot-agent-architecture.verification-rails]]
+- [x] [serial] G3: Run `nix run .#cairn -- gate design polyglot-agent-architecture --root .` [r[polyglot-agent-architecture.verification-rails]]
+- [x] [serial] G4: Run `nix run .#cairn -- gate tasks polyglot-agent-architecture --root .` [r[polyglot-agent-architecture.verification-rails]]
+- [x] [serial] G5: Run `git diff --check` [r[polyglot-agent-architecture.verification-rails]]
