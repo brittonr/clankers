@@ -14,9 +14,9 @@
 
 ## Rust authority and UCAN
 
-- [ ] [serial] R1: Add a typed dynamic-runtime action envelope for Steel and Wasm requests that records requested host function/tool, target resource, profile, and receipt destination before side effects [r[polyglot-agent-architecture.rust-authority.typed-host-function-seam]]
-- [ ] [parallel] R2: Route dynamic-runtime action authorization through Rust-owned policy, UCAN, disabled-tool/session capability, and profile checks before any host effect [r[polyglot-agent-architecture.rust-authority]] [r[polyglot-agent-architecture.ucan-runtime-authority]]
-- [ ] [parallel] R3: Add safe deterministic receipts for allowed, policy-denied, UCAN-denied, disabled, and failed dynamic-runtime actions without raw prompts, credentials, compact UCAN tokens, provider payloads, or oversized bodies [r[polyglot-agent-architecture.rust-authority.host-owned-receipts]]
+- [x] [serial] R1: Add a typed dynamic-runtime action envelope for Steel and Wasm requests that records requested host function/tool, target resource, profile, and receipt destination before side effects; current slice adds `clankers-runtime::dynamic_runtime::DynamicRuntimeActionEnvelope` [r[polyglot-agent-architecture.rust-authority.typed-host-function-seam]]
+- [x] [parallel] R2: Route dynamic-runtime action authorization through Rust-owned policy, UCAN, disabled-tool/session capability, and profile checks before any host effect; current slice adds pure authorization context/decision logic for policy, UCAN, disabled actions, profile, capability, and budget checks [r[polyglot-agent-architecture.rust-authority]] [r[polyglot-agent-architecture.ucan-runtime-authority]]
+- [x] [parallel] R3: Add safe deterministic receipts for allowed, policy-denied, UCAN-denied, disabled, and failed dynamic-runtime actions without raw prompts, credentials, compact UCAN tokens, provider payloads, or oversized bodies; current slice emits hash-bound no-write receipts and tests redaction/no-side-effect behavior [r[polyglot-agent-architecture.rust-authority.host-owned-receipts]]
 
 ## Steel orchestration
 
