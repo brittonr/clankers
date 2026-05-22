@@ -36,6 +36,19 @@ Clankers already supports built-in tools, Extism WASM plugins, stdio plugin tool
 
 **Rationale:** The risk is not whether arithmetic evaluates, but whether the feature preserves Clankers capability, redaction, and daemon parity contracts.
 
+## Constraints
+
+- **Default authority:** Steel code starts with zero host authority. No filesystem, process, network, provider/router, credential, daemon/session, TUI, environment, clock, or native tool access is available unless Clankers registers a named host function for that exact evaluation.
+- **Host-function allowlist:** Host functions are explicit, typed, and per-profile/per-session allowlisted. A script cannot discover or invoke non-registered host functions, and unknown names fail closed with stable denial issue codes.
+- **Capability parity:** Every host function that reaches an existing tool or effect seam must pass the same UCAN/capability, disabled-tool, and session policy checks that a native Clankers tool invocation would pass.
+- **Surface gating:** `clankers steel status|eval|run` are the initial surfaces. Agent-visible `steel_eval` is optional and must be disabled by default unless a reviewed config/toolset/capability path enables it.
+- **Dependency isolation:** Direct `steel-lang` imports belong only in the Steel runtime wrapper crate/module and its tests. CLI, daemon, TUI, attach, provider, and root shell paths use Clankers DTOs/adapters only.
+- **Profiles, not ad hoc limits:** Source bytes, output bytes, host-call count, recursion/step/fuel budget when available, and shell wall-clock timeout are named profile fields. Implementations must not bury these as unexplained literals.
+- **Deterministic receipts:** Receipts include stable runtime profile, Steel dependency/version metadata, allowed host-function names, result class, issue codes, and bounded redacted diagnostics. Receipts exclude raw script bodies by default, credentials, provider payloads, absolute secret paths, unbounded stdout/stderr, and raw host exceptions.
+- **No sandbox overclaim:** The first implementation is a constrained embedded interpreter, not a VM/security sandbox. Documentation and receipts must not claim OS-level isolation unless a later change adds and verifies it.
+- **No live fallback:** Missing host functions, unavailable budgets, disabled tools, or failed policy checks never fall back to ambient shell access, less restrictive profiles, subprocess execution, or live provider calls.
+- **Deterministic testability:** Positive and negative fixtures must run without live credentials, provider calls, sockets, daemon state, TUI state, or external network access.
+
 ## Risks / Trade-offs
 
 - **Upstream API drift:** Steel APIs may change. Keep the direct dependency isolated in the runtime wrapper and pin/update Cargo/Nix together.

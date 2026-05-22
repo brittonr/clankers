@@ -70,9 +70,37 @@ Steel evaluation MUST enforce a named runtime profile with bounded source size, 
 - **THEN** Clankers MUST return a typed resource-limit failure
 - **AND** it MUST NOT retry with a less restrictive profile automatically
 
+### Requirement: Implementation constraints are explicit contracts [r[steel-lisp-runtime.implementation-constraints]]
+
+The Steel runtime implementation MUST enforce deny-by-default authority, named runtime profiles, direct-dependency isolation, deterministic receipt redaction, no sandbox overclaim, no live fallback, and credential-free deterministic fixtures as first-class implementation constraints rather than informal guidance.
+
+#### Scenario: default profile has zero ambient authority [r[steel-lisp-runtime.implementation-constraints.zero-ambient-authority]]
+- GIVEN a Steel script runs under the default runtime profile
+- **WHEN** it attempts filesystem, process, network, provider/router, credential, daemon/session, TUI, environment, clock, or native tool access without a registered host function
+- **THEN** Clankers MUST deny the request with a stable issue code
+- **AND** no ambient authority may be used to satisfy the request
+
+#### Scenario: shell modules cannot depend on Steel internals [r[steel-lisp-runtime.implementation-constraints.dependency-isolation]]
+- GIVEN implementation code outside the Steel runtime wrapper or wrapper tests is compiled or checked by architecture rails
+- **WHEN** root CLI, daemon, TUI, attach, provider, controller, or embeddable-engine shell modules mention Steel interpreter APIs directly
+- **THEN** verification MUST fail and name the offending module
+- **AND** the fix MUST move Steel-specific code behind the runtime wrapper or an explicit adapter
+
+#### Scenario: profiles define all budgets [r[steel-lisp-runtime.implementation-constraints.profile-owned-budgets]]
+- GIVEN an implementation enforces source, output, host-call, execution-step/fuel, or wall-clock limits
+- **WHEN** those limits are configured or reported
+- **THEN** each limit MUST come from a named runtime profile field
+- **AND** verification MUST reject unexplained ad hoc literals for those budgets at public/runtime seams
+
+#### Scenario: no sandbox claim without isolation proof [r[steel-lisp-runtime.implementation-constraints.no-sandbox-overclaim]]
+- GIVEN Steel support is documented, surfaced in status output, or reported in receipts
+- **WHEN** the implementation lacks OS-level sandbox verification
+- **THEN** Clankers MUST describe the runtime as a constrained embedded interpreter
+- **AND** it MUST NOT claim VM, process, or OS-level sandbox isolation
+
 ### Requirement: Verification proves allowed and denied behavior [r[steel-lisp-runtime.verification-contracts]]
 
-The implementation MUST include deterministic tests or checked fixtures for successful Lisp evaluation, approved host-function execution, denied host functions, resource-limit behavior, receipt redaction, CLI status/eval/run output, and daemon/tool parity when an agent-visible tool is enabled.
+The implementation MUST include deterministic tests or checked fixtures for successful Lisp evaluation, approved host-function execution, denied host functions, implementation constraints, resource-limit behavior, receipt redaction, CLI status/eval/run output, and daemon/tool parity when an agent-visible tool is enabled.
 
 #### Scenario: positive runtime fixture is deterministic [r[steel-lisp-runtime.verification-contracts.positive-fixture]]
 - GIVEN the Steel runtime test fixture evaluates a pure expression and an approved fake host function
