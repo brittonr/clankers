@@ -272,6 +272,9 @@ async fn dispatch(
         Some(Commands::Rpc { identity, action }) => {
             clankers::commands::rpc::run(&ctx, identity, action).await?;
         }
+        Some(Commands::Steel { action }) => {
+            clankers::commands::steel::run(&ctx, action)?;
+        }
         Some(Commands::Token { action }) => {
             clankers::commands::token::run(&ctx, action)?;
         }

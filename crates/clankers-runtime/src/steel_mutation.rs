@@ -18,6 +18,7 @@ pub const STEEL_MUTATION_RECEIPT_SCHEMA: &str = "clankers.steel_self_mutation.re
 pub const STEEL_MUTATION_DECISION_SCHEMA: &str = "clankers.steel_self_mutation.decision.v1";
 pub const STEEL_MUTATION_PREFLIGHT_SCHEMA: &str = "clankers.steel_self_mutation.preflight.v1";
 pub const STEEL_MUTATION_APPLY_SCHEMA: &str = "clankers.steel_self_mutation.apply.v1";
+pub const STEEL_MUTATION_ROLLBACK_SCHEMA: &str = "clankers.steel_self_mutation.rollback.v1";
 const STEEL_MUTATION_SESSION_CAPABILITY: &str = "steel-self-mutation";
 const WORKSPACE_MUTATION_SESSION_CAPABILITY: &str = "workspace-mutation";
 
@@ -421,6 +422,54 @@ pub enum SteelMutationIoError {
     Failed { message: String },
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SteelMutationRollbackReceipt {
+    pub schema: String,
+    pub status: SteelMutationRollbackStatus,
+    pub reason_code: SteelMutationRollbackReason,
+    pub safe_message: String,
+    pub normalized_path: Option<String>,
+    pub policy_hash: ArtifactHash,
+    pub current_target_hash: Option<ArtifactHash>,
+    pub recorded_post_apply_hash: Option<ArtifactHash>,
+    pub backup_hash: Option<ArtifactHash>,
+    pub restored_target_hash: Option<ArtifactHash>,
+    pub writes_performed: bool,
+}
+
+impl SteelMutationRollbackReceipt {
+    #[must_use]
+    pub fn receipt_hash(&self) -> ArtifactHash {
+        let bytes = serde_json::to_vec(self).expect("Steel mutation rollback receipt serializes");
+        ArtifactHash::digest(&bytes)
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum SteelMutationRollbackStatus {
+    RolledBack,
+    Blocked,
+    FailedWrite,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum SteelMutationRollbackReason {
+    RolledBack,
+    ApplyReceiptNotRollbackable,
+    MissingRecordedPostApplyHash,
+    MissingBackupHash,
+    BackupHashMismatch,
+    CurrentTargetChanged,
+    TargetReadFailed,
+    TargetWriteFailed,
+}
+
+pub trait SteelMutationBackupStore {
+    fn read_backup(&self, backup_hash: ArtifactHash) -> Result<Vec<u8>, SteelMutationIoError>;
+}
+
 #[derive(Debug, Error, Clone, PartialEq, Eq)]
 pub enum SteelMutationPolicyParseError {
     #[error("failed to parse Steel mutation policy: {message}")]
@@ -431,6 +480,119 @@ pub fn parse_steel_mutation_policy(text: &str) -> Result<SteelMutationPolicy, St
     serde_json::from_str(text).map_err(|error| SteelMutationPolicyParseError::Json {
         message: error.to_string(),
     })
+}
+
+#[must_use]
+pub fn rollback_steel_mutation_host_function(
+    apply_receipt: &SteelMutationApplyReceipt,
+    target_store: &mut dyn SteelMutationTargetStore,
+    backup_store: &dyn SteelMutationBackupStore,
+) -> SteelMutationRollbackReceipt {
+    let Some(path) = apply_receipt.normalized_path.clone() else {
+        return rollback_receipt(
+            apply_receipt,
+            SteelMutationRollbackStatus::Blocked,
+            SteelMutationRollbackReason::ApplyReceiptNotRollbackable,
+            "apply receipt does not identify a rollback target",
+            None,
+            None,
+            false,
+        );
+    };
+    let Some(recorded_post_apply_hash) = apply_receipt.target_hash_after else {
+        return rollback_receipt(
+            apply_receipt,
+            SteelMutationRollbackStatus::Blocked,
+            SteelMutationRollbackReason::MissingRecordedPostApplyHash,
+            "rollback requires recorded post-apply target hash",
+            None,
+            None,
+            false,
+        );
+    };
+    let Some(backup_hash) = apply_receipt.backup_hash else {
+        return rollback_receipt(
+            apply_receipt,
+            SteelMutationRollbackStatus::Blocked,
+            SteelMutationRollbackReason::MissingBackupHash,
+            "rollback requires recorded backup hash",
+            None,
+            None,
+            false,
+        );
+    };
+    let current = match target_store.read_target(&path) {
+        Ok(bytes) => bytes,
+        Err(_) => {
+            return rollback_receipt(
+                apply_receipt,
+                SteelMutationRollbackStatus::FailedWrite,
+                SteelMutationRollbackReason::TargetReadFailed,
+                "failed to read target before rollback",
+                None,
+                None,
+                false,
+            );
+        }
+    };
+    let current_hash = ArtifactHash::digest(&current);
+    if current_hash != recorded_post_apply_hash {
+        return rollback_receipt(
+            apply_receipt,
+            SteelMutationRollbackStatus::Blocked,
+            SteelMutationRollbackReason::CurrentTargetChanged,
+            "target changed after mutation; rollback refused to avoid clobbering operator edits",
+            Some(current_hash),
+            None,
+            false,
+        );
+    }
+    let backup = match backup_store.read_backup(backup_hash) {
+        Ok(bytes) => bytes,
+        Err(_) => {
+            return rollback_receipt(
+                apply_receipt,
+                SteelMutationRollbackStatus::Blocked,
+                SteelMutationRollbackReason::MissingBackupHash,
+                "backup bytes are unavailable for rollback",
+                Some(current_hash),
+                None,
+                false,
+            );
+        }
+    };
+    let actual_backup_hash = ArtifactHash::digest(&backup);
+    if actual_backup_hash != backup_hash {
+        return rollback_receipt(
+            apply_receipt,
+            SteelMutationRollbackStatus::Blocked,
+            SteelMutationRollbackReason::BackupHashMismatch,
+            "backup bytes do not match recorded backup hash",
+            Some(current_hash),
+            None,
+            false,
+        );
+    }
+    if target_store.write_target(&path, &backup).is_err() {
+        return rollback_receipt(
+            apply_receipt,
+            SteelMutationRollbackStatus::FailedWrite,
+            SteelMutationRollbackReason::TargetWriteFailed,
+            "failed to restore rollback backup bytes",
+            Some(current_hash),
+            None,
+            false,
+        );
+    }
+    rollback_receipt(
+        apply_receipt,
+        SteelMutationRollbackStatus::RolledBack,
+        SteelMutationRollbackReason::RolledBack,
+        "rollback restored recorded backup bytes after hash guards passed",
+        Some(current_hash),
+        Some(actual_backup_hash),
+        true,
+    )
 }
 
 #[must_use]
@@ -818,6 +980,30 @@ pub fn authorize_steel_mutation(policy: &SteelMutationPolicy, request: &SteelMut
         preflight_profile: Some(target.preflight_profile.clone()),
         verification_profile: Some(target.verification_profile.clone()),
         rollback_required: target.rollback_required,
+    }
+}
+
+fn rollback_receipt(
+    apply_receipt: &SteelMutationApplyReceipt,
+    status: SteelMutationRollbackStatus,
+    reason_code: SteelMutationRollbackReason,
+    message: impl Into<String>,
+    current_target_hash: Option<ArtifactHash>,
+    restored_target_hash: Option<ArtifactHash>,
+    writes_performed: bool,
+) -> SteelMutationRollbackReceipt {
+    SteelMutationRollbackReceipt {
+        schema: STEEL_MUTATION_ROLLBACK_SCHEMA.to_string(),
+        status,
+        reason_code,
+        safe_message: message.into(),
+        normalized_path: apply_receipt.normalized_path.clone(),
+        policy_hash: apply_receipt.policy_hash,
+        current_target_hash,
+        recorded_post_apply_hash: apply_receipt.target_hash_after,
+        backup_hash: apply_receipt.backup_hash,
+        restored_target_hash,
+        writes_performed,
     }
 }
 
@@ -1215,6 +1401,16 @@ mod tests {
         }
     }
 
+    struct MemoryBackupStore {
+        bytes: Vec<u8>,
+    }
+
+    impl SteelMutationBackupStore for MemoryBackupStore {
+        fn read_backup(&self, _backup_hash: ArtifactHash) -> Result<Vec<u8>, SteelMutationIoError> {
+            Ok(self.bytes.clone())
+        }
+    }
+
     struct FixedVerifier {
         status: SteelMutationVerificationStatus,
     }
@@ -1330,6 +1526,95 @@ mod tests {
         assert_eq!(store.bytes, new_body);
         assert_eq!(receipt.verification.status, SteelMutationVerificationStatus::Failed);
         assert_eq!(receipt.backup_hash, Some(ArtifactHash::digest(b"current target bytes")));
+    }
+
+    #[test]
+    fn rollback_restores_backup_only_after_post_apply_and_backup_hash_match() {
+        let new_body = b"updated prompt bytes";
+        let request = full_replace_request(new_body);
+        let mut store = MemoryTargetStore::new("crates/clankers-prompts/src/lib.rs", b"current target bytes");
+        let verifier = FixedVerifier {
+            status: SteelMutationVerificationStatus::Passed,
+        };
+        let apply_receipt = apply_steel_mutation_host_function(
+            &policy(),
+            &request,
+            &host_context(),
+            &SteelMutationPatchPayload::full_replace(new_body.to_vec()),
+            &mut store,
+            &verifier,
+        );
+        let backup_store = MemoryBackupStore {
+            bytes: b"current target bytes".to_vec(),
+        };
+
+        let rollback = rollback_steel_mutation_host_function(&apply_receipt, &mut store, &backup_store);
+
+        assert_eq!(rollback.schema, STEEL_MUTATION_ROLLBACK_SCHEMA);
+        assert_eq!(rollback.status, SteelMutationRollbackStatus::RolledBack);
+        assert_eq!(rollback.reason_code, SteelMutationRollbackReason::RolledBack);
+        assert!(rollback.writes_performed);
+        assert_eq!(store.bytes, b"current target bytes");
+        assert_eq!(rollback.backup_hash, Some(ArtifactHash::digest(b"current target bytes")));
+        assert_eq!(rollback.restored_target_hash, Some(ArtifactHash::digest(b"current target bytes")));
+        assert!(rollback.receipt_hash().prefixed().starts_with("b3:"));
+    }
+
+    #[test]
+    fn rollback_blocks_when_target_changed_after_apply() {
+        let new_body = b"updated prompt bytes";
+        let request = full_replace_request(new_body);
+        let mut store = MemoryTargetStore::new("crates/clankers-prompts/src/lib.rs", b"current target bytes");
+        let verifier = FixedVerifier {
+            status: SteelMutationVerificationStatus::Passed,
+        };
+        let apply_receipt = apply_steel_mutation_host_function(
+            &policy(),
+            &request,
+            &host_context(),
+            &SteelMutationPatchPayload::full_replace(new_body.to_vec()),
+            &mut store,
+            &verifier,
+        );
+        store.bytes = b"operator edit after apply".to_vec();
+        let backup_store = MemoryBackupStore {
+            bytes: b"current target bytes".to_vec(),
+        };
+
+        let rollback = rollback_steel_mutation_host_function(&apply_receipt, &mut store, &backup_store);
+
+        assert_eq!(rollback.status, SteelMutationRollbackStatus::Blocked);
+        assert_eq!(rollback.reason_code, SteelMutationRollbackReason::CurrentTargetChanged);
+        assert!(!rollback.writes_performed);
+        assert_eq!(store.bytes, b"operator edit after apply");
+    }
+
+    #[test]
+    fn rollback_blocks_when_backup_hash_does_not_match_receipt() {
+        let new_body = b"updated prompt bytes";
+        let request = full_replace_request(new_body);
+        let mut store = MemoryTargetStore::new("crates/clankers-prompts/src/lib.rs", b"current target bytes");
+        let verifier = FixedVerifier {
+            status: SteelMutationVerificationStatus::Passed,
+        };
+        let apply_receipt = apply_steel_mutation_host_function(
+            &policy(),
+            &request,
+            &host_context(),
+            &SteelMutationPatchPayload::full_replace(new_body.to_vec()),
+            &mut store,
+            &verifier,
+        );
+        let backup_store = MemoryBackupStore {
+            bytes: b"different backup bytes".to_vec(),
+        };
+
+        let rollback = rollback_steel_mutation_host_function(&apply_receipt, &mut store, &backup_store);
+
+        assert_eq!(rollback.status, SteelMutationRollbackStatus::Blocked);
+        assert_eq!(rollback.reason_code, SteelMutationRollbackReason::BackupHashMismatch);
+        assert!(!rollback.writes_performed);
+        assert_eq!(store.bytes, new_body);
     }
 
     #[test]

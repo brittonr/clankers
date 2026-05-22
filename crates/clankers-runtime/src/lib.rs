@@ -44,6 +44,7 @@ pub mod runtime;
 pub mod services;
 pub mod session;
 pub mod steel_mutation;
+pub mod steel_runtime;
 pub mod tools;
 
 #[cfg(test)]
@@ -164,6 +165,19 @@ pub use services::SkillStore;
 pub use session::SessionHandle;
 pub use session::SessionId;
 pub use session::SessionOptions;
+pub use steel_runtime::STEEL_RUNTIME_RECEIPT_SCHEMA;
+pub use steel_runtime::STEEL_RUNTIME_STATUS_SCHEMA;
+pub use steel_runtime::SteelHostCallOutcome;
+pub use steel_runtime::SteelHostCallReceipt;
+pub use steel_runtime::SteelHostFunctionRegistration;
+pub use steel_runtime::SteelRuntimeProfile;
+pub use steel_runtime::SteelRuntimeReasonCode;
+pub use steel_runtime::SteelRuntimeReceipt;
+pub use steel_runtime::SteelRuntimeRequest;
+pub use steel_runtime::SteelRuntimeStatus;
+pub use steel_runtime::SteelRuntimeStatusCode;
+pub use steel_runtime::evaluate_steel_request;
+pub use steel_runtime::steel_runtime_status;
 pub use tools::CapabilityPack;
 pub use tools::SideEffectLevel;
 pub use tools::ToolCatalog;

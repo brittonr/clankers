@@ -22,6 +22,7 @@ pub mod rpc;
 pub mod session;
 #[cfg(feature = "zellij-share")]
 pub mod share;
+pub mod steel;
 pub mod token;
 
 use crate::config::ClankersPaths;

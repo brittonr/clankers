@@ -351,6 +351,11 @@ pub enum Commands {
         #[command(subcommand)]
         action: DaemonAction,
     },
+    /// Evaluate constrained Steel Scheme snippets through the Clankers runtime wrapper
+    Steel {
+        #[command(subcommand)]
+        action: SteelAction,
+    },
     /// Manage capability tokens (UCAN auth)
     Token {
         #[command(subcommand)]
@@ -455,6 +460,24 @@ pub enum BatchAction {
         /// Resume by skipping already completed job ids in the output directory
         #[arg(long)]
         resume: bool,
+    },
+}
+
+#[derive(Subcommand, Debug, Clone, PartialEq, Eq)]
+pub enum SteelAction {
+    /// Show wrapper/profile availability without executing user code
+    Status,
+    /// Evaluate one source expression through the runtime wrapper fixture
+    Eval {
+        /// Steel Scheme source to evaluate
+        #[arg(value_name = "SOURCE")]
+        source: String,
+    },
+    /// Evaluate Steel Scheme source loaded from a file through the same wrapper
+    Run {
+        /// File containing Steel Scheme source
+        #[arg(value_name = "FILE")]
+        file: std::path::PathBuf,
     },
 }
 
