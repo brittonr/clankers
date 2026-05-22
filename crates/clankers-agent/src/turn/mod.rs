@@ -6,6 +6,7 @@ mod message;
 mod model_switch;
 mod policy;
 mod ports;
+mod steel_planning;
 mod transcript;
 mod usage;
 
@@ -83,6 +84,11 @@ use ports::ControllerToolPort;
 use ports::ProviderModelPort;
 #[cfg(test)]
 use serde_json::Value;
+use steel_planning::AgentTurnExecutionPlanner;
+use steel_planning::AgentTurnPlanningRequest;
+pub use steel_planning::AgentTurnSteelPlanningConfig;
+use steel_planning::emit_agent_turn_planning_receipt;
+use steel_planning::plan_agent_turn;
 use tokio::sync::broadcast;
 use tokio_util::sync::CancellationToken;
 use transcript::TurnTranscript;
@@ -107,6 +113,7 @@ pub struct TurnConfig {
     pub output_truncation: clanker_loop::OutputTruncationConfig,
     pub no_cache: bool,
     pub cache_ttl: Option<String>,
+    pub steel_turn_planning: Option<AgentTurnSteelPlanningConfig>,
 }
 
 pub struct TurnLoopContext<'a> {
@@ -129,6 +136,22 @@ pub async fn run_turn_loop(
     messages: &mut Vec<AgentMessage>,
 ) -> Result<()> {
     let tool_defs = tool_definitions_from_tool_catalog(ctx.controller_tools);
+    if let Some(steel_turn_planning) = config.steel_turn_planning.as_ref() {
+        let planning = plan_agent_turn(AgentTurnPlanningRequest {
+            config: steel_turn_planning,
+            session_id: ctx.session_id,
+            model: &config.model,
+            system_prompt: &config.system_prompt,
+            messages,
+            tools: ctx.controller_tools,
+        });
+        emit_agent_turn_planning_receipt(ctx.event_tx, &planning);
+        if planning.execution_planner == AgentTurnExecutionPlanner::Blocked {
+            return Err(AgentError::Agent {
+                message: "steel.host.plan_turn blocked agent turn before provider request".to_string(),
+            });
+        }
+    }
     let mut engine = EmbeddableEngine::new();
     let submit_result = engine.submit_turn(EngineTurnRequest {
         submission: EnginePromptSubmission {
@@ -1280,6 +1303,7 @@ mod tests {
             output_truncation: clanker_loop::OutputTruncationConfig::default(),
             no_cache: true,
             cache_ttl: None,
+            steel_turn_planning: None,
         }
     }
 
@@ -1289,6 +1313,48 @@ mod tests {
             content: vec![Content::Text { text: "hello".into() }],
             timestamp: Utc::now(),
         })
+    }
+
+    #[tokio::test]
+    async fn run_turn_loop_emits_steel_plan_turn_receipt_when_configured() {
+        let provider = RetryableFailProvider::new(0, RETRYABLE_PROVIDER_STATUS);
+        let tools: HashMap<String, Arc<dyn Tool>> = HashMap::new();
+        let mut messages = vec![make_user_message()];
+        let mut config = make_turn_config();
+        let profile = clankers_runtime::SteelOrchestrationProfile::comparison_default(
+            clankers_artifacts::ArtifactHash::digest(b"script"),
+            clankers_artifacts::ArtifactHash::digest(b"policy"),
+        );
+        config.steel_turn_planning = Some(AgentTurnSteelPlanningConfig::comparison_fixture(profile));
+        let (event_tx, mut event_rx) = broadcast::channel(256);
+
+        test_run_turn_loop(
+            &provider,
+            &tools,
+            &mut messages,
+            &config,
+            &event_tx,
+            CancellationToken::new(),
+            None,
+            None,
+            None,
+            "session-steel-turn",
+            None,
+            None,
+            None,
+        )
+        .await
+        .expect("turn should succeed");
+
+        let mut saw_steel_receipt = false;
+        while let Ok(event) = event_rx.try_recv() {
+            if let AgentEvent::SystemMessage { message } = event {
+                saw_steel_receipt |= message.contains("steel.host.plan_turn receipt")
+                    && message.contains("status=Authorized")
+                    && !message.contains("hello");
+            }
+        }
+        assert!(saw_steel_receipt, "configured run_turn_loop should emit Steel planning receipt");
     }
 
     #[tokio::test]

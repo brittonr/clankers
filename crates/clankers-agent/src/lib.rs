@@ -346,6 +346,7 @@ impl Agent {
             output_truncation: self.output_truncation_config(),
             no_cache: self.settings.no_cache,
             cache_ttl: self.settings.cache_ttl.clone(),
+            steel_turn_planning: None,
         };
 
         let result = turn::run_turn_loop(
@@ -733,6 +734,7 @@ impl Agent {
                 output_truncation: self.output_truncation_config(),
                 no_cache: self.settings.no_cache,
                 cache_ttl: self.settings.cache_ttl.clone(),
+                steel_turn_planning: None,
             };
 
             let result = turn::run_turn_loop(

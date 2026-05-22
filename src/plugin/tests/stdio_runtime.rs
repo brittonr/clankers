@@ -2023,6 +2023,7 @@ async fn capability_gate_blocks_stdio_tool_calls_in_turn_loop() {
         output_truncation: clanker_loop::OutputTruncationConfig::default(),
         no_cache: true,
         cache_ttl: None,
+        steel_turn_planning: None,
     };
     let (event_tx, _event_rx) = broadcast::channel(64);
     let gate: Arc<dyn crate::agent::CapabilityGate> =
@@ -2201,6 +2202,7 @@ async fn capability_gate_allows_stdio_tool_calls_in_turn_loop() {
         output_truncation: clanker_loop::OutputTruncationConfig::default(),
         no_cache: true,
         cache_ttl: None,
+        steel_turn_planning: None,
     };
     let (event_tx, _event_rx) = broadcast::channel(64);
     let gate: Arc<dyn crate::agent::CapabilityGate> =
