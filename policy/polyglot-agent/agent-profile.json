@@ -1,0 +1,148 @@
+{
+  "compatibility": {
+    "class": "current",
+    "version": "1"
+  },
+  "default_model_profile": "balanced",
+  "default_runtime_profile": "default",
+  "model_profiles": [
+    {
+      "max_output_tokens": 4096,
+      "model": "default-balanced",
+      "name": "balanced",
+      "provider": "router",
+      "temperature": 0.2
+    }
+  ],
+  "name": "polyglot-default",
+  "persona": "Concise Clankers agent with Nickel-validated prompts, Rust-owned authority, Steel Scheme orchestration, Wasm tool execution, and UCAN runtime grants.",
+  "prompts": [
+    {
+      "name": "system",
+      "required_variables": [
+        "agent_name"
+      ],
+      "template": "You are {{agent_name}}. Use only tools enabled by the Rust host. Steel orchestration may request typed host actions; Wasm tools may execute only through declared imports."
+    },
+    {
+      "name": "tool_result_summary",
+      "required_variables": [
+        "tool_name",
+        "status"
+      ],
+      "template": "Summarize tool {{tool_name}} result with status {{status}} without exposing raw secrets."
+    }
+  ],
+  "receipt_policy": {
+    "redacted_fields": [
+      "raw_prompt",
+      "provider_payload",
+      "compact_ucan",
+      "raw_proof",
+      "credential",
+      "tool_body",
+      "absolute_path"
+    ],
+    "safe_fields": [
+      "schema",
+      "status",
+      "profile",
+      "tool",
+      "policy_hash",
+      "receipt_hash",
+      "ucan_ability",
+      "resource",
+      "issue_code"
+    ],
+    "schema": "clankers.polyglot_agent.receipt.v1"
+  },
+  "runtime_profiles": [
+    {
+      "max_prompt_bytes": 65536,
+      "max_steel_host_calls": 32,
+      "max_tool_calls": 64,
+      "max_wasm_fuel": 10000000,
+      "max_wasm_memory_bytes": 67108864,
+      "name": "default",
+      "steel_profile": "trusted-orchestration",
+      "wasm_profile": "capability-limited-tool"
+    }
+  ],
+  "schema": "clankers.polyglot_agent.profile.v1",
+  "tools": [
+    {
+      "description": "Run trusted Steel Scheme orchestration through typed Rust host functions.",
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "script_id": {
+            "type": "string"
+          },
+          "state": {
+            "type": "object"
+          }
+        },
+        "required": [
+          "script_id",
+          "state"
+        ],
+        "type": "object"
+      },
+      "mode": "host",
+      "name": "steel_orchestrate",
+      "output_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "receipt": {
+            "type": "object"
+          }
+        },
+        "required": [
+          "receipt"
+        ],
+        "type": "object"
+      },
+      "required_capabilities": [
+        "steel-orchestration"
+      ],
+      "ucan_ability": "clankers/steel/orchestrate.run"
+    },
+    {
+      "description": "Execute a capability-limited Wasm tool with explicit host imports.",
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "payload": {
+            "type": "object"
+          },
+          "plugin": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "plugin",
+          "payload"
+        ],
+        "type": "object"
+      },
+      "mode": "wasm",
+      "name": "wasm_tool_execute",
+      "output_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "receipt": {
+            "type": "object"
+          }
+        },
+        "required": [
+          "receipt"
+        ],
+        "type": "object"
+      },
+      "required_capabilities": [
+        "wasm-tool-execution"
+      ],
+      "ucan_ability": "clankers/wasm/tool.execute"
+    }
+  ]
+}

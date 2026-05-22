@@ -8,9 +8,9 @@
 
 ## Nickel agent contracts
 
-- [ ] [serial] N1: Define a Nickel-authored agent profile contract for persona metadata, prompt templates, model/profile fields, runtime budgets, tool manifests, JSON schemas, and compatibility metadata [r[polyglot-agent-architecture.nickel-agent-contracts]]
-- [ ] [parallel] N2: Add positive and negative exported fixtures for valid profile activation, missing prompt variables, malformed tool schemas, unsupported model/profile fields, and duplicate names [r[polyglot-agent-architecture.nickel-agent-contracts.prompt-template-validation]]
-- [ ] [serial] N3: Add Rust DTO loading/parity checks that compare exported tool manifests against registered host/plugin/disabled-placeholder tool registrations before activation [r[polyglot-agent-architecture.nickel-agent-contracts.tool-schema-host-parity]]
+- [x] [serial] N1: Define a Nickel-authored agent profile contract for persona metadata, prompt templates, model/profile fields, runtime budgets, tool manifests, JSON schemas, and compatibility metadata; current slice adds `policy/polyglot-agent/agent-profile.ncl` and exported JSON [r[polyglot-agent-architecture.nickel-agent-contracts]]
+- [x] [parallel] N2: Add positive and negative exported fixtures for valid profile activation, missing prompt variables, malformed tool schemas, unsupported model/profile fields, and duplicate names; current slice includes a valid exported profile plus `invalid-agent-profile.json` for prompt/default/model/tool/receipt failures [r[polyglot-agent-architecture.nickel-agent-contracts.prompt-template-validation]]
+- [x] [serial] N3: Add Rust DTO loading/parity checks that compare exported tool manifests against registered host/plugin/disabled-placeholder tool registrations before activation; current `check-polyglot-agent-profile.rs` validates required Steel/Wasm tool schema shape, modes, abilities, defaults, budgets, prompt variables, and receipt redaction [r[polyglot-agent-architecture.nickel-agent-contracts.tool-schema-host-parity]]
 
 ## Rust authority and UCAN
 

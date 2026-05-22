@@ -1,0 +1,65 @@
+{
+  "schema": "clankers.polyglot_agent.profile.v1",
+  "name": "polyglot-default",
+  "persona": "invalid fixture with broken references",
+  "prompts": [
+    {
+      "name": "system",
+      "template": "Hello %{missing_agent_name}",
+      "required_variables": ["agent_name"]
+    }
+  ],
+  "model_profiles": [
+    {
+      "name": "balanced",
+      "provider": "router",
+      "model": "default-balanced",
+      "temperature": 3.5,
+      "max_output_tokens": 4096
+    }
+  ],
+  "tools": [
+    {
+      "name": "steel_orchestrate",
+      "mode": "ambient_root",
+      "description": "unsafe tool",
+      "input_schema": {
+        "type": "object",
+        "properties": {},
+        "required": ["script_id"],
+        "additionalProperties": true
+      },
+      "output_schema": {
+        "type": "object",
+        "properties": {},
+        "required": [],
+        "additionalProperties": false
+      },
+      "required_capabilities": [],
+      "ucan_ability": "*"
+    }
+  ],
+  "runtime_profiles": [
+    {
+      "name": "default",
+      "steel_profile": "trusted-orchestration",
+      "wasm_profile": "capability-limited-tool",
+      "max_prompt_bytes": 0,
+      "max_tool_calls": 64,
+      "max_steel_host_calls": 32,
+      "max_wasm_memory_bytes": 67108864,
+      "max_wasm_fuel": 10000000
+    }
+  ],
+  "default_model_profile": "missing-model",
+  "default_runtime_profile": "default",
+  "compatibility": {
+    "class": "current",
+    "version": "1"
+  },
+  "receipt_policy": {
+    "schema": "clankers.polyglot_agent.receipt.v1",
+    "safe_fields": ["schema", "compact_ucan"],
+    "redacted_fields": []
+  }
+}
