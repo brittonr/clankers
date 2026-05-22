@@ -20,22 +20,27 @@ use adapters::AgentToolHost;
 use adapters::AgentUsageObserver;
 #[cfg(test)]
 use chrono::Utc;
+use clankers_engine::EmbeddableEngine;
 #[cfg(test)]
 use clankers_engine::EngineCorrelationId;
 #[cfg(test)]
 use clankers_engine::EngineEffect;
 #[cfg(test)]
 use clankers_engine::EngineEvent;
+#[cfg(test)]
 use clankers_engine::EngineInput;
 #[cfg(test)]
 use clankers_engine::EngineModelResponse;
 #[cfg(test)]
 use clankers_engine::EngineOutcome;
+use clankers_engine::EnginePromptSubmission;
 use clankers_engine::EngineState;
 #[cfg(test)]
 use clankers_engine::EngineTerminalFailure;
 #[cfg(test)]
 use clankers_engine::EngineTurnPhase;
+use clankers_engine::EngineTurnRequest;
+#[cfg(test)]
 use clankers_engine::reduce;
 use clankers_engine_host::EngineRunSeed;
 use clankers_engine_host::HostAdapters;
@@ -124,26 +129,24 @@ pub async fn run_turn_loop(
     messages: &mut Vec<AgentMessage>,
 ) -> Result<()> {
     let tool_defs = tool_definitions_from_tool_catalog(ctx.controller_tools);
-    let engine_state = EngineState::new();
-    let submit_outcome = engine_outcome_or_error(
-        reduce(
-            &engine_state,
-            &EngineInput::submit_user_prompt(clankers_engine::EnginePromptSubmission {
-                messages: engine_messages_from_agent_messages(messages),
-                model: config.model.clone(),
-                system_prompt: config.system_prompt.clone(),
-                max_tokens: config.max_tokens,
-                temperature: config.temperature,
-                thinking: config.thinking.clone(),
-                tools: tool_defs,
-                no_cache: config.no_cache,
-                cache_ttl: config.cache_ttl.clone(),
-                session_id: ctx.session_id.to_string(),
-                model_request_slot_budget: config.model_request_slot_budget,
-            }),
-        ),
-        "prompt submission",
-    )?;
+    let mut engine = EmbeddableEngine::new();
+    let submit_result = engine.submit_turn(EngineTurnRequest {
+        submission: EnginePromptSubmission {
+            messages: engine_messages_from_agent_messages(messages),
+            model: config.model.clone(),
+            system_prompt: config.system_prompt.clone(),
+            max_tokens: config.max_tokens,
+            temperature: config.temperature,
+            thinking: config.thinking.clone(),
+            tools: tool_defs,
+            no_cache: config.no_cache,
+            cache_ttl: config.cache_ttl.clone(),
+            session_id: ctx.session_id.to_string(),
+            model_request_slot_budget: config.model_request_slot_budget,
+        },
+    });
+    let submit_seed_state = submit_result.initial_state.clone();
+    let submit_outcome = engine_outcome_or_error(submit_result.outcome, "prompt submission")?;
 
     let transcript = TurnTranscript::new(std::mem::take(messages), config.model.clone());
     let model_port = ProviderModelPort::new(ctx.provider);
@@ -187,7 +190,7 @@ pub async fn run_turn_loop(
         transcript: transcript.writer(),
     };
 
-    let report = run_engine_turn(EngineRunSeed::new(EngineState::new(), submit_outcome), HostAdapters {
+    let report = run_engine_turn(EngineRunSeed::new(submit_seed_state, submit_outcome), HostAdapters {
         model: &mut model_host,
         tools: &mut tool_host,
         retry_sleeper: &mut retry_sleeper,

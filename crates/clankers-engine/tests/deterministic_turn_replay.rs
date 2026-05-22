@@ -1,5 +1,6 @@
 use clanker_message::Content;
 use clanker_message::ToolDefinition;
+use clankers_engine::EmbeddableEngine;
 use clankers_engine::EngineCorrelationId;
 use clankers_engine::EngineEffect;
 use clankers_engine::EngineInput;
@@ -11,6 +12,7 @@ use clankers_engine::EnginePromptSubmission;
 use clankers_engine::EngineRejection;
 use clankers_engine::EngineState;
 use clankers_engine::EngineToolCall;
+use clankers_engine::EngineTurnRequest;
 use clankers_engine::reduce;
 use serde_json::Value;
 use serde_json::json;
@@ -97,16 +99,18 @@ fn fixture(text: &str) -> Value {
 }
 
 fn replay_fixture(fixture: &Value) -> ReplayReceipt {
-    let mut state = EngineState::new();
     let mut provider = ScriptedProvider::new(fixture);
     let tools = ScriptedTools::new(fixture);
     let mut events = Vec::new();
     let mut tool_results = Vec::new();
 
-    let submit = reduce(&state, &EngineInput::submit_user_prompt(submission_from_fixture(fixture)));
-    record_effects(&submit.effects, &mut events);
-    let initial_request = request_model_effect(&submit.effects).clone();
-    state = submit.next_state;
+    let mut engine = EmbeddableEngine::new();
+    let submit = engine.submit_turn(EngineTurnRequest {
+        submission: submission_from_fixture(fixture),
+    });
+    record_effects(&submit.outcome.effects, &mut events);
+    let initial_request = request_model_effect(&submit.outcome.effects).clone();
+    let mut state = submit.outcome.next_state;
 
     let first_response = provider.complete(&initial_request);
     let tool_plan = reduce(&state, &EngineInput::ModelCompleted {

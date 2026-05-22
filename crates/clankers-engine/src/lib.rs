@@ -277,6 +277,91 @@ impl Default for EngineState {
     }
 }
 
+#[derive(Debug, Clone)]
+pub struct EngineTurnRequest {
+    pub submission: EnginePromptSubmission,
+}
+
+#[derive(Debug, Clone)]
+pub struct EngineTurnReceipt {
+    pub contract_version: u32,
+    pub final_phase: EngineTurnPhase,
+    pub model_request_slots_used: u32,
+    pub model_request_slot_budget: u32,
+    pub terminal_failure: Option<EngineTerminalFailure>,
+    pub rejection: Option<EngineRejection>,
+    pub emitted_events: Vec<EngineEvent>,
+}
+
+impl EngineTurnReceipt {
+    #[must_use]
+    pub fn from_outcome(outcome: &EngineOutcome) -> Self {
+        Self {
+            contract_version: outcome.next_state.contract_version,
+            final_phase: outcome.next_state.phase.clone(),
+            model_request_slots_used: outcome.next_state.model_request_slots_used,
+            model_request_slot_budget: outcome.next_state.model_request_slot_budget,
+            terminal_failure: outcome.terminal_failure.clone(),
+            rejection: outcome.rejection.clone(),
+            emitted_events: emitted_events(&outcome.effects),
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct EngineTurnResult {
+    pub initial_state: EngineState,
+    pub outcome: EngineOutcome,
+    pub receipt: EngineTurnReceipt,
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct EmbeddableEngine {
+    state: EngineState,
+}
+
+impl EmbeddableEngine {
+    #[must_use]
+    pub fn new() -> Self {
+        Self {
+            state: EngineState::new(),
+        }
+    }
+
+    #[must_use]
+    pub fn from_state(state: EngineState) -> Self {
+        Self { state }
+    }
+
+    #[must_use]
+    pub fn state(&self) -> &EngineState {
+        &self.state
+    }
+
+    #[must_use]
+    pub fn into_state(self) -> EngineState {
+        self.state
+    }
+
+    #[must_use]
+    pub fn submit_turn(&mut self, request: EngineTurnRequest) -> EngineTurnResult {
+        self.apply_input(EngineInput::submit_user_prompt(request.submission))
+    }
+
+    #[must_use]
+    pub fn apply_input(&mut self, input: EngineInput) -> EngineTurnResult {
+        let initial_state = self.state.clone();
+        let outcome = reduce(&initial_state, &input);
+        self.state = outcome.next_state.clone();
+        let receipt = EngineTurnReceipt::from_outcome(&outcome);
+        EngineTurnResult {
+            initial_state,
+            outcome,
+            receipt,
+        }
+    }
+}
+
 #[must_use]
 pub fn reduce(state: &EngineState, input: &EngineInput) -> EngineOutcome {
     match input {
@@ -295,6 +380,17 @@ pub fn reduce(state: &EngineState, input: &EngineInput) -> EngineOutcome {
         }
         EngineInput::CancelTurn { reason } => apply_cancel_turn(state, reason),
     }
+}
+
+#[must_use]
+fn emitted_events(effects: &[EngineEffect]) -> Vec<EngineEvent> {
+    effects
+        .iter()
+        .filter_map(|effect| match effect {
+            EngineEffect::EmitEvent(event) => Some(event.clone()),
+            EngineEffect::RequestModel(_) | EngineEffect::ExecuteTool(_) | EngineEffect::ScheduleRetry { .. } => None,
+        })
+        .collect()
 }
 
 #[must_use]
@@ -1314,6 +1410,26 @@ mod tests {
         assert_eq!(model_effect.model, "test-model");
         assert_eq!(model_effect.messages.len(), INITIAL_CANONICAL_MESSAGE_COUNT);
         assert_eq!(model_effect.session_id, "session-123");
+    }
+
+    #[test]
+    fn embeddable_facade_submits_prompt_and_returns_neutral_receipt() {
+        let mut engine = EmbeddableEngine::new();
+
+        let result = engine.submit_turn(EngineTurnRequest {
+            submission: submission_with_session("session-123"),
+        });
+
+        assert_eq!(result.initial_state.phase, EngineTurnPhase::Idle);
+        assert_eq!(result.outcome.next_state.phase, EngineTurnPhase::WaitingForModel);
+        assert_eq!(engine.state().phase, EngineTurnPhase::WaitingForModel);
+        assert_eq!(result.receipt.contract_version, ENGINE_CONTRACT_VERSION);
+        assert_eq!(result.receipt.final_phase, EngineTurnPhase::WaitingForModel);
+        assert_eq!(result.receipt.rejection, None);
+        assert_eq!(result.receipt.terminal_failure, None);
+        assert_eq!(result.receipt.emitted_events, vec![EngineEvent::BusyChanged { busy: true }, EngineEvent::Notice {
+            message: ENGINE_SUBMIT_PROMPT_NOTICE.to_string(),
+        },]);
     }
 
     #[test]

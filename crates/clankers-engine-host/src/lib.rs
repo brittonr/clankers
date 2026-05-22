@@ -89,6 +89,36 @@ impl EngineRunReport {
     }
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct EnginePromptBundle {
+    pub system_prompt: String,
+    pub user_prompt: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct EngineHistoryRecord {
+    pub role: String,
+    pub text: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct EnginePersistenceRecord {
+    pub key: String,
+    pub value: serde_json::Value,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct EngineHookObservation {
+    pub hook_name: String,
+    pub payload: serde_json::Value,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct EngineCostObservation {
+    pub model: String,
+    pub usage: Usage,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct UsageObservation {
     pub kind: UsageObservationKind,
@@ -182,6 +212,24 @@ pub trait CancellationSource {
 
 pub trait UsageObserver {
     fn observe_usage(&mut self, observation: &UsageObservation) -> Result<(), HostAdapterError>;
+}
+
+pub trait PromptHistoryPort {
+    fn load_prompt_bundle(&mut self) -> Result<EnginePromptBundle, HostAdapterError>;
+
+    fn load_history(&mut self) -> Result<Vec<EngineHistoryRecord>, HostAdapterError>;
+}
+
+pub trait PersistencePort {
+    fn persist_record(&mut self, record: EnginePersistenceRecord) -> Result<(), HostAdapterError>;
+}
+
+pub trait HookPort {
+    fn observe_hook(&mut self, observation: EngineHookObservation) -> Result<(), HostAdapterError>;
+}
+
+pub trait CostAccountingPort {
+    fn observe_cost(&mut self, observation: EngineCostObservation) -> Result<(), HostAdapterError>;
 }
 
 pub struct HostAdapters<'a, M, T, R, E, C, U>
