@@ -1,0 +1,48 @@
+{
+  "schema": "clankers.steel_self_mutation.policy.v1",
+  "target_classes": [
+    {
+      "name": "repo_code",
+      "resource_prefix": "*",
+      "allowed_path_roots": ["../"],
+      "denied_path_patterns": [],
+      "allowed_verbs": ["raw_write", "delete_everything"],
+      "approval_tier": "none",
+      "preflight_profile": "none",
+      "verification_profile": "none",
+      "rollback_required": false
+    }
+  ],
+  "mutation_verbs": [
+    {
+      "name": "raw_write",
+      "host_function": "steel.host.raw_write",
+      "ucan_ability": "*",
+      "requires_approval": false,
+      "writes_bytes": true
+    }
+  ],
+  "runtime_profiles": [
+    {
+      "name": "unsafe",
+      "steel_profile": "unsafe",
+      "max_source_bytes": 0,
+      "max_output_bytes": 0,
+      "max_host_calls": 999999,
+      "ambient_authority": true
+    }
+  ],
+  "ucan": {
+    "required": false,
+    "audience_binding": "none",
+    "deny_wildcard_resources": false,
+    "safe_receipt_fields": ["raw_proof"]
+  },
+  "receipt": {
+    "schema": "clankers.steel_self_mutation.receipt.v1",
+    "include_policy_hash": false,
+    "include_safe_ucan_metadata": false,
+    "redact_fields": [],
+    "forbidden_receipt_markers": []
+  }
+}

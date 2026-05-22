@@ -1,0 +1,187 @@
+{
+  "mutation_verbs": [
+    {
+      "host_function": "steel.host.propose_mutation",
+      "name": "propose_mutation",
+      "requires_approval": false,
+      "ucan_ability": "clankers/steel/mutation.propose",
+      "writes_bytes": false
+    },
+    {
+      "host_function": "steel.host.apply_mutation",
+      "name": "apply_mutation",
+      "requires_approval": true,
+      "ucan_ability": "clankers/steel/mutation.apply",
+      "writes_bytes": true
+    },
+    {
+      "host_function": "steel.host.commit_mutation",
+      "name": "commit_mutation",
+      "requires_approval": true,
+      "ucan_ability": "clankers/steel/mutation.commit",
+      "writes_bytes": false
+    },
+    {
+      "host_function": "steel.host.rollback_mutation",
+      "name": "rollback_mutation",
+      "requires_approval": true,
+      "ucan_ability": "clankers/steel/mutation.rollback",
+      "writes_bytes": true
+    }
+  ],
+  "receipt": {
+    "forbidden_receipt_markers": [
+      "ucan_compact_token",
+      "private_key",
+      "bearer_token",
+      "api_key",
+      "raw_proof",
+      "SECRET",
+      "PASSWORD"
+    ],
+    "include_policy_hash": true,
+    "include_safe_ucan_metadata": true,
+    "redact_fields": [
+      "patch_body",
+      "source",
+      "raw_diagnostics",
+      "absolute_paths",
+      "provider_payloads",
+      "credentials"
+    ],
+    "schema": "clankers.steel_self_mutation.receipt.v1"
+  },
+  "runtime_profiles": [
+    {
+      "ambient_authority": false,
+      "max_host_calls": 0,
+      "max_output_bytes": 16384,
+      "max_source_bytes": 32768,
+      "name": "steel-live-mutation-default-deny",
+      "steel_profile": "default"
+    },
+    {
+      "ambient_authority": false,
+      "max_host_calls": 16,
+      "max_output_bytes": 32768,
+      "max_source_bytes": 65536,
+      "name": "steel-live-mutation-requester",
+      "steel_profile": "mutation-requester"
+    }
+  ],
+  "schema": "clankers.steel_self_mutation.policy.v1",
+  "target_classes": [
+    {
+      "allowed_path_roots": [
+        "skills/",
+        ".clankers/skills/",
+        "crates/clankers-skills/fixtures/"
+      ],
+      "allowed_verbs": [
+        "propose_mutation",
+        "apply_mutation",
+        "rollback_mutation"
+      ],
+      "approval_tier": "human-review",
+      "denied_path_patterns": [
+        "../",
+        "/.git/",
+        "**/.env*",
+        "**/*secret*"
+      ],
+      "name": "skill",
+      "preflight_profile": "clean-or-checkpoint",
+      "resource_prefix": "skill:",
+      "rollback_required": true,
+      "verification_profile": "skill-frontmatter-and-smoke"
+    },
+    {
+      "allowed_path_roots": [
+        "prompts/",
+        "crates/clankers-prompts/"
+      ],
+      "allowed_verbs": [
+        "propose_mutation",
+        "apply_mutation",
+        "rollback_mutation"
+      ],
+      "approval_tier": "human-review",
+      "denied_path_patterns": [
+        "../",
+        "/.git/",
+        "**/.env*",
+        "**/*secret*"
+      ],
+      "name": "prompt",
+      "preflight_profile": "clean-or-checkpoint",
+      "resource_prefix": "prompt:",
+      "rollback_required": true,
+      "verification_profile": "prompt-schema-and-smoke"
+    },
+    {
+      "allowed_path_roots": [
+        "crates/clankers-tool-host/",
+        "crates/clankers-runtime/fixtures/"
+      ],
+      "allowed_verbs": [
+        "propose_mutation",
+        "apply_mutation",
+        "rollback_mutation"
+      ],
+      "approval_tier": "human-review",
+      "denied_path_patterns": [
+        "../",
+        "/.git/",
+        "**/.env*",
+        "**/*secret*"
+      ],
+      "name": "tool_description",
+      "preflight_profile": "clean-or-checkpoint",
+      "resource_prefix": "tool:",
+      "rollback_required": true,
+      "verification_profile": "tool-schema-and-smoke"
+    },
+    {
+      "allowed_path_roots": [
+        "src/",
+        "crates/",
+        "scripts/",
+        "policy/"
+      ],
+      "allowed_verbs": [
+        "propose_mutation",
+        "apply_mutation",
+        "commit_mutation",
+        "rollback_mutation"
+      ],
+      "approval_tier": "explicit-code-approval",
+      "denied_path_patterns": [
+        "../",
+        "/.git/",
+        "**/.env*",
+        "**/*secret*",
+        "target/",
+        "result"
+      ],
+      "name": "repo_code",
+      "preflight_profile": "clean-git-or-preserve-wip",
+      "resource_prefix": "repo:",
+      "rollback_required": true,
+      "verification_profile": "focused-rust-and-cairn-gates"
+    }
+  ],
+  "ucan": {
+    "audience_binding": "session-or-daemon-instance",
+    "deny_wildcard_resources": true,
+    "required": true,
+    "safe_receipt_fields": [
+      "ability",
+      "resource",
+      "issuer_fingerprint",
+      "audience_fingerprint",
+      "expiry_status",
+      "delegation_depth",
+      "authorization_outcome"
+    ]
+  }
+}
