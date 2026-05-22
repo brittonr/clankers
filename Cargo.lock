@@ -1659,6 +1659,7 @@ dependencies = [
 name = "clankers-config"
 version = "0.1.0"
 dependencies = [
+ "chrono",
  "clanker-router",
  "clanker-tui-types",
  "clankers-agent-defs",

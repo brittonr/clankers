@@ -34,6 +34,7 @@ pub use settings::McpServerConfigError;
 pub use settings::McpSettings;
 pub use settings::McpTransport;
 pub use settings::Settings;
+pub use settings::SteelTurnPlanningAuthorityGrantSettings;
 pub use settings::SteelTurnPlanningConfigError;
 pub use settings::SteelTurnPlanningFallbackMode;
 pub use settings::SteelTurnPlanningRolloutStage;

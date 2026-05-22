@@ -623,6 +623,9 @@ pub struct SteelTurnPlanningSettings {
     /// UCAN abilities actually granted to this session/script context.
     #[serde(default)]
     pub granted_ucan_abilities: Vec<String>,
+    /// Basalt-backed UCAN authority grants for invoking the reviewed Steel planner.
+    #[serde(default)]
+    pub ucan_authority_grants: Vec<SteelTurnPlanningAuthorityGrantSettings>,
     /// Host actions disabled by user/session policy.
     #[serde(default)]
     pub disabled_actions: Vec<String>,
@@ -650,12 +653,29 @@ impl Default for SteelTurnPlanningSettings {
             planning_seam: None,
             session_capabilities: Vec::new(),
             granted_ucan_abilities: Vec::new(),
+            ucan_authority_grants: Vec::new(),
             disabled_actions: Vec::new(),
             receipt_prefix: None,
             max_input_bytes: None,
             max_source_bytes: default_steel_turn_planning_max_source_bytes(),
         }
     }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SteelTurnPlanningAuthorityGrantSettings {
+    pub resource: String,
+    pub ability: String,
+    pub audience: String,
+    #[serde(default)]
+    pub proof_reference: Option<String>,
+    #[serde(default)]
+    pub expires_at: Option<chrono::DateTime<chrono::Utc>>,
+    #[serde(default)]
+    pub revoked: bool,
+    #[serde(default)]
+    pub caveats: Vec<String>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -682,6 +702,7 @@ pub enum SteelTurnPlanningConfigError {
     BlankHash,
     BlankCapability,
     BlankUcanAbility,
+    BlankUcanAuthorityGrant,
     BlankDisabledAction,
     NonPositiveMaxInputBytes,
     NonPositiveMaxSourceBytes,
@@ -698,6 +719,7 @@ impl std::fmt::Display for SteelTurnPlanningConfigError {
             Self::BlankHash => f.write_str("Steel turn planning hashes cannot be blank"),
             Self::BlankCapability => f.write_str("Steel turn planning session capabilities cannot be blank"),
             Self::BlankUcanAbility => f.write_str("Steel turn planning UCAN abilities cannot be blank"),
+            Self::BlankUcanAuthorityGrant => f.write_str("Steel turn planning UCAN authority grants cannot contain blank resource, ability, audience, proof reference, or caveat entries"),
             Self::BlankDisabledAction => f.write_str("Steel turn planning disabled actions cannot be blank"),
             Self::NonPositiveMaxInputBytes => {
                 f.write_str("Steel turn planning `maxInputBytes` must be greater than zero")
@@ -737,6 +759,15 @@ impl SteelTurnPlanningSettings {
         }
         if self.granted_ucan_abilities.iter().any(|ability| ability.trim().is_empty()) {
             return Err(SteelTurnPlanningConfigError::BlankUcanAbility);
+        }
+        if self.ucan_authority_grants.iter().any(|grant| {
+            grant.resource.trim().is_empty()
+                || grant.ability.trim().is_empty()
+                || grant.audience.trim().is_empty()
+                || grant.proof_reference.as_deref().is_some_and(|proof| proof.trim().is_empty())
+                || grant.caveats.iter().any(|caveat| caveat.trim().is_empty())
+        }) {
+            return Err(SteelTurnPlanningConfigError::BlankUcanAuthorityGrant);
         }
         if self.disabled_actions.iter().any(|action| action.trim().is_empty()) {
             return Err(SteelTurnPlanningConfigError::BlankDisabledAction);
@@ -1167,6 +1198,14 @@ mod tests {
                 "fallbackMode": "rust_native",
                 "sessionCapabilities": ["steel-orchestration", "turn-planning"],
                 "grantedUcanAbilities": ["clankers/steel/orchestrate.plan_turn"],
+                "ucanAuthorityGrants": [{
+                    "resource": "turn:session-fixture",
+                    "ability": "clankers/steel/orchestrate.plan_turn",
+                    "audience": "clankers:agent-turn-planning",
+                    "proofReference": "settings-grant",
+                    "expiresAt": "2999-01-01T00:00:00Z",
+                    "caveats": ["metadata_only"]
+                }],
                 "receiptPrefix": "target/steel-turn-planning-config-activation"
             }
         }"#;
@@ -1175,6 +1214,10 @@ mod tests {
         assert!(steel.enabled);
         assert_eq!(steel.rollout_stage, Some(SteelTurnPlanningRolloutStage::Comparison));
         assert_eq!(steel.fallback_mode, Some(SteelTurnPlanningFallbackMode::RustNative));
+        assert_eq!(steel.ucan_authority_grants.len(), 1);
+        assert_eq!(steel.ucan_authority_grants[0].resource, "turn:session-fixture");
+        assert_eq!(steel.ucan_authority_grants[0].proof_reference.as_deref(), Some("settings-grant"));
+        assert_eq!(steel.ucan_authority_grants[0].caveats, vec!["metadata_only".to_string()]);
         steel.validate().expect("valid Steel turn-planning activation settings");
     }
 
@@ -1191,6 +1234,15 @@ mod tests {
         )
         .unwrap();
         assert_eq!(settings.steel_turn_planning.validate(), Err(SteelTurnPlanningConfigError::ReceiptOutsideTarget));
+    }
+
+    #[test]
+    fn steel_turn_planning_validation_rejects_blank_authority_grant() {
+        let settings: Settings = serde_json::from_str(
+            r#"{"steelTurnPlanning":{"enabled":true,"profilePath":"profile.json","scriptPath":"script.scm","ucanAuthorityGrants":[{"resource":"turn:session-fixture","ability":" ","audience":"clankers-runtime"}]}}"#,
+        )
+        .unwrap();
+        assert_eq!(settings.steel_turn_planning.validate(), Err(SteelTurnPlanningConfigError::BlankUcanAuthorityGrant));
     }
 
     #[test]

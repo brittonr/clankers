@@ -18,6 +18,7 @@ use clankers_runtime::OrchestrationRolloutStage;
 use clankers_runtime::STEEL_ORCHESTRATION_PLAN_SCHEMA;
 use clankers_runtime::SteelOrchestrationProfile;
 use clankers_runtime::SteelRuntimeProfile;
+use clankers_runtime::SteelTurnPlanningAuthorityGrant;
 use clankers_runtime::TurnPlanningInput;
 use clankers_runtime::plan_turn_with_steel_or_fallback;
 use serde::Deserialize;
@@ -38,6 +39,7 @@ pub struct AgentTurnSteelPlanningConfig {
     pub steel_plan_payload: String,
     pub session_capabilities: Vec<String>,
     pub granted_ucan_abilities: Vec<String>,
+    pub ucan_authority_grants: Vec<SteelTurnPlanningAuthorityGrant>,
     pub disabled_actions: Vec<String>,
 }
 
@@ -52,6 +54,7 @@ impl AgentTurnSteelPlanningConfig {
             steel_source: DEFAULT_STEEL_SOURCE.to_string(),
             session_capabilities: profile.required_session_capabilities.clone(),
             granted_ucan_abilities: vec![profile.required_ucan_ability.clone()],
+            ucan_authority_grants: Vec::new(),
             disabled_actions: Vec::new(),
             profile,
         }
@@ -170,6 +173,7 @@ pub fn steel_turn_planning_config_from_settings(
         steel_source: script_source,
         session_capabilities: settings.session_capabilities.clone(),
         granted_ucan_abilities: settings.granted_ucan_abilities.clone(),
+        ucan_authority_grants: authority_grants_from_settings(settings),
         disabled_actions: settings.disabled_actions.clone(),
         profile,
     }))
@@ -322,13 +326,31 @@ fn ensure_session_authority(
             return Err(SteelTurnPlanningActivationError::MissingSessionCapability(capability.clone()));
         }
     }
-    if !settings.granted_ucan_abilities.iter().any(|available| available == &profile.required_ucan_ability) {
+    if !settings.granted_ucan_abilities.iter().any(|available| available == &profile.required_ucan_ability)
+        && settings.ucan_authority_grants.is_empty()
+    {
         return Err(SteelTurnPlanningActivationError::MissingUcanAbility(profile.required_ucan_ability.clone()));
     }
     if settings.disabled_actions.iter().any(|action| action == DEFAULT_TURN_PLANNING_SEAM) {
         return Err(SteelTurnPlanningActivationError::DisabledRequiredAction(DEFAULT_TURN_PLANNING_SEAM.to_string()));
     }
     Ok(())
+}
+
+fn authority_grants_from_settings(settings: &SteelTurnPlanningSettings) -> Vec<SteelTurnPlanningAuthorityGrant> {
+    settings
+        .ucan_authority_grants
+        .iter()
+        .map(|grant| SteelTurnPlanningAuthorityGrant {
+            resource: grant.resource.clone(),
+            ability: grant.ability.clone(),
+            audience: grant.audience.clone(),
+            proof_reference: grant.proof_reference.clone(),
+            expires_at: grant.expires_at,
+            revoked: grant.revoked,
+            caveats: grant.caveats.clone(),
+        })
+        .collect()
 }
 
 fn rollout_stage_to_runtime(stage: SteelTurnPlanningRolloutStage) -> OrchestrationRolloutStage {
@@ -389,8 +411,13 @@ pub(crate) fn emit_agent_turn_planning_receipt(
     outcome: &AgentTurnPlanningOutcome,
 ) {
     let receipt = &outcome.receipt;
+    let authority = receipt
+        .ucan_authority_receipt
+        .as_ref()
+        .map(|authority| format!(" ucan_authority={:?} ucan_reason={:?}", authority.status, authority.reason))
+        .unwrap_or_default();
     let message = format!(
-        "steel.host.plan_turn receipt status={:?} issue={:?} mode={:?} planner={:?} fallback={:?} receipt_hash={} plan_hash={}",
+        "steel.host.plan_turn receipt status={:?} issue={:?} mode={:?} planner={:?} fallback={:?} receipt_hash={} plan_hash={}{}",
         receipt.status,
         receipt.issue_code,
         receipt.rollout_stage,
@@ -398,6 +425,7 @@ pub(crate) fn emit_agent_turn_planning_receipt(
         receipt.fallback_status,
         receipt.receipt_hash.prefixed(),
         receipt.plan_hash.map_or_else(|| "none".to_string(), ArtifactHash::prefixed),
+        authority,
     );
     event_tx.send(AgentEvent::SystemMessage { message }).ok();
 }
@@ -448,6 +476,7 @@ fn turn_planning_input(request: &AgentTurnPlanningRequest<'_>) -> TurnPlanningIn
         session_capabilities: request.config.session_capabilities.clone(),
         disabled_actions: request.config.disabled_actions.clone(),
         granted_ucan_abilities: request.config.granted_ucan_abilities.clone(),
+        ucan_authority_grants: request.config.ucan_authority_grants.clone(),
     }
 }
 
@@ -498,6 +527,7 @@ mod tests {
     use std::collections::HashMap;
 
     use clankers_artifacts::ArtifactHash;
+    use clankers_config::SteelTurnPlanningAuthorityGrantSettings;
     use clankers_config::SteelTurnPlanningFallbackMode;
     use clankers_config::SteelTurnPlanningRolloutStage;
     use clankers_config::SteelTurnPlanningSettings;
@@ -547,6 +577,15 @@ mod tests {
             planning_seam: None,
             session_capabilities: vec!["steel-orchestration".to_string(), "turn-planning".to_string()],
             granted_ucan_abilities: vec!["clankers/steel/orchestrate.plan_turn".to_string()],
+            ucan_authority_grants: vec![SteelTurnPlanningAuthorityGrantSettings {
+                resource: "session:session-fixture".to_string(),
+                ability: "clankers/steel/orchestrate.plan_turn".to_string(),
+                audience: "clankers:agent-turn-planning".to_string(),
+                proof_reference: Some("settings-grant".to_string()),
+                expires_at: None,
+                revoked: false,
+                caveats: vec!["metadata_only".to_string()],
+            }],
             disabled_actions: Vec::new(),
             receipt_prefix: Some("target/steel-turn-planning-config-activation".to_string()),
             max_input_bytes: None,
@@ -572,6 +611,9 @@ mod tests {
         assert_eq!(config.profile.planning_seam, DEFAULT_TURN_PLANNING_SEAM);
         assert_eq!(config.profile.receipt_prefix, "target/steel-turn-planning-config-activation");
         assert_eq!(config.session_capabilities, vec!["steel-orchestration", "turn-planning"]);
+        assert_eq!(config.ucan_authority_grants.len(), 1);
+        assert_eq!(config.ucan_authority_grants[0].resource, "session:session-fixture");
+        assert_eq!(config.ucan_authority_grants[0].proof_reference.as_deref(), Some("settings-grant"));
         assert!(!config.steel_source.contains("credential"));
     }
 
@@ -691,8 +733,8 @@ mod tests {
         let mut config = AgentTurnSteelPlanningConfig::comparison_fixture(profile());
         config.granted_ucan_abilities.clear();
         let outcome = plan(&config);
-        assert_eq!(outcome.execution_planner, AgentTurnExecutionPlanner::RustNative);
-        assert_eq!(outcome.receipt.status, OrchestrationPlanStatus::Denied);
+        assert_eq!(outcome.execution_planner, AgentTurnExecutionPlanner::Blocked);
+        assert_eq!(outcome.receipt.status, OrchestrationPlanStatus::Blocked);
     }
 
     #[test]

@@ -220,6 +220,7 @@ fn steel_smoke_settings(
             "turn-planning".to_string(),
         ],
         granted_ucan_abilities: vec!["clankers.turn.plan".to_string()],
+        ucan_authority_grants: Vec::new(),
         disabled_actions: Vec::new(),
         receipt_prefix: Some("target/steel-turn-planning-runtime-smoke".to_string()),
         max_input_bytes: Some(4096),

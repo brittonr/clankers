@@ -13,6 +13,7 @@ clankers-tui = { version = "0.1.0", path = "../clankers-tui" }
 clanker-tui-types = { workspace = true }
 clankers-ucan = { version = "0.1.0", path = "../clankers-ucan" }
 clanker-router = { workspace = true }
+chrono = { workspace = true }
 dirs = "6"
 indexmap = { version = "2.13.0", features = ["serde"] }
 nickel-lang = { version = "2.0", optional = true }
