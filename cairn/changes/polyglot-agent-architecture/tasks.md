@@ -20,9 +20,9 @@
 
 ## Steel orchestration
 
-- [ ] [serial] S1: Add a Steel orchestration profile that can run a deterministic reasoning/routing loop through typed fake host functions without gaining ambient authority [r[polyglot-agent-architecture.steel-orchestration]]
-- [ ] [parallel] S2: Add hot-reload boundary tests proving a script change can alter routing decisions but cannot add host functions, enlarge budgets, or gain new capabilities without a profile/policy/UCAN change [r[polyglot-agent-architecture.steel-orchestration.hot-reload-boundary]]
-- [ ] [parallel] S3: Add negative Steel fixtures for raw filesystem, shell, git, network, provider, credential, daemon, TUI, and native-tool access outside typed host functions [r[polyglot-agent-architecture.verification-rails.dynamic-runtime-fixtures]]
+- [x] [serial] S1: Add a Steel orchestration profile that can run a deterministic reasoning/routing loop through typed fake host functions without gaining ambient authority; current slice adds `FakeSteelOrchestrationProfile`/request/receipt and routes the selected host function through the dynamic-runtime envelope [r[polyglot-agent-architecture.steel-orchestration]]
+- [ ] [parallel] S2: Add hot-reload boundary tests proving a script change can alter routing decisions but cannot add host functions, enlarge budgets, or gain new capabilities without a profile/policy/UCAN change; current slice covers the "cannot add host function" fixture, budget/capability enlargement still pending [r[polyglot-agent-architecture.steel-orchestration.hot-reload-boundary]]
+- [ ] [parallel] S3: Add negative Steel fixtures for raw filesystem, shell, git, network, provider, credential, daemon, TUI, and native-tool access outside typed host functions; current slice covers a denied raw host-function route, broader ambient-access fixture matrix still pending [r[polyglot-agent-architecture.verification-rails.dynamic-runtime-fixtures]]
 
 ## Wasm tool execution
 

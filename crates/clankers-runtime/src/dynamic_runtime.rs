@@ -72,6 +72,30 @@ pub struct DynamicRuntimeAuthorizationContext {
     pub max_input_bytes: u64,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct FakeSteelOrchestrationProfile {
+    pub runtime_profile: String,
+    pub allowed_host_functions: BTreeSet<String>,
+    pub required_session_capabilities: Vec<String>,
+    pub default_ucan_ability: String,
+    pub receipt_prefix: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct FakeSteelOrchestrationRequest {
+    pub script_id: String,
+    pub route_hint: String,
+    pub target_resource: String,
+    pub requested_host_function: String,
+    pub input_summary: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct FakeSteelOrchestrationReceipt {
+    pub selected_action: DynamicRuntimeActionEnvelope,
+    pub authorization_receipt: DynamicRuntimeActionReceipt,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum DynamicRuntimeActionStatus {
@@ -147,6 +171,48 @@ pub fn authorize_dynamic_runtime_action(
 ) -> DynamicRuntimeActionReceipt {
     let (status, reason, safe_summary) = dynamic_runtime_decision(envelope, context);
     dynamic_runtime_receipt(envelope, status, reason, safe_summary)
+}
+
+#[must_use]
+pub fn run_fake_steel_orchestration(
+    profile: &FakeSteelOrchestrationProfile,
+    request: &FakeSteelOrchestrationRequest,
+    context: &DynamicRuntimeAuthorizationContext,
+) -> FakeSteelOrchestrationReceipt {
+    let input_hash = ArtifactHash::digest(request.input_summary.as_bytes());
+    let selected_action = DynamicRuntimeActionEnvelope {
+        schema: DYNAMIC_RUNTIME_ACTION_SCHEMA.to_string(),
+        action_id: format!("steel:{}:{}", route_slug(&request.script_id), route_slug(&request.route_hint)),
+        runtime: DynamicRuntimeKind::SteelScheme,
+        runtime_profile: profile.runtime_profile.clone(),
+        action_kind: DynamicRuntimeActionKind::HostFunction,
+        action_name: request.requested_host_function.clone(),
+        target_resource: request.target_resource.clone(),
+        receipt_destination: format!(
+            "{}/{}.json",
+            profile.receipt_prefix.trim_end_matches('/'),
+            route_slug(&request.route_hint)
+        ),
+        required_ucan_ability: profile.default_ucan_ability.clone(),
+        required_session_capabilities: profile.required_session_capabilities.clone(),
+        input_hash,
+        input_bytes: request.input_summary.len() as u64,
+        redaction: DynamicRuntimeRedactionClass::MetadataOnly,
+    };
+    let authorization_receipt = if profile.allowed_host_functions.contains(&request.requested_host_function) {
+        authorize_dynamic_runtime_action(&selected_action, context)
+    } else {
+        dynamic_runtime_receipt(
+            &selected_action,
+            DynamicRuntimeActionStatus::PolicyDenied,
+            DynamicRuntimeActionReason::UnsupportedAction,
+            "Steel profile did not expose the requested host function".to_string(),
+        )
+    };
+    FakeSteelOrchestrationReceipt {
+        selected_action,
+        authorization_receipt,
+    }
 }
 
 fn dynamic_runtime_decision(
@@ -319,6 +385,25 @@ fn action_kind_tag(kind: DynamicRuntimeActionKind) -> &'static str {
     }
 }
 
+fn route_slug(value: &str) -> String {
+    let slug: String = value
+        .chars()
+        .map(|character| {
+            if character.is_ascii_alphanumeric() || character == '-' || character == '_' {
+                character
+            } else {
+                '-'
+            }
+        })
+        .collect();
+    let trimmed = slug.trim_matches('-');
+    if trimmed.is_empty() {
+        "action".to_string()
+    } else {
+        trimmed.to_string()
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -451,5 +536,73 @@ mod tests {
         let unsafe_receipt_result = authorize_dynamic_runtime_action(&unsafe_receipt, &context());
         assert_eq!(unsafe_receipt_result.status, DynamicRuntimeActionStatus::InvalidEnvelope);
         assert_eq!(unsafe_receipt_result.reason, DynamicRuntimeActionReason::UnsafeReceiptDestination);
+    }
+    fn fake_steel_profile() -> FakeSteelOrchestrationProfile {
+        FakeSteelOrchestrationProfile {
+            runtime_profile: "steel-orchestrator/default".to_string(),
+            allowed_host_functions: BTreeSet::from(["steel.host.propose_mutation".to_string()]),
+            required_session_capabilities: vec!["workspace_mutation".to_string(), "steel_host_functions".to_string()],
+            default_ucan_ability: "clankers/mutation.propose".to_string(),
+            receipt_prefix: "target/polyglot-agent/steel".to_string(),
+        }
+    }
+
+    fn fake_steel_request() -> FakeSteelOrchestrationRequest {
+        FakeSteelOrchestrationRequest {
+            script_id: "route-prompt".to_string(),
+            route_hint: "propose system prompt".to_string(),
+            target_resource: "prompt:system".to_string(),
+            requested_host_function: "steel.host.propose_mutation".to_string(),
+            input_summary: "route to prompt mutation host function".to_string(),
+        }
+    }
+
+    #[test]
+    fn fake_steel_orchestration_selects_typed_action_without_host_authority() {
+        let receipt = run_fake_steel_orchestration(&fake_steel_profile(), &fake_steel_request(), &context());
+
+        assert_eq!(receipt.selected_action.runtime, DynamicRuntimeKind::SteelScheme);
+        assert_eq!(receipt.selected_action.action_kind, DynamicRuntimeActionKind::HostFunction);
+        assert_eq!(receipt.selected_action.action_name, "steel.host.propose_mutation");
+        assert_eq!(receipt.selected_action.target_resource, "prompt:system");
+        assert_eq!(receipt.authorization_receipt.status, DynamicRuntimeActionStatus::Allowed);
+        assert_eq!(receipt.authorization_receipt.reason, DynamicRuntimeActionReason::Ready);
+        assert!(!receipt.authorization_receipt.writes_performed);
+        let serialized = serde_json::to_string(&receipt).expect("fake steel receipt json");
+        assert!(!serialized.contains("route to prompt mutation host function"));
+        assert!(!serialized.contains("Bearer"));
+    }
+
+    #[test]
+    fn fake_steel_script_change_can_route_but_not_add_host_function() {
+        let mut changed_script = fake_steel_request();
+        changed_script.route_hint = "try raw write".to_string();
+        changed_script.requested_host_function = "steel.host.raw_write".to_string();
+
+        let receipt = run_fake_steel_orchestration(&fake_steel_profile(), &changed_script, &context());
+
+        assert_eq!(receipt.selected_action.action_name, "steel.host.raw_write");
+        assert_eq!(receipt.authorization_receipt.status, DynamicRuntimeActionStatus::PolicyDenied);
+        assert_eq!(receipt.authorization_receipt.reason, DynamicRuntimeActionReason::UnsupportedAction);
+        assert!(!receipt.authorization_receipt.writes_performed);
+    }
+
+    #[test]
+    fn fake_steel_profile_cannot_bypass_session_or_ucan_gates() {
+        let mut missing_ucan = context();
+        missing_ucan.granted_ucan_abilities.clear();
+        let denied_by_ucan = run_fake_steel_orchestration(&fake_steel_profile(), &fake_steel_request(), &missing_ucan);
+        assert_eq!(denied_by_ucan.authorization_receipt.status, DynamicRuntimeActionStatus::UcanDenied);
+        assert_eq!(denied_by_ucan.authorization_receipt.reason, DynamicRuntimeActionReason::MissingUcanAbility);
+
+        let mut missing_capability = context();
+        missing_capability.session_capabilities.remove("steel_host_functions");
+        let denied_by_session =
+            run_fake_steel_orchestration(&fake_steel_profile(), &fake_steel_request(), &missing_capability);
+        assert_eq!(denied_by_session.authorization_receipt.status, DynamicRuntimeActionStatus::PolicyDenied);
+        assert_eq!(
+            denied_by_session.authorization_receipt.reason,
+            DynamicRuntimeActionReason::MissingSessionCapability
+        );
     }
 }
