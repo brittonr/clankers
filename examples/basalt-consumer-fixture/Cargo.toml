@@ -1,0 +1,12 @@
+[package]
+name = "clankers-basalt-consumer-fixture"
+version = "0.1.0"
+edition = "2024"
+license = "AGPL-3.0-or-later"
+publish = false
+
+[workspace]
+
+[dependencies]
+basalt = { path = "../../../basalt", default-features = false }
+serde_json = "1.0"
