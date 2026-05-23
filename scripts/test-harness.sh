@@ -10,6 +10,7 @@
 #   ./scripts/test-harness.sh live [local-model|aspen2-qwen36|all]
 #   ./scripts/test-harness.sh vm [all|core|module|smoke|check-name]
 #   ./scripts/test-harness.sh ci [extra nix args...]
+#   ./scripts/test-harness.sh evidence-index
 #   ./scripts/test-harness.sh list
 #
 # Set CLANKERS_TEST_DRY_RUN=1 to print the selected commands without running them.
@@ -86,6 +87,7 @@ list_profiles() {
 - `live [local-model|aspen2-qwen36|all]`: opt-in live local-model readiness.
 - `vm [all|core|module|smoke|check-name]`: opt-in NixOS VM readiness.
 - `ci [extra nix args...]`: opt-in flake readiness adapter.
+- `evidence-index`: compose Git/lifecycle state with existing local harness receipts; does not run missing readiness profiles.
 - `help`: usage summary.
 - `list`: this profile inventory.
 
@@ -410,6 +412,9 @@ main() {
             ;;
         ci)
             run_step "flake readiness" env CLANKERS_RUN_FLAKE_READINESS=1 cargo nextest run -p clankers --test readiness_opt_in --no-fail-fast -E 'test(readiness_flake_ci_nextest_opt_in)'
+            ;;
+        evidence-index)
+            run_step "current head release evidence index" ./scripts/check-current-head-release-evidence.rs --result-dir "$RESULT_DIR" --out-dir target/release-evidence/current-head
             ;;
         list|profiles)
             list_profiles

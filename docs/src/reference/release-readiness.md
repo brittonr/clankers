@@ -10,7 +10,7 @@ From the repository root:
 ./scripts/test-harness.sh full
 ```
 
-This is the normal readiness harness. It runs formatting, workspace tests, clippy, repository verification rails, and Tigerstyle. Treat `target/test-harness/summary.md` or `target/test-harness/results.json` as the pass/fail source of truth; inspect per-step logs only for failed steps.
+This is the normal readiness harness. It runs formatting, workspace tests, clippy, repository verification rails, and Tigerstyle. Treat `target/test-harness/summary.md` or `target/test-harness/results.json` as the pass/fail source of truth; inspect per-step logs only for failed steps. After one or more readiness profiles have produced local receipts, run `./scripts/test-harness.sh evidence-index` to compose the current Git/lifecycle state with the latest valid local receipts under `target/release-evidence/current-head/`. The index does not run missing profiles and must not be treated as evidence for modes it reports as missing.
 
 The assertion layer for release-readiness gaps is Rust/nextest-owned. The credential-free E2E tier is:
 
@@ -78,8 +78,9 @@ CLANKERS_RUN_FLAKE_READINESS=1 \
 4. Run `nix build .#checks.$(nix eval --raw --impure --expr builtins.currentSystem).embedded-sdk-release-receipt` to verify the embedded SDK receipt rail remains wired into the routine Nix check surface.
 5. Run `./scripts/test-harness.sh live aspen2-qwen36` when the Lemonade/Qwen3.6 endpoint is reachable.
 6. Run `./scripts/test-harness.sh vm all` and `./scripts/test-harness.sh ci` on machines authorized for NixOS VM and flake-heavy checks.
-7. Confirm OAuth login commands print authorization URLs instead of opening a browser automatically.
-8. Inspect `git diff --check`, commit the verified changes, push, and verify `main`/`origin/main` match.
-9. Include the full harness summary plus any opt-in nextest live/VM/flake summaries in the release/readiness note, clearly separating pure readiness from optional host-dependent coverage.
+7. Run `./scripts/test-harness.sh evidence-index` after the selected profiles complete, then inspect `target/release-evidence/current-head/index.md` for selected receipts, missing modes, dirty status, and non-claims.
+8. Confirm OAuth login commands print authorization URLs instead of opening a browser automatically.
+9. Inspect `git diff --check`, commit the verified changes, push, and verify `main`/`origin/main` match.
+10. Include the evidence index plus the full harness summary and any opt-in nextest live/VM/flake summaries in the release/readiness note, clearly separating pure readiness from optional host-dependent coverage.
 
 Do not make a general external-production claim from these gates alone. They support trusted/internal dogfooding and release-candidate hygiene; public unattended production readiness still depends on the active roadmap, security boundary review, packaging/deployment surface, and operator documentation.

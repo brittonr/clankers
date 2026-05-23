@@ -76,6 +76,12 @@ fn test_harness_dry_run_receipts_cover_representative_modes() {
                 "env CLANKERS_RUN_FLAKE_READINESS=1 cargo nextest run -p clankers --test readiness_opt_in --no-fail-fast",
             ],
         },
+        HarnessCase {
+            name: "evidence-index",
+            args: &["evidence-index"],
+            expected_steps: &["current head release evidence index"],
+            expected_commands: &["./scripts/check-current-head-release-evidence.rs --result-dir"],
+        },
     ];
 
     for case in cases {
@@ -114,6 +120,8 @@ fn test_harness_list_mode_documents_profiles_selectors_env_and_receipts() {
         "`live [local-model|aspen2-qwen36|all]`",
         "`vm [all|core|module|smoke|check-name]`",
         "`ci [extra nix args...]`",
+        "`evidence-index`",
+        "does not run missing readiness profiles",
         "`list`",
         "## Selectors",
         "E2E selectors",
