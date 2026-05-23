@@ -1,4 +1,19 @@
 {
+  "change_metadata_policy": {
+    "allowed_groups": [
+      "current",
+      "future"
+    ],
+    "group_prefixes": [
+      "feature:"
+    ],
+    "statuses": [
+      "current",
+      "planned",
+      "blocked",
+      "deferred"
+    ]
+  },
   "determinism_replay_policy": {
     "cases": [
       {
