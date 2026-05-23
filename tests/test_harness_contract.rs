@@ -30,6 +30,7 @@ fn test_harness_dry_run_receipts_cover_representative_modes() {
                 "cargo clippy",
                 "repo verify",
                 "tigerstyle",
+                "live readiness aspen2-qwen36",
             ],
             expected_commands: &[
                 "cargo fmt --check",
@@ -38,6 +39,7 @@ fn test_harness_dry_run_receipts_cover_representative_modes() {
                 "cargo clippy --workspace --all-targets -- -D warnings",
                 "./scripts/verify.sh",
                 "./xtask/tigerstyle.sh",
+                "env CLANKERS_RUN_LIVE_READINESS=1 CLANKERS_LIVE_READINESS_SELECTOR=aspen2-qwen36 cargo nextest run -p clankers --test readiness_opt_in --no-fail-fast",
             ],
         },
         HarnessCase {
@@ -115,6 +117,7 @@ fn test_harness_list_mode_documents_profiles_selectors_env_and_receipts() {
         "`quick`",
         "`package <crate> [filter...]`",
         "`full`",
+        "primary live aspen2 Qwen gate",
         "`deterministic`",
         "`e2e [fake|deterministic|fast|api|all|test-name]`",
         "`live [local-model|aspen2-qwen36|all]`",
