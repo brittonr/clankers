@@ -35,7 +35,7 @@ OpenSpec tasks MUST represent repeated human/oracle-routed review findings as ex
 - THEN the gate MUST reject the closeout as unsupported prose rather than durable evidence
 
 ### Requirement: Explicit deterministic verification tasks [r[openspec-review-gates.deterministic-verification-tasks]]
-OpenSpec task ledgers MUST make deterministic verification obligations explicit when proposal, design, or specs require exact request shapes, stream boundaries, retry behavior, security policy, fixture-backed evidence, provider/account state, or exact default/override behavior.
+OpenSpec task ledgers MUST make deterministic verification obligations explicit when proposal, design, or specs require exact request shapes, stream boundaries, retry behavior, security policy, fixture-backed evidence, provider/account state, exact default/override behavior, or deterministic check coverage.
 
 #### Scenario: vague test task misses a required deterministic contract [r[openspec-review-gates.deterministic-verification-tasks.vague-task]]
 - GIVEN a spec or design requires an exact deterministic contract such as request headers, stream event boundaries, retry counts, redaction rules, or receipt fields
@@ -58,6 +58,17 @@ OpenSpec task ledgers MUST make deterministic verification obligations explicit 
 - GIVEN a proposal, design, or spec requires one of the repeated high-risk subcontracts
 - WHEN `tasks.md` names the subcontract and a concrete fixture, helper, command, golden, script, or evidence path with `[covers=...]`
 - THEN the gate SHOULD treat the subcontract verification obligation as traceable
+
+#### Scenario: deterministic-check task omits the reproducible artifact [r[openspec-review-gates.deterministic-verification-tasks.deterministic-check-artifact]]
+- GIVEN a proposal, design, or spec requires deterministic check coverage or fixture-backed verification
+- WHEN `tasks.md` only says to add tests, verify deterministic behavior, or ensure fixture coverage without naming a concrete artifact
+- THEN the gate MUST report `missing-deterministic-check-artifact-task`
+- AND the diagnostic MUST require a task line with `[covers=...]` plus a concrete fixture, helper, command, golden file, script, evidence path, or oracle checkpoint
+
+#### Scenario: concrete deterministic-check artifact task satisfies the obligation [r[openspec-review-gates.deterministic-verification-tasks.deterministic-check-artifact-satisfied]]
+- GIVEN a proposal, design, or spec requires deterministic check coverage or fixture-backed verification
+- WHEN `tasks.md` names the deterministic check and a concrete fixture, helper, command, golden file, script, evidence path, or oracle checkpoint with `[covers=...]`
+- THEN the gate SHOULD treat the deterministic-check obligation as traceable
 
 ### Requirement: Design-stage omission prevention [r[openspec-review-gates.design-stage-omission-prevention]]
 The OpenSpec review-gate rail MUST reject repeated design-stage omissions when proposal or delta spec artifacts require concrete design behavior but `design.md` leaves the storage seam, policy bounds, or verification plan ambiguous.

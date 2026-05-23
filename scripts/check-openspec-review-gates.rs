@@ -140,6 +140,18 @@ const CONTRACT_CATEGORIES: &[ContractCategory] = &[
         label: "auto-fix remediation path",
         terms: &["auto-fix", "autofix", "automatic fix", "fix-it"],
     },
+    ContractCategory {
+        code: "missing-deterministic-check-artifact-task",
+        label: "deterministic check artifact",
+        terms: &[
+            "deterministic check",
+            "deterministic checks",
+            "deterministic fixture",
+            "fixture-backed verification",
+            "fixture coverage",
+            "reproducible artifact",
+        ],
+    },
 ];
 
 const DESIGN_CATEGORIES: &[DesignCategory] = &[
@@ -254,6 +266,7 @@ fn verify_guidance_and_wiring() -> Result<(), String> {
         "entitlement probe",
         "tool-call delta",
         "auto-fix remediation path",
+        "deterministic check artifact",
         "reasoning signature retention",
         "retry policy bounds",
         "scenario-complete verification plan",
@@ -280,6 +293,7 @@ fn verify_guidance_and_wiring() -> Result<(), String> {
         "missing-entitlement-probe-retry-task",
         "missing-tool-call-delta-boundary-task",
         "missing-auto-fix-task",
+        "missing-deterministic-check-artifact-task",
         "missing-reasoning-signature-design",
         "missing-retry-policy-design",
         "missing-verification-plan-design",
@@ -445,6 +459,14 @@ fn spec_category_satisfied(spec: &str, category: &SpecCategory) -> bool {
 }
 
 fn category_satisfied(category: &ContractCategory, task_lines: &[String], lower_tasks: &str) -> bool {
+    if category.code == "missing-deterministic-check-artifact-task" {
+        return task_lines.iter().any(|line| {
+            let lower = line.to_lowercase();
+            (lower.contains("deterministic") || lower.contains("fixture") || lower.contains("command"))
+                && has_concrete_verification_marker(&lower)
+        });
+    }
+
     let category_is_named = category.terms.iter().any(|term| lower_tasks.contains(term));
     if !category_is_named {
         return false;
