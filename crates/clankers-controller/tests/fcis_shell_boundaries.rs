@@ -46,6 +46,7 @@ const AGENT_RUNTIME_FILES: [&str; 3] = [
 ];
 const EVENT_LOOP_RUNTIME_FILE: &str = "src/modes/event_loop_runner/mod.rs";
 const CONTROLLER_EFFECT_INTERPRETER_FILE: &str = "crates/clankers-controller/src/core_effects.rs";
+const CONTROLLER_EFFECT_PROJECTION_FILE: &str = "crates/clankers-controller/src/effect_interpretation.rs";
 const CONTROLLER_INPUT_TRANSLATION_FILES: [&str; 2] = [
     "crates/clankers-controller/src/command.rs",
     "crates/clankers-controller/src/auto_test.rs",
@@ -65,6 +66,12 @@ const CORE_EFFECTS_REQUIRED_PATHS: [&str; 4] = [
     "CoreEffect::ApplyThinkingLevel",
     "CoreEffect::ApplyToolFilter",
     "CoreEffect::ReplayQueuedPrompt",
+];
+const CORE_EFFECT_PROJECTION_REQUIRED_PATHS: [&str; 4] = [
+    "CoreEffect::StartPrompt",
+    "CoreEffect::EmitLogicalEvent",
+    "CoreEffect::ApplyThinkingLevel",
+    "CoreEffect::ApplyToolFilter",
 ];
 const COMMAND_REQUIRED_INPUT_PATHS: [&str; 8] = [
     "CoreInput::SetThinkingLevel",
@@ -1174,6 +1181,13 @@ fn collect_non_test_paths_from_files(relative_paths: &[&str]) -> BTreeSet<String
     relative_paths.iter().flat_map(|relative_path| collect_non_test_paths(relative_path)).collect()
 }
 
+fn collect_non_test_function_names_from_files(relative_paths: &[&str]) -> BTreeSet<String> {
+    relative_paths
+        .iter()
+        .flat_map(|relative_path| collect_non_test_function_names(relative_path))
+        .collect()
+}
+
 fn assert_required_paths_present(relative_path: &str, paths: &BTreeSet<String>, required_paths: &[&str]) {
     let missing_paths: Vec<&str> =
         required_paths.iter().copied().filter(|required_path| !paths.contains(*required_path)).collect();
@@ -1506,7 +1520,7 @@ fn embedded_event_loop_runner_stays_adapter_only() {
 #[test]
 fn controller_effect_interpretation_stays_centralized_repo_wide() {
     for relative_path in rust_source_files_under(CONTROLLER_SOURCE_DIR) {
-        if relative_path == CONTROLLER_EFFECT_INTERPRETER_FILE {
+        if [CONTROLLER_EFFECT_INTERPRETER_FILE, CONTROLLER_EFFECT_PROJECTION_FILE].contains(&relative_path.as_str()) {
             continue;
         }
 
@@ -1517,6 +1531,12 @@ fn controller_effect_interpretation_stays_centralized_repo_wide() {
 
     let interpreter_paths = collect_non_test_paths(CONTROLLER_EFFECT_INTERPRETER_FILE);
     assert_required_paths_present(CONTROLLER_EFFECT_INTERPRETER_FILE, &interpreter_paths, &CORE_EFFECTS_REQUIRED_PATHS);
+    let projection_paths = collect_non_test_paths(CONTROLLER_EFFECT_PROJECTION_FILE);
+    assert_required_paths_present(
+        CONTROLLER_EFFECT_PROJECTION_FILE,
+        &projection_paths,
+        &CORE_EFFECT_PROJECTION_REQUIRED_PATHS,
+    );
 }
 
 #[test]
@@ -1685,12 +1705,16 @@ fn agent_turn_runtime_defers_retry_and_budget_policy_to_engine() {
         &turn_paths,
         &AGENT_TURN_ENGINE_RETRY_REQUIRED_PATHS,
     );
+    let shell_concern_files = [
+        AGENT_TURN_ENGINE_MODEL_COMPLETION_FILE,
+        "crates/clankers-agent/src/turn/adapters.rs",
+        "crates/clankers-agent/src/turn/execution.rs",
+    ];
+    let mut shell_concern_paths = collect_non_test_paths_from_files(&shell_concern_files);
+    shell_concern_paths.extend(collect_non_test_function_names_from_files(&shell_concern_files));
     assert_required_paths_present(
-        "crates/clankers-agent/src/turn/{mod,adapters}.rs",
-        &collect_non_test_paths_from_files(&[
-            AGENT_TURN_ENGINE_MODEL_COMPLETION_FILE,
-            "crates/clankers-agent/src/turn/adapters.rs",
-        ]),
+        "crates/clankers-agent/src/turn/{mod,adapters,execution}.rs",
+        &shell_concern_paths,
         &AGENT_TURN_SHELL_CONCERN_REQUIRED_PATHS,
     );
     let transcript_paths = collect_non_test_paths(AGENT_TURN_TRANSCRIPT_FILE);
@@ -1761,7 +1785,7 @@ fn adapter_constructor_and_feedback_inventories_stay_on_allowed_seams() {
         if relative_path != CORE_ENGINE_COMPOSITION_FILE {
             assert_segments_absent(&relative_path, &paths, &ENGINE_INPUT_SUBMIT_SEGMENTS);
         }
-        if relative_path != CONTROLLER_EFFECT_INTERPRETER_FILE {
+        if ![CONTROLLER_EFFECT_INTERPRETER_FILE, CONTROLLER_EFFECT_PROJECTION_FILE].contains(&relative_path.as_str()) {
             assert_segments_absent(&relative_path, &paths, &CORE_EFFECT_CONSTRUCTOR_SEGMENTS);
         }
         if relative_path != CORE_ENGINE_COMPOSITION_FILE {

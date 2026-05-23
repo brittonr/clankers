@@ -201,7 +201,12 @@ mod tests {
     fn assert_completion_request_inventory(path: &str, expected_count: usize) {
         let source = std::fs::read_to_string(workspace_root().join(path))
             .unwrap_or_else(|e| panic!("failed to read {path}: {e}"));
-        let occurrences: Vec<usize> = source.match_indices("CompletionRequest {").map(|(idx, _)| idx).collect();
+        let occurrences: Vec<usize> = source
+            .match_indices("CompletionRequest {")
+            .map(|(idx, _)| idx)
+            .filter(|start| source[..*start].chars().rev().find(|c| !c.is_whitespace()) != Some('>'))
+            .filter(|start| source[*start..].lines().take(12).any(|line| line.trim_start().starts_with("model:")))
+            .collect();
         assert_eq!(occurrences.len(), expected_count, "unexpected CompletionRequest constructor count in {path}");
 
         for start in occurrences {
@@ -510,8 +515,8 @@ mod tests {
             ("crates/clankers-agent/src/turn/execution.rs", 1usize),
             ("src/modes/agent_task.rs", 1usize),
             ("src/worktree/llm_resolver.rs", 1usize),
-            ("crates/clankers-provider/src/router.rs", 21usize),
-            ("crates/clankers-provider/src/rpc_provider.rs", 4usize),
+            ("crates/clankers-provider/src/router.rs", 18usize),
+            ("crates/clankers-provider/src/rpc_provider.rs", 1usize),
         ];
 
         for (path, count) in inventory {

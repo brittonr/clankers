@@ -1,6 +1,7 @@
 const ATTACH: &str = include_str!("../src/modes/attach.rs");
 const ATTACH_COMMANDS: &str = include_str!("../src/modes/attach/commands.rs");
 const ATTACH_REMOTE: &str = include_str!("../src/modes/attach_remote.rs");
+const SESSION_COMMAND_POLICY: &str = include_str!("../src/modes/session_command_policy.rs");
 const REQUEST_LIFECYCLE: &str = include_str!("../docs/src/reference/request-lifecycle.md");
 
 #[test]
@@ -9,8 +10,8 @@ fn local_and_remote_attach_thread_the_same_parity_tracker() {
         "pub(crate) struct AttachParityTracker",
         "fn should_suppress(&mut self, event: &DaemonEvent) -> bool",
         "fn is_thinking_ack_message(event: &DaemonEvent) -> bool",
-        "text.starts_with(\"Thinking\")",
-        "text.starts_with(\"Disabled tools updated:\")",
+        "session_command_policy::ack_matches(SessionAckPolicy::ThinkingLevel, event)",
+        "session_command_policy::ack_matches(SessionAckPolicy::DisabledTools, event)",
         "expect_thinking_ack_message",
         "expect_disabled_tools_message",
     ] {
@@ -18,6 +19,14 @@ fn local_and_remote_attach_thread_the_same_parity_tracker() {
     }
 
     assert!(ATTACH.contains("pub(crate) use commands::AttachParityTracker;"));
+
+    for anchor in [
+        "pub(crate) fn ack_matches(policy: SessionAckPolicy, event: &DaemonEvent) -> bool",
+        "text.starts_with(\"Thinking\")",
+        "text.starts_with(\"Disabled tools updated:\")",
+    ] {
+        assert!(SESSION_COMMAND_POLICY.contains(anchor), "session command policy missing parity anchor `{anchor}`");
+    }
 
     for anchor in [
         "use super::attach::AttachParityTracker;",
@@ -34,13 +43,20 @@ fn local_and_remote_attach_thread_the_same_parity_tracker() {
 fn thinking_slash_bridges_explicit_and_cycle_paths_before_suppressing_daemon_ack() {
     for anchor in [
         "AgentCommand::SetThinkingLevel(level)",
-        "SessionCommand::SetThinkingLevel",
+        "session_command_policy::set_thinking_level_effect(level)",
         "AgentCommand::CycleThinkingLevel",
-        "SessionCommand::CycleThinkingLevel",
-        "apply_standalone_thinking_level(app, level)",
-        "parity_tracker.expect_thinking_ack_message();",
+        "session_command_policy::cycle_thinking_level_effect(app.thinking_level)",
+        "apply_local_session_effect(app, effect.local);",
+        "parity_tracker.expect_ack(effect.ack);",
     ] {
         assert!(ATTACH_COMMANDS.contains(anchor), "attach thinking parity anchor missing `{anchor}`");
+    }
+
+    for anchor in ["SessionCommand::SetThinkingLevel", "SessionCommand::CycleThinkingLevel"] {
+        assert!(
+            SESSION_COMMAND_POLICY.contains(anchor),
+            "session command policy missing thinking command anchor `{anchor}`"
+        );
     }
 }
 

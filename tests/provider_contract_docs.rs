@@ -2,6 +2,7 @@ const SUMMARY: &str = include_str!("../docs/src/SUMMARY.md");
 const PROVIDER_CONTRACTS: &str = include_str!("../docs/src/reference/provider-contracts.md");
 const PROVIDER_LIB: &str = include_str!("../crates/clankers-provider/src/lib.rs");
 const RPC_PROVIDER: &str = include_str!("../crates/clankers-provider/src/rpc_provider.rs");
+const ROUTER_REQUEST_BRIDGE: &str = include_str!("../crates/clankers-provider/src/router_request_bridge.rs");
 const AGENT_EXECUTION: &str = include_str!("../crates/clankers-agent/src/turn/execution.rs");
 const ROUTER_CODEX: &str = include_str!("../crates/clanker-router/src/backends/openai_codex.rs");
 
@@ -38,7 +39,7 @@ fn provider_contracts_doc_tracks_existing_source_anchors() {
         (PROVIDER_LIB, "provider_and_router_request_shared_schema_fields_stay_in_parity"),
         (PROVIDER_LIB, "provider_and_router_request_omit_empty_extra_params_consistently"),
         (RPC_PROVIDER, "fn build_router_request(request: CompletionRequest)"),
-        (RPC_PROVIDER, "fn convert_messages_to_api(messages: &[crate::message::AgentMessage])"),
+        (ROUTER_REQUEST_BRIDGE, "fn messages_to_router_json(messages: &[AgentMessage])"),
         (ROUTER_CODEX, "text/event-stream"),
     ] {
         assert!(source.contains(anchor), "provider contracts source anchor missing `{anchor}`");
