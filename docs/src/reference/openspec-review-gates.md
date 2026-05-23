@@ -36,6 +36,7 @@ The current deterministic contract categories are:
 - active account persistence after provider-scoped login
 - entitlement probe retry and refresh-retry fixtures, including probe-specific header omissions
 - tool-call delta stream boundaries, especially raw `function_call_arguments.delta` to ordered input-JSON deltas
+- auto-fix remediation path: repeated task-omission fixes must name the generated task shape and prove it with a fixture/helper/command/evidence/oracle artifact instead of only saying "add an auto-fix"
 
 The checker asserts representative diagnostics including:
 
@@ -46,6 +47,7 @@ The checker asserts representative diagnostics including:
 - `missing-active-account-task`
 - `missing-entitlement-probe-retry-task`
 - `missing-tool-call-delta-boundary-task`
+- `missing-auto-fix-task`
 
 ## Design-stage completeness guidance
 

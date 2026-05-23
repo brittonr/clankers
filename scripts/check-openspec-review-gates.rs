@@ -135,6 +135,11 @@ const CONTRACT_CATEGORIES: &[ContractCategory] = &[
             "inputjsondelta",
         ],
     },
+    ContractCategory {
+        code: "missing-auto-fix-task",
+        label: "auto-fix remediation path",
+        terms: &["auto-fix", "autofix", "automatic fix", "fix-it"],
+    },
 ];
 
 const DESIGN_CATEGORIES: &[DesignCategory] = &[
@@ -160,7 +165,13 @@ const DESIGN_CATEGORIES: &[DesignCategory] = &[
             "provider-scoped status",
             "discovery hiding",
         ],
-        required_terms: &["proactive refresh", "401", "429", "provider-scoped status", "discovery hiding"],
+        required_terms: &[
+            "proactive refresh",
+            "401",
+            "429",
+            "provider-scoped status",
+            "discovery hiding",
+        ],
     },
 ];
 
@@ -242,6 +253,7 @@ fn verify_guidance_and_wiring() -> Result<(), String> {
         "active account",
         "entitlement probe",
         "tool-call delta",
+        "auto-fix remediation path",
         "reasoning signature retention",
         "retry policy bounds",
         "scenario-complete verification plan",
@@ -267,6 +279,7 @@ fn verify_guidance_and_wiring() -> Result<(), String> {
         "missing-active-account-task",
         "missing-entitlement-probe-retry-task",
         "missing-tool-call-delta-boundary-task",
+        "missing-auto-fix-task",
         "missing-reasoning-signature-design",
         "missing-retry-policy-design",
         "missing-verification-plan-design",
@@ -380,8 +393,7 @@ fn evaluate_fixture(fixture_dir: &Path) -> Result<FixtureReport, String> {
     }
 
     for category in SPEC_CATEGORIES {
-        if spec_category_required(&lower_spec_source_text, category)
-            && !spec_category_satisfied(&lower_spec, category)
+        if spec_category_required(&lower_spec_source_text, category) && !spec_category_satisfied(&lower_spec, category)
         {
             diagnostics.push(format!(
                 "{}: spec contract {:?} is not encoded as an explicit delta requirement/scenario",

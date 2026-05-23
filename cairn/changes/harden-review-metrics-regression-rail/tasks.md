@@ -5,12 +5,12 @@
 
 ## Phase 2: Fixture-backed implementation
 
-- [ ] [serial] I1: Inspect `scripts/check-openspec-review-gates.rs`, existing fixtures, and `docs/src/reference/openspec-review-gates.md` to identify the highest-count unsupported metrics category [r[openspec-review-gates.review-metrics-regression-rail.snapshot-selects-category]]
-- [ ] [serial] I2: Add category-specific checker diagnostics plus at least one failing sanitized fixture and one passing sanitized fixture for the selected category [r[openspec-review-gates.review-metrics-regression-rail.fixture-backed-category]]
-- [ ] [parallel] I3: Update operator guidance so the new diagnostic tells authors the exact fixture/helper/command/evidence/oracle shape required [r[openspec-review-gates.review-metrics-regression-rail.guidance-and-wiring]]
-- [ ] [parallel] I4: Keep fixture/evidence content secret-free and limited to sanitized contract text, counts, classes, and safe examples [r[openspec-review-gates.review-metrics-regression-rail.secret-free-evidence]]
+- [x] [serial] I1: Inspect `scripts/check-openspec-review-gates.rs`, existing fixtures, and `docs/src/reference/openspec-review-gates.md` to identify the highest-count unsupported metrics category [r[openspec-review-gates.review-metrics-regression-rail.snapshot-selects-category]]
+- [x] [serial] I2: Add category-specific checker diagnostics plus at least one failing sanitized fixture and one passing sanitized fixture for the selected category [r[openspec-review-gates.review-metrics-regression-rail.fixture-backed-category]]
+- [x] [parallel] I3: Update operator guidance so the new diagnostic tells authors the exact fixture/helper/command/evidence/oracle shape required [r[openspec-review-gates.review-metrics-regression-rail.guidance-and-wiring]]
+- [x] [parallel] I4: Keep fixture/evidence content secret-free and limited to sanitized contract text, counts, classes, and safe examples [r[openspec-review-gates.review-metrics-regression-rail.secret-free-evidence]]
 
 ## Phase 3: Verification and archive
 
-- [ ] [serial] V1: Run `TMPDIR=/home/brittonr/.cargo-target/tmp RUSTC_WRAPPER= ./scripts/check-openspec-review-gates.rs` [r[openspec-review-gates.review-metrics-regression-rail.fixture-backed-category]]
-- [ ] [serial] V2: Run `mdbook build docs`, `nix run .#cairn -- gate proposal harden-review-metrics-regression-rail --root .`, `nix run .#cairn -- gate design harden-review-metrics-regression-rail --root .`, `nix run .#cairn -- gate tasks harden-review-metrics-regression-rail --root .`, `nix run .#cairn -- validate --root .`, and `git diff --check` [r[openspec-review-gates.review-metrics-regression-rail.guidance-and-wiring]]
+- [x] [serial] V1: Run `TMPDIR=/home/brittonr/.cargo-target/tmp RUSTC_WRAPPER= ./scripts/check-openspec-review-gates.rs` [r[openspec-review-gates.review-metrics-regression-rail.fixture-backed-category]]
+- [x] [serial] V2: Run `mdbook build docs`, `nix run .#cairn -- gate proposal harden-review-metrics-regression-rail --root .`, `nix run .#cairn -- gate design harden-review-metrics-regression-rail --root .`, `nix run .#cairn -- gate tasks harden-review-metrics-regression-rail --root .`, `nix run .#cairn -- validate --root .`, and `git diff --check` [r[openspec-review-gates.review-metrics-regression-rail.guidance-and-wiring]]
