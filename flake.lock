@@ -1,5 +1,21 @@
 {
   "nodes": {
+    "basalt-src": {
+      "flake": false,
+      "locked": {
+        "lastModified": 1779504571,
+        "narHash": "sha256-kPESje/5w1vk2KKJgFz0Z+RqyxkjJAiGT7mgortULX4=",
+        "ref": "refs/heads/main",
+        "rev": "005e1496a4a1be477ba84008ecbcdf8793a236c6",
+        "revCount": 21,
+        "type": "git",
+        "url": "ssh://git@github.com/OnixResearch/basalt.git"
+      },
+      "original": {
+        "type": "git",
+        "url": "ssh://git@github.com/OnixResearch/basalt.git"
+      }
+    },
     "cairn": {
       "inputs": {
         "nixpkgs": [
@@ -160,6 +176,7 @@
     },
     "root": {
       "inputs": {
+        "basalt-src": "basalt-src",
         "cairn": "cairn",
         "flake-utils": "flake-utils_2",
         "nixpkgs": "nixpkgs_2",

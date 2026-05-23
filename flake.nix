@@ -32,13 +32,18 @@
       flake = false;
     };
 
+    basalt-src = {
+      url = "git+ssh://git@github.com/OnixResearch/basalt.git";
+      flake = false;
+    };
+
     cairn = {
       url = "git+ssh://git@github.com/OnixResearch/cairn.git";
       inputs.nixpkgs.follows = "nixpkgs";
     };
   };
 
-  outputs = { self, nixpkgs, unit2nix, rust-overlay, flake-utils, subwayrat-src, ratcore-src, ucan-src, cairn, ... }:
+  outputs = { self, nixpkgs, unit2nix, rust-overlay, flake-utils, subwayrat-src, ratcore-src, ucan-src, basalt-src, cairn, ... }:
     {
       nixosModules = {
         clankers-daemon = import ./nix/modules/clankers-daemon.nix;
@@ -80,6 +85,7 @@
             "../subwayrat" = subwayrat-src;
             "../ratcore" = ratcore-src;
             "../ucan" = ucan-src;
+            "../basalt" = basalt-src;
           };
           buildRustCrateForPkgs = pkgs: pkgs.buildRustCrate.override {
             cargo = rustToolchain;
@@ -116,6 +122,7 @@
             "../subwayrat" = subwayrat-src;
             "../ratcore" = ratcore-src;
             "../ucan" = ucan-src;
+            "../basalt" = basalt-src;
           };
           extraCrateOverrides = {
             aws-lc-rs = attrs: {
@@ -142,6 +149,7 @@
             "../subwayrat" = subwayrat-src;
             "../ratcore" = ratcore-src;
             "../ucan" = ucan-src;
+            "../basalt" = basalt-src;
           };
           buildRustCrateForPkgs = pkgs: pkgs.buildRustCrate.override {
             cargo = rustToolchain;
@@ -161,6 +169,10 @@
         clankers-docs = import ./nix/docs.nix { inherit pkgs; src = ./.; };
         clankers-plugins = import ./nix/plugins.nix {
           inherit pkgs rustToolchain unit2nix system;
+          src = ./.;
+        };
+        securityPolicyDriftRails = import ./nix/security-policy-drift-rails.nix {
+          inherit pkgs rustToolchain;
           src = ./.;
         };
         routerPkg = routerBuild.rootCrate.build;
@@ -293,6 +305,8 @@
             cargo -q -Zscript scripts/check-openspec-review-gates.rs
             touch $out
           '';
+
+          security-policy-drift-rails = securityPolicyDriftRails;
 
           e2e-fake = pkgs.runCommand "clankers-e2e-fake" {
             nativeBuildInputs = [
