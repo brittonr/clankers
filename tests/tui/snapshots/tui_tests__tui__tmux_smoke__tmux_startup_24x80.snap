@@ -1,6 +1,6 @@
 ---
 source: tests/tui/tmux_smoke.rs
-assertion_line: 95
+assertion_line: 94
 expression: normalized
 ---
 ┌ Todo (0/0)───┐┌──────────────── h/l:panels j/k:panes ┐┌ Subagents (0/0)──────┐
@@ -10,16 +10,16 @@ expression: normalized
 │todo tool.    │││typing                              │││                      │
 │              │││                                    │││                      │
 │              │││                                    │││                      │
-│              │││                                    │││                      │
-│              │││                                    │││                      │
-└──────────────┘││                                    ││└──────────────────────┘
-┌ Files (0, 0 o┐││                                    ││┌ Peers (0/0)──────────┐
-│No files      │││                                    │││No peers known. /peers│
-│touched yet.  │││                                    │││add <id> <name>       │
-│              │││                                    │││                      │
-│              │││                                    │││                      │
-│              │││                                    │││                      │
-│              │││                                    │││                      │
+│              │││                                    ││└──────────────────────┘
+│              │││                                    ││┌ Peers (0/0)──────────┐
+└──────────────┘││                                    │││No peers known. /peers│
+┌ Files (0, 0 o┐││                                    │││add <id> <name>       │
+│No files      │││                                    │││                      │
+│touched yet.  │││                                    │││                      │
+│              │││                                    ││└──────────────────────┘
+│              │││                                    ││┌ Spawned/BG (0 active)┐
+│              │││                                    │││No spawned/background │
+│              │││                                    │││processes tracked.    │
 │              │││                                    │││                      │
 │              ││└────────────────────────────────────┘││                      │
 └──────────────┘└──────────────────────────────────────┘└──────────────────────┘

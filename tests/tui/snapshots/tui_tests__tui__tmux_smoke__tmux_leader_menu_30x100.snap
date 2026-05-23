@@ -12,18 +12,18 @@ expression: normalized
 │                  │││              │  E  experiments         │     │││                            │
 │                  │││              │  G  GitHub              │     │││                            │
 │                  │││              │  I  prompt improve      │     │││                            │
-│                  │││              │  L  loop…               │     │││                            │
-│                  │││              │  M  model/thinking…     │     │││                            │
-│                  │││              │  P  plan mode           │     │││                            │
-└──────────────────┘││              │  R  code review         │     ││└────────────────────────────┘
-┌ Files (0, 0 ops)─┐││              │  S  system/memory…      │     ││┌ Peers (0/0)────────────────┐
-│No files touched  │││              │  T  show/hide thinking  │     │││No peers known. /peers add  │
-│yet.              │││              │  `  toggle panel        │     │││<id> <name>                 │
+│                  │││              │  L  loop…               │     ││└────────────────────────────┘
+│                  │││              │  M  model/thinking…     │     ││┌ Peers (0/0)────────────────┐
+│                  │││              │  P  plan mode           │     │││No peers known. /peers add  │
+└──────────────────┘││              │  R  code review         │     │││<id> <name>                 │
+┌ Files (0, 0 ops)─┐││              │  S  system/memory…      │     │││                            │
+│No files touched  │││              │  T  show/hide thinking  │     │││                            │
+│yet.              │││              │  `  toggle panel        │     │││                            │
 │                  │││              │  a  account             │     │││                            │
-│                  │││              │  b  branch…             │     │││                            │
-│                  │││              │  c  cancel/abort        │     │││                            │
-│                  │││              │  d  debug…              │     │││                            │
-│                  │││              │  e  export              │     │││                            │
+│                  │││              │  b  branch…             │     ││└────────────────────────────┘
+│                  │││              │  c  cancel/abort        │     ││┌ Spawned/BG (0 active)──────┐
+│                  │││              │  d  debug…              │     │││No spawned/background       │
+│                  │││              │  e  export              │     │││processes tracked.          │
 │                  │││              │  f  search output       │     │││                            │
 │                  │││              │  i  info…               │     │││                            │
 │                  │││              │  l  layout…             │     │││                            │
