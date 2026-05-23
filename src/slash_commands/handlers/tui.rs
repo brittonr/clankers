@@ -88,7 +88,7 @@ impl SlashHandler for LayoutHandler {
                     })
                     .collect();
                 let msg = format!(
-                    "Layout: {} pane(s): {}\nUse /layout <preset> to switch.\nPresets: default, wide, focused, right\nToggle: /layout toggle <todo|files|subagents|peers|processes|branches>",
+                    "Layout: {} pane(s): {}\nUse /layout <preset> to switch.\nPresets: default, wide, focused, right\nToggle: /layout toggle <todo|files|subagents|peers|processes|spawned|bg|branches>",
                     pane_count,
                     panel_names.join(", ")
                 );
@@ -110,7 +110,7 @@ fn parse_panel_name(name: &str) -> Option<crate::tui::panel::PanelId> {
         "files" | "file" => Some(PanelId::Files),
         "subagents" | "subagent" | "agents" => Some(PanelId::Subagents),
         "peers" | "peer" => Some(PanelId::Peers),
-        "processes" | "process" | "procs" => Some(PanelId::Processes),
+        "processes" | "process" | "procs" | "spawned" | "spawn" | "bg" | "background" => Some(PanelId::Processes),
         "branches" | "branch" => Some(PanelId::Branches),
         _ => None,
     }
@@ -128,7 +128,10 @@ fn handle_toggle(panel_name: &str, ctx: &mut SlashContext<'_>) {
 
     let Some(panel_id) = parse_panel_name(panel_name) else {
         ctx.app.push_system(
-            format!("Unknown panel '{}'. Use: todo, files, subagents, peers, processes, branches", panel_name),
+            format!(
+                "Unknown panel '{}'. Use: todo, files, subagents, peers, processes/spawned/bg, branches",
+                panel_name
+            ),
             true,
         );
         return;
@@ -520,4 +523,18 @@ fn todo_panel_mut(app: &mut crate::tui::app::App) -> &mut crate::tui::components
     app.panels
         .downcast_mut::<crate::tui::components::todo_panel::TodoPanel>(crate::tui::panel::PanelId::Todo)
         .expect("todo panel registered at startup")
+}
+
+#[cfg(test)]
+mod tests {
+    use clanker_tui_types::PanelId;
+
+    use super::parse_panel_name;
+
+    #[test]
+    fn spawned_background_aliases_target_process_panel() {
+        for name in ["processes", "spawned", "spawn", "bg", "background"] {
+            assert_eq!(parse_panel_name(name), Some(PanelId::Processes));
+        }
+    }
 }

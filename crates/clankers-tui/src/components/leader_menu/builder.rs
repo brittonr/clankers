@@ -154,7 +154,7 @@ fn layout_submenu_items() -> Vec<MenuContribution> {
         builtin('2', "toggle Files", cmd("/layout toggle files"), p()),
         builtin('3', "toggle Subagents", cmd("/layout toggle subagents"), p()),
         builtin('4', "toggle Peers", cmd("/layout toggle peers"), p()),
-        builtin('5', "toggle Processes", cmd("/layout toggle processes"), p()),
+        builtin('5', "toggle Spawned/BG", cmd("/layout toggle bg"), p()),
         builtin('6', "toggle Branches", cmd("/layout toggle branches"), p()),
     ]
 }

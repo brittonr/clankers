@@ -172,9 +172,10 @@ pub mod pane_ids {
 /// ```text
 /// ┌──────┬────────────────────┬───────────┐
 /// │ Todo │                    │ Subagents │
-/// │      │       Chat         │           │
-/// │──────│                    │───────────│
-/// │Files │                    │   Peers   │
+/// │      │       Chat         │───────────│
+/// │──────│                    │   Peers   │
+/// │Files │                    │───────────│
+/// │      │                    │Spawned/BG │
 /// └──────┴────────────────────┴───────────┘
 ///   20%          50%              30%
 /// ```
@@ -198,9 +199,14 @@ pub fn default_tiling() -> Hypertile {
             first: Box::new(Node::Pane(pane_ids::CHAT)),
             second: Box::new(Node::Split {
                 direction: Direction::Vertical,
-                ratio: 0.50,
+                ratio: 0.40,
                 first: Box::new(Node::Pane(pane_ids::subagents())),
-                second: Box::new(Node::Pane(pane_ids::peers())),
+                second: Box::new(Node::Split {
+                    direction: Direction::Vertical,
+                    ratio: 0.50,
+                    first: Box::new(Node::Pane(pane_ids::peers())),
+                    second: Box::new(Node::Pane(pane_ids::processes())),
+                }),
             }),
         }),
     };
@@ -223,6 +229,7 @@ pub fn default_registry() -> PaneRegistry {
     reg.register(pane_ids::files(), PaneKind::Panel(PanelId::Files));
     reg.register(pane_ids::subagents(), PaneKind::Panel(PanelId::Subagents));
     reg.register(pane_ids::peers(), PaneKind::Panel(PanelId::Peers));
+    reg.register(pane_ids::processes(), PaneKind::Panel(PanelId::Processes));
     reg
 }
 
@@ -459,5 +466,16 @@ pub fn auto_split_for_subagent(tiling: &mut Hypertile, registry: &PaneRegistry, 
     let new_root = insert_pane_beside(tiling.root().clone(), target_pane, new_pane_id, direction, ratio);
     if let Some(root) = new_root {
         tiling.set_root(root).ok();
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn default_layout_includes_processes_panel() {
+        let registry = default_registry();
+        assert_eq!(registry.find_panel(PanelId::Processes), Some(pane_ids::processes()));
     }
 }

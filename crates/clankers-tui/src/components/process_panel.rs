@@ -1,7 +1,8 @@
-//! Process panel — displays process monitor data
+//! Spawned/background process panel — displays process monitor data
 //!
 //! Shows CPU/memory usage for tracked processes, allowing users to see
-//! what child processes (bash, subagents, etc.) are running and their resource usage.
+//! what session-spawned child/background processes (bash, process jobs,
+//! subagents, etc.) are running and their resource usage.
 
 use std::time::Duration;
 
@@ -221,7 +222,7 @@ impl Panel for ProcessPanel {
 
     fn title(&self) -> String {
         let active = self.entries.iter().filter(|e| matches!(e.state, EntryState::Running)).count();
-        format!("Processes ({} active)", active)
+        format!("Spawned/BG ({} active)", active)
     }
 
     fn focus_hints(&self) -> &'static str {
@@ -237,7 +238,7 @@ impl Panel for ProcessPanel {
     }
 
     fn empty_text(&self) -> &'static str {
-        "No processes tracked."
+        "No spawned/background processes tracked."
     }
 
     #[cfg_attr(
@@ -526,7 +527,7 @@ impl ProcessPanel {
             return None;
         }
 
-        let text = format!(" ⚙ {} procs ", active);
+        let text = format!(" ⚙ {} bg ", active);
         Some(Span::styled(text, Style::default().fg(Color::Black).bg(Color::Blue).add_modifier(Modifier::BOLD)))
     }
 }
@@ -608,7 +609,8 @@ mod tests {
     #[test]
     fn test_panel_trait_title() {
         let panel = ProcessPanel::new();
-        assert!(panel.title().contains("0 active"));
+        assert_eq!(panel.title(), "Spawned/BG (0 active)");
+        assert_eq!(panel.empty_text(), "No spawned/background processes tracked.");
     }
 
     #[test]
