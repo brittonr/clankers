@@ -115,7 +115,7 @@ fn run() -> Result<OutputPaths, String> {
         );
     }
 
-    let scan = scan_receipts(&config.result_dir)?;
+    let scan = scan_receipts(&config.result_dir, &repository)?;
     let missing_modes = REQUIRED_MODES
         .iter()
         .filter(|mode| !scan.selected.contains_key(**mode))
@@ -154,7 +154,7 @@ struct ReceiptScan {
     rejected: Vec<RejectedReceipt>,
 }
 
-fn scan_receipts(result_dir: &Path) -> Result<ReceiptScan, String> {
+fn scan_receipts(result_dir: &Path, repository: &RepositoryState) -> Result<ReceiptScan, String> {
     let runs_dir = result_dir.join("runs");
     let mut candidates: BTreeMap<String, SelectedReceipt> = BTreeMap::new();
     let mut rejected = Vec::new();
@@ -171,7 +171,7 @@ fn scan_receipts(result_dir: &Path) -> Result<ReceiptScan, String> {
         if !path.is_file() {
             continue;
         }
-        match parse_receipt(result_dir, &path) {
+        match parse_receipt(result_dir, &path, repository) {
             Ok(receipt) => {
                 let replace = candidates
                     .get(&receipt.mode)
@@ -197,7 +197,7 @@ fn scan_receipts(result_dir: &Path) -> Result<ReceiptScan, String> {
     })
 }
 
-fn parse_receipt(result_dir: &Path, results_path: &Path) -> Result<SelectedReceipt, String> {
+fn parse_receipt(result_dir: &Path, results_path: &Path, repository: &RepositoryState) -> Result<SelectedReceipt, String> {
     let text = fs::read_to_string(results_path).map_err(|error| format!("unreadable JSON: {error}"))?;
     let json: Value = serde_json::from_str(&text).map_err(|error| format!("invalid JSON: {error}"))?;
     let mode = required_str(&json, "mode")?.to_string();
@@ -234,6 +234,7 @@ fn parse_receipt(result_dir: &Path, results_path: &Path) -> Result<SelectedRecei
     if !Path::new(run_dir).starts_with(result_dir) && !Path::new(run_dir).is_absolute() {
         return Err(format!("run_dir `{run_dir}` is not under result_dir `{}`", result_dir.display()));
     }
+    let payload = receipt_payload_status(&json, repository);
     Ok(SelectedReceipt {
         mode,
         run_id,
@@ -243,10 +244,46 @@ fn parse_receipt(result_dir: &Path, results_path: &Path) -> Result<SelectedRecei
         summary: summary_artifact,
         results: result_artifact,
         logs,
-        payload_commit_verified: false,
-        note: "receipt selected from local harness output; payload commit unavailable in legacy harness schema"
-            .to_string(),
+        payload_commit_verified: payload.verified,
+        note: payload.note,
     })
+}
+
+struct PayloadStatus {
+    verified: bool,
+    note: String,
+}
+
+fn receipt_payload_status(json: &Value, repository: &RepositoryState) -> PayloadStatus {
+    let Some(payload) = json.get("payload") else {
+        return PayloadStatus {
+            verified: false,
+            note: "receipt selected from local harness output; payload commit unavailable in legacy harness schema".to_string(),
+        };
+    };
+    let Some(commit) = payload.get("commit").and_then(Value::as_str) else {
+        return PayloadStatus {
+            verified: false,
+            note: "receipt payload metadata is missing commit; not current-HEAD verified".to_string(),
+        };
+    };
+    let tracked_dirty = payload.get("tracked_dirty").and_then(Value::as_bool).unwrap_or(true);
+    if commit != repository.head {
+        return PayloadStatus {
+            verified: false,
+            note: format!("receipt payload commit `{commit}` does not match indexed HEAD `{}`", repository.head),
+        };
+    }
+    if tracked_dirty {
+        return PayloadStatus {
+            verified: false,
+            note: "receipt payload was captured from a dirty tracked worktree; not current-HEAD verified".to_string(),
+        };
+    }
+    PayloadStatus {
+        verified: true,
+        note: "receipt payload commit matches indexed HEAD and was captured from a clean tracked worktree".to_string(),
+    }
 }
 
 fn artifact(path: &Path) -> Result<ArtifactRef, String> {
@@ -364,6 +401,7 @@ fn render_markdown(index: &IndexReceipt) -> String {
                 "- `{mode}`: run `{}` finished `{}` passed={} skipped={} payload_commit_verified={}\n",
                 receipt.run_id, receipt.finished_at, receipt.passed, receipt.skipped, receipt.payload_commit_verified
             ));
+            out.push_str(&format!("  - note: {}\n", receipt.note));
             out.push_str(&format!("  - summary: `{}` blake3 `{}`\n", receipt.summary.path, receipt.summary.blake3));
             out.push_str(&format!("  - results: `{}` blake3 `{}`\n", receipt.results.path, receipt.results.blake3));
         }

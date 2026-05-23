@@ -145,6 +145,8 @@ fn test_harness_list_mode_documents_profiles_selectors_env_and_receipts() {
         "<result-dir>/runs/<run_id>/results.json",
         "<result-dir>/runs/<run_id>/junit.xml",
         "<result-dir>/runs/<run_id>/logs/*.log",
+        "payload.commit",
+        "payload.tracked_dirty",
         "<result-dir>/summary.md",
     ] {
         assert!(stdout.contains(expected), "list output should contain {expected:?}\n{stdout}");
@@ -234,6 +236,16 @@ fn assert_receipt_contract(case: &HarnessCase, receipt_dir: &tempfile::TempDir, 
     assert_eq!(json["mode"], case.args[0], "{} mode field", case.name);
     assert_eq!(json["run_id"], run_id, "{} run_id field", case.name);
     assert_eq!(json["run_dir"], run_dir.to_string_lossy().as_ref(), "{} run_dir field", case.name);
+    let payload = json["payload"].as_object().expect("receipt should include payload metadata");
+    assert!(
+        payload["commit"].as_str().is_some_and(|commit| commit.len() >= 7),
+        "payload commit should be present"
+    );
+    assert!(payload["branch"].is_string(), "payload branch should be present");
+    assert!(payload["describe"].is_string(), "payload describe should be present");
+    assert!(payload["tracked_dirty"].is_boolean(), "payload tracked_dirty should be boolean");
+    assert!(payload.contains_key("upstream"), "payload upstream key should be present");
+    assert!(payload.contains_key("ahead_behind"), "payload ahead_behind key should be present");
 
     assert!(summary.contains("# clankers test harness summary"));
     assert!(summary.contains(&format!("- run_id: `{run_id}`")));

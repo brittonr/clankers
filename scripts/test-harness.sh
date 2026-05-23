@@ -46,6 +46,24 @@ COMPAT_JUNIT_XML="$RESULT_DIR/junit.xml"
 mkdir -p "$LOG_DIR"
 
 STARTED_AT="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+PAYLOAD_COMMIT="$(git rev-parse HEAD 2>/dev/null || printf 'unknown')"
+PAYLOAD_BRANCH="$(git branch --show-current 2>/dev/null || true)"
+if [[ -z "$PAYLOAD_BRANCH" ]]; then
+    PAYLOAD_BRANCH="detached"
+fi
+PAYLOAD_DESCRIBE="$(git describe --tags --long --always --dirty 2>/dev/null || printf '%s' "$PAYLOAD_COMMIT")"
+PAYLOAD_STATUS="$(git status --porcelain --untracked-files=no 2>/dev/null || true)"
+if [[ -n "$PAYLOAD_STATUS" ]]; then
+    PAYLOAD_TRACKED_DIRTY="true"
+else
+    PAYLOAD_TRACKED_DIRTY="false"
+fi
+PAYLOAD_UPSTREAM="$(git rev-parse --abbrev-ref --symbolic-full-name '@{u}' 2>/dev/null || true)"
+if [[ -n "$PAYLOAD_UPSTREAM" ]]; then
+    PAYLOAD_AHEAD_BEHIND="$(git rev-list --left-right --count 'HEAD...@{u}' 2>/dev/null || true)"
+else
+    PAYLOAD_AHEAD_BEHIND=""
+fi
 PASS_COUNT=0
 FAIL_COUNT=0
 SKIP_COUNT=0
@@ -111,6 +129,7 @@ list_profiles() {
 
 - Primary artifacts: `<result-dir>/runs/<run_id>/summary.md`, `<result-dir>/runs/<run_id>/results.json`, `<result-dir>/runs/<run_id>/junit.xml`.
 - Primary logs: `<result-dir>/runs/<run_id>/logs/*.log`.
+- Payload metadata: every `results.json` records `payload.commit`, `payload.branch`, `payload.describe`, `payload.tracked_dirty`, `payload.upstream`, and `payload.ahead_behind` captured at harness start.
 - Stable compatibility artifacts: `<result-dir>/summary.md`, `<result-dir>/results.json`, `<result-dir>/junit.xml`.
 EOF
 }
@@ -259,9 +278,22 @@ run_live_selector() {
 }
 
 write_reports() {
-    local finished_at items_json run_dir_json
+    local finished_at items_json run_dir_json payload_branch_json payload_commit_json payload_describe_json payload_upstream_json payload_ahead_behind_json
     finished_at="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
     run_dir_json="$(printf '%s' "$RUN_DIR" | json_escape)"
+    payload_commit_json="$(printf '%s' "$PAYLOAD_COMMIT" | json_escape)"
+    payload_branch_json="$(printf '%s' "$PAYLOAD_BRANCH" | json_escape)"
+    payload_describe_json="$(printf '%s' "$PAYLOAD_DESCRIBE" | json_escape)"
+    if [[ -n "$PAYLOAD_UPSTREAM" ]]; then
+        payload_upstream_json="$(printf '%s' "$PAYLOAD_UPSTREAM" | json_escape)"
+    else
+        payload_upstream_json="null"
+    fi
+    if [[ -n "$PAYLOAD_AHEAD_BEHIND" ]]; then
+        payload_ahead_behind_json="$(printf '%s' "$PAYLOAD_AHEAD_BEHIND" | json_escape)"
+    else
+        payload_ahead_behind_json="null"
+    fi
     if [[ ${#RESULT_ITEMS[@]} -eq 0 ]]; then
         items_json="[]"
     else
@@ -275,6 +307,14 @@ write_reports() {
   "run_dir": $run_dir_json,
   "started_at": "$STARTED_AT",
   "finished_at": "$finished_at",
+  "payload": {
+    "commit": $payload_commit_json,
+    "branch": $payload_branch_json,
+    "describe": $payload_describe_json,
+    "tracked_dirty": $PAYLOAD_TRACKED_DIRTY,
+    "upstream": $payload_upstream_json,
+    "ahead_behind": $payload_ahead_behind_json
+  },
   "passed": $PASS_COUNT,
   "failed": $FAIL_COUNT,
   "skipped": $SKIP_COUNT,
@@ -290,6 +330,8 @@ JSON
         echo "- run_dir: \`$RUN_DIR\`"
         echo "- started: \`$STARTED_AT\`"
         echo "- finished: \`$finished_at\`"
+        echo "- payload_commit: \`$PAYLOAD_COMMIT\`"
+        echo "- payload_tracked_dirty: \`$PAYLOAD_TRACKED_DIRTY\`"
         echo "- passed: $PASS_COUNT"
         echo "- failed: $FAIL_COUNT"
         echo "- skipped: $SKIP_COUNT"
