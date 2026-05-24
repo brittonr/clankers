@@ -132,10 +132,10 @@ pub struct Settings {
     #[serde(default, rename = "steelTurnPlanning", alias = "steel_turn_planning")]
     pub steel_turn_planning: SteelTurnPlanningSettings,
 
-    /// Optional agent-visible Steel eval tool profile material.
+    /// Agent-visible Steel eval tool profile material.
     ///
-    /// Missing config is disabled so `steel_eval` is not published unless a
-    /// reviewed profile explicitly enables it.
+    /// Missing config publishes the safe pure default profile. Set
+    /// `steelEval.enabled = false` to omit the tool explicitly.
     #[serde(default, rename = "steelEval", alias = "steel_eval")]
     pub steel_eval: SteelEvalSettings,
 
@@ -595,12 +595,12 @@ fn default_external_memory_max_results() -> usize {
 // Steel eval agent tool settings
 // ---------------------------------------------------------------------------
 
-/// Optional settings for publishing the agent-visible `steel_eval` built-in tool.
+/// Settings for publishing the agent-visible `steel_eval` built-in tool.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SteelEvalSettings {
-    /// Publish the `steel_eval` tool when true.
-    #[serde(default)]
+    /// Publish the `steel_eval` tool when true. Defaults to the safe pure profile.
+    #[serde(default = "default_steel_eval_enabled")]
     pub enabled: bool,
     /// Default reviewed profile identifier.
     #[serde(default = "default_steel_eval_profile_id")]
@@ -616,7 +616,7 @@ pub struct SteelEvalSettings {
 impl Default for SteelEvalSettings {
     fn default() -> Self {
         Self {
-            enabled: false,
+            enabled: default_steel_eval_enabled(),
             default_profile: default_steel_eval_profile_id(),
             profile: SteelEvalProfileSettings::default(),
             profiles: Vec::new(),
@@ -670,6 +670,10 @@ pub struct SteelEvalHostFunctionSettings {
     pub name: String,
     pub required_capability: String,
     pub output: String,
+}
+
+fn default_steel_eval_enabled() -> bool {
+    true
 }
 
 fn default_steel_eval_profile_id() -> String {
@@ -1292,9 +1296,16 @@ mod tests {
     }
 
     #[test]
-    fn steel_eval_from_json_is_disabled_by_default_and_parses_profiles() {
+    fn steel_eval_from_json_defaults_enabled_and_parses_profiles() {
         let defaults: Settings = serde_json::from_str(r"{}").unwrap();
-        assert!(!defaults.steel_eval.enabled);
+        assert!(defaults.steel_eval.enabled);
+        assert_eq!(defaults.steel_eval.default_profile, "default");
+        assert_eq!(defaults.steel_eval.profile.max_host_calls, 0);
+        assert!(defaults.steel_eval.profile.session_capabilities.is_empty());
+        assert!(defaults.steel_eval.profile.host_functions.is_empty());
+
+        let disabled: Settings = serde_json::from_str(r#"{"steelEval":{"enabled":false}}"#).unwrap();
+        assert!(!disabled.steel_eval.enabled);
 
         let json = r#"{
             "steelEval": {

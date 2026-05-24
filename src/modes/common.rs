@@ -1056,29 +1056,26 @@ mod tests {
     }
 
     #[test]
-    fn build_tiered_tools_publishes_steel_eval_only_when_enabled() {
-        let default_env = ToolEnv::default();
-        let default_names: Vec<String> = build_tiered_tools(&default_env)
-            .into_iter()
-            .map(|(_, tool)| tool.definition().name.clone())
-            .collect();
-        assert!(!default_names.iter().any(|name| name == "steel_eval"));
-
+    fn build_tiered_tools_publishes_steel_eval_by_default_with_explicit_opt_out() {
         let mut settings = crate::config::settings::Settings::default();
-        settings.steel_eval.enabled = true;
         let env = ToolEnv {
+            settings: Some(settings.clone()),
+            ..Default::default()
+        };
+        let default_names: Vec<String> =
+            build_tiered_tools(&env).into_iter().map(|(_, tool)| tool.definition().name.clone()).collect();
+        assert!(default_names.iter().any(|name| name == "steel_eval"));
+
+        settings.steel_eval.enabled = false;
+        let disabled_env = ToolEnv {
             settings: Some(settings),
             ..Default::default()
         };
-        let tiered = build_tiered_tools(&env);
-        let allowed = crate::tool_gateway::allowed_tools_for_policy(
-            &tiered,
-            &crate::tool_gateway::standalone_toolsets(),
-            &HashSet::new(),
-        );
-        let names = tool_names(&allowed);
-
-        assert!(names.contains(&"steel_eval".to_string()));
+        let disabled_names: Vec<String> = build_tiered_tools(&disabled_env)
+            .into_iter()
+            .map(|(_, tool)| tool.definition().name.clone())
+            .collect();
+        assert!(!disabled_names.iter().any(|name| name == "steel_eval"));
     }
 
     #[test]
