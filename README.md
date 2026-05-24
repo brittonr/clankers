@@ -393,6 +393,8 @@ Input is local JSONL: each line is an object with a non-empty `prompt`, optional
 
 Core: `read`, `write`, `edit`, `patch`, `execute_code`, `process`, `bash`, `grep`, `find`, `ls`, `ask`, `commit`, `web`, `nix`
 
+Steel eval: the `steel_eval` built-in is published under ordinary default settings. It uses the pure default Steel runtime profile: no ambient host functions, no session capabilities, zero host-call budget, and no filesystem, process, network, provider, credential, daemon/session, TUI, mutation, or native-tool authority. `steel_eval` is only local Scheme evaluation through the Rust-owned Steel wrapper and deterministic receipt path; it is separate from Steel turn planning and from mutation-capable Steel runs. Operators who want to hide the tool can set `steelEval.enabled = false` in settings. Receipts expose safe metadata such as profile id, status/issue code, output length/hash material, and runtime receipt fields without granting additional authority. See [`docs/src/reference/steel-scheme-runtime.md`](docs/src/reference/steel-scheme-runtime.md).
+
 The `process` tool manages durable background jobs by session ID. It supports `native` (default), `pueue`, and `systemd` backends; `notify_on_complete` for finite builds/tests; rate-limited `watch_patterns` for rare readiness signals; adoption of existing PID/pueue/systemd jobs; and `gc`/`garbage_collect` retention controls for completed records and logs. NixOS deployments can enable `services.clankers-daemon.processManagement` to configure registry/log paths, retention, pueue groups, and systemd unit/resource policy. See [`docs/src/reference/process-jobs.md`](docs/src/reference/process-jobs.md).
 
 Orchestration: `subagent`, `delegate_task`, `switch_model`, `loop`, `signal_loop_success`

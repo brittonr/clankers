@@ -73,6 +73,9 @@ Main configuration file. Place in `~/.clankers/settings.json` or `.clankers/sett
     "name": "project-memory",
     "maxResults": 8,
     "injectIntoPrompt": false
+  },
+  "steelEval": {
+    "enabled": true
   }
 }
 ```
@@ -82,6 +85,8 @@ MCP server entries are merged by name across global/project settings. Stdio serv
 Browser automation is disabled by default. Set `browserAutomation.enabled = true` with either `cdpUrl` for an existing local Chrome/Chromium DevTools endpoint or `browserBinary` to let clankers launch a local browser. The local CDP backend supports stateful `navigate`, `snapshot`/`current_url`, `click`, `type`/`fill`, `screenshot`, `evaluate`, and `close` actions: target discovery and creation use the DevTools HTTP endpoints, while DOM/evaluate/screenshot actions use each target's `webSocketDebuggerUrl`. `allowedOrigins` gates navigation before any backend call, `allowEvaluate` and `allowScreenshots` enforce policy before script/screenshot dispatch, and tool results include replay/debug metadata such as source, action, status, elapsed time, session id, backend, URL/origin, title/target type, and safe error details without raw CDP URLs or credentials.
 
 External memory providers are disabled by default. Set `externalMemory.enabled = true` to publish the Specialty `external_memory` tool after configuration validation. The local provider searches the existing clankers memory database with `search` and reports configuration with `status`. The HTTP provider is supported only when explicitly configured with `provider = "http"`, `endpoint`, and `credentialEnv`; the credential value is loaded from that environment variable at call time, blank/missing credentials fail closed before network contact, `timeoutMs` bounds the request, and `maxResults` bounds both the outbound query limit and returned memories. `name` is a safe label for output/metadata, and `injectIntoPrompt` remains opt-in policy state: explicit tool calls can return remote memory, but automatic prompt injection is still disabled unless later prompt assembly consumes that flag. Tool result metadata is replay/debug safe: it records provider kind/name, action, status, elapsed time, result count, injection policy, and sanitized error details, but never raw queries, result text, headers, tokens, or credential environment values.
+
+Steel eval tool publication defaults to the safe pure profile. Missing `steelEval` config publishes the agent-visible `steel_eval` built-in with no ambient host functions, no session capabilities, zero host-call budget, bounded source/output/step limits, and deterministic redacted receipts. Set `steelEval.enabled = false` to omit the tool explicitly from the built-in catalog. This setting only controls the agent tool surface; it does not enable Steel turn planning, mutation-capable Steel runs, or additional host authority.
 
 Working-directory checkpoints need no configuration in the first pass. Use `clankers checkpoint create`, `clankers checkpoint list`, and `clankers checkpoint rollback <CHECKPOINT_ID> --yes` in a git checkout, or the Specialty `checkpoint` tool from prompt/TUI/daemon tool paths. The local git backend stores snapshots in `.git/clankers-checkpoints`, restores only clankers-owned checkpoint ids, and rejects non-git directories, remote stores, submodule recursion, and rollback without explicit confirmation. Replay/debug metadata records ids, counts, repo path, status, and sanitized errors; raw diffs and file contents are not persisted.
 
