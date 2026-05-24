@@ -381,6 +381,15 @@ pub fn build_tiered_tools(env: &ToolEnv) -> Vec<(ToolTier, Arc<dyn Tool>)> {
         tools.push((ToolTier::Specialty, tool));
     }
 
+    if let Some(settings) = env.settings.as_ref()
+        && settings.steel_eval.enabled
+    {
+        tools.push((
+            ToolTier::Specialty,
+            Arc::new(crate::tools::steel_eval::SteelEvalTool::new(steel_eval_tool_config(&settings.steel_eval))),
+        ));
+    }
+
     // Register nix_eval only when nix is on PATH
     if std::process::Command::new("nix")
         .arg("--version")
@@ -652,6 +661,39 @@ pub fn build_all_tiered_tools(
     tiered
 }
 
+fn steel_eval_tool_config(
+    settings: &crate::config::settings::SteelEvalSettings,
+) -> crate::tools::steel_eval::SteelEvalToolConfig {
+    let mut default_profile = steel_eval_profile_config(&settings.profile);
+    default_profile.id.clone_from(&settings.default_profile);
+    let profiles = settings.profiles.iter().map(steel_eval_profile_config).collect();
+    crate::tools::steel_eval::SteelEvalToolConfig::new(default_profile, profiles)
+}
+
+fn steel_eval_profile_config(
+    profile: &crate::config::settings::SteelEvalProfileSettings,
+) -> crate::tools::steel_eval::SteelEvalProfileConfig {
+    crate::tools::steel_eval::SteelEvalProfileConfig {
+        id: profile.id.clone(),
+        max_source_bytes: profile.max_source_bytes,
+        max_output_bytes: profile.max_output_bytes,
+        max_host_calls: profile.max_host_calls,
+        max_steps: profile.max_steps,
+        session_capabilities: profile.session_capabilities.clone(),
+        host_functions: profile.host_functions.iter().map(steel_eval_host_function).collect(),
+    }
+}
+
+fn steel_eval_host_function(
+    host: &crate::config::settings::SteelEvalHostFunctionSettings,
+) -> clankers_runtime::steel_runtime::SteelHostFunctionRegistration {
+    clankers_runtime::steel_runtime::SteelHostFunctionRegistration {
+        name: host.name.clone(),
+        required_capability: host.required_capability.clone(),
+        output: host.output.clone(),
+    }
+}
+
 /// Publish the existing Clankers tool registration as a host-facing runtime catalog.
 ///
 /// This keeps embedders on the same source of truth as the CLI/TUI/daemon path:
@@ -676,7 +718,7 @@ pub fn runtime_tool_catalog_from_tiered_tools(
 
 fn side_effect_for_runtime_tool(tier: ToolTier, name: &str) -> clankers_runtime::SideEffectLevel {
     match name {
-        "read" | "grep" | "find" | "ls" | "session_search" | "skill_view" => {
+        "read" | "grep" | "find" | "ls" | "session_search" | "skill_view" | "steel_eval" => {
             clankers_runtime::SideEffectLevel::ReadOnly
         }
         "write" | "edit" | "patch" => clankers_runtime::SideEffectLevel::WorkspaceMutation,
@@ -1011,6 +1053,52 @@ mod tests {
                 .iter()
                 .any(|(tier, tool)| *tier == ToolTier::Specialty && tool.definition().name == "browser")
         );
+    }
+
+    #[test]
+    fn build_tiered_tools_publishes_steel_eval_only_when_enabled() {
+        let default_env = ToolEnv::default();
+        let default_names: Vec<String> = build_tiered_tools(&default_env)
+            .into_iter()
+            .map(|(_, tool)| tool.definition().name.clone())
+            .collect();
+        assert!(!default_names.iter().any(|name| name == "steel_eval"));
+
+        let mut settings = crate::config::settings::Settings::default();
+        settings.steel_eval.enabled = true;
+        let env = ToolEnv {
+            settings: Some(settings),
+            ..Default::default()
+        };
+        let tiered = build_tiered_tools(&env);
+        let allowed = crate::tool_gateway::allowed_tools_for_policy(
+            &tiered,
+            &crate::tool_gateway::standalone_toolsets(),
+            &HashSet::new(),
+        );
+        let names = tool_names(&allowed);
+
+        assert!(names.contains(&"steel_eval".to_string()));
+    }
+
+    #[test]
+    fn steel_eval_uses_standard_disabled_tool_filter() {
+        let mut settings = crate::config::settings::Settings::default();
+        settings.steel_eval.enabled = true;
+        let env = ToolEnv {
+            settings: Some(settings),
+            ..Default::default()
+        };
+        let tiered = build_tiered_tools(&env);
+        let disabled = HashSet::from(["steel_eval".to_string()]);
+        let allowed = crate::tool_gateway::allowed_tools_for_policy(
+            &tiered,
+            &crate::tool_gateway::standalone_toolsets(),
+            &disabled,
+        );
+        let names = tool_names(&allowed);
+
+        assert!(!names.contains(&"steel_eval".to_string()));
     }
 
     #[test]

@@ -124,10 +124,9 @@ impl SessionController {
             if let CoreEffect::EmitLogicalEvent(CoreLogicalEvent::LoopStateChanged {
                 active_loop_state: None,
             }) = effect
+                && self.active_loop_id.is_some()
             {
-                if self.active_loop_id.is_some() {
-                    self.finish_loop("failed (error)");
-                }
+                self.finish_loop("failed (error)");
             }
         }
 

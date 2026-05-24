@@ -154,6 +154,7 @@ fn populate_tool_info(app: &mut App, tools: &[Arc<dyn crate::tools::Tool>]) {
         "ask",
         "image_gen",
         "validate_tui",
+        "steel_eval",
     ]
     .into_iter()
     .collect();

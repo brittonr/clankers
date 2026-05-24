@@ -132,6 +132,13 @@ pub struct Settings {
     #[serde(default, rename = "steelTurnPlanning", alias = "steel_turn_planning")]
     pub steel_turn_planning: SteelTurnPlanningSettings,
 
+    /// Optional agent-visible Steel eval tool profile material.
+    ///
+    /// Missing config is disabled so `steel_eval` is not published unless a
+    /// reviewed profile explicitly enables it.
+    #[serde(default, rename = "steelEval", alias = "steel_eval")]
+    pub steel_eval: SteelEvalSettings,
+
     /// Hook system configuration.
     #[serde(default)]
     pub hooks: clankers_hooks::HooksConfig,
@@ -582,6 +589,103 @@ impl ExternalMemorySettings {
 
 fn default_external_memory_max_results() -> usize {
     8
+}
+
+// ---------------------------------------------------------------------------
+// Steel eval agent tool settings
+// ---------------------------------------------------------------------------
+
+/// Optional settings for publishing the agent-visible `steel_eval` built-in tool.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SteelEvalSettings {
+    /// Publish the `steel_eval` tool when true.
+    #[serde(default)]
+    pub enabled: bool,
+    /// Default reviewed profile identifier.
+    #[serde(default = "default_steel_eval_profile_id")]
+    pub default_profile: String,
+    /// Default profile material. Missing fields keep conservative defaults.
+    #[serde(default)]
+    pub profile: SteelEvalProfileSettings,
+    /// Additional named profile material available to explicit tool requests.
+    #[serde(default)]
+    pub profiles: Vec<SteelEvalProfileSettings>,
+}
+
+impl Default for SteelEvalSettings {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            default_profile: default_steel_eval_profile_id(),
+            profile: SteelEvalProfileSettings::default(),
+            profiles: Vec::new(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SteelEvalProfileSettings {
+    /// Reviewed profile id.
+    #[serde(default = "default_steel_eval_profile_id")]
+    pub id: String,
+    /// Maximum accepted source bytes before evaluation.
+    #[serde(default = "default_steel_eval_max_source_bytes")]
+    pub max_source_bytes: u64,
+    /// Maximum returned output bytes.
+    #[serde(default = "default_steel_eval_max_output_bytes")]
+    pub max_output_bytes: u64,
+    /// Maximum approved host calls. Defaults to zero for pure eval only.
+    #[serde(default)]
+    pub max_host_calls: u64,
+    /// Maximum fixture/runtime steps.
+    #[serde(default = "default_steel_eval_max_steps")]
+    pub max_steps: u64,
+    /// Capabilities granted to this reviewed eval profile.
+    #[serde(default)]
+    pub session_capabilities: Vec<String>,
+    /// Explicitly registered host functions for this reviewed profile.
+    #[serde(default)]
+    pub host_functions: Vec<SteelEvalHostFunctionSettings>,
+}
+
+impl Default for SteelEvalProfileSettings {
+    fn default() -> Self {
+        Self {
+            id: default_steel_eval_profile_id(),
+            max_source_bytes: default_steel_eval_max_source_bytes(),
+            max_output_bytes: default_steel_eval_max_output_bytes(),
+            max_host_calls: 0,
+            max_steps: default_steel_eval_max_steps(),
+            session_capabilities: Vec::new(),
+            host_functions: Vec::new(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SteelEvalHostFunctionSettings {
+    pub name: String,
+    pub required_capability: String,
+    pub output: String,
+}
+
+fn default_steel_eval_profile_id() -> String {
+    "default".to_string()
+}
+
+fn default_steel_eval_max_source_bytes() -> u64 {
+    4096
+}
+
+fn default_steel_eval_max_output_bytes() -> u64 {
+    1024
+}
+
+fn default_steel_eval_max_steps() -> u64 {
+    256
 }
 
 // ---------------------------------------------------------------------------
@@ -1037,6 +1141,7 @@ impl Default for Settings {
             browser_automation: BrowserAutomationSettings::default(),
             external_memory: ExternalMemorySettings::default(),
             steel_turn_planning: SteelTurnPlanningSettings::default(),
+            steel_eval: SteelEvalSettings::default(),
             hooks: clankers_hooks::HooksConfig::default(),
             auto_test_command: None,
             no_cache: false,
@@ -1184,6 +1289,32 @@ mod tests {
         assert!(settings.disabled_tools.is_empty());
         assert!(!settings.steel_turn_planning.enabled);
         assert!(settings.steel_turn_planning.validate().is_ok());
+    }
+
+    #[test]
+    fn steel_eval_from_json_is_disabled_by_default_and_parses_profiles() {
+        let defaults: Settings = serde_json::from_str(r"{}").unwrap();
+        assert!(!defaults.steel_eval.enabled);
+
+        let json = r#"{
+            "steelEval": {
+                "enabled": true,
+                "defaultProfile": "pure",
+                "profile": {"maxSourceBytes": 128, "maxOutputBytes": 64},
+                "profiles": [{
+                    "id": "echo",
+                    "maxHostCalls": 1,
+                    "sessionCapabilities": ["steel.host.echo"],
+                    "hostFunctions": [{"name":"steel.host.echo","requiredCapability":"steel.host.echo","output":"ok"}]
+                }]
+            }
+        }"#;
+        let settings: Settings = serde_json::from_str(json).unwrap();
+        assert!(settings.steel_eval.enabled);
+        assert_eq!(settings.steel_eval.default_profile, "pure");
+        assert_eq!(settings.steel_eval.profile.max_source_bytes, 128);
+        assert_eq!(settings.steel_eval.profiles[0].id, "echo");
+        assert_eq!(settings.steel_eval.profiles[0].host_functions[0].output, "ok");
     }
 
     #[test]
