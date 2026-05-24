@@ -19,6 +19,7 @@
 - [Provider Contracts](./reference/provider-contracts.md)
 - [Polyglot Agent Architecture](./reference/polyglot-agent-architecture.md)
 - [Steel Scheme Runtime](./reference/steel-scheme-runtime.md)
+- [Steel Eval Discovery and Dogfood Evidence 2026-05-24](./reference/steel-eval-discovery-and-dogfood-2026-05-24.md)
 - [Steel Default Orchestration](./reference/steel-default-orchestration.md)
 - [Steel Agent Turn Wiring](./reference/steel-agent-turn-wiring.md)
 - [Steel Turn Planning Config Activation](./reference/steel-turn-planning-config-activation.md)

@@ -1,0 +1,58 @@
+{
+  "schema": "clankers.steel_eval.controlled_corpus.v1",
+  "corpus_id": "steel-eval-local-fixture-corpus-2026-05-24",
+  "manifest_version": 1,
+  "description": "Local, secret-free corpus for Steel eval wrapper dogfood. Cases are small deterministic Scheme snippets owned by this repository.",
+  "authority_boundary": {
+    "profile": "pure-default",
+    "max_host_calls": 0,
+    "host_functions": [],
+    "session_capabilities": [],
+    "ambient_authority": false,
+    "network": false,
+    "filesystem": false,
+    "process": false,
+    "mutation": false,
+    "credentials": false
+  },
+  "thresholds": {
+    "minimum_success_rate": 0.6,
+    "maximum_regressions": 0,
+    "minimum_cases": 5
+  },
+  "cases": [
+    {
+      "id": "add-small-integers",
+      "source": "(+ 2 3)",
+      "expected_status": "succeeded",
+      "expected_reason": "ok",
+      "expected_output": "5"
+    },
+    {
+      "id": "display-string",
+      "source": "(display \"steel\")",
+      "expected_status": "succeeded",
+      "expected_reason": "ok",
+      "expected_output": "steel"
+    },
+    {
+      "id": "literal-string",
+      "source": "\"receipt\"",
+      "expected_status": "succeeded",
+      "expected_reason": "ok",
+      "expected_output": "receipt"
+    },
+    {
+      "id": "ambient-file-denied",
+      "source": "(read-file \"/etc/passwd\")",
+      "expected_status": "denied",
+      "expected_reason": "ambient-authority-denied"
+    },
+    {
+      "id": "unsupported-expression-classified",
+      "source": "(lambda (x) x)",
+      "expected_status": "evaluation_failed",
+      "expected_reason": "unsupported-expression"
+    }
+  ]
+}
