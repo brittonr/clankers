@@ -210,7 +210,7 @@ pub fn evaluate_steel_request(request: &SteelRuntimeRequest) -> SteelRuntimeRece
     match evaluate_fixture_expression(request) {
         FixtureEval::Output(output, host_calls) => {
             if output.len() as u64 > request.profile.max_output_bytes {
-                let bounded = truncate_to_limit(&output, request.profile.max_output_bytes as usize);
+                let bounded = truncate_to_limit(&output, u64_to_usize_saturating(request.profile.max_output_bytes));
                 return runtime_receipt(
                     request,
                     source_hash,
@@ -300,21 +300,30 @@ fn evaluate_host_call(request: &SteelRuntimeRequest, inner: &str) -> FixtureEval
         return FixtureEval::Denied(
             SteelRuntimeReasonCode::UnknownHostFunction,
             "Steel host function is not registered for this evaluation".to_string(),
-            vec![denied_host_call(name, "unknown host function")],
+            vec![denied_host_call(DeniedHostCall {
+                name,
+                message: "unknown host function",
+            })],
         );
     };
     if disabled_tools(request).contains(name) || disabled_tools(request).contains("steel.host.*") {
         return FixtureEval::Denied(
             SteelRuntimeReasonCode::DisabledHostFunction,
             "Steel host function is disabled for this session".to_string(),
-            vec![denied_host_call(name, "disabled host function")],
+            vec![denied_host_call(DeniedHostCall {
+                name,
+                message: "disabled host function",
+            })],
         );
     }
     if !session_capabilities(request).contains(&registration.required_capability) {
         return FixtureEval::Denied(
             SteelRuntimeReasonCode::MissingHostCapability,
             "session lacks the host-function capability required by the Steel profile".to_string(),
-            vec![denied_host_call(name, "missing session capability")],
+            vec![denied_host_call(DeniedHostCall {
+                name,
+                message: "missing session capability",
+            })],
         );
     }
     FixtureEval::Output(registration.output.clone(), vec![SteelHostCallReceipt {
@@ -353,11 +362,23 @@ fn disabled_tools(request: &SteelRuntimeRequest) -> BTreeSet<String> {
     request.disabled_tools.iter().cloned().collect()
 }
 
-fn denied_host_call(name: &str, message: &str) -> SteelHostCallReceipt {
+struct DeniedHostCall<'a> {
+    name: &'a str,
+    message: &'a str,
+}
+
+fn denied_host_call(call: DeniedHostCall<'_>) -> SteelHostCallReceipt {
     SteelHostCallReceipt {
-        name: name.to_string(),
+        name: call.name.to_string(),
         outcome: SteelHostCallOutcome::Denied,
-        safe_message: message.to_string(),
+        safe_message: call.message.to_string(),
+    }
+}
+
+fn u64_to_usize_saturating(value: u64) -> usize {
+    match usize::try_from(value) {
+        Ok(converted) => converted,
+        Err(_) => usize::MAX,
     }
 }
 

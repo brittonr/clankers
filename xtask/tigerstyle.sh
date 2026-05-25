@@ -88,6 +88,14 @@ build_runner() {
         --target-dir "$RUNNER_TARGET_DIR"
 }
 
+nix_cargo_tigerstyle() {
+    if ! command -v nix >/dev/null 2>&1; then
+        return 1
+    fi
+
+    nix build "$TIGERSTYLE_REPO/$TIGERSTYLE_REV#cargo-tigerstyle" --no-link --print-out-paths 2>/dev/null
+}
+
 install_rustup_shim() {
     local shim_dir
     shim_dir="$(mktemp -d)"
@@ -133,17 +141,22 @@ EOF
     trap 'rm -rf "$shim_dir"' EXIT
 }
 
-prefer_tigerstyle_toolchain
-sync_tigerstyle
-build_tigerstyle
-build_runner
-install_rustup_shim
-
 # Default to no explicit scope so cargo-tigerstyle can use
 # [workspace.metadata.tigerstyle].
 if [[ $# -eq 0 ]]; then
     set --
 fi
+
+nix_runner="$(nix_cargo_tigerstyle || true)"
+if [[ -n "$nix_runner" && -x "$nix_runner/bin/cargo-tigerstyle" ]]; then
+    exec "$nix_runner/bin/cargo-tigerstyle" check "$@"
+fi
+
+prefer_tigerstyle_toolchain
+sync_tigerstyle
+build_tigerstyle
+build_runner
+install_rustup_shim
 
 export TIGERSTYLE_TOOLCHAIN="$TOOLCHAIN"
 export TIGERSTYLE_DYLINT_REV="$TIGERSTYLE_DYLINT_REV"

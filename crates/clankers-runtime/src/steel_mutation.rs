@@ -488,40 +488,11 @@ pub fn rollback_steel_mutation_host_function(
     target_store: &mut dyn SteelMutationTargetStore,
     backup_store: &dyn SteelMutationBackupStore,
 ) -> SteelMutationRollbackReceipt {
-    let Some(path) = apply_receipt.normalized_path.clone() else {
-        return rollback_receipt(
-            apply_receipt,
-            SteelMutationRollbackStatus::Blocked,
-            SteelMutationRollbackReason::ApplyReceiptNotRollbackable,
-            "apply receipt does not identify a rollback target",
-            None,
-            None,
-            false,
-        );
+    let rollback = match rollback_inputs(apply_receipt) {
+        RollbackInputStatus::Ready(rollback) => rollback,
+        RollbackInputStatus::Blocked(receipt) => return receipt,
     };
-    let Some(recorded_post_apply_hash) = apply_receipt.target_hash_after else {
-        return rollback_receipt(
-            apply_receipt,
-            SteelMutationRollbackStatus::Blocked,
-            SteelMutationRollbackReason::MissingRecordedPostApplyHash,
-            "rollback requires recorded post-apply target hash",
-            None,
-            None,
-            false,
-        );
-    };
-    let Some(backup_hash) = apply_receipt.backup_hash else {
-        return rollback_receipt(
-            apply_receipt,
-            SteelMutationRollbackStatus::Blocked,
-            SteelMutationRollbackReason::MissingBackupHash,
-            "rollback requires recorded backup hash",
-            None,
-            None,
-            false,
-        );
-    };
-    let current = match target_store.read_target(&path) {
+    let current = match target_store.read_target(&rollback.path) {
         Ok(bytes) => bytes,
         Err(_) => {
             return rollback_receipt(
@@ -536,7 +507,7 @@ pub fn rollback_steel_mutation_host_function(
         }
     };
     let current_hash = ArtifactHash::digest(&current);
-    if current_hash != recorded_post_apply_hash {
+    if current_hash != rollback.recorded_post_apply_hash {
         return rollback_receipt(
             apply_receipt,
             SteelMutationRollbackStatus::Blocked,
@@ -547,7 +518,7 @@ pub fn rollback_steel_mutation_host_function(
             false,
         );
     }
-    let backup = match backup_store.read_backup(backup_hash) {
+    let backup = match backup_store.read_backup(rollback.backup_hash) {
         Ok(bytes) => bytes,
         Err(_) => {
             return rollback_receipt(
@@ -562,7 +533,7 @@ pub fn rollback_steel_mutation_host_function(
         }
     };
     let actual_backup_hash = ArtifactHash::digest(&backup);
-    if actual_backup_hash != backup_hash {
+    if actual_backup_hash != rollback.backup_hash {
         return rollback_receipt(
             apply_receipt,
             SteelMutationRollbackStatus::Blocked,
@@ -573,7 +544,7 @@ pub fn rollback_steel_mutation_host_function(
             false,
         );
     }
-    if target_store.write_target(&path, &backup).is_err() {
+    if target_store.write_target(&rollback.path, &backup).is_err() {
         return rollback_receipt(
             apply_receipt,
             SteelMutationRollbackStatus::FailedWrite,
@@ -593,6 +564,58 @@ pub fn rollback_steel_mutation_host_function(
         Some(actual_backup_hash),
         true,
     )
+}
+
+struct RollbackInputs {
+    path: String,
+    recorded_post_apply_hash: ArtifactHash,
+    backup_hash: ArtifactHash,
+}
+
+enum RollbackInputStatus {
+    Ready(RollbackInputs),
+    Blocked(SteelMutationRollbackReceipt),
+}
+
+fn rollback_inputs(apply_receipt: &SteelMutationApplyReceipt) -> RollbackInputStatus {
+    let Some(path) = apply_receipt.normalized_path.clone() else {
+        return RollbackInputStatus::Blocked(rollback_receipt(
+            apply_receipt,
+            SteelMutationRollbackStatus::Blocked,
+            SteelMutationRollbackReason::ApplyReceiptNotRollbackable,
+            "apply receipt does not identify a rollback target",
+            None,
+            None,
+            false,
+        ));
+    };
+    let Some(recorded_post_apply_hash) = apply_receipt.target_hash_after else {
+        return RollbackInputStatus::Blocked(rollback_receipt(
+            apply_receipt,
+            SteelMutationRollbackStatus::Blocked,
+            SteelMutationRollbackReason::MissingRecordedPostApplyHash,
+            "rollback requires recorded post-apply target hash",
+            None,
+            None,
+            false,
+        ));
+    };
+    let Some(backup_hash) = apply_receipt.backup_hash else {
+        return RollbackInputStatus::Blocked(rollback_receipt(
+            apply_receipt,
+            SteelMutationRollbackStatus::Blocked,
+            SteelMutationRollbackReason::MissingBackupHash,
+            "rollback requires recorded backup hash",
+            None,
+            None,
+            false,
+        ));
+    };
+    RollbackInputStatus::Ready(RollbackInputs {
+        path,
+        recorded_post_apply_hash,
+        backup_hash,
+    })
 }
 
 #[must_use]
@@ -674,102 +697,34 @@ pub fn apply_steel_mutation_host_function(
 ) -> SteelMutationApplyReceipt {
     let preflight = preflight_steel_mutation_host_function(policy, request, context);
     if preflight.status != SteelMutationHostPreflightStatus::Ready {
-        return apply_receipt(
+        return apply_blocked_receipt(
             preflight,
-            SteelMutationApplyStatus::Blocked,
             SteelMutationApplyReason::PreflightNotReady,
             "mutation apply blocked before writing by host preflight",
             None,
-            None,
-            None,
-            None,
-            SteelMutationVerificationReceipt::skipped("preflight was not ready"),
-            false,
+            "preflight was not ready",
         );
     }
+    let patch_hash = payload.body_hash();
     let Some(descriptor) = request.patch.as_ref() else {
-        return apply_receipt(
+        return apply_blocked_receipt(
             preflight,
-            SteelMutationApplyStatus::Blocked,
             SteelMutationApplyReason::MissingPatchDescriptor,
             "mutation apply requires a patch descriptor",
             None,
-            None,
-            None,
-            None,
-            SteelMutationVerificationReceipt::skipped("missing patch descriptor"),
-            false,
+            "missing patch descriptor",
         );
     };
-    let patch_hash = payload.body_hash();
-    if descriptor.format != payload.format {
-        return apply_receipt(
-            preflight,
-            SteelMutationApplyStatus::Blocked,
-            SteelMutationApplyReason::PatchFormatMismatch,
-            "patch payload format does not match authorized descriptor",
-            None,
-            None,
-            Some(patch_hash),
-            None,
-            SteelMutationVerificationReceipt::skipped("patch format mismatch"),
-            false,
-        );
-    }
-    if descriptor.bytes != payload.bytes() {
-        return apply_receipt(
-            preflight,
-            SteelMutationApplyStatus::Blocked,
-            SteelMutationApplyReason::PatchSizeMismatch,
-            "patch payload size does not match authorized descriptor",
-            None,
-            None,
-            Some(patch_hash),
-            None,
-            SteelMutationVerificationReceipt::skipped("patch size mismatch"),
-            false,
-        );
-    }
-    if descriptor.body_blake3 != patch_hash.prefixed() {
-        return apply_receipt(
-            preflight,
-            SteelMutationApplyStatus::Blocked,
-            SteelMutationApplyReason::PatchHashMismatch,
-            "patch payload hash does not match authorized descriptor",
-            None,
-            None,
-            Some(patch_hash),
-            None,
-            SteelMutationVerificationReceipt::skipped("patch hash mismatch"),
-            false,
-        );
-    }
-    if payload.format != SteelMutationPatchFormat::FullReplace {
-        return apply_receipt(
-            preflight,
-            SteelMutationApplyStatus::Blocked,
-            SteelMutationApplyReason::UnsupportedPatchFormat,
-            "only full-replace payloads are currently executable by the host apply shell",
-            None,
-            None,
-            Some(patch_hash),
-            None,
-            SteelMutationVerificationReceipt::skipped("unsupported patch format"),
-            false,
-        );
+    if let Some(receipt) = patch_payload_validation_receipt(preflight.clone(), descriptor, payload, patch_hash) {
+        return receipt;
     }
     let Some(path) = preflight.normalized_path.clone() else {
-        return apply_receipt(
+        return apply_blocked_receipt(
             preflight,
-            SteelMutationApplyStatus::Blocked,
             SteelMutationApplyReason::PreflightNotReady,
             "preflight did not produce a normalized target path",
-            None,
-            None,
             Some(patch_hash),
-            None,
-            SteelMutationVerificationReceipt::skipped("missing normalized path"),
-            false,
+            "missing normalized path",
         );
     };
     let target_before = match target_store.read_target(&path) {
@@ -804,6 +759,84 @@ pub fn apply_steel_mutation_host_function(
             false,
         );
     }
+    write_and_verify_mutation(preflight, payload, target_store, verifier, path, before_hash, patch_hash)
+}
+
+fn apply_blocked_receipt(
+    preflight: SteelMutationHostPreflightReceipt,
+    reason: SteelMutationApplyReason,
+    message: &'static str,
+    patch_hash: Option<ArtifactHash>,
+    verification_message: &'static str,
+) -> SteelMutationApplyReceipt {
+    apply_receipt(
+        preflight,
+        SteelMutationApplyStatus::Blocked,
+        reason,
+        message,
+        None,
+        None,
+        patch_hash,
+        None,
+        SteelMutationVerificationReceipt::skipped(verification_message),
+        false,
+    )
+}
+
+fn patch_payload_validation_receipt(
+    preflight: SteelMutationHostPreflightReceipt,
+    descriptor: &SteelMutationPatch,
+    payload: &SteelMutationPatchPayload,
+    patch_hash: ArtifactHash,
+) -> Option<SteelMutationApplyReceipt> {
+    if descriptor.format != payload.format {
+        return Some(apply_blocked_receipt(
+            preflight,
+            SteelMutationApplyReason::PatchFormatMismatch,
+            "patch payload format does not match authorized descriptor",
+            Some(patch_hash),
+            "patch format mismatch",
+        ));
+    }
+    if descriptor.bytes != payload.bytes() {
+        return Some(apply_blocked_receipt(
+            preflight,
+            SteelMutationApplyReason::PatchSizeMismatch,
+            "patch payload size does not match authorized descriptor",
+            Some(patch_hash),
+            "patch size mismatch",
+        ));
+    }
+    if descriptor.body_blake3 != patch_hash.prefixed() {
+        return Some(apply_blocked_receipt(
+            preflight,
+            SteelMutationApplyReason::PatchHashMismatch,
+            "patch payload hash does not match authorized descriptor",
+            Some(patch_hash),
+            "patch hash mismatch",
+        ));
+    }
+    if payload.format != SteelMutationPatchFormat::FullReplace {
+        return Some(apply_blocked_receipt(
+            preflight,
+            SteelMutationApplyReason::UnsupportedPatchFormat,
+            "only full-replace payloads are currently executable by the host apply shell",
+            Some(patch_hash),
+            "unsupported patch format",
+        ));
+    }
+    None
+}
+
+fn write_and_verify_mutation(
+    preflight: SteelMutationHostPreflightReceipt,
+    payload: &SteelMutationPatchPayload,
+    target_store: &mut dyn SteelMutationTargetStore,
+    verifier: &dyn SteelMutationVerifier,
+    path: String,
+    before_hash: ArtifactHash,
+    patch_hash: ArtifactHash,
+) -> SteelMutationApplyReceipt {
     if target_store.write_target(&path, &payload.body).is_err() {
         return apply_receipt(
             preflight,
@@ -873,99 +906,145 @@ pub fn authorize_steel_mutation(policy: &SteelMutationPolicy, request: &SteelMut
             None,
         );
     };
-    if !policy_is_safe(policy) {
-        return deny_with_target(
-            request,
-            target,
-            SteelMutationReasonCode::InvalidPolicy,
-            "mutation policy is not fail-closed",
-            Some(verb),
-            None,
-        );
+    if let Some(decision) = pre_ucan_mutation_denial(policy, request, target, verb) {
+        return decision;
     }
-    if !target.allowed_verbs.iter().any(|allowed| allowed == &request.verb) {
-        return deny_with_target(
-            request,
-            target,
-            SteelMutationReasonCode::VerbNotAllowedForTarget,
-            "mutation verb is not allowed for target class",
-            Some(verb),
-            None,
-        );
-    }
-    let normalized_path = match normalize_relative_path(&request.relative_path) {
-        Some(path) => path,
-        None => {
-            return deny_with_target(
-                request,
-                target,
-                SteelMutationReasonCode::PathEscape,
-                "mutation path escapes the repository-relative target boundary",
-                Some(verb),
-                None,
-            );
-        }
-    };
-    if !path_has_allowed_root(&normalized_path, &target.allowed_path_roots) {
+    let Some(normalized_path) = normalize_relative_path(&request.relative_path) else {
         return deny_with_target(
             request,
             target,
             SteelMutationReasonCode::PathEscape,
-            "mutation path is outside policy allowlisted roots",
+            "mutation path escapes the repository-relative target boundary",
             Some(verb),
-            Some(normalized_path),
+            None,
         );
-    }
-    if path_hits_denied_pattern(&normalized_path, &target.denied_path_patterns) {
-        return deny_with_target(
-            request,
-            target,
-            SteelMutationReasonCode::DeniedPathPattern,
-            "mutation path matches a denied policy pattern",
-            Some(verb),
-            Some(normalized_path),
-        );
-    }
-    if verb.writes_bytes && request.patch.is_none() {
-        return deny_with_target(
-            request,
-            target,
-            SteelMutationReasonCode::MissingPatch,
-            "byte-writing mutation verb requires a patch descriptor",
-            Some(verb),
-            Some(normalized_path),
-        );
-    }
-    if verb.requires_approval && !request.approval.approved {
-        return deny_with_target(
-            request,
-            target,
-            SteelMutationReasonCode::MissingApproval,
-            "mutation verb requires explicit approval",
-            Some(verb),
-            Some(normalized_path),
-        );
-    }
-    if verb.requires_approval && request.approval.tier != target.approval_tier {
-        return deny_with_target(
-            request,
-            target,
-            SteelMutationReasonCode::ApprovalTierMismatch,
-            "approval tier does not match target policy",
-            Some(verb),
-            Some(normalized_path),
-        );
+    };
+    if let Some(decision) = path_mutation_denial(request, target, verb, &normalized_path) {
+        return decision;
     }
     let required_resource = format!("{}{}", target.resource_prefix, request.resource);
-    let ucan = match authorize_ucan(policy, verb, &required_resource, &request.expected_audience, request.ucan.as_ref())
-    {
+    let ucan_request = UcanAuthorizationRequest {
+        policy,
+        verb,
+        required_resource: &required_resource,
+        expected_audience: &request.expected_audience,
+        grant: request.ucan.as_ref(),
+    };
+    let ucan = match authorize_ucan(ucan_request) {
         Ok(grant) => grant,
         Err((code, message, metadata)) => {
             return deny_with_target(request, target, code, message, Some(verb), Some(normalized_path))
                 .with_safe_ucan_metadata(metadata);
         }
     };
+    allowed_mutation_decision(request, target, verb, normalized_path, required_resource.clone(), ucan)
+}
 
+fn pre_ucan_mutation_denial(
+    policy: &SteelMutationPolicy,
+    request: &SteelMutationRequest,
+    target: &SteelMutationTargetClass,
+    verb: &SteelMutationVerbPolicy,
+) -> Option<SteelMutationDecision> {
+    if !policy_is_safe(policy) {
+        return Some(deny_with_target(
+            request,
+            target,
+            SteelMutationReasonCode::InvalidPolicy,
+            "mutation policy is not fail-closed",
+            Some(verb),
+            None,
+        ));
+    }
+    if !target.allowed_verbs.iter().any(|allowed| allowed == &request.verb) {
+        return Some(deny_with_target(
+            request,
+            target,
+            SteelMutationReasonCode::VerbNotAllowedForTarget,
+            "mutation verb is not allowed for target class",
+            Some(verb),
+            None,
+        ));
+    }
+    None
+}
+
+fn path_mutation_denial(
+    request: &SteelMutationRequest,
+    target: &SteelMutationTargetClass,
+    verb: &SteelMutationVerbPolicy,
+    normalized_path: &str,
+) -> Option<SteelMutationDecision> {
+    if !path_has_allowed_root(normalized_path, &target.allowed_path_roots) {
+        return Some(deny_with_target(
+            request,
+            target,
+            SteelMutationReasonCode::PathEscape,
+            "mutation path is outside policy allowlisted roots",
+            Some(verb),
+            Some(normalized_path.to_string()),
+        ));
+    }
+    if path_hits_denied_pattern(normalized_path, &target.denied_path_patterns) {
+        return Some(deny_with_target(
+            request,
+            target,
+            SteelMutationReasonCode::DeniedPathPattern,
+            "mutation path matches a denied policy pattern",
+            Some(verb),
+            Some(normalized_path.to_string()),
+        ));
+    }
+    write_and_approval_denial(request, target, verb, normalized_path)
+}
+
+fn write_and_approval_denial(
+    request: &SteelMutationRequest,
+    target: &SteelMutationTargetClass,
+    verb: &SteelMutationVerbPolicy,
+    normalized_path: &str,
+) -> Option<SteelMutationDecision> {
+    if verb.writes_bytes && request.patch.is_none() {
+        return Some(deny_with_target(
+            request,
+            target,
+            SteelMutationReasonCode::MissingPatch,
+            "byte-writing mutation verb requires a patch descriptor",
+            Some(verb),
+            Some(normalized_path.to_string()),
+        ));
+    }
+    if verb.requires_approval && !request.approval.approved {
+        return Some(deny_with_target(
+            request,
+            target,
+            SteelMutationReasonCode::MissingApproval,
+            "mutation verb requires explicit approval",
+            Some(verb),
+            Some(normalized_path.to_string()),
+        ));
+    }
+    if verb.requires_approval && request.approval.tier != target.approval_tier {
+        return Some(deny_with_target(
+            request,
+            target,
+            SteelMutationReasonCode::ApprovalTierMismatch,
+            "approval tier does not match target policy",
+            Some(verb),
+            Some(normalized_path.to_string()),
+        ));
+    }
+    None
+}
+
+fn allowed_mutation_decision(
+    _request: &SteelMutationRequest,
+    target: &SteelMutationTargetClass,
+    verb: &SteelMutationVerbPolicy,
+    normalized_path: String,
+    required_resource: String,
+    ucan: &SteelMutationUcanGrant,
+) -> SteelMutationDecision {
     SteelMutationDecision {
         schema: STEEL_MUTATION_DECISION_SCHEMA.to_string(),
         outcome: SteelMutationDecisionOutcome::Allowed,
@@ -1127,11 +1206,11 @@ fn policy_is_safe(policy: &SteelMutationPolicy) -> bool {
         && policy.receipt.include_policy_hash
         && policy.receipt.include_safe_ucan_metadata
         && policy.runtime_profiles.iter().all(|profile| !profile.ambient_authority)
-        && no_duplicate_names(policy.target_classes.iter().map(|target| target.name.as_str()))
-        && no_duplicate_names(policy.mutation_verbs.iter().map(|verb| verb.name.as_str()))
+        && names_are_unique(policy.target_classes.iter().map(|target| target.name.as_str()))
+        && names_are_unique(policy.mutation_verbs.iter().map(|verb| verb.name.as_str()))
 }
 
-fn no_duplicate_names<'a>(mut names: impl Iterator<Item = &'a str>) -> bool {
+fn names_are_unique<'a>(mut names: impl Iterator<Item = &'a str>) -> bool {
     let mut seen = BTreeMap::new();
     names.all(|name| seen.insert(name, ()).is_none())
 }
@@ -1173,15 +1252,18 @@ fn path_hits_denied_pattern(path: &str, denied_patterns: &[String]) -> bool {
     })
 }
 
-fn authorize_ucan<'a>(
-    policy: &SteelMutationPolicy,
-    verb: &SteelMutationVerbPolicy,
-    required_resource: &str,
-    expected_audience: &str,
+struct UcanAuthorizationRequest<'a> {
+    policy: &'a SteelMutationPolicy,
+    verb: &'a SteelMutationVerbPolicy,
+    required_resource: &'a str,
+    expected_audience: &'a str,
     grant: Option<&'a SteelMutationUcanGrant>,
-) -> Result<&'a SteelMutationUcanGrant, (SteelMutationReasonCode, &'static str, Option<SteelMutationSafeUcanMetadata>)>
-{
-    let Some(grant) = grant else {
+}
+
+fn authorize_ucan(
+    request: UcanAuthorizationRequest<'_>,
+) -> Result<&SteelMutationUcanGrant, (SteelMutationReasonCode, &'static str, Option<SteelMutationSafeUcanMetadata>)> {
+    let Some(grant) = request.grant else {
         return Err((SteelMutationReasonCode::MissingUcan, "mutation requires UCAN authority", None));
     };
     let denied_metadata = || safe_ucan_metadata(grant, SteelMutationDecisionOutcome::Denied);
@@ -1191,35 +1273,35 @@ fn authorize_ucan<'a>(
     if grant.expiry_status != SteelMutationUcanExpiryStatus::Valid {
         return Err((SteelMutationReasonCode::ExpiredUcan, "UCAN grant is expired", Some(denied_metadata())));
     }
-    if grant.ability != verb.ucan_ability {
+    if grant.ability != request.verb.ucan_ability {
         return Err((
             SteelMutationReasonCode::WrongUcanAbility,
             "UCAN ability does not authorize mutation verb",
             Some(denied_metadata()),
         ));
     }
-    if grant.audience != expected_audience {
+    if grant.audience != request.expected_audience {
         return Err((
             SteelMutationReasonCode::WrongUcanAudience,
             "UCAN audience does not match mutation host context",
             Some(denied_metadata()),
         ));
     }
-    if grant.delegation_depth > policy.ucan.max_delegation_depth {
+    if grant.delegation_depth > request.policy.ucan.max_delegation_depth {
         return Err((
             SteelMutationReasonCode::OverDelegatedUcan,
             "UCAN delegation depth exceeds mutation policy",
             Some(denied_metadata()),
         ));
     }
-    if policy.ucan.deny_wildcard_resources && grant.resource == "*" {
+    if request.policy.ucan.deny_wildcard_resources && grant.resource == "*" {
         return Err((
             SteelMutationReasonCode::WildcardUcanResource,
             "wildcard UCAN resource is denied for live mutation",
             Some(denied_metadata()),
         ));
     }
-    if grant.resource != required_resource {
+    if grant.resource != request.required_resource {
         return Err((
             SteelMutationReasonCode::WrongUcanResource,
             "UCAN resource does not match mutation target",

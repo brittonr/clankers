@@ -43,6 +43,7 @@ use crate::dynamic_runtime::authorize_dynamic_runtime_action;
 use crate::steel_runtime::SteelHostFunctionRegistration;
 use crate::steel_runtime::SteelRuntimeProfile;
 use crate::steel_runtime::SteelRuntimeReasonCode;
+use crate::steel_runtime::SteelRuntimeReceipt;
 use crate::steel_runtime::SteelRuntimeRequest;
 use crate::steel_runtime::SteelRuntimeStatusCode;
 use crate::steel_runtime::evaluate_steel_request;
@@ -382,88 +383,24 @@ pub fn plan_turn_with_steel_or_fallback(
 
     let authority_receipt = authorize_steel_turn_planning_invocation(profile, input);
     if !authority_receipt.is_allowed() {
-        return orchestration_receipt(
-            profile,
-            OrchestrationPlanStatus::Blocked,
-            OrchestrationIssueCode::UcanAuthorityDenied,
-            OrchestrationPlannerKind::SteelScheme,
-            RustNativeFallbackStatus::Disabled,
-            None,
-            None,
-            fallback_decision_class,
-            Vec::new(),
-            "UCAN authority denied Steel turn-planning before Steel or provider execution".to_string(),
-            Some(BasaltSteelContractEvidence::request_only(
-                &basalt_request,
-                "Steel turn-planning UCAN authority denied before evaluation",
-            )),
-            Some(authority_receipt),
-        );
+        return steel_authority_denied_receipt(profile, &basalt_request, fallback_decision_class, authority_receipt);
     }
 
-    let steel_request = SteelRuntimeRequest {
-        profile: profile.runtime_profile.clone(),
-        source: input.steel_source.clone(),
-        session_capabilities: input.session_capabilities.clone(),
-        disabled_tools: input.disabled_actions.clone(),
-        host_functions: vec![SteelHostFunctionRegistration {
-            name: DEFAULT_TURN_PLANNING_SEAM.to_string(),
-            required_capability: "steel-orchestration".to_string(),
-            output: input.steel_plan_payload.clone(),
-        }],
-        receipt_destination: format!("{}/steel-runtime.json", profile.receipt_prefix.trim_end_matches('/')),
-    };
-    let steel_receipt = evaluate_steel_request(&steel_request);
-    let steel_receipt_hash = steel_receipt.receipt_hash();
-    if steel_receipt.status != SteelRuntimeStatusCode::Succeeded {
-        let issue = if steel_receipt.reason_code == SteelRuntimeReasonCode::UnsupportedExpression {
-            OrchestrationIssueCode::MalformedPlan
-        } else {
-            OrchestrationIssueCode::ScriptEvaluationFailed
-        };
-        return fallback_or_block(
-            profile,
-            input,
-            &fallback_plan,
-            Some(steel_receipt_hash),
-            issue,
-            "Steel script evaluation failed before a typed plan was authorized",
-            fallback_decision_class,
-            Some(BasaltSteelContractEvidence::request_only(
-                &basalt_request,
-                "Steel runtime did not return a Basalt receipt",
-            )),
-        );
-    }
-    let Some(output) = steel_receipt.output.as_deref() else {
-        return fallback_or_block(
-            profile,
-            input,
-            &fallback_plan,
-            Some(steel_receipt_hash),
-            OrchestrationIssueCode::MalformedPlan,
-            "Steel planner returned no typed plan payload",
-            fallback_decision_class,
-            Some(BasaltSteelContractEvidence::request_only(
-                &basalt_request,
-                "Steel runtime returned no typed plan payload",
-            )),
-        );
-    };
-    let Ok(steel_plan) = parse_steel_plan_payload(profile, input, output) else {
-        return fallback_or_block(
-            profile,
-            input,
-            &fallback_plan,
-            Some(steel_receipt_hash),
-            OrchestrationIssueCode::MalformedPlan,
-            "Steel planner output did not match the typed plan schema",
-            fallback_decision_class,
-            Some(BasaltSteelContractEvidence::request_only(
-                &basalt_request,
-                "Steel planner output did not match the typed plan schema",
-            )),
-        );
+    let evaluation = evaluate_steel_plan(profile, input, &basalt_request);
+    let (steel_plan, steel_receipt_hash) = match evaluation {
+        SteelPlanEvaluation::Ready(steel_plan, steel_receipt_hash) => (steel_plan, steel_receipt_hash),
+        SteelPlanEvaluation::Failed(error) => {
+            return fallback_or_block(
+                profile,
+                input,
+                &fallback_plan,
+                Some(error.steel_receipt_hash),
+                error.issue_code,
+                error.safe_summary,
+                fallback_decision_class,
+                Some(error.evidence),
+            );
+        }
     };
     let basalt_evidence =
         basalt_contract_evidence(profile, input, &basalt_request, true, "Steel plan parsed as typed data");
@@ -479,6 +416,125 @@ pub fn plan_turn_with_steel_or_fallback(
         input,
         Some(basalt_evidence),
     )
+}
+struct SteelPlanEvaluationError {
+    steel_receipt_hash: ArtifactHash,
+    issue_code: OrchestrationIssueCode,
+    safe_summary: &'static str,
+    evidence: BasaltSteelContractEvidence,
+}
+
+enum SteelPlanEvaluation {
+    Ready(OrchestrationPlan, ArtifactHash),
+    Failed(SteelPlanEvaluationError),
+}
+
+fn steel_authority_denied_receipt(
+    profile: &SteelOrchestrationProfile,
+    basalt_request: &SteelEvaluationRequest,
+    fallback_decision_class: Option<String>,
+    authority_receipt: SteelTurnPlanningAuthorityReceipt,
+) -> OrchestrationPlanReceipt {
+    orchestration_receipt(
+        profile,
+        OrchestrationPlanStatus::Blocked,
+        OrchestrationIssueCode::UcanAuthorityDenied,
+        OrchestrationPlannerKind::SteelScheme,
+        RustNativeFallbackStatus::Disabled,
+        None,
+        None,
+        fallback_decision_class,
+        Vec::new(),
+        "UCAN authority denied Steel turn-planning before Steel or provider execution".to_string(),
+        Some(BasaltSteelContractEvidence::request_only(
+            basalt_request,
+            "Steel turn-planning UCAN authority denied before evaluation",
+        )),
+        Some(authority_receipt),
+    )
+}
+
+fn evaluate_steel_plan(
+    profile: &SteelOrchestrationProfile,
+    input: &TurnPlanningInput,
+    basalt_request: &SteelEvaluationRequest,
+) -> SteelPlanEvaluation {
+    let steel_request = SteelRuntimeRequest {
+        profile: profile.runtime_profile.clone(),
+        source: input.steel_source.clone(),
+        session_capabilities: input.session_capabilities.clone(),
+        disabled_tools: input.disabled_actions.clone(),
+        host_functions: vec![SteelHostFunctionRegistration {
+            name: DEFAULT_TURN_PLANNING_SEAM.to_string(),
+            required_capability: "steel-orchestration".to_string(),
+            output: input.steel_plan_payload.clone(),
+        }],
+        receipt_destination: format!("{}/steel-runtime.json", profile.receipt_prefix.trim_end_matches('/')),
+    };
+    let steel_receipt = evaluate_steel_request(&steel_request);
+    let steel_receipt_hash = steel_receipt.receipt_hash();
+    if steel_receipt.status != SteelRuntimeStatusCode::Succeeded {
+        return SteelPlanEvaluation::Failed(steel_runtime_failure_error(
+            basalt_request,
+            &steel_receipt,
+            steel_receipt_hash,
+        ));
+    }
+    let Some(output) = steel_receipt.output.as_deref() else {
+        return SteelPlanEvaluation::Failed(steel_plan_error(SteelPlanErrorInput {
+            basalt_request,
+            steel_receipt_hash,
+            issue_code: OrchestrationIssueCode::MalformedPlan,
+            safe_summary: "Steel planner returned no typed plan payload",
+            evidence_reason: "Steel runtime returned no typed plan payload",
+        }));
+    };
+    let Ok(steel_plan) = parse_steel_plan_payload(profile, input, output) else {
+        return SteelPlanEvaluation::Failed(steel_plan_error(SteelPlanErrorInput {
+            basalt_request,
+            steel_receipt_hash,
+            issue_code: OrchestrationIssueCode::MalformedPlan,
+            safe_summary: "Steel planner output did not match the typed plan schema",
+            evidence_reason: "Steel planner output did not match the typed plan schema",
+        }));
+    };
+    SteelPlanEvaluation::Ready(steel_plan, steel_receipt_hash)
+}
+
+fn steel_runtime_failure_error(
+    basalt_request: &SteelEvaluationRequest,
+    steel_receipt: &SteelRuntimeReceipt,
+    steel_receipt_hash: ArtifactHash,
+) -> SteelPlanEvaluationError {
+    let issue_code = if steel_receipt.reason_code == SteelRuntimeReasonCode::UnsupportedExpression {
+        OrchestrationIssueCode::MalformedPlan
+    } else {
+        OrchestrationIssueCode::ScriptEvaluationFailed
+    };
+    steel_plan_error(SteelPlanErrorInput {
+        basalt_request,
+        steel_receipt_hash,
+        issue_code,
+        safe_summary: "Steel script evaluation failed before a typed plan was authorized",
+        evidence_reason: "Steel runtime did not return a Basalt receipt",
+    })
+}
+
+struct SteelPlanErrorInput<'a> {
+    basalt_request: &'a SteelEvaluationRequest,
+    steel_receipt_hash: ArtifactHash,
+    issue_code: OrchestrationIssueCode,
+    safe_summary: &'static str,
+    evidence_reason: &'static str,
+}
+
+fn steel_plan_error(input: SteelPlanErrorInput<'_>) -> SteelPlanEvaluationError {
+    SteelPlanEvaluationError {
+        steel_receipt_hash: input.steel_receipt_hash,
+        issue_code: input.issue_code,
+        safe_summary: input.safe_summary,
+        evidence: BasaltSteelContractEvidence::request_only(input.basalt_request, input.evidence_reason),
+    }
 }
 
 #[must_use]
@@ -706,7 +762,7 @@ fn basalt_steel_evaluation_request(
             "script_hash": profile.script_hash.prefixed(),
             "policy_hash": profile.policy_hash.prefixed(),
         }),
-        max_input_bytes: profile.max_input_bytes as usize,
+        max_input_bytes: u64_to_usize_saturating(profile.max_input_bytes),
         callable: Some(CallableContractDescriptor {
             callable_id: DEFAULT_TURN_PLANNING_SEAM.to_string(),
             arity: 1,
@@ -718,6 +774,13 @@ fn basalt_steel_evaluation_request(
             redaction_class: "metadata_only".to_string(),
         }),
         requested_host_capability: None,
+    }
+}
+
+fn u64_to_usize_saturating(value: u64) -> usize {
+    match usize::try_from(value) {
+        Ok(converted) => converted,
+        Err(_) => usize::MAX,
     }
 }
 
@@ -786,15 +849,13 @@ fn authorize_steel_turn_planning_invocation(
     let requested_ability = profile.required_ucan_ability.as_str();
     let grants = effective_authority_grants(profile, input, requested_resource);
     let denied = |reason, grant: Option<&SteelTurnPlanningAuthorityGrant>, basalt_reason: Option<String>| {
-        authority_receipt(
-            SteelTurnPlanningAuthorityStatus::Denied,
-            reason,
+        authority_receipt(SteelTurnPlanningAuthorityStatus::Denied, reason, AuthorityReceiptInput {
             requested_resource,
             requested_ability,
             grant,
-            grants.len(),
+            grant_count: grants.len(),
             basalt_reason,
-        )
+        })
     };
     let Some(grant) = grants.first() else {
         return denied(SteelTurnPlanningAuthorityReason::MissingGrant, None, None);
@@ -822,20 +883,21 @@ fn authorize_steel_turn_planning_invocation(
     if grant.caveats.iter().any(|caveat| caveat != "metadata_only") {
         return denied(SteelTurnPlanningAuthorityReason::UnknownCaveat, Some(grant), None);
     }
-    let basalt_resource = authority_basalt_resource(requested_resource);
-    let basalt_ability = authority_basalt_ability(requested_ability);
-    match basalt_enforce(
-        &authority_policy(&basalt_resource, &basalt_ability),
-        &authority_request(&basalt_resource, &basalt_ability),
-    ) {
+    let basalt_authority = BasaltAuthority {
+        resource: authority_basalt_resource(requested_resource),
+        ability: authority_basalt_ability(requested_ability),
+    };
+    match basalt_enforce(&authority_policy(&basalt_authority), &authority_request(&basalt_authority)) {
         Ok(receipt) if receipt.is_allowed() => authority_receipt(
             SteelTurnPlanningAuthorityStatus::Allowed,
             SteelTurnPlanningAuthorityReason::Allowed,
-            requested_resource,
-            requested_ability,
-            Some(grant),
-            grants.len(),
-            Some(receipt.reason().to_string()),
+            AuthorityReceiptInput {
+                requested_resource,
+                requested_ability,
+                grant: Some(grant),
+                grant_count: grants.len(),
+                basalt_reason: Some(receipt.reason().to_string()),
+            },
         ),
         Ok(receipt) => {
             denied(SteelTurnPlanningAuthorityReason::BasaltDenied, Some(grant), Some(receipt.reason().to_string()))
@@ -861,7 +923,12 @@ fn effective_authority_grants(
     Vec::new()
 }
 
-fn authority_policy(resource: &str, ability: &str) -> BasaltPolicy {
+struct BasaltAuthority {
+    resource: String,
+    ability: String,
+}
+
+fn authority_policy(authority: &BasaltAuthority) -> BasaltPolicy {
     BasaltPolicy {
         schema_version: basalt::SUPPORTED_SCHEMA_VERSION.to_string(),
         contracts: std::collections::BTreeMap::from([(
@@ -869,21 +936,21 @@ fn authority_policy(resource: &str, ability: &str) -> BasaltPolicy {
             BasaltContractPolicy {
                 id: STEEL_TURN_PLANNING_AUTHORITY_CONTRACT.to_string(),
                 description: "Authorize reviewed Steel turn-planning invocation".to_string(),
-                resource_prefixes: vec![resource.to_string()],
-                abilities: vec![ability.to_string()],
+                resource_prefixes: vec![authority.resource.clone()],
+                abilities: vec![authority.ability.clone()],
             },
         )]),
         backends: std::collections::BTreeMap::new(),
     }
 }
 
-fn authority_request(basalt_resource: &str, basalt_ability: &str) -> BasaltEnforcementRequest {
+fn authority_request(authority: &BasaltAuthority) -> BasaltEnforcementRequest {
     BasaltEnforcementRequest::new(
         STEEL_TURN_PLANNING_AUTHORITY_CONTRACT,
-        basalt_resource.to_string(),
-        basalt_ability.to_string(),
+        authority.resource.clone(),
+        authority.ability.clone(),
     )
-    .with_capability(BasaltCapabilityGrant::new(basalt_resource.to_string(), basalt_ability.to_string()))
+    .with_capability(BasaltCapabilityGrant::new(authority.resource.clone(), authority.ability.clone()))
 }
 
 fn authority_basalt_resource(resource: &str) -> String {
@@ -899,31 +966,37 @@ fn authority_basalt_ability(ability: &str) -> String {
         .join("/")
 }
 
+struct AuthorityReceiptInput<'a> {
+    requested_resource: &'a str,
+    requested_ability: &'a str,
+    grant: Option<&'a SteelTurnPlanningAuthorityGrant>,
+    grant_count: usize,
+    basalt_reason: Option<String>,
+}
+
 fn authority_receipt(
     status: SteelTurnPlanningAuthorityStatus,
     reason: SteelTurnPlanningAuthorityReason,
-    requested_resource: &str,
-    requested_ability: &str,
-    grant: Option<&SteelTurnPlanningAuthorityGrant>,
-    grant_count: usize,
-    basalt_reason: Option<String>,
+    input: AuthorityReceiptInput<'_>,
 ) -> SteelTurnPlanningAuthorityReceipt {
     let mut receipt = SteelTurnPlanningAuthorityReceipt {
         schema: STEEL_TURN_PLANNING_AUTHORITY_SCHEMA.to_string(),
         status,
         reason,
         seam: DEFAULT_TURN_PLANNING_SEAM.to_string(),
-        resource: route_slug(requested_resource),
-        ability: requested_ability.to_string(),
-        audience: grant
+        resource: route_slug(input.requested_resource),
+        ability: input.requested_ability.to_string(),
+        audience: input
+            .grant
             .map(|grant| route_slug(&grant.audience))
             .unwrap_or_else(|| route_slug(STEEL_TURN_PLANNING_AUDIENCE)),
-        proof_reference: grant.and_then(|grant| grant.proof_reference.as_deref()).map(route_slug),
-        grant_count,
-        caveat_classes: grant
+        proof_reference: input.grant.and_then(|grant| grant.proof_reference.as_deref()).map(route_slug),
+        grant_count: input.grant_count,
+        caveat_classes: input
+            .grant
             .map(|grant| grant.caveats.iter().map(|caveat| route_slug(caveat)).collect())
             .unwrap_or_default(),
-        basalt_reason: basalt_reason.map(|reason| route_slug(&reason)),
+        basalt_reason: input.basalt_reason.map(|reason| route_slug(&reason)),
         receipt_hash: ArtifactHash::digest(b"pending"),
     };
     receipt.receipt_hash = authority_receipt_hash(&receipt);
@@ -958,6 +1031,7 @@ fn authorization_context(
     }
 }
 
+// Receipt construction mirrors the stable wire schema fields to keep hash material explicit.
 #[allow(clippy::too_many_arguments)]
 fn orchestration_receipt(
     profile: &SteelOrchestrationProfile,

@@ -476,13 +476,7 @@ fn dynamic_runtime_decision(
     if envelope.schema != DYNAMIC_RUNTIME_ACTION_SCHEMA {
         return invalid(DynamicRuntimeActionReason::InvalidSchema, "unsupported dynamic-runtime action schema");
     }
-    if is_blank(&envelope.action_id)
-        || is_blank(&envelope.runtime_profile)
-        || is_blank(&envelope.action_name)
-        || is_blank(&envelope.target_resource)
-        || is_blank(&envelope.receipt_destination)
-        || is_blank(&envelope.required_ucan_ability)
-    {
+    if dynamic_runtime_action_metadata_is_missing(envelope) {
         return invalid(
             DynamicRuntimeActionReason::MissingRequiredField,
             "dynamic-runtime action is missing required metadata",
@@ -605,6 +599,25 @@ fn dynamic_runtime_receipt(
         writes_performed: false,
         receipt_hash: ArtifactHash::digest(&bytes),
     }
+}
+
+fn dynamic_runtime_action_metadata_is_missing(envelope: &DynamicRuntimeActionEnvelope) -> bool {
+    if is_blank(&envelope.action_id) {
+        return true;
+    }
+    if is_blank(&envelope.runtime_profile) {
+        return true;
+    }
+    if is_blank(&envelope.action_name) {
+        return true;
+    }
+    if is_blank(&envelope.target_resource) {
+        return true;
+    }
+    if is_blank(&envelope.receipt_destination) {
+        return true;
+    }
+    is_blank(&envelope.required_ucan_ability)
 }
 
 fn invalid(
