@@ -8,7 +8,7 @@
 #   ./scripts/test-harness.sh deterministic
 #   ./scripts/test-harness.sh e2e [fake|deterministic|fast|api|all|test-name]
 #   ./scripts/test-harness.sh live [local-model|aspen2-qwen36|all]
-#   ./scripts/test-harness.sh dogfood [bg-process-tui]
+#   ./scripts/test-harness.sh dogfood [bg-process-tui|daemon-attach-reconnect]
 #   ./scripts/test-harness.sh vm [all|core|module|smoke|check-name]
 #   ./scripts/test-harness.sh ci [extra nix args...]
 #   ./scripts/test-harness.sh evidence-index
@@ -104,7 +104,7 @@ list_profiles() {
 - `deterministic`: credential-free deterministic engine, controller, and session-resume replay fixtures.
 - `e2e [fake|deterministic|fast|api|all|test-name]`: readiness E2E gates or legacy E2E selector.
 - `live [local-model|aspen2-qwen36|all]`: opt-in live local-model readiness.
-- `dogfood [bg-process-tui]`: local operator dogfood receipts that drive the real TUI with deterministic local stubs.
+- `dogfood [bg-process-tui|daemon-attach-reconnect]`: local operator dogfood receipts that drive the real TUI with deterministic local stubs.
 - `vm [all|core|module|smoke|check-name]`: opt-in NixOS VM readiness.
 - `ci [extra nix args...]`: opt-in flake readiness adapter.
 - `evidence-index`: compose Git/lifecycle state with existing local harness receipts; does not run missing readiness profiles.
@@ -116,7 +116,7 @@ list_profiles() {
 - E2E selectors: `fake`, `deterministic`, `fast`, `api`, `all`, or a legacy test name.
 - Deterministic profile: `clankers-engine` replay equivalence tests plus controller/agent replay tests and persisted session-resume replay tests with scripted provider/tool fixtures and no live credentials.
 - Live selectors: `local-model`, `aspen2-qwen36`, `all`.
-- Dogfood selectors: `bg-process-tui`.
+- Dogfood selectors: `bg-process-tui`, `daemon-attach-reconnect`.
 - VM selectors: `all`, `core`, `module`, `smoke`.
 - VM checks: `vm-smoke`, `vm-remote-daemon`, `vm-session-recovery`, `vm-plugin-runtime`, `vm-module-daemon`, `vm-module-router`, `vm-module-integration`.
 
@@ -287,9 +287,12 @@ run_dogfood_selector() {
         bg-process-tui)
             run_step "dogfood bg-process-tui" ./scripts/check-bg-process-tui-dogfood.rs
             ;;
+        daemon-attach-reconnect)
+            run_step "dogfood daemon-attach-reconnect" ./scripts/check-daemon-attach-reconnect-dogfood.rs
+            ;;
         *)
             echo "error: unknown dogfood selector: $selector" >&2
-            echo "known dogfood selectors: bg-process-tui" >&2
+            echo "known dogfood selectors: bg-process-tui, daemon-attach-reconnect" >&2
             return 2
             ;;
     esac

@@ -62,12 +62,14 @@ pub(crate) async fn run_attach_with_reconnect(
             // First, try reconnecting to the existing socket (transient glitch).
             match try_reconnect(socket_path, session_id).await {
                 Some(new_client) => {
-                    client = new_client;
-                    client.replay_history();
-                    is_replaying_history = true;
-                    parity_tracker = AttachParityTracker::default();
-                    app.connection_mode = restore_mode.clone();
-                    app.push_system("Reconnected to daemon session.".to_string(), false);
+                    finish_local_reconnect(
+                        app,
+                        &mut client,
+                        new_client,
+                        &mut is_replaying_history,
+                        &mut parity_tracker,
+                        restore_mode.clone(),
+                    );
                 }
                 None => {
                     // Socket reconnect failed. For auto-daemon, try restarting
@@ -123,4 +125,87 @@ pub(crate) async fn run_attach_with_reconnect(
     }
 
     Ok(())
+}
+
+pub(crate) fn finish_local_reconnect(
+    app: &mut App,
+    client: &mut ClientAdapter,
+    new_client: ClientAdapter,
+    is_replaying_history: &mut bool,
+    parity_tracker: &mut AttachParityTracker,
+    restore_mode: clanker_tui_types::ConnectionMode,
+) {
+    *client = new_client;
+    client.replay_history();
+    *is_replaying_history = true;
+    *parity_tracker = AttachParityTracker::default();
+    app.connection_mode = restore_mode;
+    app.push_system("Reconnected to daemon session.".to_string(), false);
+}
+
+#[cfg(test)]
+mod tests {
+    use clanker_tui_types::BlockEntry;
+    use clanker_tui_types::ConnectionMode;
+    use clankers_controller::client::ClientAdapter;
+    use clankers_protocol::DaemonEvent;
+    use clankers_tui::app::App;
+
+    use super::finish_local_reconnect;
+    use crate::modes::attach::AttachParityTracker;
+    use crate::modes::attach::drain_daemon_events;
+
+    fn test_app() -> App {
+        App::new("test-model".to_string(), ".".to_string(), crate::config::theme::detect_theme())
+    }
+
+    fn client_with_events(events: Vec<DaemonEvent>) -> ClientAdapter {
+        let (cmd_tx, _cmd_rx) = tokio::sync::mpsc::unbounded_channel();
+        let (event_tx, event_rx) = tokio::sync::mpsc::unbounded_channel();
+        for event in events {
+            event_tx.send(event).expect("event queued");
+        }
+        ClientAdapter::from_channels(cmd_tx, event_rx)
+    }
+
+    fn system_texts(app: &App) -> Vec<String> {
+        app.conversation
+            .blocks
+            .iter()
+            .filter_map(|entry| match entry {
+                BlockEntry::System(message) => Some(message.content.clone()),
+                BlockEntry::Conversation(_) => None,
+            })
+            .collect()
+    }
+
+    #[test]
+    fn local_reconnect_resets_parity_tracker_before_new_events_arrive() {
+        let mut app = test_app();
+        app.connection_mode = ConnectionMode::Reconnecting;
+        let mut client = client_with_events(vec![]);
+        let reconnect_client = client_with_events(vec![DaemonEvent::SystemMessage {
+            text: "Disabled tools updated: bash".to_string(),
+            is_error: false,
+        }]);
+        let mut is_replaying_history = false;
+        let mut parity_tracker = AttachParityTracker::default();
+        parity_tracker.expect_disabled_tools_message();
+
+        finish_local_reconnect(
+            &mut app,
+            &mut client,
+            reconnect_client,
+            &mut is_replaying_history,
+            &mut parity_tracker,
+            ConnectionMode::Attached,
+        );
+        drain_daemon_events(&mut app, &mut client, &mut is_replaying_history, 0, &mut parity_tracker);
+
+        assert!(is_replaying_history);
+        assert_eq!(app.connection_mode, ConnectionMode::Attached);
+        let messages = system_texts(&app);
+        assert!(messages.iter().any(|message| message == "Reconnected to daemon session."));
+        assert!(messages.iter().any(|message| message == "Disabled tools updated: bash"));
+    }
 }
