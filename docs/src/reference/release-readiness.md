@@ -12,6 +12,18 @@ From the repository root:
 
 This is the normal readiness harness. It runs formatting, workspace tests, clippy, repository verification rails, Tigerstyle, the primary live aspen2 Qwen gate, and the maintained background-process TUI dogfood receipt. Treat `target/test-harness/summary.md` or `target/test-harness/results.json` as the pass/fail source of truth; inspect per-step logs only for failed steps. Each new harness `results.json` records payload metadata captured at run start, including `payload.commit`, `payload.branch`, `payload.describe`, `payload.tracked_dirty`, `payload.upstream`, and `payload.ahead_behind`. After one or more readiness profiles have produced local receipts, run `./scripts/test-harness.sh evidence-index` to compose the current Git/lifecycle state with the latest valid local receipts under `target/release-evidence/current-head/`. The index does not run missing profiles and must not be treated as evidence for modes it reports as missing. It sets `payload_commit_verified=true` only when a selected receipt's `payload.commit` matches the indexed HEAD and `payload.tracked_dirty=false`; older receipts without payload metadata may still be selected as historical local evidence but are not current-HEAD proof.
 
+## Readiness tag lineage
+
+Existing readiness tags are immutable checkpoint evidence. Do not imply that an older tag covers later commits; rerun `./scripts/test-harness.sh full` on a clean, synced commit before creating a new readiness tag.
+
+| Tag | Target commit | Subject | Evidence boundary |
+| --- | --- | --- | --- |
+| `internal-readiness-2026-05-25` | `44aadbdd2842e5ca10b5665b4372814b69cdc8b0` | `Fix clankers runtime tigerstyle readiness` | Full harness checkpoint before the BG-process TUI dogfood rail existed. |
+| `internal-readiness-2026-05-26` | `a9724c1881c443075af470ef3fa0c37c0a1a7b76` | `Add background process TUI dogfood rail` | Full harness checkpoint after the focused dogfood rail landed, before it was promoted into `full`. |
+| `internal-readiness-2026-05-26-dogfood-full` | `ccec74b659dc588934378aed34638b333304695f` | `Promote BG process TUI dogfood to readiness` | Full harness checkpoint where the normal `full` profile included `dogfood bg-process-tui`; see `docs/src/reference/internal-readiness-2026-05-26-dogfood-full.md`. |
+
+Later docs, Cairn, or checker commits are not covered by those tags unless a separate explicit tag task records fresh full-harness evidence for the newer commit. This lineage audit does not move existing tags.
+
 The assertion layer for release-readiness gaps is Rust/nextest-owned. The credential-free E2E tier is:
 
 ```bash
