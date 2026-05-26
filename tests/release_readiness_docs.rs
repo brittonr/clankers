@@ -21,6 +21,10 @@ fn release_readiness_doc_names_required_harness_gates() {
     for required in [
         "./scripts/test-harness.sh full",
         "./scripts/test-harness.sh live aspen2-qwen36",
+        "./scripts/test-harness.sh dogfood bg-process-tui",
+        "background-process TUI dogfood",
+        "active_processes_observed > 0",
+        "sentinel_processes_cleaned_up: true",
         "primary live testing model",
         "qwen on aspen2",
         "target/test-harness/summary.md",
@@ -53,5 +57,9 @@ fn release_readiness_doc_tracks_live_qwen_harness_seam() {
     assert!(
         READINESS_OPT_IN_TEST.contains("CLANKERS_RUN_LIVE_READINESS"),
         "live readiness adapter should keep explicit opt-in gating"
+    );
+    assert!(
+        TEST_HARNESS.contains("run_dogfood_selector bg-process-tui"),
+        "full harness should run the maintained BG-process TUI dogfood rail"
     );
 }

@@ -10,7 +10,7 @@ From the repository root:
 ./scripts/test-harness.sh full
 ```
 
-This is the normal readiness harness. It runs formatting, workspace tests, clippy, repository verification rails, Tigerstyle, and the primary live aspen2 Qwen gate. Treat `target/test-harness/summary.md` or `target/test-harness/results.json` as the pass/fail source of truth; inspect per-step logs only for failed steps. Each new harness `results.json` records payload metadata captured at run start, including `payload.commit`, `payload.branch`, `payload.describe`, `payload.tracked_dirty`, `payload.upstream`, and `payload.ahead_behind`. After one or more readiness profiles have produced local receipts, run `./scripts/test-harness.sh evidence-index` to compose the current Git/lifecycle state with the latest valid local receipts under `target/release-evidence/current-head/`. The index does not run missing profiles and must not be treated as evidence for modes it reports as missing. It sets `payload_commit_verified=true` only when a selected receipt's `payload.commit` matches the indexed HEAD and `payload.tracked_dirty=false`; older receipts without payload metadata may still be selected as historical local evidence but are not current-HEAD proof.
+This is the normal readiness harness. It runs formatting, workspace tests, clippy, repository verification rails, Tigerstyle, the primary live aspen2 Qwen gate, and the maintained background-process TUI dogfood receipt. Treat `target/test-harness/summary.md` or `target/test-harness/results.json` as the pass/fail source of truth; inspect per-step logs only for failed steps. Each new harness `results.json` records payload metadata captured at run start, including `payload.commit`, `payload.branch`, `payload.describe`, `payload.tracked_dirty`, `payload.upstream`, and `payload.ahead_behind`. After one or more readiness profiles have produced local receipts, run `./scripts/test-harness.sh evidence-index` to compose the current Git/lifecycle state with the latest valid local receipts under `target/release-evidence/current-head/`. The index does not run missing profiles and must not be treated as evidence for modes it reports as missing. It sets `payload_commit_verified=true` only when a selected receipt's `payload.commit` matches the indexed HEAD and `payload.tracked_dirty=false`; older receipts without payload metadata may still be selected as historical local evidence but are not current-HEAD proof.
 
 The assertion layer for release-readiness gaps is Rust/nextest-owned. The credential-free E2E tier is:
 
@@ -45,6 +45,16 @@ This runs `tests/aspen2_qwen36_integration.rs` against the aspen2 Lemonade OpenA
 
 Use this as the preferred live runtime smoke because it exercises streaming/reasoning-or-text behavior without launching OpenAI OAuth or browser login flows. The test self-skips when the endpoint/model is unavailable; record that as "live local-model unavailable" rather than substituting an OAuth-backed OpenAI login unless that is explicitly requested.
 
+## Operator TUI dogfood
+
+The full harness also runs the maintained real-TUI background-process dogfood rail:
+
+```bash
+./scripts/test-harness.sh dogfood bg-process-tui
+```
+
+Use the focused form when debugging only the process-panel/operator seam. It launches a deterministic local provider stub plus a real Clankers TUI in tmux, sends `/layout toggle bg`, starts a bounded background process through the `process` tool, and writes a dogfood receipt under `target/dogfood/bg-process-tui-*/receipt.json`. Before claiming the background-process TUI path is ready, require `result: pass`, `layout_toggle_bg_visible: true`, `active_processes_observed > 0`, `command_visible: true`, and `sentinel_processes_cleaned_up: true`.
+
 For the Nix check form of the same live seam:
 
 ```bash
@@ -76,11 +86,12 @@ CLANKERS_RUN_FLAKE_READINESS=1 \
 2. Run `./scripts/test-harness.sh full` and confirm the summary reports no failures.
 3. Run `cargo nextest run -p clankers --test readiness_e2e --no-fail-fast` if the baseline summary was produced by older tooling or if you need a focused credential-free E2E receipt.
 4. Run `nix build .#checks.$(nix eval --raw --impure --expr builtins.currentSystem).embedded-sdk-release-receipt` to verify the embedded SDK receipt rail remains wired into the routine Nix check surface.
-5. Run `./scripts/test-harness.sh live aspen2-qwen36` when the Lemonade/Qwen3.6 endpoint is reachable.
-6. Run `./scripts/test-harness.sh vm all` and `./scripts/test-harness.sh ci` on machines authorized for NixOS VM and flake-heavy checks.
-7. Run `./scripts/test-harness.sh evidence-index` after the selected profiles complete, then inspect `target/release-evidence/current-head/index.md` for selected receipts, missing modes, dirty status, and non-claims.
-8. Confirm OAuth login commands print authorization URLs instead of opening a browser automatically.
-9. Inspect `git diff --check`, commit the verified changes, push, and verify `main`/`origin/main` match.
-10. Include the evidence index plus the full harness summary and any opt-in nextest live/VM/flake summaries in the release/readiness note, clearly separating pure readiness from optional host-dependent coverage.
+5. Run `./scripts/test-harness.sh live aspen2-qwen36` when you need a focused Lemonade/Qwen3.6 receipt outside the full harness.
+6. Run `./scripts/test-harness.sh dogfood bg-process-tui` when you need a focused operator-visible background-process TUI receipt outside the full harness.
+7. Run `./scripts/test-harness.sh vm all` and `./scripts/test-harness.sh ci` on machines authorized for NixOS VM and flake-heavy checks.
+8. Run `./scripts/test-harness.sh evidence-index` after the selected profiles complete, then inspect `target/release-evidence/current-head/index.md` for selected receipts, missing modes, dirty status, and non-claims.
+9. Confirm OAuth login commands print authorization URLs instead of opening a browser automatically.
+10. Inspect `git diff --check`, commit the verified changes, push, and verify `main`/`origin/main` match.
+11. Include the evidence index plus the full harness summary and any opt-in nextest live/VM/flake summaries in the release/readiness note, clearly separating pure readiness from optional host-dependent coverage.
 
 Do not make a general external-production claim from these gates alone. They support trusted/internal dogfooding and release-candidate hygiene; public unattended production readiness still depends on the active roadmap, security boundary review, packaging/deployment surface, and operator documentation.

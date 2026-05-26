@@ -100,7 +100,7 @@ list_profiles() {
 
 - `quick`: cargo check plus workspace nextest.
 - `package <crate> [filter...]`: package-scoped cargo check plus nextest.
-- `full`: fmt, check, workspace nextest, clippy, repo verify, tigerstyle, and the primary live aspen2 Qwen gate.
+- `full`: fmt, check, workspace nextest, clippy, repo verify, tigerstyle, the primary live aspen2 Qwen gate, and maintained operator dogfood.
 - `deterministic`: credential-free deterministic engine, controller, and session-resume replay fixtures.
 - `e2e [fake|deterministic|fast|api|all|test-name]`: readiness E2E gates or legacy E2E selector.
 - `live [local-model|aspen2-qwen36|all]`: opt-in live local-model readiness.
@@ -446,6 +446,7 @@ main() {
             run_step "repo verify" ./scripts/verify.sh
             run_step "tigerstyle" ./xtask/tigerstyle.sh
             run_live_selector aspen2-qwen36
+            run_dogfood_selector bg-process-tui
             ;;
         deterministic)
             run_step "deterministic engine replay" cargo nextest run -p clankers-engine --test deterministic_turn_replay --no-fail-fast
