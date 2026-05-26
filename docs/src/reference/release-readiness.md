@@ -55,6 +55,8 @@ The full harness also runs the maintained real-TUI background-process dogfood ra
 
 Use the focused form when debugging only the process-panel/operator seam. It launches a deterministic local provider stub plus a real Clankers TUI in tmux, sends `/layout toggle bg`, starts a bounded background process through the `process` tool, and writes a dogfood receipt under `target/dogfood/bg-process-tui-*/receipt.json`. Before claiming the background-process TUI path is ready, require `result: pass`, `layout_toggle_bg_visible: true`, `active_processes_observed > 0`, `command_visible: true`, and `sentinel_processes_cleaned_up: true`.
 
+The `internal-readiness-2026-05-26-dogfood-full` checkpoint evidence page records the first pushed readiness tag whose normal full harness included this dogfood rail: `docs/src/reference/internal-readiness-2026-05-26-dogfood-full.md`.
+
 For the Nix check form of the same live seam:
 
 ```bash

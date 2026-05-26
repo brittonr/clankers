@@ -1,6 +1,7 @@
 const README: &str = include_str!("../README.md");
 const SUMMARY: &str = include_str!("../docs/src/SUMMARY.md");
 const RELEASE_READINESS: &str = include_str!("../docs/src/reference/release-readiness.md");
+const DOGFOOD_FULL_EVIDENCE: &str = include_str!("../docs/src/reference/internal-readiness-2026-05-26-dogfood-full.md");
 const TEST_HARNESS: &str = include_str!("../scripts/test-harness.sh");
 const READINESS_OPT_IN_TEST: &str = include_str!("../tests/readiness_opt_in.rs");
 
@@ -14,6 +15,38 @@ fn release_readiness_doc_is_discoverable() {
         SUMMARY.contains("[Release Readiness](./reference/release-readiness.md)"),
         "docs SUMMARY should link the release-readiness checklist"
     );
+}
+
+#[test]
+fn dogfood_full_readiness_checkpoint_evidence_is_discoverable() {
+    assert!(
+        SUMMARY.contains(
+            "[Internal Readiness Checkpoint 2026-05-26 Dogfood Full](./reference/internal-readiness-2026-05-26-dogfood-full.md)"
+        ),
+        "docs SUMMARY should link the dogfood-full readiness checkpoint evidence"
+    );
+    assert!(
+        RELEASE_READINESS.contains("internal-readiness-2026-05-26-dogfood-full"),
+        "release-readiness doc should point to the dogfood-full checkpoint evidence"
+    );
+
+    for required in [
+        "internal-readiness-2026-05-26-dogfood-full",
+        "ccec74b659dc588934378aed34638b333304695f",
+        "20260526T021502Z-3107712",
+        "target/test-harness/runs/20260526T021502Z-3107712/results.json",
+        "target/dogfood/bg-process-tui-1779762368/receipt.json",
+        "Steps passed: `8`",
+        "Steps failed: `0`",
+        "Result: `pass`",
+        "Active processes observed: `1`",
+        "`/layout toggle bg` visibility: `true`",
+        "Bounded command visibility: `true`",
+        "Sentinel process cleanup: `true`",
+        "It does not claim unattended public production readiness",
+    ] {
+        assert!(DOGFOOD_FULL_EVIDENCE.contains(required), "dogfood-full evidence page should mention {required:?}");
+    }
 }
 
 #[test]
