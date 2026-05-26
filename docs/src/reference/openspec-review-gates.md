@@ -36,6 +36,7 @@ The current deterministic contract categories are:
 - active account persistence after provider-scoped login
 - entitlement probe retry and refresh-retry fixtures, including probe-specific header omissions
 - tool-call delta stream boundaries, especially raw `function_call_arguments.delta` to ordered input-JSON deltas
+- prompt traceability: prompt lifecycle, embedded prompt, and system prompt requirements must trace into tasks with a concrete fixture/helper/command/golden/script/evidence path rather than broad prompt prose
 - auto-fix remediation path: repeated task-omission fixes must name the generated task shape and prove it with a fixture/helper/command/evidence/oracle artifact instead of only saying "add an auto-fix"
 - deterministic check artifact: when an artifact requires deterministic checks, fixture-backed verification, or fixture coverage, the task ledger must name the concrete fixture/helper/command/golden/script/evidence path that makes the check reproducible
 
@@ -48,6 +49,7 @@ The checker asserts representative diagnostics including:
 - `missing-active-account-task`
 - `missing-entitlement-probe-retry-task`
 - `missing-tool-call-delta-boundary-task`
+- `missing-prompt-trace-task`
 - `missing-auto-fix-task`
 - `missing-deterministic-check-artifact-task`
 

@@ -136,6 +136,17 @@ const CONTRACT_CATEGORIES: &[ContractCategory] = &[
         ],
     },
     ContractCategory {
+        code: "missing-prompt-trace-task",
+        label: "prompt traceability",
+        terms: &[
+            "prompt trace",
+            "prompt traceability",
+            "prompt lifecycle",
+            "embedded prompt",
+            "system prompt",
+        ],
+    },
+    ContractCategory {
         code: "missing-auto-fix-task",
         label: "auto-fix remediation path",
         terms: &["auto-fix", "autofix", "automatic fix", "fix-it"],
@@ -265,6 +276,7 @@ fn verify_guidance_and_wiring() -> Result<(), String> {
         "active account",
         "entitlement probe",
         "tool-call delta",
+        "prompt traceability",
         "auto-fix remediation path",
         "deterministic check artifact",
         "reasoning signature retention",
@@ -292,6 +304,7 @@ fn verify_guidance_and_wiring() -> Result<(), String> {
         "missing-active-account-task",
         "missing-entitlement-probe-retry-task",
         "missing-tool-call-delta-boundary-task",
+        "missing-prompt-trace-task",
         "missing-auto-fix-task",
         "missing-deterministic-check-artifact-task",
         "missing-reasoning-signature-design",
