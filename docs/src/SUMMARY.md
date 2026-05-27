@@ -27,6 +27,7 @@
 - [Steel Turn Planning UCAN Authority](./reference/steel-turn-planning-ucan-authority.md)
 - [OpenSpec Review Gates](./reference/openspec-review-gates.md)
 - [Release Readiness](./reference/release-readiness.md)
+- [Native Process GC Review Closeout 2026-05-27](./reference/native-process-gc-review-closeout-2026-05-27.md)
 - [Current-HEAD Release Evidence Index 2026-05-27](./reference/current-head-release-evidence-index-2026-05-27.md)
 - [Current-HEAD Release Evidence Index 2026-05-24](./reference/current-head-release-evidence-index-2026-05-24.md)
 - [Qwen/aspen2 Readiness Evidence 2026-05-21](./reference/qwen-aspen2-readiness-evidence-2026-05-21.md)
