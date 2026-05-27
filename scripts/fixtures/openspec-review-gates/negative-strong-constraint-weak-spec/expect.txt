@@ -1,0 +1,5 @@
+status=fail
+diagnostic=missing-strong-constraint-spec
+diagnostic=source_artifact=proposal.md
+diagnostic=generated artifact hygiene
+diagnostic=required local verification

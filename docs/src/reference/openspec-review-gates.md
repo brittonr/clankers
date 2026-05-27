@@ -75,7 +75,7 @@ When `proposal.md` or `design.md` promises compatibility, error handling, status
 - malformed account-claim behavior: missing or malformed `chatgpt_account_id` claim material is specified before use
 - provider-scoped status behavior: explicit `status --provider openai-codex` behavior is specified rather than only `--all`
 
-Strong proposal constraint rule: a strong proposal constraint exists when `proposal.md` or `design.md` says generated artifact hygiene, required local verification, forbidden GitHub delivery paths, source preservation policy, or capability-boundary preservation are mandatory. Delta specs must preserve equivalent normative strength. Do not weaken those promises into optional generic evidence, unrelated MAY/SHOULD text, or "not required" wording.
+Strong proposal constraint rule: a strong proposal constraint exists when `proposal.md` or `design.md` says generated artifact hygiene, required local verification, forbidden GitHub delivery paths, source preservation policy, or capability-boundary preservation are mandatory. Delta specs must preserve equivalent normative strength in the same normative line or scenario. Do not weaken those promises into optional generic evidence, unrelated MAY/SHOULD text, or "not required" wording. `missing-strong-constraint-spec` diagnostics include `source_artifact=<proposal.md|design.md>` plus `constraint_family=...` so authors can patch the exact promise that fell out of the delta spec.
 
 The checker asserts representative diagnostics including:
 

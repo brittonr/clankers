@@ -330,6 +330,7 @@ fn verify_guidance_and_wiring() -> Result<(), String> {
         "generated artifact hygiene",
         "required local verification",
         "forbidden GitHub delivery path",
+        "source_artifact=<proposal.md|design.md>",
         "fixture/helper/command",
         "scripts/check-openspec-review-gates.rs",
         "Artifact-Type: oracle-checkpoint",
@@ -437,8 +438,9 @@ fn evaluate_fixture(fixture_dir: &Path) -> Result<FixtureReport, String> {
     let artifact_text = format!("{proposal}\n{design}\n{spec}");
     let lower_artifact_text = artifact_text.to_lowercase();
     let lower_design_source_text = format!("{proposal}\n{spec}").to_lowercase();
-    let lower_spec_source_text = format!("{proposal}\n{design}").to_lowercase();
+    let lower_proposal = proposal.to_lowercase();
     let lower_design = design.to_lowercase();
+    let lower_spec_source_text = format!("{proposal}\n{design}").to_lowercase();
     let lower_spec = spec.to_lowercase();
     let lower_tasks = tasks.to_lowercase();
     let task_lines = task_lines(&tasks);
@@ -476,13 +478,13 @@ fn evaluate_fixture(fixture_dir: &Path) -> Result<FixtureReport, String> {
     }
 
     for category in STRONG_CONSTRAINT_SPEC_CATEGORIES {
-        if strong_constraint_required(&lower_spec_source_text, category)
-            && !strong_constraint_satisfied(&lower_spec, category)
-        {
-            diagnostics.push(format!(
-                "{}: strong proposal constraint {:?} is missing or weakened in the delta spec",
-                category.code, category.label
-            ));
+        if !strong_constraint_satisfied(&lower_spec, category) {
+            for source_artifact in strong_constraint_source_artifacts(&lower_proposal, &lower_design, category) {
+                diagnostics.push(format!(
+                    "{}: source_artifact={source_artifact} constraint_family={:?} is missing or weakened in the delta spec",
+                    category.code, category.label
+                ));
+            }
         }
     }
 
@@ -532,8 +534,45 @@ fn strong_constraint_required(text: &str, category: &StrongConstraintSpecCategor
     category.trigger_terms.iter().any(|term| text.contains(term))
 }
 
+fn strong_constraint_source_artifacts(
+    proposal: &str,
+    design: &str,
+    category: &StrongConstraintSpecCategory,
+) -> Vec<&'static str> {
+    let mut artifacts = Vec::new();
+    if strong_constraint_required(proposal, category) {
+        artifacts.push("proposal.md");
+    }
+    if strong_constraint_required(design, category) {
+        artifacts.push("design.md");
+    }
+    artifacts
+}
+
 fn strong_constraint_satisfied(spec: &str, category: &StrongConstraintSpecCategory) -> bool {
-    category.required_terms.iter().all(|term| spec.contains(term))
+    spec.lines().any(|line| strong_constraint_line_satisfied(line, category))
+}
+
+fn strong_constraint_line_satisfied(raw_line: &str, category: &StrongConstraintSpecCategory) -> bool {
+    let line = raw_line.trim().to_lowercase();
+    !line.is_empty()
+        && has_strong_constraint_modal(&line)
+        && !weakens_strong_constraint(&line)
+        && category.required_terms.iter().all(|term| line.contains(term))
+}
+
+fn has_strong_constraint_modal(line: &str) -> bool {
+    line.contains("must") || line.contains("required") || line.contains("forbidden")
+}
+
+fn weakens_strong_constraint(line: &str) -> bool {
+    line.contains(" may ")
+        || line.contains(" may be ")
+        || line.contains(" should ")
+        || line.contains(" can ")
+        || line.contains("optional")
+        || line.contains("when available")
+        || line.contains("not required")
 }
 
 fn category_satisfied(category: &ContractCategory, task_lines: &[String], lower_tasks: &str) -> bool {

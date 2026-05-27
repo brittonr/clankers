@@ -1,0 +1,5 @@
+status=fail
+diagnostic=missing-strong-constraint-spec
+diagnostic=source_artifact=design.md
+diagnostic=source preservation policy
+diagnostic=capability boundary preservation
