@@ -13,17 +13,11 @@
     };
     flake-utils.url = "github:numtide/flake-utils";
 
-    # rat-* TUI crates used by clankers-tui. The workspace Cargo.toml
-    # references these as path deps (../subwayrat/...); we pin them here
-    # and patch the source so they resolve inside the Nix sandbox.
-    subwayrat-src = {
-      url = "git+ssh://git@github.com/brittonr/subwayrat.git";
-      flake = false;
-    };
-
-    # subwayrat itself depends on ratcore via ../ratcore.
-    ratcore-src = {
-      url = "github:brittonr/ratcore";
+    # rat-* TUI crates used by clankers-tui live in the rats monorepo.
+    # The workspace Cargo.toml references them as path deps under ../rats;
+    # pin that sibling source here so Nix builds do not fetch git deps in the sandbox.
+    rats-src = {
+      url = "git+ssh://git@github.com/brittonr/rats.git";
       flake = false;
     };
 
@@ -43,7 +37,7 @@
     };
   };
 
-  outputs = { self, nixpkgs, unit2nix, rust-overlay, flake-utils, subwayrat-src, ratcore-src, ucan-src, basalt-src, cairn, ... }:
+  outputs = { self, nixpkgs, unit2nix, rust-overlay, flake-utils, rats-src, ucan-src, basalt-src, cairn, ... }:
     {
       nixosModules = {
         clankers-daemon = import ./nix/modules/clankers-daemon.nix;
@@ -79,11 +73,9 @@
           workspace = true;
           noLocked = true;
           clippyArgs = [ "-D" "warnings" ];
-          # rat-* TUI crates live in a sibling repo and subwayrat depends on
-          # ratcore as another sibling path dependency.
+          # rat-* TUI crates live in the rats sibling monorepo.
           externalSources = {
-            "../subwayrat" = subwayrat-src;
-            "../ratcore" = ratcore-src;
+            "../rats" = rats-src;
             "../ucan" = ucan-src;
             "../basalt" = basalt-src;
           };
@@ -119,8 +111,7 @@
           noLocked = true;
           clippyArgs = [ "-D" "warnings" ];
           externalSources = {
-            "../subwayrat" = subwayrat-src;
-            "../ratcore" = ratcore-src;
+            "../rats" = rats-src;
             "../ucan" = ucan-src;
             "../basalt" = basalt-src;
           };
@@ -146,8 +137,7 @@
           features = "cli";
           noLocked = true;
           externalSources = {
-            "../subwayrat" = subwayrat-src;
-            "../ratcore" = ratcore-src;
+            "../rats" = rats-src;
             "../ucan" = ucan-src;
             "../basalt" = basalt-src;
           };
@@ -482,42 +472,8 @@
               "$CARGO_TARGET_DIR"
 
             cp -R $src "$TMPDIR/source"
-            cp -R ${liveRatsSrc}/subwayrat "$TMPDIR/subwayrat"
-            git clone https://github.com/brittonr/ratcore "$TMPDIR/ratcore"
-            git -C "$TMPDIR/ratcore" checkout 16333a505696b324637f021b657c474600a9b838
-            chmod -R u+w "$TMPDIR/source" "$TMPDIR/subwayrat" "$TMPDIR/ratcore"
-
-            python3 - <<'PY'
-            import os
-            from pathlib import Path
-            tmpdir = Path(os.environ["TMPDIR"])
-            source = tmpdir / "source"
-            subwayrat = tmpdir / "subwayrat"
-            ratcore = tmpdir / "ratcore"
-
-            cargo_toml = source / "Cargo.toml"
-            text = cargo_toml.read_text()
-            text = text.replace(
-                '[patch."ssh://git@github.com/brittonr/ratcore.git"]\n'
-                'ratcore = { git = "ssh://git@github.com:22/brittonr/ratcore.git", rev = "16333a505696b324637f021b657c474600a9b838" }',
-                '[patch."ssh://git@github.com/brittonr/ratcore.git"]\n'
-                f'ratcore = {{ path = "{ratcore}" }}\n\n'
-                '[patch."ssh://git@github.com:22/brittonr/ratcore.git"]\n'
-                f'ratcore = {{ path = "{ratcore}" }}',
-            )
-            text += f"""
-
-            [patch.\"ssh://git@github.com/brittonr/subwayrat.git\"]
-            rat-branches = {{ path = \"{subwayrat}/crates/rat-branches\" }}
-            rat-keymap = {{ path = \"{subwayrat}/crates/rat-keymap\" }}
-            rat-leaderkey = {{ path = \"{subwayrat}/crates/rat-leaderkey\" }}
-            rat-inline = {{ path = \"{subwayrat}/crates/rat-inline\" }}
-            rat-markdown = {{ path = \"{subwayrat}/crates/rat-markdown\" }}
-            rat-spinner = {{ path = \"{subwayrat}/crates/rat-spinner\" }}
-            rat-widgets = {{ path = \"{subwayrat}/crates/rat-widgets\" }}
-            """
-            cargo_toml.write_text(text)
-            PY
+            cp -R ${liveRatsSrc} "$TMPDIR/rats"
+            chmod -R u+w "$TMPDIR/source" "$TMPDIR/rats"
 
             cd "$TMPDIR/source"
             ./scripts/test-harness.sh live aspen2-qwen36

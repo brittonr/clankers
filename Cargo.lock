@@ -8527,7 +8527,6 @@ dependencies = [
 [[package]]
 name = "rat-branches"
 version = "0.1.0"
-source = "git+ssh://git@github.com/brittonr/subwayrat.git?rev=d930e8ce693bc3761eff5a4ed4a8bd109b2cd7fc#d930e8ce693bc3761eff5a4ed4a8bd109b2cd7fc"
 dependencies = [
  "ratatui",
 ]
@@ -8535,7 +8534,6 @@ dependencies = [
 [[package]]
 name = "rat-inline"
 version = "0.1.0"
-source = "git+ssh://git@github.com/brittonr/subwayrat.git?rev=d930e8ce693bc3761eff5a4ed4a8bd109b2cd7fc#d930e8ce693bc3761eff5a4ed4a8bd109b2cd7fc"
 dependencies = [
  "crossterm",
  "rat-markdown",
@@ -8547,7 +8545,6 @@ dependencies = [
 [[package]]
 name = "rat-keymap"
 version = "0.1.0"
-source = "git+ssh://git@github.com/brittonr/subwayrat.git?rev=d930e8ce693bc3761eff5a4ed4a8bd109b2cd7fc#d930e8ce693bc3761eff5a4ed4a8bd109b2cd7fc"
 dependencies = [
  "ratatui",
 ]
@@ -8555,7 +8552,6 @@ dependencies = [
 [[package]]
 name = "rat-leaderkey"
 version = "0.1.0"
-source = "git+ssh://git@github.com/brittonr/subwayrat.git?rev=d930e8ce693bc3761eff5a4ed4a8bd109b2cd7fc#d930e8ce693bc3761eff5a4ed4a8bd109b2cd7fc"
 dependencies = [
  "ratatui",
  "ratcore",
@@ -8564,7 +8560,6 @@ dependencies = [
 [[package]]
 name = "rat-markdown"
 version = "0.1.0"
-source = "git+ssh://git@github.com/brittonr/subwayrat.git?rev=d930e8ce693bc3761eff5a4ed4a8bd109b2cd7fc#d930e8ce693bc3761eff5a4ed4a8bd109b2cd7fc"
 dependencies = [
  "ratatui",
  "unicode-width",
@@ -8573,12 +8568,10 @@ dependencies = [
 [[package]]
 name = "rat-spinner"
 version = "0.1.0"
-source = "git+ssh://git@github.com/brittonr/subwayrat.git?rev=d930e8ce693bc3761eff5a4ed4a8bd109b2cd7fc#d930e8ce693bc3761eff5a4ed4a8bd109b2cd7fc"
 
 [[package]]
 name = "rat-widgets"
 version = "0.1.0"
-source = "git+ssh://git@github.com/brittonr/subwayrat.git?rev=d930e8ce693bc3761eff5a4ed4a8bd109b2cd7fc#d930e8ce693bc3761eff5a4ed4a8bd109b2cd7fc"
 dependencies = [
  "rat-spinner",
  "ratatui",
@@ -8683,7 +8676,6 @@ dependencies = [
 [[package]]
 name = "ratcore"
 version = "0.1.0"
-source = "git+ssh://git@github.com:22/brittonr/ratcore.git?rev=16333a505696b324637f021b657c474600a9b838#16333a505696b324637f021b657c474600a9b838"
 
 [[package]]
 name = "rav1e"

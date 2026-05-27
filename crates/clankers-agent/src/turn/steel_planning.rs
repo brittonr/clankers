@@ -32,9 +32,9 @@ const AGENT_TURN_DECISION_ID: &str = "agent-turn-model-request";
 const AGENT_TURN_DECISION_CLASS: &str = "agent-turn-plan";
 const DEFAULT_STEEL_SOURCE: &str = "(host \"steel.host.plan_turn\")";
 const BUNDLED_DEFAULT_PROFILE_BYTES: &[u8] =
-    include_bytes!("../../../../policy/steel-default-orchestration/orchestration-profile.json");
+    include_bytes!("../../policy/steel-default-orchestration/orchestration-profile.json");
 const BUNDLED_DEFAULT_SCRIPT: &str =
-    include_str!("../../../../policy/steel-default-orchestration/scripts/default-plan-turn.scm");
+    include_str!("../../policy/steel-default-orchestration/scripts/default-plan-turn.scm");
 
 #[derive(Debug, Clone)]
 pub struct AgentTurnSteelPlanningConfig {

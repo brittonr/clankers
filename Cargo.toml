@@ -69,12 +69,12 @@ clanker-tui-types = { path = "crates/clanker-tui-types" }
 # Vendored snapshot; see vendor/openspec/VENDORED_FROM for source provenance.
 openspec = { path = "vendor/openspec" }
 graggle = { git = "https://github.com/brittonr/graggle" }
-rat-branches = { git = "ssh://git@github.com/brittonr/subwayrat.git", rev = "d930e8ce693bc3761eff5a4ed4a8bd109b2cd7fc" }
-rat-keymap = { git = "ssh://git@github.com/brittonr/subwayrat.git", rev = "d930e8ce693bc3761eff5a4ed4a8bd109b2cd7fc" }
-rat-leaderkey = { git = "ssh://git@github.com/brittonr/subwayrat.git", rev = "d930e8ce693bc3761eff5a4ed4a8bd109b2cd7fc" }
-rat-inline = { git = "ssh://git@github.com/brittonr/subwayrat.git", rev = "d930e8ce693bc3761eff5a4ed4a8bd109b2cd7fc" }
-rat-markdown = { git = "ssh://git@github.com/brittonr/subwayrat.git", rev = "d930e8ce693bc3761eff5a4ed4a8bd109b2cd7fc" }
-rat-widgets = { git = "ssh://git@github.com/brittonr/subwayrat.git", rev = "d930e8ce693bc3761eff5a4ed4a8bd109b2cd7fc" }
+rat-branches = { path = "../rats/subwayrat/crates/rat-branches" }
+rat-keymap = { path = "../rats/subwayrat/crates/rat-keymap" }
+rat-leaderkey = { path = "../rats/subwayrat/crates/rat-leaderkey" }
+rat-inline = { path = "../rats/subwayrat/crates/rat-inline" }
+rat-markdown = { path = "../rats/subwayrat/crates/rat-markdown" }
+rat-widgets = { path = "../rats/subwayrat/crates/rat-widgets" }
 
 [package]
 name = "clankers"
@@ -266,8 +266,6 @@ type_complexity = { level = "allow", priority = 1 }
 default_scope = ["--workspace"]
 cargo_check_args = []
 
-[patch."ssh://git@github.com/brittonr/ratcore.git"]
-ratcore = { git = "ssh://git@github.com:22/brittonr/ratcore.git", rev = "16333a505696b324637f021b657c474600a9b838" }
 
 [workspace.metadata.dylint]
 libraries = [
