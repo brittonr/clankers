@@ -56,65 +56,55 @@ Every live mutation host function MUST validate a UCAN-derived authorization for
 - **AND** the receipt MUST NOT include compact UCAN tokens, private keys, bearer credentials, or raw proofs
 
 ### Requirement: Steel host functions are typed mutation requests [r[steel-self-mutation-policy.host-functions]]
-
 Steel scripts MAY request mutation only through typed Clankers host functions. Those functions MUST call Rust enforcement code and MUST NOT expose raw filesystem, process, network, git, credential, provider, daemon, TUI, or native-tool authority to Steel.
 
-#### Scenario: apply mutation goes through Rust authority [r[steel-self-mutation-policy.host-functions.apply-through-rust]]
-- GIVEN a Steel script calls an allowed apply-mutation host function with a target, patch, intent, and approval reference
-- **WHEN** the host function executes
-- **THEN** Rust MUST validate Nickel policy, UCAN authority, target normalization, preflight checks, and required approval before applying bytes
-- **AND** Steel MUST receive only a structured result or denial receipt
+#### Scenario: orchestration patch is a typed proposal [r[steel-self-mutation-policy.host-functions.orchestration-patch-proposal]]
+- GIVEN a repo-local Steel evolution pack wants to modify its own orchestration files
+- WHEN Steel emits a `clankers.steel.orchestration-patch.v1` request
+- THEN Rust MUST parse the typed request, validate target paths, expected before hashes, patch hash, intent, gate list, and activation policy before any write
+- AND free-form Steel output MUST NOT become a patch or executable authority
 
-#### Scenario: raw ambient write is denied [r[steel-self-mutation-policy.host-functions.raw-write-denied]]
-- GIVEN a Steel script attempts direct filesystem write, shell execution, git mutation, credential access, provider access, or daemon mutation outside a typed host function
-- **WHEN** evaluation runs under any Steel mutation profile
-- **THEN** Clankers MUST deny the ambient effect with a stable issue code
-- **AND** no fallback path may satisfy the request with broader authority
+#### Scenario: authority-kernel changes are checkpointed [r[steel-self-mutation-policy.host-functions.authority-kernel-checkpoint]]
+- GIVEN an orchestration patch requests new host calls, wider budgets, new UCAN abilities, broader path roots, credential/provider/network access, direct git commit or push, disabled required gates, or Rust source capability changes
+- WHEN Rust validates the mutation request
+- THEN Clankers MUST deny automatic application and require a human/oracle checkpoint or ordinary coding-agent workflow
+- AND Steel MUST NOT self-approve the authority increase by editing its own policy files
 
 ### Requirement: Mutation preflight and receipts are deterministic [r[steel-self-mutation-policy.receipts-and-preflight]]
-
 Before live writes, Clankers MUST record deterministic preflight evidence and after any attempted write it MUST emit a receipt that supports audit, verification, and rollback.
 
-#### Scenario: preflight records target and checkpoint evidence [r[steel-self-mutation-policy.receipts-and-preflight.preflight]]
-- GIVEN a live mutation request targets an allowed skill, prompt, tool description, or code path
-- **WHEN** preflight runs
-- **THEN** Clankers MUST record target class, normalized target identity, pre-mutation hash, dirty-WIP decision, checkpoint or backup plan, Nickel policy hash, UCAN authorization outcome, and approval state
-- **AND** it MUST reject path traversal, symlink escape, class/path mismatch, stale target hash, or unsupported target ambiguity before writing
+#### Scenario: orchestration mutation records old and new pack identity [r[steel-self-mutation-policy.receipts-and-preflight.orchestration-pack-receipt]]
+- GIVEN Rust accepts or rejects a Steel orchestration-pack mutation proposal
+- WHEN the mutation receipt is written
+- THEN it MUST include safe target metadata, old pack hash, proposed new pack hash when available, patch hash, policy hash, script hash, selected gate names, gate result hashes, activation decision, rollback reference, and issue code when denied
+- AND it MUST NOT include raw prompts, credentials, compact UCAN tokens, provider payloads, secret paths, unbounded patch bodies, or raw private transcript material
 
-#### Scenario: receipt is safe and rollbackable [r[steel-self-mutation-policy.receipts-and-preflight.safe-receipt]]
-- GIVEN a mutation host function succeeds, fails, or is denied
-- **WHEN** the receipt is written
-- **THEN** it MUST include stable status, issue codes, safe target metadata, policy hash, safe UCAN metadata, before/after hashes when applicable, verification outcome, backup or rollback reference, and redaction decisions
-- **AND** it MUST NOT include secrets, raw UCAN proofs, compact tokens, credentials, oversized patch bodies, provider payloads, or uncontrolled absolute-path dumps
+#### Scenario: isolated apply protects the working tree [r[steel-self-mutation-policy.receipts-and-preflight.isolated-apply]]
+- GIVEN a Steel orchestration patch passes preflight
+- WHEN Rust applies the candidate mutation
+- THEN it MUST apply first in an isolated worktree or staging area with expected before-hash checks
+- AND the repository working tree MUST NOT be modified unless validation succeeds and policy allows explicit promotion
 
 ### Requirement: Verification and rollback gate success [r[steel-self-mutation-policy.verification-and-rollback]]
-
 A live mutation MUST NOT be reported as successful or promoted to commit/application success unless required verification passes, and rollback MUST guard against clobbering operator edits.
 
-#### Scenario: failed verification blocks success [r[steel-self-mutation-policy.verification-and-rollback.failed-verification]]
-- GIVEN a live mutation writes candidate bytes but policy-selected verification fails
-- **WHEN** Clankers finalizes the mutation receipt
-- **THEN** the receipt MUST mark the mutation as verification-failed or blocked
-- **AND** follow-on commit, promotion, or success reporting MUST be denied by default
+#### Scenario: next-turn activation follows successful gates [r[steel-self-mutation-policy.verification-and-rollback.next-turn-activation]]
+- GIVEN an orchestration-pack mutation passes isolated apply and all policy-selected gates
+- WHEN Clankers promotes the mutated pack
+- THEN the new pack MUST activate only on an explicit reload or later turn after receipt recording
+- AND in-flight Steel evaluation MUST continue using the pre-mutation pack hash
 
-#### Scenario: rollback verifies post-apply and backup hashes [r[steel-self-mutation-policy.verification-and-rollback.guarded-rollback]]
-- GIVEN a mutation receipt recorded post-apply target hash and backup hash
-- **WHEN** rollback is requested
-- **THEN** Clankers MUST verify the current target hash still matches the recorded post-apply hash and the backup hash matches the recorded backup before restoring bytes
-- **AND** it MUST reject rollback before writing if the target changed after mutation
+#### Scenario: rollback rejects stale pack state [r[steel-self-mutation-policy.verification-and-rollback.orchestration-rollback]]
+- GIVEN an orchestration-pack mutation receipt recorded pre-apply, post-apply, and backup hashes
+- WHEN rollback is requested
+- THEN Rust MUST verify the current pack hash still matches the recorded post-apply hash and the backup hash matches the recorded pre-apply hash before restoring files
+- AND rollback MUST fail closed before writing if an operator or another agent changed the pack after mutation
 
 ### Requirement: Fixtures prove allowed and denied behavior [r[steel-self-mutation-policy.verification-fixtures]]
-
 Implementation MUST include deterministic positive and negative fixtures for Nickel policy validation, UCAN authority checks, host-function enforcement, receipt redaction, verification gating, and rollback guards.
 
-#### Scenario: positive fixture applies allowed mutation [r[steel-self-mutation-policy.verification-fixtures.positive]]
-- GIVEN a fixture Nickel policy allows a bounded skill or prompt mutation
-- **AND** a fixture UCAN authorization matches the requested ability and resource
-- **WHEN** the Steel host function applies a small deterministic patch
-- **THEN** verification MUST pass and repeated runs MUST produce stable receipt fields excluding intentionally variable display metadata
-
-#### Scenario: negative fixtures fail closed [r[steel-self-mutation-policy.verification-fixtures.negative]]
-- GIVEN fixtures for path escape, missing UCAN, expired UCAN, wrong-resource UCAN, unauthorized verb, raw ambient write, failed verification, and stale rollback target
-- **WHEN** the fixtures run
-- **THEN** each MUST fail before the forbidden effect or unsafe rollback occurs
-- **AND** each denial receipt MUST use stable issue codes and safe redacted metadata
+#### Scenario: orchestration mutation fixtures cover safe and denied cases [r[steel-self-mutation-policy.verification-fixtures.orchestration-pack]]
+- GIVEN fixtures for a valid script/gate update, path escape, stale before hash, authority widening, required gate removal, failed validation, malformed patch schema, and stale rollback target
+- WHEN focused verification runs
+- THEN the valid fixture MUST promote only after gates pass
+- AND every negative fixture MUST fail before forbidden writes, authority widening, or unsafe rollback occurs
