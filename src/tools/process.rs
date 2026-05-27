@@ -89,6 +89,8 @@ const DEFAULT_LOG_LIMIT: usize = 200;
 const MAX_COMMAND_PREVIEW_LEN: usize = 200;
 const MAX_NATIVE_ACTIVE_PROCESS_JOBS: usize = 32;
 const NATIVE_KILL_GRACE: Duration = Duration::from_secs(2);
+const NATIVE_RESTART_TERMINATION_TIMEOUT: Duration = Duration::from_secs(5);
+const NATIVE_RESTART_TERMINATION_POLL: Duration = Duration::from_millis(50);
 const ADOPTED_NATIVE_ID_PREFIX: &str = "native_pid_";
 
 fn unsupported_backend_receipt(
@@ -251,6 +253,7 @@ impl ProcessStatus {
 struct ProcessEntry {
     id: String,
     command: String,
+    restart_request: StartProcessJobRequest,
     started_at: Instant,
     started_at_wall: DateTime<Utc>,
     backend_ref: Option<BackendRef>,
@@ -271,6 +274,7 @@ impl ProcessEntry {
     fn new(
         id: String,
         command: String,
+        restart_request: StartProcessJobRequest,
         stdin: Option<ChildStdin>,
         kill_tx: oneshot::Sender<()>,
         pid: Option<u32>,
@@ -280,6 +284,7 @@ impl ProcessEntry {
         Self {
             id,
             command,
+            restart_request,
             started_at: Instant::now(),
             started_at_wall: Utc::now(),
             backend_ref: pid.map(|pid| BackendRef(format!("pid:{pid}"))),
@@ -438,6 +443,7 @@ impl ProcessJobService for NativeProcessJobService {
         let entry = Arc::new(ProcessEntry::new(
             id_string.clone(),
             display_command,
+            request.clone(),
             stdin,
             kill_tx,
             pid,
@@ -570,12 +576,7 @@ impl ProcessJobService for NativeProcessJobService {
     }
 
     async fn restart(&self, id: ProcessJobId) -> Result<ProcessJobReceipt, RuntimeError> {
-        Ok(unsupported_backend_receipt(
-            ProcessJobOperation::Restart,
-            Some(id),
-            ProcessJobBackendKind::Native,
-            "native process restart is not implemented yet",
-        ))
+        restart_native_process_job(id, None).await
     }
 
     async fn write_stdin(
@@ -1795,6 +1796,108 @@ fn native_receipt(
     }
 }
 
+fn native_restart_failed_receipt(id: ProcessJobId, message: impl Into<String>) -> ProcessJobReceipt {
+    let message = message.into();
+    ProcessJobReceipt {
+        operation: ProcessJobOperation::Restart,
+        id: Some(id.clone()),
+        backend: Some(ProcessJobBackendKind::Native),
+        status: None,
+        backend_ref: None,
+        log_refs: Vec::new(),
+        profile: None,
+        summary: message.clone(),
+        error: Some(ProcessJobError {
+            code: ProcessJobErrorCode::BackendFailed,
+            operation: ProcessJobOperation::Restart,
+            id: Some(id),
+            backend: Some(ProcessJobBackendKind::Native),
+            action: Some(ProcessJobOperation::Restart.action_name().to_string()),
+            capability_detail: None,
+            message,
+        }),
+    }
+}
+
+async fn stop_native_entry_for_restart(entry: &ProcessEntry) -> bool {
+    if entry.status().is_done() {
+        return true;
+    }
+
+    let tx = entry.kill_tx.lock().expect("process kill lock poisoned").take();
+    if let Some(tx) = tx {
+        tx.send(()).ok();
+    }
+
+    let deadline = Instant::now() + NATIVE_RESTART_TERMINATION_TIMEOUT;
+    while !entry.status().is_done() {
+        if Instant::now() >= deadline {
+            return false;
+        }
+        tokio::time::sleep(NATIVE_RESTART_TERMINATION_POLL).await;
+    }
+    true
+}
+
+async fn restart_native_process_job(
+    id: ProcessJobId,
+    db: Option<clankers_db::Db>,
+) -> Result<ProcessJobReceipt, RuntimeError> {
+    let old_entry = native_entry(&id)?;
+    let restart_request = old_entry.restart_request.clone();
+    let previous_status = old_entry.status();
+    if !stop_native_entry_for_restart(&old_entry).await {
+        return Ok(native_restart_failed_receipt(
+            id,
+            format!("native process restart could not stop previous process before relaunch: {}", old_entry.id),
+        ));
+    }
+
+    let admission = match ProcessTool::reserve_native_start() {
+        Ok(admission) => admission,
+        Err(decision) => return Ok(ProcessTool::admission_denied_receipt_for(ProcessJobOperation::Restart, decision)),
+    };
+    let (display_command, mut child) = spawn_from_start_request(&restart_request)?;
+    let pid = child.id();
+    let stdin = child.stdin.take();
+    let stdout = child.stdout.take().ok_or_else(|| {
+        RuntimeError::InvalidTool("failed to capture stdout from restarted native background process".to_string())
+    })?;
+    let stderr = child.stderr.take().ok_or_else(|| {
+        RuntimeError::InvalidTool("failed to capture stderr from restarted native background process".to_string())
+    })?;
+    let (kill_tx, kill_rx) = oneshot::channel();
+    let new_entry = Arc::new(ProcessEntry::new(
+        id.0.clone(),
+        display_command,
+        restart_request,
+        stdin,
+        kill_tx,
+        pid,
+        old_entry.notification_policy.clone(),
+        old_entry.profile.clone(),
+    ));
+    let backend_ref = new_entry.backend_ref.clone();
+    ProcessTool::insert(new_entry.clone());
+    admission.release();
+    persist_entry(db.as_ref(), &new_entry).await;
+    spawn_reader(new_entry.clone(), "stdout", stdout);
+    spawn_reader(new_entry.clone(), "stderr", stderr);
+    spawn_waiter(new_entry, child, pid, kill_rx, db);
+
+    Ok(ProcessJobReceipt {
+        operation: ProcessJobOperation::Restart,
+        id: Some(id.clone()),
+        backend: Some(ProcessJobBackendKind::Native),
+        status: Some(ProcessJobStatus::Running),
+        backend_ref,
+        log_refs: Vec::new(),
+        profile: old_entry.profile.clone(),
+        summary: format!("Restarted native process {} (previous status: {})", id.0, previous_status.label()),
+        error: None,
+    })
+}
+
 fn status_to_job_status(status: &ProcessStatus) -> ProcessJobStatus {
     match status {
         ProcessStatus::Running => ProcessJobStatus::Running,
@@ -1890,7 +1993,7 @@ fn stored_record_from_entry(entry: &ProcessEntry) -> StoredProcessJobRecord {
             can_read_logs: true,
             can_start: true,
             can_kill: true,
-            can_restart: false,
+            can_restart: true,
             can_write_stdin: true,
             can_select_backend: false,
         },
@@ -2504,10 +2607,21 @@ impl ProcessTool {
         registry.entries.values().cloned().collect()
     }
 
+    fn is_current_entry(entry: &Arc<ProcessEntry>) -> bool {
+        Self::get(&entry.id).is_some_and(|current| Arc::ptr_eq(&current, entry))
+    }
+
     fn admission_denied_receipt(decision: NativeAdmissionDecision) -> ProcessJobReceipt {
+        Self::admission_denied_receipt_for(ProcessJobOperation::Start, decision)
+    }
+
+    fn admission_denied_receipt_for(
+        operation: ProcessJobOperation,
+        decision: NativeAdmissionDecision,
+    ) -> ProcessJobReceipt {
         let summary = decision.summary();
         ProcessJobReceipt {
-            operation: ProcessJobOperation::Start,
+            operation,
             id: None,
             backend: Some(ProcessJobBackendKind::Native),
             status: Some(ProcessJobStatus::Waiting),
@@ -2517,10 +2631,10 @@ impl ProcessTool {
             summary: summary.clone(),
             error: Some(ProcessJobError {
                 code: ProcessJobErrorCode::ConcurrencyLimitExceeded,
-                operation: ProcessJobOperation::Start,
+                operation,
                 id: None,
                 backend: Some(ProcessJobBackendKind::Native),
-                action: Some("start".to_string()),
+                action: Some(operation.action_name().to_string()),
                 capability_detail: None,
                 message: summary,
             }),
@@ -2692,6 +2806,7 @@ impl ProcessTool {
         let entry = Arc::new(ProcessEntry::new(
             id.clone(),
             display_command.clone(),
+            request.clone(),
             stdin,
             kill_tx,
             pid,
@@ -3138,7 +3253,7 @@ impl ProcessTool {
         }
     }
 
-    async fn handle_restart(params: &Value) -> ToolResult {
+    async fn handle_restart(ctx: &ToolContext, params: &Value) -> ToolResult {
         let request = match Self::process_job_tool_request(params) {
             Ok(ProcessJobToolRequest::Restart(request)) => request,
             Ok(_) => return ToolResult::error("Parsed unexpected process job request for restart action"),
@@ -3151,12 +3266,10 @@ impl ProcessTool {
         if let Some(id) = Self::systemd_id(&session_id) {
             return Self::systemd_receipt_result(Self::systemd_service().restart(id).await).await;
         }
-        Self::receipt_result(unsupported_backend_receipt(
-            ProcessJobOperation::Restart,
-            Some(request.id),
-            ProcessJobBackendKind::Native,
-            "native process restart is not supported; start a new native process instead",
-        ))
+        match restart_native_process_job(request.id, ctx.db().cloned()).await {
+            Ok(receipt) => Self::receipt_result(receipt),
+            Err(error) => ToolResult::error(error.to_string()),
+        }
     }
 }
 
@@ -3185,7 +3298,7 @@ impl Tool for ProcessTool {
             "log" => Self::handle_log(ctx, &params).await,
             "wait" => Self::handle_wait(ctx, &params).await,
             "kill" => Self::handle_kill(ctx, &params).await,
-            "restart" => Self::handle_restart(&params).await,
+            "restart" => Self::handle_restart(ctx, &params).await,
             "write" => Self::handle_write(&params, false).await,
             "submit" => Self::handle_write(&params, true).await,
             "close" => Self::handle_close(&params).await,
@@ -3233,7 +3346,9 @@ fn spawn_waiter(
             }
         }
         entry.evaluate_completion_notification().await;
-        persist_entry(db.as_ref(), &entry).await;
+        if ProcessTool::is_current_entry(&entry) {
+            persist_entry(db.as_ref(), &entry).await;
+        }
     });
 }
 
@@ -3287,6 +3402,9 @@ mod tests {
     use tokio_util::sync::CancellationToken;
 
     use super::*;
+
+    const SHORT_PROCESS_TEST_TIMEOUT_SECS: u64 = 2;
+    const RESTART_PERSISTENCE_SETTLE_MILLIS: u64 = 100;
 
     fn make_ctx() -> ToolContext {
         ToolContext::new("process-test".to_string(), CancellationToken::new(), None)
@@ -3858,6 +3976,29 @@ mod tests {
         let waited = service.wait(id, Some(Duration::from_secs(2))).await.expect("wait succeeds");
         assert_eq!(waited.profile.as_ref().map(|profile| profile.policy_source.as_str()), Some("workspace"));
         assert!(waited.summary.contains("service-ok"), "{}", waited.summary);
+    }
+
+    #[tokio::test]
+    async fn native_process_job_service_restarts_running_entry() {
+        let service = NativeProcessJobService;
+        let started = service.start(native_start_request("cat")).await.expect("start succeeds");
+        let id = started.id.clone().expect("receipt has stable process id");
+
+        let restarted = service.restart(id.clone()).await.expect("restart succeeds");
+        assert_eq!(restarted.operation, ProcessJobOperation::Restart);
+        assert_eq!(restarted.id, Some(id.clone()));
+        assert_eq!(restarted.status, Some(ProcessJobStatus::Running));
+
+        service
+            .write_stdin(id.clone(), b"service-restart".to_vec(), true)
+            .await
+            .expect("write to restarted stdin succeeds");
+        service.close_stdin(id.clone()).await.expect("close restarted stdin succeeds");
+        let waited = service
+            .wait(id, Some(Duration::from_secs(SHORT_PROCESS_TEST_TIMEOUT_SECS)))
+            .await
+            .expect("wait succeeds");
+        assert!(waited.summary.contains("service-restart"), "{}", waited.summary);
     }
 
     #[tokio::test]
@@ -4484,19 +4625,91 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn native_restart_remains_unsupported_typed_receipt() {
+    async fn native_restart_relaunches_running_process_under_same_stable_id() {
         let tool = ProcessTool::new();
-        let started = tool.execute(&make_ctx(), json!({"action": "start", "command": "printf restart"})).await;
+        let ctx = make_ctx();
+        let started = tool.execute(&ctx, json!({"action": "start", "command": "cat"})).await;
         assert!(!started.is_error, "{started:?}");
         let id = extract_process_id(&started);
-        let restarted = tool.execute(&make_ctx(), json!({"action": "restart", "session_id": id})).await;
-        assert!(restarted.is_error, "{restarted:?}");
+
+        let restarted = tool.execute(&ctx, json!({"action": "restart", "session_id": id.clone()})).await;
+        assert!(!restarted.is_error, "{restarted:?}");
         let envelope = tool_receipt_json(&restarted);
-        assert_eq!(envelope["common"]["operation"], "restart");
-        assert_eq!(envelope["common"]["backend"], "native");
-        assert_eq!(envelope["common"]["status"], serde_json::Value::Null);
-        assert_eq!(envelope["common"]["error"]["code"], "unsupported_action_for_backend");
-        assert_eq!(envelope["common"]["error"]["capability_detail"], "restart requires restart support");
+        assert_eq!(envelope["common"]["operation"].as_str(), Some("restart"));
+        assert_eq!(envelope["common"]["id"].as_str(), Some(id.as_str()));
+        assert_eq!(envelope["common"]["backend"].as_str(), Some("native"));
+        assert_eq!(envelope["common"]["status"]["state"].as_str(), Some("running"));
+
+        let submitted = tool
+            .execute(&ctx, json!({"action": "submit", "session_id": id.clone(), "data": "after-restart"}))
+            .await;
+        assert!(!submitted.is_error, "{submitted:?}");
+        let closed = tool.execute(&ctx, json!({"action": "close", "session_id": id.clone()})).await;
+        assert!(!closed.is_error, "{closed:?}");
+        let waited = tool
+            .execute(&ctx, json!({"action": "wait", "session_id": id, "timeout": SHORT_PROCESS_TEST_TIMEOUT_SECS}))
+            .await;
+        assert!(!waited.is_error, "{waited:?}");
+        assert!(text(&waited).contains("after-restart"), "{}", text(&waited));
+    }
+
+    #[tokio::test]
+    async fn native_restart_keeps_restarted_record_persisted_after_old_waiter_finishes() {
+        let db = clankers_db::Db::in_memory().expect("db opens");
+        let ctx = make_ctx_with_db(db.clone());
+        let tool = ProcessTool::new();
+        let started = tool.execute(&ctx, json!({"action": "start", "command": "cat"})).await;
+        assert!(!started.is_error, "{started:?}");
+        let id = extract_process_id(&started);
+
+        let restarted = tool.execute(&ctx, json!({"action": "restart", "session_id": id.clone()})).await;
+        assert!(!restarted.is_error, "{restarted:?}");
+        tokio::time::sleep(Duration::from_millis(RESTART_PERSISTENCE_SETTLE_MILLIS)).await;
+        let stored = db.async_process_jobs().get(id.clone()).await.expect("db read").expect("record stored");
+        assert_eq!(stored.status, StoredProcessJobStatus::Running);
+        assert!(stored.backend_ref.as_deref().unwrap_or_default().starts_with("pid:"));
+
+        let closed = tool.execute(&ctx, json!({"action": "close", "session_id": id.clone()})).await;
+        assert!(!closed.is_error, "{closed:?}");
+        let waited = tool
+            .execute(&ctx, json!({"action": "wait", "session_id": id, "timeout": SHORT_PROCESS_TEST_TIMEOUT_SECS}))
+            .await;
+        assert!(!waited.is_error, "{waited:?}");
+    }
+
+    #[tokio::test]
+    async fn native_restart_replays_direct_program_request() {
+        let tool = ProcessTool::new();
+        let ctx = make_ctx();
+        let started = tool
+            .execute(&ctx, json!({"action": "start", "program": "printf", "args": ["direct-restart"]}))
+            .await;
+        assert!(!started.is_error, "{started:?}");
+        let id = extract_process_id(&started);
+        let waited = tool
+            .execute(
+                &ctx,
+                json!({"action": "wait", "session_id": id.clone(), "timeout": SHORT_PROCESS_TEST_TIMEOUT_SECS}),
+            )
+            .await;
+        assert!(!waited.is_error, "{waited:?}");
+        assert!(text(&waited).contains("direct-restart"), "{}", text(&waited));
+
+        let restarted = tool.execute(&ctx, json!({"action": "restart", "session_id": id.clone()})).await;
+        assert!(!restarted.is_error, "{restarted:?}");
+        let restarted_wait = tool
+            .execute(&ctx, json!({"action": "wait", "session_id": id, "timeout": SHORT_PROCESS_TEST_TIMEOUT_SECS}))
+            .await;
+        assert!(!restarted_wait.is_error, "{restarted_wait:?}");
+        assert!(text(&restarted_wait).contains("direct-restart"), "{}", text(&restarted_wait));
+    }
+
+    #[tokio::test]
+    async fn native_restart_unknown_session_fails_without_mutation() {
+        let tool = ProcessTool::new();
+        let restarted = tool.execute(&make_ctx(), json!({"action": "restart", "session_id": "proc_missing"})).await;
+        assert!(restarted.is_error, "{restarted:?}");
+        assert!(text(&restarted).contains("Unknown process session_id: proc_missing"), "{}", text(&restarted));
     }
 
     #[tokio::test]

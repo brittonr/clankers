@@ -2028,7 +2028,7 @@ impl ProcessJobBackendCapabilities {
             supports_shell: true,
             supports_direct_exec: true,
             supports_stdin: true,
-            supports_restart: false,
+            supports_restart: true,
             supports_kill: true,
             supports_kill_tree: true,
             supports_control_group: true,
@@ -3890,7 +3890,7 @@ mod tests {
         assert!(native.supports_completion_notifications);
         assert!(native.supports_readiness_watch);
         assert!(native.supports_adopt);
-        assert!(!native.supports_restart);
+        assert!(native.supports_restart);
         assert!(!native.supports_operation(ProcessJobOperation::GarbageCollect));
         assert!(!native.supports_queueing);
         assert!(!native.supports_dependencies);
@@ -3930,11 +3930,8 @@ mod tests {
         let capabilities = FakeBackend::default().capabilities();
         assert_eq!(capabilities, ProcessJobBackendCapabilities::native());
         assert!(capabilities.supports_operation(ProcessJobOperation::WriteStdin));
-        assert!(!capabilities.supports_operation(ProcessJobOperation::Restart));
-        assert_eq!(
-            capabilities.unsupported_detail(ProcessJobOperation::Restart),
-            Some("restart requires restart support")
-        );
+        assert!(capabilities.supports_operation(ProcessJobOperation::Restart));
+        assert_eq!(capabilities.unsupported_detail(ProcessJobOperation::Restart), None);
 
         let unavailable = ProcessJobReceipt::backend_unavailable(
             ProcessJobOperation::GarbageCollect,
@@ -3960,16 +3957,15 @@ mod tests {
     #[test]
     fn service_validation_can_fail_closed_before_backend_mutation() {
         let fake = FakeBackend::default();
-        let capabilities = fake.capabilities();
-        let receipt = if capabilities.supports_operation(ProcessJobOperation::Restart) {
-            panic!("native fake backend must not advertise restart for this regression")
-        } else {
-            capabilities.unsupported_receipt(
-                ProcessJobOperation::Restart,
-                Some(ProcessJobId("proc_1".to_string())),
-                "restart unsupported by native backend",
-            )
+        let capabilities = ProcessJobBackendCapabilities {
+            supports_restart: false,
+            ..fake.capabilities()
         };
+        let receipt = capabilities.unsupported_receipt(
+            ProcessJobOperation::Restart,
+            Some(ProcessJobId("proc_1".to_string())),
+            "restart unsupported by native backend",
+        );
 
         assert!(fake.calls.lock().expect("fake calls lock poisoned").is_empty());
         let error = receipt.error.expect("unsupported restart receipt");

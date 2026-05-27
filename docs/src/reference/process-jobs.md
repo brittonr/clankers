@@ -8,7 +8,7 @@ The `process` tool accepts a `backend` field on `start`, `list`, `poll`, `log`, 
 
 | Backend | Use when | Notes |
 | --- | --- | --- |
-| `native` | You want the built-in local process registry. | Default backend. Tracks child processes, incremental logs, stdin, completion state, and daemon restart reconciliation. |
+| `native` | You want the built-in local process registry. | Default backend. Tracks child processes, incremental logs, stdin, completion state, native restart, and daemon restart reconciliation. |
 | `pueue` | You want queueing/group concurrency through pueue. | Set `group` and `label` on starts when useful. Existing pueue tasks can be adopted with `pueue_task_id` or `backend_ref: "pueue:<id>"`. |
 | `systemd` | You want transient systemd units and host-level resource controls. | Existing units can be adopted with `systemd_unit` or `backend_ref: "systemd:<unit>"`. NixOS deployments can configure `unitPrefix`, resource limits, working directory, writable paths, and kill grace. |
 
@@ -29,6 +29,8 @@ Example tool payloads:
 ## Receipts and availability errors
 
 Every backend operation returns a typed receipt shape with `operation`, `id`, `backend`, `status`, `backend_ref`, `log_refs`, and a bounded human summary when those fields apply. Unsupported or unavailable backends fail explicitly instead of silently falling back: for example, a missing pueue binary/daemon or unavailable systemd runner is reported as a backend availability error, while invalid profile/backend policy is reported before backend dispatch.
+
+Native `restart` stops the current Clankers-owned process group when it is still running, relaunches the original shell/direct-exec start request, preserves the stable Clankers process id, and updates the backend PID reference. Reconciled metadata-only records that no longer have a live process handle still fail closed instead of guessing a restart target.
 
 ## Notifications
 
