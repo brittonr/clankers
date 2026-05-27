@@ -107,12 +107,20 @@ impl AgentBuilder {
             agent = agent.with_cost_tracker(tracker);
         }
 
-        // Enable extended thinking if requested
-        if let Some(ref thinking) = self.thinking
-            && thinking.enabled
-        {
-            agent.toggle_thinking(thinking.budget_tokens.unwrap_or(10_000));
-        }
+        // Enable extended thinking from settings by default, with explicit
+        // builder overrides taking precedence.
+        let thinking_level = if let Some(ref thinking) = self.thinking {
+            if thinking.enabled {
+                clankers_provider::ThinkingLevel::from_budget(
+                    u32::try_from(thinking.budget_tokens.unwrap_or(10_000)).unwrap_or(u32::MAX),
+                )
+            } else {
+                clankers_provider::ThinkingLevel::Off
+            }
+        } else {
+            self.settings.parsed_thinking_level()
+        };
+        agent.set_thinking_level(thinking_level);
 
         // Attach capability gate if provided
         if let Some(gate) = self.capability_gate {
@@ -120,5 +128,65 @@ impl AgentBuilder {
         }
 
         agent
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::sync::Arc;
+
+    use async_trait::async_trait;
+    use clankers_config::settings::Settings;
+    use clankers_provider::CompletionRequest;
+    use clankers_provider::Model;
+    use clankers_provider::Provider;
+    use clankers_provider::error::Result;
+    use clankers_provider::streaming::StreamEvent;
+    use tokio::sync::mpsc;
+
+    use super::AgentBuilder;
+
+    struct MockProvider;
+
+    #[async_trait]
+    impl Provider for MockProvider {
+        async fn complete(&self, _request: CompletionRequest, _tx: mpsc::Sender<StreamEvent>) -> Result<()> {
+            Ok(())
+        }
+
+        fn models(&self) -> &[Model] {
+            &[]
+        }
+
+        fn name(&self) -> &str {
+            "mock"
+        }
+    }
+
+    #[test]
+    fn builder_enables_medium_thinking_from_default_settings() {
+        let agent = AgentBuilder::new(
+            Arc::new(MockProvider),
+            Settings::default(),
+            "test-model".to_string(),
+            "system".to_string(),
+        )
+        .build();
+
+        assert_eq!(agent.thinking_level(), clankers_provider::ThinkingLevel::Medium);
+        assert!(agent.is_thinking_enabled());
+    }
+
+    #[test]
+    fn builder_honors_settings_thinking_off() {
+        let settings = Settings {
+            thinking_level: "off".to_string(),
+            ..Settings::default()
+        };
+        let agent =
+            AgentBuilder::new(Arc::new(MockProvider), settings, "test-model".to_string(), "system".to_string()).build();
+
+        assert_eq!(agent.thinking_level(), clankers_provider::ThinkingLevel::Off);
+        assert!(!agent.is_thinking_enabled());
     }
 }

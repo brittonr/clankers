@@ -143,6 +143,11 @@ pub async fn run_auto_daemon_attach(opts: AutoDaemonOptions) -> Result<()> {
     app.auto_theme = crate::config::theme::is_auto_theme(opts.settings.theme.as_deref());
     app.session_id = session_id.clone();
     app.highlighter = Box::new(crate::util::syntax::SyntectHighlighter);
+    super::common::apply_thinking_settings(&mut app, &opts.settings);
+    if opts.thinking {
+        app.thinking_enabled = true;
+        app.thinking_level = clanker_tui_types::ThinkingLevel::High;
+    }
 
     let slash_registry = build_client_slash_registry();
     app.set_completion_source(Box::new(clanker_tui_types::CompletionSnapshot::from_source(&slash_registry)));

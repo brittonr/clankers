@@ -53,6 +53,7 @@ pub async fn run_interactive(
     let mut app = App::new(model.clone(), cwd.clone(), theme);
     app.auto_theme = crate::config::theme::is_auto_theme(settings.theme.as_deref());
     app.highlighter = Box::new(crate::util::syntax::SyntectHighlighter);
+    super::common::apply_thinking_settings(&mut app, &settings);
 
     // Build slash command registry and set completion source on app
     let slash_registry = build_slash_registry(plugin_manager.as_ref());
@@ -197,6 +198,7 @@ pub async fn run_interactive(
             model: model.clone(),
             session_manager,
             hook_pipeline,
+            initial_thinking_level: super::common::core_thinking_level(settings.parsed_thinking_level()),
             ..Default::default()
         };
         if let Some(ref cmd) = settings.auto_test_command {

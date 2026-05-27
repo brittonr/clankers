@@ -129,6 +129,7 @@ pub fn spawn_agent_process(
         capability_ceiling: tool_patterns,
         session_manager,
         hook_pipeline,
+        initial_thinking_level: crate::modes::common::core_thinking_level(factory.settings.parsed_thinking_level()),
         auto_test_command: factory.settings.auto_test_command.clone(),
         auto_test_enabled: factory.settings.auto_test_command.is_some(),
     };

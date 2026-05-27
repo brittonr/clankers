@@ -54,7 +54,7 @@ Use `openai-codex/...` for ChatGPT subscription Codex models and `openai/...` fo
 ```
 
 ### `/think [off|low|medium|high|max]`
-Set or cycle through extended thinking levels.
+Set or cycle through extended thinking levels. New sessions default to `medium` unless `thinkingLevel` is changed in config.
 
 **Usage:**
 ```

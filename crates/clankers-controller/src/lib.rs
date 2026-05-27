@@ -240,6 +240,7 @@ impl SessionController {
     /// Create a new controller that owns the Agent (daemon mode).
     pub fn new(mut agent: Agent, config: ControllerConfig) -> Self {
         agent.set_session_id(config.session_id.clone());
+        agent.apply_controller_thinking_level(Self::provider_thinking_level(config.initial_thinking_level));
         let event_rx = agent.subscribe();
         let model = config.model.clone();
         let metrics = metrics_capture::MetricsCollector::new(config.session_id.clone());
@@ -249,6 +250,7 @@ impl SessionController {
             event_rx: Some(event_rx),
             session_manager: config.session_manager,
             core_state: CoreState {
+                thinking_level: config.initial_thinking_level,
                 auto_test_enabled: config.auto_test_enabled,
                 auto_test_command: config.auto_test_command.clone(),
                 ..CoreState::default()
@@ -292,6 +294,7 @@ impl SessionController {
             event_rx: None,
             session_manager: config.session_manager,
             core_state: CoreState {
+                thinking_level: config.initial_thinking_level,
                 auto_test_enabled: config.auto_test_enabled,
                 auto_test_command: config.auto_test_command.clone(),
                 ..CoreState::default()

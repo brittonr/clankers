@@ -13,10 +13,12 @@ Clankers reads configuration from two locations, merged with project-local takin
 ## settings.json
 
 Main configuration file. Place in `~/.clankers/settings.json` or `.clankers/settings.json`.
+`thinkingLevel` defaults to `medium`; set it to `off` to disable provider reasoning summaries by default.
 
 ```json
 {
   "model": "openai-codex/gpt-5.5",
+  "thinkingLevel": "medium",
   "routing": {
     "enabled": true,
     "low_threshold": 20.0,

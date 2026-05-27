@@ -126,8 +126,8 @@ pub(crate) fn build_codex_request_body(request: &CompletionRequest, session_id: 
         && thinking.enabled
     {
         body["reasoning"] = json!({
-            "effort": "medium",
-            "summary": "auto",
+            "effort": codex_reasoning_effort(thinking.budget_tokens),
+            "summary": "detailed",
         });
     }
 
@@ -152,6 +152,14 @@ pub(crate) fn build_codex_request_body(request: &CompletionRequest, session_id: 
     }
 
     Ok(body)
+}
+
+fn codex_reasoning_effort(budget_tokens: Option<usize>) -> &'static str {
+    match budget_tokens.unwrap_or(10_000) {
+        0..=5_000 => "low",
+        5_001..=10_000 => "medium",
+        _ => "high",
+    }
 }
 
 pub(crate) fn build_codex_input(messages: &[Value]) -> Result<Vec<Value>> {

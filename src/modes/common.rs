@@ -32,6 +32,24 @@ use crate::tools::ToolDefinition;
 use crate::tools::plugin_tool::PluginTool;
 use crate::tools::validator_tool::ValidatorTool;
 
+// ── Thinking setup ──────────────────────────────────────────────────────────
+
+pub(crate) fn core_thinking_level(level: clanker_tui_types::ThinkingLevel) -> clankers_core::CoreThinkingLevel {
+    match level {
+        clanker_tui_types::ThinkingLevel::Off => clankers_core::CoreThinkingLevel::Off,
+        clanker_tui_types::ThinkingLevel::Low => clankers_core::CoreThinkingLevel::Low,
+        clanker_tui_types::ThinkingLevel::Medium => clankers_core::CoreThinkingLevel::Medium,
+        clanker_tui_types::ThinkingLevel::High => clankers_core::CoreThinkingLevel::High,
+        clanker_tui_types::ThinkingLevel::Max => clankers_core::CoreThinkingLevel::Max,
+    }
+}
+
+pub(crate) fn apply_thinking_settings(app: &mut crate::tui::app::App, settings: &crate::config::settings::Settings) {
+    let level = settings.parsed_thinking_level();
+    app.thinking_enabled = level.is_enabled();
+    app.thinking_level = level;
+}
+
 // ── Terminal setup ──────────────────────────────────────────────────────────
 
 /// Set up the crossterm terminal (raw mode, alternate screen, mouse capture).

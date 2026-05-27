@@ -30,6 +30,7 @@ A more complete example:
 ```nickel
 (import "clankers://settings") & {
   model = "openai-codex/gpt-5.5",
+  thinkingLevel = "medium",
   maxTokens = 32768,
   planMode = true,
 
@@ -52,6 +53,7 @@ You can also write plain records without the contract import — they work fine,
 ```nickel
 {
   model = "openai-codex/gpt-5.5",
+  thinkingLevel = "off", # disable default reasoning summaries
   maxTokens = 32768,
 }
 ```

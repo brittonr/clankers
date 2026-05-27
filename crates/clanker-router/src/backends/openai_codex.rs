@@ -365,7 +365,7 @@ mod tests {
                 "strict": null,
             }],
             "temperature": 0.2,
-            "reasoning": {"effort": "medium", "summary": "auto"},
+            "reasoning": {"effort": "low", "summary": "detailed"},
         });
 
         if let Some(session_id) = session_id {

@@ -2,6 +2,7 @@
 
 use std::sync::Arc;
 
+use clankers_core::CoreThinkingLevel;
 use clankers_hooks::HookPipeline;
 use clankers_session::SessionManager;
 
@@ -12,6 +13,8 @@ pub struct ControllerConfig {
     pub session_id: String,
     /// Initial model name.
     pub model: String,
+    /// Initial thinking/reasoning level.
+    pub initial_thinking_level: CoreThinkingLevel,
     /// System prompt (set on the agent before passing to controller).
     pub system_prompt: Option<String>,
     /// Capability restrictions (None = full access).

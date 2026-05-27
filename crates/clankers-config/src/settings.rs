@@ -4,6 +4,7 @@ use std::collections::BTreeMap;
 use std::path::Path;
 
 use clanker_tui_types::MenuPlacement;
+use clanker_tui_types::ThinkingLevel;
 use clankers_agent_defs::definition::AgentScope;
 use serde::Deserialize;
 use serde::Serialize;
@@ -19,6 +20,11 @@ pub struct Settings {
     /// Default model to use
     #[serde(default = "default_model")]
     pub model: String,
+
+    /// Default thinking/reasoning level.
+    /// Use "off", "low", "medium", "high", or "max".
+    #[serde(default = "default_thinking_level")]
+    pub thinking_level: String,
 
     /// Default max tokens for output
     #[serde(default = "default_max_tokens")]
@@ -1121,6 +1127,9 @@ fn default_model() -> String {
 fn default_max_tokens() -> usize {
     16384
 }
+fn default_thinking_level() -> String {
+    "medium".to_string()
+}
 fn default_true() -> bool {
     true
 }
@@ -1138,6 +1147,7 @@ impl Default for Settings {
     fn default() -> Self {
         Self {
             model: default_model(),
+            thinking_level: default_thinking_level(),
             max_tokens: default_max_tokens(),
             agent_scope: AgentScope::default(),
             confirm_project_agents: true,
@@ -1178,6 +1188,11 @@ impl Default for Settings {
 }
 
 impl Settings {
+    /// Parsed thinking level for provider requests and TUI state.
+    pub fn parsed_thinking_level(&self) -> ThinkingLevel {
+        ThinkingLevel::from_str_or_budget(&self.thinking_level).unwrap_or(ThinkingLevel::Medium)
+    }
+
     /// Load settings by merging pi fallback, global, and project files.
     /// Priority (highest wins): project > global (~/.clankers) > pi fallback (~/.pi)
     pub fn load(global_path: &Path, project_path: &Path) -> Self {
@@ -1787,6 +1802,20 @@ mod tests {
         let project = serde_json::json!({"autoTestCommand": "cargo nextest run"});
         let settings = Settings::merge_layers(None, Some(global), Some(project));
         assert_eq!(settings.auto_test_command, Some("cargo nextest run".to_string()));
+    }
+
+    #[test]
+    fn thinking_level_default_medium() {
+        let json = r"{}";
+        let settings: Settings = serde_json::from_str(json).unwrap();
+        assert_eq!(settings.parsed_thinking_level(), ThinkingLevel::Medium);
+    }
+
+    #[test]
+    fn thinking_level_explicit_off() {
+        let json = r#"{"thinkingLevel": "off"}"#;
+        let settings: Settings = serde_json::from_str(json).unwrap();
+        assert_eq!(settings.parsed_thinking_level(), ThinkingLevel::Off);
     }
 
     #[test]
