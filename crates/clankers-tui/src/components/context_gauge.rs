@@ -34,6 +34,8 @@ pub fn model_context_window(model: &str) -> (usize, usize) {
         (200_000, 8_192)
     } else if m.contains("haiku") {
         (200_000, 4_096)
+    } else if m.contains("gpt-5.5") || m.contains("codex") {
+        (400_000, 128_000)
     } else if m.contains("gpt-4o") || m.contains("gpt-4-turbo") || m.contains("gpt-4-1") {
         (128_000, 16_384)
     } else if m.contains("gpt-4") {
@@ -71,7 +73,7 @@ pub struct ContextGauge {
 
 impl Default for ContextGauge {
     fn default() -> Self {
-        let (cw, mo) = model_context_window("claude-sonnet-4-5");
+        let (cw, mo) = model_context_window("openai-codex/gpt-5.5");
         Self {
             input_tokens: 0,
             output_tokens: 0,

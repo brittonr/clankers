@@ -25,7 +25,7 @@ impl SlashHandler for LoginHandler {
                      /login --account <name>             — login to a specific local account name\n  \
                      /login <provider> --account <name>  — combine provider + account\n\n\
                    Model selection examples:\n  \
-                     /model openai-codex/gpt-5.3-codex   — ChatGPT subscription Codex\n  \
+                     /model openai-codex/gpt-5.5         — ChatGPT subscription Codex\n  \
                      /model openai/gpt-4o                — API-key OpenAI remains separate\n\n\
                    See also: /account (list, switch, logout, status)",
             accepts_args: true,

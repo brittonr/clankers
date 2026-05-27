@@ -19,7 +19,7 @@ A minimal config that overrides the default model:
 
 ```nickel
 (import "clankers://settings") & {
-  model = "claude-opus-4-6",
+  model = "openai-codex/gpt-5.5",
 }
 ```
 
@@ -29,7 +29,7 @@ A more complete example:
 
 ```nickel
 (import "clankers://settings") & {
-  model = "claude-opus-4-6",
+  model = "openai-codex/gpt-5.5",
   maxTokens = 32768,
   planMode = true,
 
@@ -51,7 +51,7 @@ You can also write plain records without the contract import — they work fine,
 
 ```nickel
 {
-  model = "claude-opus-4-6",
+  model = "openai-codex/gpt-5.5",
   maxTokens = 32768,
 }
 ```

@@ -47,7 +47,7 @@ pub struct DaemonConfig {
 impl Default for DaemonConfig {
     fn default() -> Self {
         Self {
-            model: "claude-sonnet-4-5".to_string(),
+            model: "openai-codex/gpt-5.5".to_string(),
             system_prompt: crate::agent::system_prompt::default_system_prompt(
                 &crate::agent::system_prompt::PromptFeatures {
                     nix_available: crate::agent::system_prompt::detect_nix(),

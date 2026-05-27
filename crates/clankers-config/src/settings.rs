@@ -1116,7 +1116,7 @@ impl Default for CompressionSettings {
 }
 
 fn default_model() -> String {
-    "claude-sonnet-4-5".to_string()
+    "openai-codex/gpt-5.5".to_string()
 }
 fn default_max_tokens() -> usize {
     16384
@@ -1236,9 +1236,17 @@ impl Settings {
     /// e.g. pi uses "defaultModel" while clankers uses "model".
     fn normalize_pi_settings(mut value: serde_json::Value) -> serde_json::Value {
         if let Some(obj) = value.as_object_mut() {
-            // Map defaultModel -> model
+            let default_provider = obj.get("defaultProvider").and_then(serde_json::Value::as_str).map(str::to_string);
+            // Map defaultModel -> model. Pi splits provider and model; Clankers
+            // uses explicit provider prefixes for subscription Codex models.
             if let Some(model) = obj.remove("defaultModel") {
-                obj.entry("model").or_insert(model);
+                let normalized_model = match (default_provider.as_deref(), model.as_str()) {
+                    (Some("openai-codex"), Some(model_id)) if !model_id.contains('/') => {
+                        serde_json::Value::String(format!("openai-codex/{model_id}"))
+                    }
+                    _ => model,
+                };
+                obj.entry("model").or_insert(normalized_model);
             }
         }
         value
@@ -1871,6 +1879,15 @@ mod tests {
         let project = serde_json::json!({"disabledTools": ["commit"]});
         let settings = Settings::merge_layers(None, Some(global), Some(project));
         assert_eq!(settings.disabled_tools, vec!["commit".to_string()]);
+    }
+
+    #[test]
+    fn pi_default_provider_prefixes_codex_model() {
+        let pi = Settings::normalize_pi_settings(serde_json::json!({
+            "defaultProvider": "openai-codex",
+            "defaultModel": "gpt-5.5"
+        }));
+        assert_eq!(pi.get("model").and_then(serde_json::Value::as_str), Some("openai-codex/gpt-5.5"));
     }
 
     #[test]

@@ -49,7 +49,7 @@ Use `openai-codex/...` for ChatGPT subscription Codex models and `openai/...` fo
 **Example:**
 ```
 /model claude-opus-4-6
-/model openai-codex/gpt-5.3-codex
+/model openai-codex/gpt-5.5
 /model openai/gpt-4o
 ```
 

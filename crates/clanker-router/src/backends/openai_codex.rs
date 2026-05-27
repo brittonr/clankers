@@ -26,7 +26,7 @@ pub const OPENAI_CODEX_RESPONSES_URL: &str = "https://chatgpt.com/backend-api/co
 const OPENAI_CODEX_BETA_HEADER: &str = "responses=experimental";
 const OPENAI_CODEX_NOT_ENTITLED_CODE: &str = "usage_not_included";
 
-pub const OPENAI_CODEX_MODEL_IDS: [&str; 2] = ["gpt-5.3-codex", "gpt-5.3-codex-spark"];
+pub const OPENAI_CODEX_MODEL_IDS: [&str; 3] = ["gpt-5.5", "gpt-5.3-codex", "gpt-5.3-codex-spark"];
 const OPENAI_CODEX_PROBE_MODEL: &str = "gpt-5.3-codex";
 
 mod attempt;
@@ -1044,9 +1044,9 @@ mod tests {
     fn codex_catalog_is_exact_fixed_set() {
         let ids: Vec<&str> = OPENAI_CODEX_MODEL_IDS.to_vec();
         let unique: HashSet<&str> = ids.iter().copied().collect();
-        assert_eq!(ids.len(), 2);
-        assert_eq!(unique.len(), 2);
-        assert_eq!(ids, vec!["gpt-5.3-codex", "gpt-5.3-codex-spark"]);
+        assert_eq!(ids.len(), 3);
+        assert_eq!(unique.len(), 3);
+        assert_eq!(ids, vec!["gpt-5.5", "gpt-5.3-codex", "gpt-5.3-codex-spark"]);
     }
 
     #[tokio::test]

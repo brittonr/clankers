@@ -69,6 +69,10 @@ pub struct AuthStore {
     /// Legacy Anthropic OAuth credentials (v1 format)
     #[serde(skip_serializing_if = "Option::is_none")]
     pub anthropic: Option<LegacyOAuthCredentials>,
+
+    /// Legacy OpenAI Codex OAuth credentials written by pi.
+    #[serde(rename = "openai-codex", skip_serializing_if = "Option::is_none")]
+    pub openai_codex: Option<LegacyOAuthCredentials>,
 }
 
 fn default_version() -> u32 {
@@ -165,6 +169,25 @@ impl LegacyOAuthCredentials {
     }
 }
 
+fn migrate_legacy_oauth_provider(
+    providers: &mut HashMap<String, ProviderAuth>,
+    provider_name: &str,
+    legacy: &LegacyOAuthCredentials,
+) {
+    let provider = providers.entry(provider_name.to_string()).or_default();
+    if !provider.accounts.contains_key("default") {
+        provider.accounts.insert("default".to_string(), StoredCredential::OAuth {
+            access_token: legacy.access.clone(),
+            refresh_token: legacy.refresh.clone(),
+            expires_at_ms: legacy.expires,
+            label: None,
+        });
+    }
+    if provider.active_account.is_none() {
+        provider.active_account = Some("default".to_string());
+    }
+}
+
 impl AuthStore {
     /// Load auth store from a file path
     pub fn load(path: &Path) -> Self {
@@ -201,19 +224,10 @@ impl AuthStore {
     /// Migrate legacy v1 `anthropic` field into the v2 providers map
     fn migrate_legacy(&mut self) {
         if let Some(ref legacy) = self.anthropic {
-            let provider = self.providers.entry("anthropic".to_string()).or_default();
-
-            if !provider.accounts.contains_key("default") {
-                provider.accounts.insert("default".to_string(), StoredCredential::OAuth {
-                    access_token: legacy.access.clone(),
-                    refresh_token: legacy.refresh.clone(),
-                    expires_at_ms: legacy.expires,
-                    label: None,
-                });
-            }
-            if provider.active_account.is_none() {
-                provider.active_account = Some("default".to_string());
-            }
+            migrate_legacy_oauth_provider(&mut self.providers, "anthropic", legacy);
+        }
+        if let Some(ref legacy) = self.openai_codex {
+            migrate_legacy_oauth_provider(&mut self.providers, "openai-codex", legacy);
         }
     }
 
@@ -1064,6 +1078,27 @@ mod tests {
         let cred = store.active_credential("anthropic").unwrap();
         assert_eq!(cred.token(), "old-token");
         assert!(cred.is_oauth());
+    }
+
+    #[test]
+    fn test_legacy_openai_codex_migration() {
+        let mut store = AuthStore {
+            openai_codex: Some(LegacyOAuthCredentials {
+                access: "codex-token".into(),
+                refresh: "codex-refresh".into(),
+                expires: i64::MAX,
+            }),
+            ..Default::default()
+        };
+        store.migrate_legacy();
+
+        let cred = store.active_credential("openai-codex").unwrap();
+        assert_eq!(cred.token(), "codex-token");
+        assert!(cred.is_oauth());
+        assert_eq!(
+            store.providers.get("openai-codex").and_then(|provider| provider.active_account.as_deref()),
+            Some("default")
+        );
     }
 
     #[test]

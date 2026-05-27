@@ -16,7 +16,7 @@ Main configuration file. Place in `~/.clankers/settings.json` or `.clankers/sett
 
 ```json
 {
-  "model": "claude-sonnet-4-5",
+  "model": "openai-codex/gpt-5.5",
   "routing": {
     "enabled": true,
     "low_threshold": 20.0,
@@ -25,7 +25,7 @@ Main configuration file. Place in `~/.clankers/settings.json` or `.clankers/sett
     "budget_hard_limit": 10.0
   },
   "modelRoles": {
-    "default": { "model": "claude-sonnet-4-5" },
+    "default": { "model": "openai-codex/gpt-5.5" },
     "smol": { "model": "claude-haiku-4" },
     "slow": { "model": "claude-opus-4" }
   },

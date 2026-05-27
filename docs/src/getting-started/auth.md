@@ -23,7 +23,7 @@ clankers auth status --all                          # grouped provider status
 ```
 
 `openai-codex` is separate from API-key `openai`.
-Use `openai-codex/gpt-5.3-codex` for ChatGPT subscription Codex models and
+Use `openai-codex/gpt-5.5` for ChatGPT subscription Codex models and
 `openai/gpt-4o` for API-key OpenAI models.
 Unsupported `openai-codex` plans stay authenticated but unavailable for Codex use, and explicit or resumed
 Codex requests fail closed instead of falling back to API-key `openai`.

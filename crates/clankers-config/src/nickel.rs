@@ -124,7 +124,7 @@ pub fn generate_starter_config() -> String {
 (import "clankers://settings") & {
   # Uncomment and edit the fields you want to override:
 
-  # model = "claude-sonnet-4-5",
+  # model = "openai-codex/gpt-5.5",
   # maxTokens = 16384,
   # planMode = false,
   # useDaemon = true,
@@ -152,8 +152,8 @@ mod tests {
 
     #[test]
     fn eval_simple_record() {
-        let result = eval_ncl_source(r#"{ model = "claude-opus-4-6", maxTokens = 32768 }"#, "test".into()).unwrap();
-        assert_eq!(result["model"], "claude-opus-4-6");
+        let result = eval_ncl_source(r#"{ model = "openai-codex/gpt-5.5", maxTokens = 32768 }"#, "test".into()).unwrap();
+        assert_eq!(result["model"], "openai-codex/gpt-5.5");
         assert_eq!(result["maxTokens"], 32768);
     }
 
@@ -168,9 +168,9 @@ mod tests {
     #[test]
     fn eval_contract_import_resolution() {
         // A config that imports the contract and overrides model
-        let src = r#"(import "clankers://settings") & { model = "claude-opus-4-6" }"#;
+        let src = r#"(import "clankers://settings") & { model = "openai-codex/gpt-5.5" }"#;
         let result = eval_ncl_source(src, "test".into()).unwrap();
-        assert_eq!(result["model"], "claude-opus-4-6");
+        assert_eq!(result["model"], "openai-codex/gpt-5.5");
         // Defaults from contract should be present
         assert_eq!(result["maxTokens"], 16384);
         assert_eq!(result["useDaemon"], true);

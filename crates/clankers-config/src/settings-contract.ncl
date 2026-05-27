@@ -4,7 +4,7 @@
 # deep merge:
 #
 #   (import "clankers://settings") & {
-#     model = "claude-opus-4-6",
+#     model = "openai-codex/gpt-5.5",
 #     planMode = true,
 #   }
 #
@@ -12,7 +12,7 @@
 
 {
   # Default model for LLM requests.
-  model | String | default = "claude-sonnet-4-5",
+  model | String | default = "openai-codex/gpt-5.5",
 
   # Max output tokens per request.
   maxTokens | Number | default = 16384,
