@@ -10,6 +10,7 @@ serde_json = "1"
 ---
 
 use std::fs;
+use std::path::Path;
 use std::path::PathBuf;
 use std::process::ExitCode;
 
@@ -43,6 +44,7 @@ fn main() -> ExitCode {
 
 fn run() -> Result<PathBuf, String> {
     let valid_pack = pack_json(&valid_pack());
+    let repo_load_receipt = load_repo_evolution_pack(Path::new(".")).map_err(|error| error.to_string())?;
     let fixtures = vec![
         (
             "absent",
@@ -53,10 +55,19 @@ fn run() -> Result<PathBuf, String> {
             validate_repo_evolution_pack_from_export(&valid_pack, |_| Some(SCRIPT_SOURCE.to_vec())).status
                 == SteelRepoEvolutionActivationStatus::Active,
         ),
+        ("repo-local-runtime-load", repo_load_receipt.status == SteelRepoEvolutionActivationStatus::Active),
         (
             "malformed",
             validate_repo_evolution_pack_from_export("not-json", |_| Some(SCRIPT_SOURCE.to_vec())).reason_code
                 == SteelRepoEvolutionActivationReason::InvalidProfileJson,
+        ),
+        (
+            "invalid-nickel-contract",
+            validate_repo_evolution_pack_from_sources(&valid_pack, "let profile = {} in profile", |_| {
+                Some(SCRIPT_SOURCE.to_vec())
+            })
+            .reason_code
+                == SteelRepoEvolutionActivationReason::InvalidNickelContract,
         ),
         (
             "hash-mismatch",
@@ -102,14 +113,20 @@ fn run() -> Result<PathBuf, String> {
             "absent-default-deny",
             "nickel-export-profile-json",
             "script-path-and-hash-validation",
+            "nickel-contract-marker-validation",
             "rust-owned-host-abi",
             "typed-evolution-plan",
+            "higher-order-host-contracts",
+            "repo-local-runtime-load",
             "redacted-receipts"
         ],
         "hashed_artifacts": [
             {"path": "crates/clankers-runtime/src/steel_repo_evolution.rs", "blake3": hash_file("crates/clankers-runtime/src/steel_repo_evolution.rs")?},
             {"path": "scripts/check-steel-repo-evolution-packs.rs", "blake3": hash_file("scripts/check-steel-repo-evolution-packs.rs")?},
-            {"path": "docs/src/reference/steel-repo-evolution-packs.md", "blake3": hash_file("docs/src/reference/steel-repo-evolution-packs.md")?}
+            {"path": "docs/src/reference/steel-repo-evolution-packs.md", "blake3": hash_file("docs/src/reference/steel-repo-evolution-packs.md")?},
+            {"path": ".clankers/steel/evolution-profile.ncl", "blake3": hash_file(".clankers/steel/evolution-profile.ncl")?},
+            {"path": ".clankers/steel/evolution-profile.json", "blake3": hash_file(".clankers/steel/evolution-profile.json")?},
+            {"path": ".clankers/steel/scripts/plan-evolution.scm", "blake3": hash_file(".clankers/steel/scripts/plan-evolution.scm")?}
         ]
     });
     let path = PathBuf::from(RECEIPT_PATH);
@@ -130,6 +147,22 @@ fn valid_pack_struct() -> SteelRepoEvolutionPack {
             blake3: ArtifactHash::digest(SCRIPT_SOURCE).prefixed(),
         }],
         allowed_host_calls: vec!["repo.propose_patch".to_string(), "repo.run_gate".to_string()],
+        host_contracts: vec![
+            SteelRepoEvolutionHostContract {
+                name: "contract-propose-patch".to_string(),
+                wraps_host_call: "repo.propose_patch".to_string(),
+                mode: "higher_order".to_string(),
+                preconditions: vec!["typed-patch-envelope".to_string()],
+                postconditions: vec!["receipt-recorded".to_string()],
+            },
+            SteelRepoEvolutionHostContract {
+                name: "contract-run-gate".to_string(),
+                wraps_host_call: "repo.run_gate".to_string(),
+                mode: "higher_order".to_string(),
+                preconditions: vec!["gate-allowlisted".to_string()],
+                postconditions: vec!["gate-receipt-hash".to_string()],
+            },
+        ],
         budgets: SteelRepoEvolutionBudgets {
             max_source_bytes: SCRIPT_SOURCE.len() as u64,
             max_output_bytes: OUTPUT_BUDGET_BYTES,

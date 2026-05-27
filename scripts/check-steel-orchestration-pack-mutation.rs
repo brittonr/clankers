@@ -10,6 +10,7 @@ serde_json = "1"
 ---
 
 use std::fs;
+use std::path::Path;
 use std::path::PathBuf;
 use std::process::ExitCode;
 
@@ -25,6 +26,7 @@ const NEW_PACK_BYTES: &[u8] = b"new repo-local Steel pack";
 const PATCH_BYTES: &[u8] = b"patch";
 const REQUIRED_VALIDATE_GATE: &str = "steel-pack-validate";
 const REQUIRED_SMOKE_GATE: &str = "steel-pack-smoke";
+const TARGET_PATH: &str = ".clankers/steel/scripts/plan-evolution.scm";
 
 fn main() -> ExitCode {
     match run() {
@@ -40,14 +42,28 @@ fn main() -> ExitCode {
 }
 
 fn run() -> Result<PathBuf, String> {
-    let valid_staged = stage_orchestration_patch(&proposal(), &state(), NEW_PACK_BYTES, &passing_gates());
-    let promoted = promote_staged_orchestration_pack(&valid_staged);
+    let stage_dir = Path::new(OUT_DIR).join("stage-valid");
+    let _ = fs::remove_dir_all(&stage_dir);
+    let valid_staged =
+        stage_orchestration_patch_to_directory(&proposal(), &state(), &stage_dir, &[patch_payload()], &passing_gates());
+    let live_dir = Path::new(OUT_DIR).join("live-valid");
+    let backup_dir = Path::new(OUT_DIR).join("backup-valid");
+    let _ = fs::remove_dir_all(&live_dir);
+    let _ = fs::remove_dir_all(&backup_dir);
+    fs::create_dir_all(live_dir.join(".clankers/steel/scripts")).map_err(|error| error.to_string())?;
+    fs::write(live_dir.join(TARGET_PATH), CURRENT_PACK_BYTES).map_err(|error| error.to_string())?;
+    let promoted = promote_staged_orchestration_pack_to_directory(&valid_staged, &stage_dir, &live_dir, &backup_dir);
+    let valid_update_passed = valid_staged.status == SteelOrchestrationMutationStatus::Staged
+        && promoted.status == SteelOrchestrationMutationStatus::Promoted
+        && promoted.writes_performed
+        && fs::read(live_dir.join(TARGET_PATH)).map_err(|error| error.to_string())? == NEW_PACK_BYTES;
     let current_changed =
         rollback_orchestration_pack(&promoted, ArtifactHash::digest(b"operator edit"), state().pack_hash);
-    let rolled_back = rollback_orchestration_pack(&promoted, ArtifactHash::digest(NEW_PACK_BYTES), state().pack_hash);
+    let rolled_back = rollback_orchestration_pack(&promoted, staged_hash(), state().pack_hash);
+    let live_rolled_back = rollback_orchestration_pack_to_directory(&promoted, &live_dir, &backup_dir);
 
     let fixtures = vec![
-        ("valid-update", valid_staged.status == SteelOrchestrationMutationStatus::Staged),
+        ("valid-update", valid_update_passed),
         ("path-escape", denied(path_escape_proposal()) == SteelOrchestrationMutationReason::PathEscape),
         (
             "stale-before-hash",
@@ -77,7 +93,13 @@ fn run() -> Result<PathBuf, String> {
             "stale-rollback",
             current_changed.reason_code == SteelOrchestrationMutationReason::CurrentPackChanged,
         ),
-        ("guarded-rollback", rolled_back.status == SteelOrchestrationMutationStatus::RolledBack),
+        (
+            "guarded-rollback",
+            rolled_back.status == SteelOrchestrationMutationStatus::RolledBack
+                && live_rolled_back.status == SteelOrchestrationMutationStatus::RolledBack
+                && live_rolled_back.writes_performed
+                && fs::read(live_dir.join(TARGET_PATH)).map_err(|error| error.to_string())? == CURRENT_PACK_BYTES,
+        ),
     ];
     for (name, passed) in &fixtures {
         if !passed {
@@ -94,6 +116,7 @@ fn run() -> Result<PathBuf, String> {
             "authority-kernel-checkpoint-denial",
             "required-gate-preservation",
             "isolated-stage-before-promotion",
+            "hash-guarded-live-promotion",
             "next-turn-or-explicit-reload-activation",
             "guarded-rollback"
         ],
@@ -112,7 +135,7 @@ fn run() -> Result<PathBuf, String> {
 
 fn state() -> SteelOrchestrationPackState {
     SteelOrchestrationPackState {
-        pack_hash: ArtifactHash::digest(CURRENT_PACK_BYTES),
+        pack_hash: current_hash(),
         required_gates: vec![REQUIRED_VALIDATE_GATE.to_string(), REQUIRED_SMOKE_GATE.to_string()],
     }
 }
@@ -121,8 +144,8 @@ fn proposal() -> SteelOrchestrationPatchProposal {
     SteelOrchestrationPatchProposal {
         schema: STEEL_ORCHESTRATION_PATCH_SCHEMA.to_string(),
         intent: "tune repo-local orchestration".to_string(),
-        target_paths: vec![".clankers/steel/scripts/plan-evolution.scm".to_string()],
-        expected_pack_hash: ArtifactHash::digest(CURRENT_PACK_BYTES).prefixed(),
+        target_paths: vec![TARGET_PATH.to_string()],
+        expected_pack_hash: current_hash().prefixed(),
         patch_hash: ArtifactHash::digest(PATCH_BYTES).prefixed(),
         selected_gates: vec![REQUIRED_VALIDATE_GATE.to_string(), REQUIRED_SMOKE_GATE.to_string()],
         activation_policy: "next_turn".to_string(),
@@ -181,13 +204,39 @@ fn passing_gates() -> Vec<SteelOrchestrationGateResult> {
     ]
 }
 
+fn patch_payload() -> SteelOrchestrationPatchPayload {
+    SteelOrchestrationPatchPayload {
+        target_path: TARGET_PATH.to_string(),
+        bytes: NEW_PACK_BYTES.to_vec(),
+    }
+}
+
+fn current_hash() -> ArtifactHash {
+    target_bytes_hash(TARGET_PATH, CURRENT_PACK_BYTES)
+}
+
+fn staged_hash() -> ArtifactHash {
+    target_bytes_hash(TARGET_PATH, NEW_PACK_BYTES)
+}
+
+fn target_bytes_hash(path: &str, bytes: &[u8]) -> ArtifactHash {
+    let mut input = Vec::new();
+    input.extend_from_slice(path.as_bytes());
+    input.push(0);
+    input.extend_from_slice(bytes);
+    input.push(0);
+    ArtifactHash::digest(&input)
+}
+
 fn failed_gate_receipt() -> SteelOrchestrationMutationReceipt {
     let failed = [SteelOrchestrationGateResult {
         name: REQUIRED_VALIDATE_GATE.to_string(),
         passed: false,
         receipt_hash: ArtifactHash::digest(b"failed-gate"),
     }];
-    stage_orchestration_patch(&proposal(), &state(), NEW_PACK_BYTES, &failed)
+    let stage_dir = Path::new(OUT_DIR).join("stage-failed-gate");
+    let _ = fs::remove_dir_all(&stage_dir);
+    stage_orchestration_patch_to_directory(&proposal(), &state(), &stage_dir, &[patch_payload()], &failed)
 }
 
 fn denied(proposal: SteelOrchestrationPatchProposal) -> SteelOrchestrationMutationReason {

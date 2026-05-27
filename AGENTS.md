@@ -76,6 +76,7 @@ clankers daemon stop           # stop daemon
 - Error handling: `snafu` for error types, context selectors.
 - Tests live next to code (`_tests.rs` suffix or `#[cfg(test)]` modules).
 - Config paths: `~/.clankers/agent/` (global), `.clankers/` (project).
+- Repo-local Steel evolution packs live under tracked `.clankers/steel/`: `evolution-profile.ncl` is the Nickel contract source, `evolution-profile.json` is Rust-consumed exported data, and `scripts/` holds hash-bound Steel code. Keep NCL/JSON/script hashes synced and cover runtime load with `./scripts/check-steel-repo-evolution-packs.rs` before claiming integration.
 - Pi fallback: reads `~/.pi/agent/` for auth/settings when clankers versions missing.
 - Rat TUI crates come from the `brittonr/rats` monorepo via Cargo path deps under `../rats/subwayrat/...`; Nix pins the same source as `rats-src` in `flake.lock` and supplies it through `externalSources`. When rat crates or ratcore change, update the sibling `../rats` checkout, `Cargo.lock`, `flake.lock`, and generated `build-plan.json` together so Cargo and sandboxed Nix builds see the same source graph.
 - Private SSH git dependencies need Cargo CLI fetches here. Keep `.cargo/config.toml` `[net] git-fetch-with-cli = true` or cargo/libgit2 will fail to authenticate even when plain `git` over SSH works.

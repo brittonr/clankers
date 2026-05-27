@@ -7,10 +7,11 @@ Steel may evolve actual repo-local orchestration by proposing patches to `.clank
 1. Steel reads safe receipts/context through the repo evolution host ABI.
 2. Steel emits `clankers.steel.orchestration-patch.v1` with intent, target paths, expected pack hash, patch hash, selected gates, activation policy, and authority-change declarations.
 3. Rust validates paths, before hashes, patch hash shape, required gates, activation policy, and authority-kernel boundaries before any write.
-4. Rust applies candidate changes only in isolated staging/worktree state.
-5. Rust runs required Steel pack gates.
-6. A changed pack activates only on explicit reload or a later turn after receipt recording.
-7. Rollback verifies current post-apply and backup hashes before restoring files.
+4. Rust writes candidate payloads only under an isolated staging directory/worktree after payload targets exactly match the validated target list.
+5. Rust runs required Steel pack gates against the staged state.
+6. Promotion copies staged files to the live pack only after the live before-hash and staged after-hash match the receipt, while first copying live files to a backup root.
+7. A changed pack activates only on explicit reload or a later turn after receipt recording.
+8. Rollback verifies current post-apply and backup hashes before restoring files from the backup root.
 
 ## Authority kernel
 
@@ -30,6 +31,12 @@ Those requests are denied as authority-kernel changes and must become a human/or
 ## Metaprogramming
 
 Steel macros and DSL expansion are allowed for orchestration planning, but Rust validates the expanded typed patch proposal. Dynamic code generation cannot add host calls or bypass the typed schema.
+
+## Isolated staging
+
+`stage_orchestration_patch_to_directory(...)` is the Rust-owned isolated apply seam. It first runs pure preflight validation, then writes each typed payload below the supplied staging root using the already-validated `.clankers/steel/` relative path. Payload sets must exactly match `target_paths`; path escapes, missing payloads, and extra payloads fail before promotion. The live working tree is not touched by staging.
+
+`promote_staged_orchestration_pack_to_directory(...)` is the live apply seam. It hashes the current live target set, verifies the staged target set hash, copies live files to a backup root, then copies staged files to live. `rollback_orchestration_pack_to_directory(...)` restores only when current live files match the recorded post-apply hash and backup files match the recorded pre-apply hash.
 
 ## Receipts
 

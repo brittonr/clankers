@@ -17,7 +17,15 @@ If `.clankers/steel/evolution-profile.ncl` is absent, repo-local Steel evolution
 
 ## Nickel profile contract
 
-The Nickel profile declares the pack schema, ABI version, script bindings, BLAKE3 hashes, budgets, allowed host calls, gate names, receipt root, and fallback mode. Rust consumes exported typed data and validates every field before activation. Invalid exports, path escapes, missing scripts, hash mismatches, unknown host calls, escaped receipt roots, and over-budget scripts fail closed before Steel code runs.
+The Nickel profile declares the pack schema, ABI version, script bindings, BLAKE3 hashes, budgets, allowed host calls, higher-order host contracts, gate names, receipt root, and fallback mode. Rust consumes exported typed data and validates every field before activation. Invalid exports, invalid Nickel contract markers, path escapes, missing scripts, hash mismatches, unknown host calls, missing higher-order contracts, escaped receipt roots, and over-budget scripts fail closed before Steel code runs.
+
+Each allowed host call must have a `host_contracts` entry with `mode = "higher_order"`, preconditions, and postconditions. The contract wraps Steel's proposed call and keeps Rust-owned validation, staging, gates, receipt emission, promotion, and rollback between Steel output and any effect.
+
+## Runtime loading
+
+`Agent::run_turn_loop` and the orchestrated turn path call `load_repo_evolution_pack(...)` from the current repository before planning a turn. Missing packs are silent/default-deny. Present packs emit a safe system receipt status after Rust validation; activation does not execute repo-local Steel source until hashes, budgets, ABI, and higher-order host contracts pass.
+
+The repository now carries a default pack under `.clankers/steel/` as data, not Rust code. Changing that pack requires updating `evolution-profile.ncl`, exporting matching `evolution-profile.json`, and keeping script BLAKE3 hashes in sync.
 
 ## Stable Rust host ABI
 
@@ -47,4 +55,4 @@ Run:
 ./scripts/check-steel-repo-evolution-packs.rs
 ```
 
-The checker exercises absent, valid, malformed, hash-mismatched, path-escaped, unknown-host-call, over-budget, valid-plan, and malformed-plan fixtures and writes `target/steel-repo-evolution-packs/receipt.json`.
+The checker exercises absent, valid, repo-local runtime load, malformed, hash-mismatched, path-escaped, unknown-host-call, over-budget, valid-plan, malformed-plan, and higher-order host-contract fixtures. It writes `target/steel-repo-evolution-packs/receipt.json` with hashes for the Rust validator, checker, docs, Nickel profile, JSON export, and Steel script.

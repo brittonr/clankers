@@ -25,6 +25,19 @@ pub const STEEL_REPO_EVOLUTION_EXPORTED_PROFILE: &str = ".clankers/steel/evoluti
 const MIN_ALLOWED_SCRIPT_BYTES: u64 = 1;
 const MIN_ALLOWED_HOST_CALL_BUDGET: u64 = 1;
 const DEFAULT_DENIED_HASH: &str = "b3:0000000000000000000000000000000000000000000000000000000000000000";
+const CONTRACT_MODE_HIGHER_ORDER: &str = "higher_order";
+
+const REQUIRED_NICKEL_CONTRACT_MARKERS: &[&str] = &[
+    "let ScriptBinding",
+    "let HostContract",
+    "let Budgets",
+    "let RepoEvolutionPack",
+    "allowed_host_calls | Array String",
+    "host_contracts | Array HostContract",
+    "receipt_root | String",
+    "fallback_mode | String",
+    "| RepoEvolutionPack",
+];
 
 pub const STEEL_REPO_EVOLUTION_HOST_CALLS: &[&str] = &[
     "repo.read_context",
@@ -41,6 +54,7 @@ pub struct SteelRepoEvolutionPack {
     pub abi_version: String,
     pub scripts: Vec<SteelRepoEvolutionScriptBinding>,
     pub allowed_host_calls: Vec<String>,
+    pub host_contracts: Vec<SteelRepoEvolutionHostContract>,
     pub budgets: SteelRepoEvolutionBudgets,
     pub gates: Vec<String>,
     pub receipt_root: String,
@@ -52,6 +66,15 @@ pub struct SteelRepoEvolutionScriptBinding {
     pub id: String,
     pub path: String,
     pub blake3: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SteelRepoEvolutionHostContract {
+    pub name: String,
+    pub wraps_host_call: String,
+    pub mode: String,
+    pub preconditions: Vec<String>,
+    pub postconditions: Vec<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -114,6 +137,8 @@ pub enum SteelRepoEvolutionActivationReason {
     InvalidSchema,
     InvalidAbiVersion,
     MissingNickelProfile,
+    ReadNickelContract,
+    InvalidNickelContract,
     MissingScript,
     PathEscape,
     ScriptHashMismatch,
@@ -121,6 +146,8 @@ pub enum SteelRepoEvolutionActivationReason {
     EmptyScripts,
     EmptyHostCalls,
     UnknownHostCall,
+    MissingHostContract,
+    InvalidHigherOrderContract,
     ReceiptRootEscape,
     BudgetTooSmall,
 }
@@ -129,6 +156,8 @@ pub enum SteelRepoEvolutionActivationReason {
 pub enum SteelRepoEvolutionLoadError {
     #[error("failed to read exported repo Steel evolution profile {path}: {message}")]
     ReadProfile { path: PathBuf, message: String },
+    #[error("failed to read repo Steel evolution Nickel contract {path}: {message}")]
+    ReadNickel { path: PathBuf, message: String },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -208,22 +237,59 @@ pub fn load_repo_evolution_pack(
     if !nickel_profile.is_file() {
         return Ok(inactive_repo_evolution_receipt());
     }
+    let nickel_text = match fs::read_to_string(&nickel_profile) {
+        Ok(text) => text,
+        Err(error) => {
+            return Ok(denied_activation(
+                SteelRepoEvolutionActivationReason::ReadNickelContract,
+                format!("repo-local Steel evolution Nickel contract could not be read: {error}"),
+                None,
+                Vec::new(),
+                None,
+            ));
+        }
+    };
     let exported_profile = repo_root.join(STEEL_REPO_EVOLUTION_EXPORTED_PROFILE);
-    let profile_text =
-        fs::read_to_string(&exported_profile).map_err(|error| SteelRepoEvolutionLoadError::ReadProfile {
-            path: exported_profile.clone(),
-            message: error.to_string(),
-        })?;
+    let profile_text = match fs::read_to_string(&exported_profile) {
+        Ok(text) => text,
+        Err(error) => {
+            return Ok(denied_activation(
+                SteelRepoEvolutionActivationReason::InvalidProfileJson,
+                format!("repo-local Steel evolution profile export could not be read: {error}"),
+                None,
+                Vec::new(),
+                None,
+            ));
+        }
+    };
     let script_loader = |relative_path: &str| -> Option<Vec<u8>> { fs::read(repo_root.join(relative_path)).ok() };
-    Ok(validate_repo_evolution_pack_from_export(&profile_text, script_loader))
+    Ok(validate_repo_evolution_pack_from_sources(&profile_text, &nickel_text, script_loader))
 }
 
 #[must_use]
 pub fn validate_repo_evolution_pack_from_export(
     profile_text: &str,
+    script_loader: impl FnMut(&str) -> Option<Vec<u8>>,
+) -> SteelRepoEvolutionActivationReceipt {
+    validate_repo_evolution_pack_from_sources(profile_text, valid_nickel_contract_fixture(), script_loader)
+}
+
+#[must_use]
+pub fn validate_repo_evolution_pack_from_sources(
+    profile_text: &str,
+    nickel_text: &str,
     mut script_loader: impl FnMut(&str) -> Option<Vec<u8>>,
 ) -> SteelRepoEvolutionActivationReceipt {
     let profile_hash = ArtifactHash::digest(profile_text.as_bytes());
+    if !nickel_contract_valid(nickel_text) {
+        return denied_activation(
+            SteelRepoEvolutionActivationReason::InvalidNickelContract,
+            "repo-local Steel evolution Nickel contract is missing required higher-order contract markers",
+            Some(profile_hash),
+            Vec::new(),
+            None,
+        );
+    }
     let Ok(pack) = serde_json::from_str::<SteelRepoEvolutionPack>(profile_text) else {
         return denied_activation(
             SteelRepoEvolutionActivationReason::InvalidProfileJson,
@@ -314,6 +380,17 @@ pub fn evaluate_repo_evolution_plan(pack: &SteelRepoEvolutionPack, plan_text: &s
             Vec::new(),
         );
     }
+    let contract_denials = host_calls_missing_contracts(&pack.host_contracts, &plan.actions);
+    if !contract_denials.is_empty() {
+        return plan_denied(
+            pack,
+            SteelRepoEvolutionPlanReason::UnknownHostCall,
+            "repo-local Steel evolution plan requested a host call without a higher-order contract",
+            Some(plan_hash),
+            plan.gates,
+            contract_denials,
+        );
+    }
     let unknown_gates = unknown_values(&plan.gates, &pack.gates);
     if !unknown_gates.is_empty() {
         return plan_denied(
@@ -381,6 +458,12 @@ fn static_pack_denial(pack: &SteelRepoEvolutionPack) -> Option<SteelRepoEvolutio
         .any(|host_call| !STEEL_REPO_EVOLUTION_HOST_CALLS.contains(&host_call.as_str()))
     {
         return Some(SteelRepoEvolutionActivationReason::UnknownHostCall);
+    }
+    if !host_contracts_cover_allowed_calls(&pack.host_contracts, &pack.allowed_host_calls) {
+        return Some(SteelRepoEvolutionActivationReason::MissingHostContract);
+    }
+    if !higher_order_contracts_are_safe(&pack.host_contracts) {
+        return Some(SteelRepoEvolutionActivationReason::InvalidHigherOrderContract);
     }
     None
 }
@@ -462,6 +545,12 @@ fn activation_reason_message(reason: SteelRepoEvolutionActivationReason) -> &'st
         SteelRepoEvolutionActivationReason::UnknownHostCall => {
             "repo-local Steel evolution host call is not in the Rust ABI"
         }
+        SteelRepoEvolutionActivationReason::MissingHostContract => {
+            "repo-local Steel evolution host call lacks a higher-order contract"
+        }
+        SteelRepoEvolutionActivationReason::InvalidHigherOrderContract => {
+            "repo-local Steel evolution higher-order host contract is invalid"
+        }
         SteelRepoEvolutionActivationReason::ReceiptRootEscape => {
             "repo-local Steel evolution receipt root escapes target/"
         }
@@ -470,6 +559,44 @@ fn activation_reason_message(reason: SteelRepoEvolutionActivationReason) -> &'st
         }
         _ => "repo-local Steel evolution pack failed validation",
     }
+}
+
+fn nickel_contract_valid(text: &str) -> bool {
+    REQUIRED_NICKEL_CONTRACT_MARKERS.iter().all(|marker| text.contains(marker))
+}
+
+fn host_contracts_cover_allowed_calls(
+    contracts: &[SteelRepoEvolutionHostContract],
+    allowed_host_calls: &[String],
+) -> bool {
+    allowed_host_calls
+        .iter()
+        .all(|host_call| contracts.iter().any(|contract| contract.wraps_host_call == *host_call))
+}
+
+fn higher_order_contracts_are_safe(contracts: &[SteelRepoEvolutionHostContract]) -> bool {
+    !contracts.is_empty()
+        && contracts.iter().all(|contract| {
+            contract.mode == CONTRACT_MODE_HIGHER_ORDER
+                && STEEL_REPO_EVOLUTION_HOST_CALLS.contains(&contract.wraps_host_call.as_str())
+                && !contract.preconditions.is_empty()
+                && !contract.postconditions.is_empty()
+        })
+}
+
+fn host_calls_missing_contracts(
+    contracts: &[SteelRepoEvolutionHostContract],
+    actions: &[SteelRepoEvolutionAction],
+) -> Vec<String> {
+    actions
+        .iter()
+        .filter(|action| !contracts.iter().any(|contract| contract.wraps_host_call == action.host_call))
+        .map(|action| action.host_call.clone())
+        .collect()
+}
+
+fn valid_nickel_contract_fixture() -> &'static str {
+    "let ScriptBinding = {} in let HostContract = {} in let Budgets = {} in let RepoEvolutionPack = { allowed_host_calls | Array String, host_contracts | Array HostContract, receipt_root | String, fallback_mode | String } in {} | RepoEvolutionPack"
 }
 
 fn pack_path_allowed(path: &str) -> bool {
@@ -518,6 +645,22 @@ mod tests {
                 blake3: ArtifactHash::digest(SCRIPT_SOURCE).prefixed(),
             }],
             allowed_host_calls: vec!["repo.propose_patch".to_string(), "repo.run_gate".to_string()],
+            host_contracts: vec![
+                SteelRepoEvolutionHostContract {
+                    name: "contract-propose-patch".to_string(),
+                    wraps_host_call: "repo.propose_patch".to_string(),
+                    mode: CONTRACT_MODE_HIGHER_ORDER.to_string(),
+                    preconditions: vec!["typed-patch-envelope".to_string()],
+                    postconditions: vec!["receipt-recorded".to_string()],
+                },
+                SteelRepoEvolutionHostContract {
+                    name: "contract-run-gate".to_string(),
+                    wraps_host_call: "repo.run_gate".to_string(),
+                    mode: CONTRACT_MODE_HIGHER_ORDER.to_string(),
+                    preconditions: vec!["gate-allowlisted".to_string()],
+                    postconditions: vec!["gate-receipt-hash".to_string()],
+                },
+            ],
             budgets: SteelRepoEvolutionBudgets {
                 max_source_bytes: SCRIPT_SOURCE.len() as u64,
                 max_output_bytes: 4096,
@@ -550,6 +693,24 @@ mod tests {
         assert_eq!(receipt.script_hashes[0].hash, ArtifactHash::digest(SCRIPT_SOURCE));
         assert_eq!(receipt.abi_version.as_deref(), Some(STEEL_REPO_EVOLUTION_ABI_VERSION));
         assert!(receipt.receipt_hash().prefixed().starts_with("b3:"));
+    }
+
+    #[test]
+    fn invalid_nickel_and_missing_contracts_fail_closed() {
+        let pack = valid_pack();
+        let invalid_nickel =
+            validate_repo_evolution_pack_from_sources(&pack_json(&pack), "let profile = {} in profile", |_| {
+                Some(SCRIPT_SOURCE.to_vec())
+            });
+        assert_eq!(invalid_nickel.status, SteelRepoEvolutionActivationStatus::Denied);
+        assert_eq!(invalid_nickel.reason_code, SteelRepoEvolutionActivationReason::InvalidNickelContract);
+
+        let mut missing_contract = valid_pack();
+        missing_contract.host_contracts.pop();
+        let missing_contract_receipt =
+            validate_repo_evolution_pack_from_export(&pack_json(&missing_contract), |_| Some(SCRIPT_SOURCE.to_vec()));
+        assert_eq!(missing_contract_receipt.status, SteelRepoEvolutionActivationStatus::Denied);
+        assert_eq!(missing_contract_receipt.reason_code, SteelRepoEvolutionActivationReason::MissingHostContract);
     }
 
     #[test]

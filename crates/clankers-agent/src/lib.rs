@@ -48,6 +48,8 @@ use clankers_model_selection::policy::RoutingPolicy;
 use clankers_model_selection::signals::ComplexitySignals;
 use clankers_model_selection::signals::ToolCallSummary;
 use clankers_provider::Provider;
+use clankers_runtime::SteelRepoEvolutionActivationStatus;
+use clankers_runtime::load_repo_evolution_pack;
 use tokio::sync::broadcast;
 use tokio_util::sync::CancellationToken;
 
@@ -552,6 +554,7 @@ impl Agent {
             steel_turn_planning: self.steel_turn_planning_config()?,
             steel_tool_substrate: self.steel_tool_substrate_config()?,
         };
+        self.emit_repo_steel_evolution_pack_status()?;
 
         let turn_start_message_index = self.messages.len();
         let turn_model = config.model.clone();
@@ -1111,6 +1114,8 @@ impl Agent {
                     steel_tool_substrate: self.steel_tool_substrate_config()?,
                 };
 
+                self.emit_repo_steel_evolution_pack_status()?;
+
                 if !pre_turn_fired {
                     turn_model = config.model.clone();
                     pre_turn_fired = true;
@@ -1183,9 +1188,7 @@ impl Agent {
     }
 
     fn steel_turn_planning_config(&self) -> Result<Option<turn::AgentTurnSteelPlanningConfig>> {
-        let base_dir = std::env::current_dir().map_err(|error| AgentError::Agent {
-            message: format!("failed to resolve Steel turn planning base directory: {error}"),
-        })?;
+        let base_dir = self.current_repo_dir("Steel turn planning")?;
         steel_turn_planning_config_from_settings(&self.settings.steel_turn_planning, &base_dir).map_err(|error| {
             AgentError::Agent {
                 message: format!("Steel turn planning activation failed closed: {error}"),
@@ -1198,6 +1201,35 @@ impl Agent {
             AgentError::Agent {
                 message: format!("Steel tool substrate activation failed closed: {error}"),
             }
+        })
+    }
+
+    fn emit_repo_steel_evolution_pack_status(&self) -> Result<()> {
+        let base_dir = self.current_repo_dir("Steel repo evolution")?;
+        let receipt = load_repo_evolution_pack(&base_dir).map_err(|error| AgentError::Agent {
+            message: format!("Steel repo evolution pack activation failed closed: {error}"),
+        })?;
+        match receipt.status {
+            SteelRepoEvolutionActivationStatus::Inactive => {}
+            SteelRepoEvolutionActivationStatus::Active | SteelRepoEvolutionActivationStatus::Denied => {
+                self.event_tx
+                    .send(AgentEvent::SystemMessage {
+                        message: format!(
+                            "Steel repo evolution pack: status={:?} reason={:?} receipt_hash={}",
+                            receipt.status,
+                            receipt.reason_code,
+                            receipt.receipt_hash().prefixed()
+                        ),
+                    })
+                    .ok();
+            }
+        }
+        Ok(())
+    }
+
+    fn current_repo_dir(&self, label: &str) -> Result<std::path::PathBuf> {
+        std::env::current_dir().map_err(|error| AgentError::Agent {
+            message: format!("failed to resolve {label} base directory: {error}"),
         })
     }
 
