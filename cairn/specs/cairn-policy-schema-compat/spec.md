@@ -6,15 +6,22 @@ Keep Clankers' checked-in Cairn policy artifact compatible with both the repo-lo
 
 ## Requirements
 
-### Requirement: Change metadata policy is present [r[cairn-policy-schema-compat.change-metadata-policy]]
-The generated Cairn policy artifact MUST include a top-level `change_metadata_policy` object when current Cairn requires it.
+### Requirement: Generated policy schema fields are present [r[cairn-policy-schema-compat.generated-policy-schema-fields]]
+The generated Cairn policy artifact MUST include top-level policy objects required by current Cairn, including `change_metadata_policy` and `steel_orchestration_policy`.
 
-#### Scenario: current Cairn accepts generated policy metadata [r[cairn-policy-schema-compat.change-metadata-policy.present]]
+#### Scenario: current Cairn accepts generated policy metadata [r[cairn-policy-schema-compat.generated-policy-schema-fields.change-metadata-present]]
 - GIVEN `cairn-policy/generated/cairn-policy.json` is checked in
 - WHEN current Cairn parses the policy during validation
 - THEN the policy MUST include non-empty allowed change groups
 - AND the policy MUST include accepted change statuses
 - AND the policy SHOULD include any accepted group prefixes needed for feature-tagged changes
+
+#### Scenario: current Cairn accepts generated Steel orchestration policy [r[cairn-policy-schema-compat.generated-policy-schema-fields.steel-orchestration-present]]
+- GIVEN `cairn-policy/generated/cairn-policy.json` is checked in
+- WHEN current Cairn parses the policy during validation
+- THEN the policy MUST include a `steel_orchestration_policy` object
+- AND the policy MUST include an explicit `enabled` flag
+- AND the policy MUST include at least one profile with mode, deterministic budget, redaction class, fallback mode, allowed host functions, and receipt schema version fields
 
 ### Requirement: Current and pinned Cairn validation [r[cairn-policy-schema-compat.current-and-pinned-cairn-validation]]
 Clankers MUST validate with both the repo-local pinned Cairn flake and the current external Cairn checkout when the policy artifact is refreshed for schema compatibility.

@@ -1792,5 +1792,25 @@
     ],
     "strictness": "strict"
   },
-  "version": 1
+  "version": 1,
+  "steel_orchestration_policy": {
+    "enabled": false,
+    "profiles": [
+      {
+        "allowed_host_functions": [],
+        "deterministic_budgets": [
+          "no-evaluation"
+        ],
+        "fallback_modes": [
+          "rust-nickel-canonical"
+        ],
+        "id": "disabled.lifecycle.default",
+        "mode": "disabled",
+        "receipt_schema_version": "cairn.steel-orchestration-receipt.v1",
+        "redaction_classes": [
+          "no-secret-fields"
+        ]
+      }
+    ]
+  }
 }
