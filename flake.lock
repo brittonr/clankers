@@ -24,11 +24,11 @@
         "slotcar": "slotcar"
       },
       "locked": {
-        "lastModified": 1779372142,
-        "narHash": "sha256-Lm3oHiw4uQeWkqLYBQ4w8V4qD/MB0NlsJn5Di9ipBnI=",
+        "lastModified": 1779830727,
+        "narHash": "sha256-F1J1IE0gquK3y0F99MPNQGV9gxwNB8TGNKR9FEgB0nw=",
         "ref": "refs/heads/main",
-        "rev": "e4504ff5dd5940caedf8e55b7d6d1338335e22a3",
-        "revCount": 73,
+        "rev": "3b4c280b893f2709aebea21fc51a4f9eeba3fe3b",
+        "revCount": 182,
         "type": "git",
         "url": "ssh://git@github.com/OnixResearch/cairn.git"
       },
@@ -144,11 +144,11 @@
     },
     "nixpkgs_2": {
       "locked": {
-        "lastModified": 1778580735,
-        "narHash": "sha256-t+8AVV8ExvOmslz2sLIgw/hJBKlyl65rJvxjvvjHgpE=",
+        "lastModified": 1779694939,
+        "narHash": "sha256-Ly4j75O8ICaSQx3uxPnwk2x7PMF0XQvn5r0c3yBA7FI=",
         "owner": "NixOS",
         "repo": "nixpkgs",
-        "rev": "48d91f2c0ce7b9e589f967d4f685153dd765dcdd",
+        "rev": "f9d8b65950353691ab56561e7c73d2e1063d810b",
         "type": "github"
       },
       "original": {
@@ -216,11 +216,11 @@
         ]
       },
       "locked": {
-        "lastModified": 1778555852,
-        "narHash": "sha256-55EmwooVAS4UpA0oWd5wilKPRqCiHD5BAej9QiNwheY=",
+        "lastModified": 1779851998,
+        "narHash": "sha256-UkkMh3bX9QW4Luqkm98nUaOqKWrU6i65mUnph3WeSSw=",
         "owner": "oxalica",
         "repo": "rust-overlay",
-        "rev": "f29b0f7a9f367e0056b716f8aa137cb41e784444",
+        "rev": "6cddd512fa2bf7231f098d3a2f92f6e4cff71e0a",
         "type": "github"
       },
       "original": {
