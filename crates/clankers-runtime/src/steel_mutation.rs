@@ -1237,8 +1237,8 @@ fn normalize_relative_path(path: &str) -> Option<String> {
 
 fn path_has_allowed_root(path: &str, roots: &[String]) -> bool {
     roots.iter().any(|root| {
-        let normalized_root = root.trim_start_matches("./");
-        path == normalized_root.trim_end_matches('/') || path.starts_with(normalized_root)
+        let normalized_root = root.trim_start_matches("./").trim_end_matches('/');
+        path == normalized_root || path.strip_prefix(normalized_root).is_some_and(|suffix| suffix.starts_with('/'))
     })
 }
 
