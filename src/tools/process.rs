@@ -409,8 +409,42 @@ impl ProcessEntry {
     }
 }
 
-#[derive(Debug, Default, Clone, Copy)]
-pub struct NativeProcessJobService;
+#[derive(Debug, Clone)]
+pub struct NativeProcessJobService {
+    db: Option<clankers_db::Db>,
+    retention_policy: ProcessJobRetentionPolicy,
+    log_dir: Option<PathBuf>,
+}
+
+impl NativeProcessJobService {
+    #[must_use]
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    #[must_use]
+    pub fn with_retention(
+        db: clankers_db::Db,
+        retention_policy: ProcessJobRetentionPolicy,
+        log_dir: Option<PathBuf>,
+    ) -> Self {
+        Self {
+            db: Some(db),
+            retention_policy,
+            log_dir,
+        }
+    }
+}
+
+impl Default for NativeProcessJobService {
+    fn default() -> Self {
+        Self {
+            db: None,
+            retention_policy: ProcessJobRetentionPolicy::default(),
+            log_dir: None,
+        }
+    }
+}
 
 #[async_trait]
 impl ProcessJobService for NativeProcessJobService {
@@ -673,12 +707,21 @@ impl ProcessJobService for NativeProcessJobService {
 
     async fn garbage_collect(
         &self,
-        _filter: ProcessJobFilter,
+        mut filter: ProcessJobFilter,
     ) -> Result<ProcessJobGarbageCollectionReceipt, RuntimeError> {
-        Ok(unsupported_gc_receipt(
-            ProcessJobBackendKind::Native,
-            "native process garbage collection is not implemented yet",
-        ))
+        if let Some(backend) = filter.backend
+            && backend != ProcessJobBackendKind::Native
+        {
+            return Ok(unsupported_gc_receipt(
+                backend,
+                "native process service only garbage-collects native process records",
+            ));
+        }
+        filter.backend = Some(ProcessJobBackendKind::Native);
+        Ok(
+            apply_process_job_retention(self.db.as_ref(), self.retention_policy.clone(), self.log_dir.clone(), filter)
+                .await,
+        )
     }
 }
 
@@ -2288,6 +2331,10 @@ fn retained_log_bytes(record: &StoredProcessJobRecord) -> u64 {
     record.log_refs.iter().filter_map(|log_ref| log_ref.max_bytes).sum()
 }
 
+fn record_matches_retention_filter(record: &StoredProcessJobRecord, filter: &ProcessJobFilter) -> bool {
+    filter.backend.is_none_or(|backend| backend == stored_backend_to_job_backend(record.backend))
+}
+
 fn safe_native_log_path(log_dir: Option<&PathBuf>, reference: &str) -> Option<PathBuf> {
     let log_dir = log_dir?;
     let relative = reference.strip_prefix("native:")?;
@@ -2349,6 +2396,7 @@ async fn apply_process_job_retention(
     db: Option<&clankers_db::Db>,
     policy: ProcessJobRetentionPolicy,
     log_dir: Option<PathBuf>,
+    filter: ProcessJobFilter,
 ) -> ProcessJobGarbageCollectionReceipt {
     let Some(db) = db else {
         let mut receipt = ProcessJobGarbageCollectionReceipt::empty();
@@ -2386,6 +2434,9 @@ async fn apply_process_job_retention(
     let mut remove_ids = std::collections::BTreeSet::<String>::new();
 
     for record in &records {
+        if !record_matches_retention_filter(record, &filter) {
+            continue;
+        }
         let status = stored_status_to_job_status(&record.status);
         if live_ids.contains(&record.id) || !status.is_terminal() {
             receipt.skipped_active_jobs.push(ProcessJobId(record.id.clone()));
@@ -2868,7 +2919,7 @@ impl ProcessTool {
         };
         let policy = process_job_retention_policy(&json!({}));
         let log_dir = retention_log_dir(params);
-        let _ = apply_process_job_retention(ctx.db(), policy, log_dir.clone()).await;
+        let _ = apply_process_job_retention(ctx.db(), policy, log_dir.clone(), ProcessJobFilter::default()).await;
         let backend_filter = request.filter.backend;
         let mut summaries = Vec::new();
         if backend_filter.is_none_or(|backend| backend == ProcessJobBackendKind::Native) {
@@ -2935,13 +2986,13 @@ impl ProcessTool {
     }
 
     async fn handle_gc(ctx: &ToolContext, params: &Value) -> ToolResult {
-        let _request = match Self::process_job_tool_request(params) {
+        let request = match Self::process_job_tool_request(params) {
             Ok(ProcessJobToolRequest::GarbageCollect(request)) => request,
             Ok(_) => return ToolResult::error("Parsed unexpected process job request for garbage_collect action"),
             Err(result) => return result,
         };
         let policy = process_job_retention_policy(params);
-        let receipt = apply_process_job_retention(ctx.db(), policy, retention_log_dir(params)).await;
+        let receipt = apply_process_job_retention(ctx.db(), policy, retention_log_dir(params), request.filter).await;
         Self::tool_receipt_result(ProcessJobToolResult::GarbageCollect(receipt))
     }
 
@@ -3250,7 +3301,7 @@ impl ProcessTool {
             Err(result) => return result,
         };
         match request.backend {
-            ProcessJobBackendKind::Native => match NativeProcessJobService.adopt(request).await {
+            ProcessJobBackendKind::Native => match NativeProcessJobService::default().adopt(request).await {
                 Ok(receipt) => Self::receipt_result(receipt),
                 Err(error) => ToolResult::error(error.to_string()),
             },
@@ -3423,6 +3474,11 @@ mod tests {
 
     const SHORT_PROCESS_TEST_TIMEOUT_SECS: u64 = 2;
     const RESTART_PERSISTENCE_SETTLE_MILLIS: u64 = 100;
+    const GC_TEST_OLD_RECORD_SECS: i64 = 2;
+    const GC_TEST_RETENTION_SECS: u64 = 1;
+    const GC_TEST_LOG_BYTES: u64 = 12;
+    const GC_TEST_MAX_RECORDS: u64 = 100;
+    const GC_TEST_LOG_BUDGET_BYTES: u64 = 1_000_000;
 
     fn make_ctx() -> ToolContext {
         ToolContext::new("process-test".to_string(), CancellationToken::new(), None)
@@ -3930,7 +3986,7 @@ mod tests {
 
     #[tokio::test]
     async fn native_pid_adoption_uses_metadata_only_receipt_and_fails_closed() {
-        let service = NativeProcessJobService;
+        let service = NativeProcessJobService::default();
         let current_pid = std::process::id();
 
         let denied = service
@@ -3969,7 +4025,7 @@ mod tests {
             .metadata
             .insert("identity.profile.source".to_string(), "workspace:.clankers/process-jobs.json".to_string());
         request.metadata.insert("identity.profile.policy".to_string(), "workspace".to_string());
-        let service = NativeProcessJobService;
+        let service = NativeProcessJobService::default();
         let started = service.start(request).await.expect("start succeeds");
         assert_eq!(started.backend, Some(ProcessJobBackendKind::Native));
         assert_eq!(started.profile.as_ref().map(|profile| profile.profile_name.as_str()), Some("ci-smoke"));
@@ -3998,7 +4054,7 @@ mod tests {
 
     #[tokio::test]
     async fn native_process_job_service_restarts_running_entry() {
-        let service = NativeProcessJobService;
+        let service = NativeProcessJobService::default();
         let started = service.start(native_start_request("cat")).await.expect("start succeeds");
         let id = started.id.clone().expect("receipt has stable process id");
 
@@ -4017,6 +4073,89 @@ mod tests {
             .await
             .expect("wait succeeds");
         assert!(waited.summary.contains("service-restart"), "{}", waited.summary);
+    }
+
+    #[tokio::test]
+    async fn native_process_job_service_garbage_collects_completed_native_records() {
+        let db = clankers_db::Db::in_memory().expect("db opens");
+        let temp = tempfile::tempdir().expect("tempdir");
+        let old = Utc::now() - chrono::Duration::seconds(GC_TEST_OLD_RECORD_SECS);
+        let mut expired = StoredProcessJobRecord::new_native(
+            "proc_service_gc_expired",
+            "printf expired",
+            StoredProcessJobOwnerScope::DaemonGlobal,
+        );
+        expired.status = StoredProcessJobStatus::Succeeded { exit_code: Some(0) };
+        expired.started_at = old;
+        expired.updated_at = old;
+        expired.completed_at = Some(old);
+        expired.log_refs = vec![StoredProcessJobLogRef {
+            stream: StoredProcessJobStream::Combined,
+            reference: "native:proc_service_gc_expired/combined.log".to_string(),
+            retained_until: None,
+            max_bytes: Some(GC_TEST_LOG_BYTES),
+        }];
+        let log_path = temp.path().join("proc_service_gc_expired").join("combined.log");
+        std::fs::create_dir_all(log_path.parent().expect("log parent")).expect("log dir");
+        std::fs::write(&log_path, b"expired-log!").expect("log write");
+
+        let mut active = StoredProcessJobRecord::new_native(
+            "proc_service_gc_active",
+            "sleep active",
+            StoredProcessJobOwnerScope::DaemonGlobal,
+        );
+        active.status = StoredProcessJobStatus::Running;
+        active.updated_at = old;
+        db.async_process_jobs().upsert(expired).await.expect("insert expired");
+        db.async_process_jobs().upsert(active).await.expect("insert active");
+
+        let service = NativeProcessJobService::with_retention(
+            db.clone(),
+            ProcessJobRetentionPolicy {
+                max_age: Some(Duration::from_secs(GC_TEST_RETENTION_SECS)),
+                max_records: None,
+                max_log_bytes: None,
+            },
+            Some(temp.path().to_path_buf()),
+        );
+        let receipt = service
+            .garbage_collect(ProcessJobFilter::default())
+            .await
+            .expect("native service GC returns receipt");
+
+        assert_eq!(receipt.removed_records, vec![ProcessJobId("proc_service_gc_expired".to_string())]);
+        assert_eq!(receipt.removed_metadata_count, 1);
+        assert_eq!(receipt.deleted_native_log_files, 1);
+        assert_eq!(receipt.removed_log_bytes, GC_TEST_LOG_BYTES);
+        assert_eq!(receipt.skipped_active_jobs, vec![ProcessJobId("proc_service_gc_active".to_string())]);
+        assert!(receipt.failures.is_empty(), "{receipt:?}");
+        assert!(db.async_process_jobs().get("proc_service_gc_expired").await.expect("db read").is_none());
+        assert!(db.async_process_jobs().get("proc_service_gc_active").await.expect("db read").is_some());
+        assert!(!log_path.exists());
+    }
+
+    #[tokio::test]
+    async fn native_process_job_service_gc_requires_db_and_rejects_foreign_backend_filter() {
+        let service = NativeProcessJobService::default();
+        let missing_db = service
+            .garbage_collect(ProcessJobFilter {
+                backend: Some(ProcessJobBackendKind::Native),
+                ..ProcessJobFilter::default()
+            })
+            .await
+            .expect("missing db is a typed receipt failure");
+        assert_eq!(missing_db.failures.len(), 1);
+        assert!(missing_db.failures[0].message.contains("requires a durable process-job database"));
+
+        let unsupported = service
+            .garbage_collect(ProcessJobFilter {
+                backend: Some(ProcessJobBackendKind::Pueue),
+                ..ProcessJobFilter::default()
+            })
+            .await
+            .expect("foreign backend is typed unsupported GC receipt");
+        assert_eq!(unsupported.failures.len(), 1);
+        assert!(unsupported.failures[0].message.contains("native process service only garbage-collects native"));
     }
 
     #[tokio::test]
@@ -4334,6 +4473,55 @@ mod tests {
         assert!(payload["failures"].as_array().expect("failures").is_empty(), "{payload}");
         assert!(outside_log.exists(), "GC must not resolve native log refs outside configured log_dir");
         assert!(db.async_process_jobs().get("proc_gc_escaped_log").await.expect("db read").is_none());
+    }
+
+    #[tokio::test]
+    async fn process_gc_backend_filter_preserves_unselected_backend_records() {
+        let db = clankers_db::Db::in_memory().expect("db opens");
+        let ctx = make_ctx_with_db(db.clone());
+        let tool = ProcessTool::new();
+        let old = Utc::now() - chrono::Duration::seconds(GC_TEST_OLD_RECORD_SECS);
+
+        let mut expired_native = StoredProcessJobRecord::new_native(
+            "proc_gc_filter_native",
+            "printf native",
+            StoredProcessJobOwnerScope::DaemonGlobal,
+        );
+        expired_native.status = StoredProcessJobStatus::Succeeded { exit_code: Some(0) };
+        expired_native.updated_at = old;
+        expired_native.completed_at = Some(old);
+
+        let mut expired_pueue = StoredProcessJobRecord::new_native(
+            "pueue_gc_filter_keep",
+            "printf pueue",
+            StoredProcessJobOwnerScope::DaemonGlobal,
+        );
+        expired_pueue.backend = StoredProcessJobBackendKind::Pueue;
+        expired_pueue.status = StoredProcessJobStatus::Succeeded { exit_code: Some(0) };
+        expired_pueue.updated_at = old;
+        expired_pueue.completed_at = Some(old);
+
+        db.async_process_jobs().upsert(expired_native).await.expect("insert native");
+        db.async_process_jobs().upsert(expired_pueue).await.expect("insert pueue");
+
+        let result = tool
+            .execute(
+                &ctx,
+                json!({
+                    "action": "gc",
+                    "backend": "native",
+                    "max_age_days": 0,
+                    "max_records": GC_TEST_MAX_RECORDS,
+                    "max_log_bytes": GC_TEST_LOG_BUDGET_BYTES
+                }),
+            )
+            .await;
+        assert!(!result.is_error, "{result:?}");
+        let payload = &tool_receipt_json(&result)["payload"]["data"]["receipt"];
+        assert_eq!(payload["removed_metadata_count"], 1);
+        assert_eq!(payload["removed_records"][0], "proc_gc_filter_native");
+        assert!(db.async_process_jobs().get("proc_gc_filter_native").await.expect("db read").is_none());
+        assert!(db.async_process_jobs().get("pueue_gc_filter_keep").await.expect("db read").is_some());
     }
 
     #[tokio::test]

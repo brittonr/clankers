@@ -2004,6 +2004,8 @@ pub struct ProcessJobBackendCapabilities {
     pub supports_kill_tree: bool,
     pub supports_control_group: bool,
     pub supports_adopt: bool,
+    #[serde(default)]
+    pub supports_garbage_collect: bool,
     pub supports_resource_limits: bool,
     pub supports_log_cursor: bool,
     pub supports_log_range: bool,
@@ -2033,6 +2035,7 @@ impl ProcessJobBackendCapabilities {
             supports_kill_tree: true,
             supports_control_group: true,
             supports_adopt: true,
+            supports_garbage_collect: true,
             supports_resource_limits: false,
             supports_log_cursor: true,
             supports_log_range: true,
@@ -2059,6 +2062,7 @@ impl ProcessJobBackendCapabilities {
             supports_kill_tree: false,
             supports_control_group: false,
             supports_adopt: true,
+            supports_garbage_collect: false,
             supports_resource_limits: false,
             supports_log_cursor: true,
             supports_log_range: true,
@@ -2085,6 +2089,7 @@ impl ProcessJobBackendCapabilities {
             supports_kill_tree: true,
             supports_control_group: true,
             supports_adopt: true,
+            supports_garbage_collect: false,
             supports_resource_limits: true,
             supports_log_cursor: true,
             supports_log_range: true,
@@ -2133,7 +2138,7 @@ impl ProcessJobBackendCapabilities {
             ProcessJobOperation::Restart => self.supports_restart,
             ProcessJobOperation::WriteStdin | ProcessJobOperation::CloseStdin => self.supports_stdin,
             ProcessJobOperation::Adopt => self.supports_adopt,
-            ProcessJobOperation::GarbageCollect => false,
+            ProcessJobOperation::GarbageCollect => self.supports_garbage_collect,
         }
     }
 
@@ -3891,7 +3896,8 @@ mod tests {
         assert!(native.supports_readiness_watch);
         assert!(native.supports_adopt);
         assert!(native.supports_restart);
-        assert!(!native.supports_operation(ProcessJobOperation::GarbageCollect));
+        assert!(native.supports_garbage_collect);
+        assert!(native.supports_operation(ProcessJobOperation::GarbageCollect));
         assert!(!native.supports_queueing);
         assert!(!native.supports_dependencies);
         assert!(!native.durable_across_daemon_restart);

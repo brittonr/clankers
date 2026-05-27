@@ -4,11 +4,11 @@ Clankers exposes durable background work through the agent `process` tool. Use i
 
 ## Backends
 
-The `process` tool accepts a `backend` field on `start`, `list`, `poll`, `log`, `wait`, `kill`, `restart`, and `adopt` actions:
+The `process` tool accepts a `backend` field on `start`, `list`, `poll`, `log`, `wait`, `kill`, `restart`, `adopt`, and `gc` actions:
 
 | Backend | Use when | Notes |
 | --- | --- | --- |
-| `native` | You want the built-in local process registry. | Default backend. Tracks child processes, incremental logs, stdin, completion state, native restart, and daemon restart reconciliation. |
+| `native` | You want the built-in local process registry. | Default backend. Tracks child processes, incremental logs, stdin, completion state, native restart, native GC, and daemon restart reconciliation. |
 | `pueue` | You want queueing/group concurrency through pueue. | Set `group` and `label` on starts when useful. Existing pueue tasks can be adopted with `pueue_task_id` or `backend_ref: "pueue:<id>"`. |
 | `systemd` | You want transient systemd units and host-level resource controls. | Existing units can be adopted with `systemd_unit` or `backend_ref: "systemd:<unit>"`. NixOS deployments can configure `unitPrefix`, resource limits, working directory, writable paths, and kill grace. |
 
@@ -46,7 +46,7 @@ Completed process/job records and retained logs are garbage-collected by policy.
 { "action": "gc", "max_age_days": 14, "max_records": 1000, "max_log_bytes": 1073741824 }
 ```
 
-List operations also apply the default retention policy before projecting results, so expired terminal records do not remain visible indefinitely.
+List operations also apply the default retention policy before projecting results, so expired terminal records do not remain visible indefinitely. Passing `backend: "native"` to `gc` limits explicit cleanup to native process records; active native jobs are skipped and reported in the typed receipt.
 
 ## NixOS service configuration
 
