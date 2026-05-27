@@ -1377,6 +1377,48 @@ mod tests {
     }
 
     #[test]
+    fn attach_busy_prompt_queues_and_aborts_current_stream() {
+        let mut app = test_app();
+        app.state = clanker_tui_types::AppState::Streaming;
+        let (client, mut cmd_rx) = capturing_client();
+        let registry = super::build_client_slash_registry();
+        let mut parity_tracker = super::AttachParityTracker::default();
+
+        super::submit_input_attach(&mut app, &client, "follow-up prompt", &registry, &mut parity_tracker);
+
+        assert_eq!(app.queued_prompt.as_deref(), Some("follow-up prompt"));
+        assert!(matches!(drain_session_commands(&mut cmd_rx).as_slice(), [SessionCommand::Abort]));
+    }
+
+    #[test]
+    fn attach_prompt_done_replays_queued_prompt_with_reset_cancel() {
+        let mut app = test_app();
+        app.queued_prompt = Some("queued follow-up".to_string());
+        let (client, mut cmd_rx) = capturing_client();
+        let mut is_replaying_history = false;
+        let mut parity_tracker = super::AttachParityTracker::default();
+
+        super::process_daemon_event(
+            &mut app,
+            &client,
+            &DaemonEvent::PromptDone {
+                error: Some("cancelled".to_string()),
+            },
+            &mut is_replaying_history,
+            0,
+            &mut parity_tracker,
+        );
+
+        assert!(app.queued_prompt.is_none());
+        assert!(system_texts(&app).iter().all(|message| !message.contains("Error: cancelled")));
+        assert!(matches!(
+            drain_session_commands(&mut cmd_rx).as_slice(),
+            [SessionCommand::ResetCancel, SessionCommand::Prompt { text, images }]
+                if text == "queued follow-up" && images.is_empty()
+        ));
+    }
+
+    #[test]
     fn mcp_prompt_command_matches_attach_prompt_command() {
         let mut app = test_app();
         let (client, mut cmd_rx) = capturing_client();

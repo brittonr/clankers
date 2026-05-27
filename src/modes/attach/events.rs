@@ -63,17 +63,21 @@ pub(crate) fn process_daemon_event(
 
         // ── Prompt lifecycle ────────────────────────
         DaemonEvent::PromptDone { error } => {
+            let has_queued_prompt = app.queued_prompt.is_some();
             if let Some(err) = error {
                 if let Some(ref mut block) = app.conversation.active_block {
                     block.error = Some(err.clone());
                 }
                 app.finalize_active_block();
-                app.push_system(format!("Error: {err}"), true);
+                if !has_queued_prompt {
+                    app.push_system(format!("Error: {err}"), true);
+                }
             } else {
                 app.finalize_active_block();
             }
-            // If the user typed something while the agent was busy, send it now
+            // If the user typed something while the agent was busy, send it now.
             if let Some(text) = app.queued_prompt.take() {
+                client.send(SessionCommand::ResetCancel);
                 client.prompt(text);
             }
         }

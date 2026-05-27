@@ -1,3 +1,4 @@
+use clanker_tui_types::AppState;
 use clankers_controller::client::ClientAdapter;
 use clankers_protocol::DaemonEvent;
 use clankers_protocol::SessionCommand;
@@ -150,6 +151,12 @@ pub(super) fn submit_input_attach(
     slash_registry: &slash_commands::SlashRegistry,
     parity_tracker: &mut AttachParityTracker,
 ) {
+    if app.state != AppState::Idle {
+        app.queued_prompt = Some(text.to_string());
+        client.abort();
+        return;
+    }
+
     if let Some((command, args)) = slash_commands::parse_command(text) {
         dispatch_attach_slash(app, client, &command, &args, slash_registry, parity_tracker);
     } else {
