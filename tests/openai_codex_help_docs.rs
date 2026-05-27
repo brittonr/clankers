@@ -34,7 +34,7 @@ fn slash_auth_help_mentions_codex_model_selection_and_fail_closed_behavior() {
     assert!(login.help.contains("openai-codex"), "{}", login.help);
     assert!(login.help.contains("--account <name>"), "{}", login.help);
     assert!(login.help.contains("Plus or Pro"), "{}", login.help);
-    assert!(login.help.contains("/model openai-codex/gpt-5.3-codex"), "{}", login.help);
+    assert!(login.help.contains("/model openai-codex/gpt-5.5"), "{}", login.help);
     assert!(login.help.contains("openai/gpt-4o"), "{}", login.help);
 
     let account = commands.iter().find(|cmd| cmd.name == "account").expect("account command should exist");
@@ -54,7 +54,7 @@ fn provider_docs_cover_codex_login_model_selection_and_openai_separation() {
 
     assert!(combined.contains("openai-codex"), "{combined}");
     assert!(combined.contains("--account"), "{combined}");
-    assert!(combined.contains("openai-codex/gpt-5.3-codex"), "{combined}");
+    assert!(combined.contains("openai-codex/gpt-5.5"), "{combined}");
     assert!(combined.contains("openai/gpt-4o"), "{combined}");
     assert!(combined.contains("Plus or Pro"), "{combined}");
     assert!(combined.contains("authenticated but unavailable for Codex use"), "{combined}");
