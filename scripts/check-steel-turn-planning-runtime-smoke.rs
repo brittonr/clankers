@@ -9,7 +9,8 @@ serde_json = "1"
 ---
 
 use std::fs;
-use std::path::{Path, PathBuf};
+use std::path::Path;
+use std::path::PathBuf;
 use std::process::ExitCode;
 
 use serde_json::json;
@@ -25,6 +26,8 @@ const OUTPUT: &str = "target/steel-turn-planning-runtime-smoke/receipt.json";
 
 const REQUIRED_TEST_MARKERS: &[&str] = &[
     "steel_runtime_smoke_prompt_command_emits_redacted_receipt",
+    "steel_runtime_smoke_default_settings_emit_redacted_receipt",
+    "steel_runtime_smoke_explicit_disable_keeps_rust_native",
     "steel_runtime_smoke_hash_mismatch_fails_closed_before_receipt",
     "steel_runtime_smoke_missing_authority_fails_closed_before_receipt",
     "SessionCommand::Prompt",
@@ -83,21 +86,30 @@ fn run() -> Result<PathBuf, String> {
     if tasks.contains("- [ ]") {
         errors.push(format!("{task_path} still has unchecked tasks"));
     }
-    if count(&test, "steel_runtime_smoke_") < 3 {
-        errors.push(format!("{TEST} must include positive and negative Steel runtime smoke tests"));
+    if count(&test, "steel_runtime_smoke_") < 5 {
+        errors.push(format!("{TEST} must include default, opt-out, positive, and negative Steel runtime smoke tests"));
     }
     if !errors.is_empty() {
         return Err(errors.join("\n"));
     }
 
-    let artifacts = [TEST, EVENTS, DOC, SUMMARY, task_path, "scripts/check-steel-turn-planning-runtime-smoke.rs"]
-        .iter()
-        .map(|path| hash_artifact(Path::new(path)))
-        .collect::<Result<Vec<_>, _>>()?;
+    let artifacts = [
+        TEST,
+        EVENTS,
+        DOC,
+        SUMMARY,
+        task_path,
+        "scripts/check-steel-turn-planning-runtime-smoke.rs",
+    ]
+    .iter()
+    .map(|path| hash_artifact(Path::new(path)))
+    .collect::<Result<Vec<_>, _>>()?;
     let receipt = json!({
         "schema": "clankers.steel_turn_planning_runtime_smoke.receipt.v1",
         "validated_surfaces": [
             "controller-prompt-command",
+            "default-settings-steel-planning",
+            "explicit-disable-rust-native-planning",
             "config-driven-steel-planning",
             "daemon-visible-redacted-receipt",
             "hash-mismatch-fail-closed",
@@ -128,7 +140,11 @@ fn read(path: &str) -> Result<String, String> {
 }
 
 fn existing_task_path() -> &'static str {
-    if Path::new(TASKS).exists() { TASKS } else { ARCHIVED_TASKS }
+    if Path::new(TASKS).exists() {
+        TASKS
+    } else {
+        ARCHIVED_TASKS
+    }
 }
 
 fn require_all(path: &str, text: &str, markers: &[&str], errors: &mut Vec<String>) {

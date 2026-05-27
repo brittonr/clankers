@@ -44,7 +44,8 @@ const REQUIRED_ADAPTER_MARKERS: &[&str] = &[
     "ScriptHashMismatch",
     "MissingSessionCapability",
     "DisabledRequiredAction",
-    "settings_activation_disabled_by_default",
+    "settings_activation_uses_bundled_default_without_paths",
+    "settings_activation_explicit_disabled_uses_rust_native",
     "settings_activation_can_select_default_rollout_after_validation",
 ];
 const REQUIRED_AGENT_MARKERS: &[&str] = &[
@@ -54,7 +55,7 @@ const REQUIRED_AGENT_MARKERS: &[&str] = &[
 ];
 const REQUIRED_DOC_MARKERS: &[&str] = &[
     "Steel Turn Planning Config Activation",
-    "default remains disabled",
+    "default Steel planner",
     "steel.host.plan_turn",
     "Nickel-exported",
     "UCAN",
@@ -135,7 +136,8 @@ fn run() -> Result<PathBuf, String> {
     let receipt = json!({
         "schema": "clankers.steel_turn_planning_config_activation.receipt.v1",
         "validated_surfaces": [
-            "disabled-by-default-settings",
+            "bundled-default-settings",
+            "explicit-disable-kill-switch",
             "reviewed-profile-and-script-loader",
             "blake3-freshness-checks",
             "session-and-ucan-authority-checks",
@@ -152,7 +154,7 @@ fn run() -> Result<PathBuf, String> {
             "ucan_proofs": "omitted",
             "script_bodies": "omitted"
         },
-        "guidance": "Nickel selects reviewed config; UCAN/session state grants runtime authority; Rust validates and enforces before Steel Scheme can plan a turn."
+        "guidance": "Bundled settings select reviewed Steel turn planning by default; explicit disable keeps Rust-native planning; UCAN/session state grants runtime authority; Rust validates and enforces before Steel Scheme can plan a turn."
     });
     let output = PathBuf::from(OUTPUT);
     let parent = output.parent().ok_or_else(|| format!("{} has no parent", output.display()))?;

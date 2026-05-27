@@ -1,6 +1,6 @@
 # Steel Default Orchestration
 
-Steel Scheme can be selected as the default planner for reviewed Clankers orchestration seams, starting with `steel.host.plan_turn`. This does not make Steel an authority boundary. Steel proposes typed plans; Rust remains the authority for I/O, provider calls, tool execution, daemon/session state, mutation, verification, rollback, and receipts.
+Steel Scheme is the default planner for the reviewed Clankers `steel.host.plan_turn` turn-planning seam when settings omit `steelTurnPlanning`. This does not make Steel an authority boundary. Steel proposes typed plans; Rust remains the authority for I/O, provider calls, tool execution, daemon/session state, mutation, verification, rollback, and receipts.
 
 ## Layer split
 
@@ -12,7 +12,7 @@ Steel Scheme can be selected as the default planner for reviewed Clankers orches
 
 ## Default seam behavior
 
-The first reviewed default seam is low-risk turn planning / tool-candidate ordering through `steel.host.plan_turn`. A profile may run in comparison mode or default mode, but every selected action still crosses the dynamic-runtime authorization seam. Extra seams require separate reviewed profile entries, fixtures, and receipts; they do not inherit authority from `steel.host.plan_turn`.
+The first reviewed default seam is low-risk turn planning / tool-candidate ordering through `steel.host.plan_turn`. Missing settings use the bundled default profile/script for that seam; explicit `steelTurnPlanning.enabled = false` remains the kill switch. A profile may run in comparison mode or default mode, but every selected action still crosses the dynamic-runtime authorization seam. Extra seams require separate reviewed profile entries, fixtures, and receipts; they do not inherit authority from `steel.host.plan_turn`.
 
 ## Fallback and kill switch
 

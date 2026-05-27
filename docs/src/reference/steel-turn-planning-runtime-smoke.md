@@ -5,7 +5,9 @@ The Steel turn-planning runtime smoke proves the reviewed `steel.host.plan_turn`
 ## What the smoke covers
 
 - A `SessionCommand::Prompt` runs through `SessionController`, `Agent`, and the normal turn loop.
-- The agent loads a reviewed profile and script from `steelTurnPlanning` settings.
+- Missing `steelTurnPlanning` settings load the bundled reviewed `steel.host.plan_turn` profile/script by default.
+- Explicit `steelTurnPlanning.enabled = false` keeps Rust-native planning and emits no Steel receipt.
+- Explicit `steelTurnPlanning` profile/script settings still load a reviewed profile and script through the same activation helper.
 - The script is checked by BLAKE3 before activation.
 - The profile requires explicit session capability and UCAN ability strings.
 - The Steel Scheme planner emits only a typed plan; Rust still authorizes and executes the provider turn.

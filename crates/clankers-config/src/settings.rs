@@ -701,7 +701,7 @@ fn default_steel_eval_max_steps() -> u64 {
 #[serde(rename_all = "camelCase")]
 pub struct SteelTurnPlanningSettings {
     /// Enable config-driven construction of `AgentTurnSteelPlanningConfig`.
-    #[serde(default)]
+    #[serde(default = "default_steel_turn_planning_enabled")]
     pub enabled: bool,
     /// Reviewed Nickel-exported profile JSON path.
     #[serde(default)]
@@ -751,7 +751,7 @@ pub struct SteelTurnPlanningSettings {
 impl Default for SteelTurnPlanningSettings {
     fn default() -> Self {
         Self {
-            enabled: false,
+            enabled: default_steel_turn_planning_enabled(),
             profile_path: None,
             script_path: None,
             script_blake3: None,
@@ -759,8 +759,8 @@ impl Default for SteelTurnPlanningSettings {
             rollout_stage: None,
             fallback_mode: None,
             planning_seam: None,
-            session_capabilities: Vec::new(),
-            granted_ucan_abilities: Vec::new(),
+            session_capabilities: default_steel_turn_planning_session_capabilities(),
+            granted_ucan_abilities: default_steel_turn_planning_ucan_abilities(),
             ucan_authority_grants: Vec::new(),
             disabled_actions: Vec::new(),
             receipt_prefix: None,
@@ -843,19 +843,26 @@ impl std::fmt::Display for SteelTurnPlanningConfigError {
 impl std::error::Error for SteelTurnPlanningConfigError {}
 
 impl SteelTurnPlanningSettings {
+    #[must_use]
+    pub fn uses_bundled_profile(&self) -> bool {
+        self.profile_path.is_none() && self.script_path.is_none()
+    }
+
     pub fn validate(&self) -> Result<(), SteelTurnPlanningConfigError> {
         if !self.enabled {
             return Ok(());
         }
         match self.profile_path.as_deref() {
             Some(path) if path.trim().is_empty() => return Err(SteelTurnPlanningConfigError::BlankProfilePath),
-            None => return Err(SteelTurnPlanningConfigError::MissingProfilePath),
             Some(_) => {}
+            None if self.script_path.is_some() => return Err(SteelTurnPlanningConfigError::MissingProfilePath),
+            None => {}
         }
         match self.script_path.as_deref() {
             Some(path) if path.trim().is_empty() => return Err(SteelTurnPlanningConfigError::BlankScriptPath),
-            None => return Err(SteelTurnPlanningConfigError::MissingScriptPath),
             Some(_) => {}
+            None if self.profile_path.is_some() => return Err(SteelTurnPlanningConfigError::MissingScriptPath),
+            None => {}
         }
         if self.script_blake3.as_deref().is_some_and(|hash| hash.trim().is_empty())
             || self.profile_blake3.as_deref().is_some_and(|hash| hash.trim().is_empty())
@@ -893,6 +900,18 @@ impl SteelTurnPlanningSettings {
         }
         Ok(())
     }
+}
+
+fn default_steel_turn_planning_enabled() -> bool {
+    true
+}
+
+fn default_steel_turn_planning_session_capabilities() -> Vec<String> {
+    vec!["steel-orchestration".to_string(), "turn-planning".to_string()]
+}
+
+fn default_steel_turn_planning_ucan_abilities() -> Vec<String> {
+    vec!["clankers/steel/orchestrate.plan_turn".to_string()]
 }
 
 fn default_steel_turn_planning_max_source_bytes() -> u64 {
@@ -1291,7 +1310,10 @@ mod tests {
         let json = r"{}";
         let settings: Settings = serde_json::from_str(json).unwrap();
         assert!(settings.disabled_tools.is_empty());
-        assert!(!settings.steel_turn_planning.enabled);
+        assert!(settings.steel_turn_planning.enabled);
+        assert!(settings.steel_turn_planning.uses_bundled_profile());
+        assert_eq!(settings.steel_turn_planning.session_capabilities, vec!["steel-orchestration", "turn-planning"]);
+        assert_eq!(settings.steel_turn_planning.granted_ucan_abilities, vec!["clankers/steel/orchestrate.plan_turn"]);
         assert!(settings.steel_turn_planning.validate().is_ok());
     }
 
@@ -1364,8 +1386,16 @@ mod tests {
     }
 
     #[test]
-    fn steel_turn_planning_validation_rejects_enabled_without_profile() {
+    fn steel_turn_planning_validation_accepts_bundled_default_without_profile_paths() {
         let settings: Settings = serde_json::from_str(r#"{"steelTurnPlanning":{"enabled":true}}"#).unwrap();
+        assert!(settings.steel_turn_planning.uses_bundled_profile());
+        assert!(settings.steel_turn_planning.validate().is_ok());
+    }
+
+    #[test]
+    fn steel_turn_planning_validation_rejects_partial_profile_paths() {
+        let settings: Settings =
+            serde_json::from_str(r#"{"steelTurnPlanning":{"enabled":true,"scriptPath":"script.scm"}}"#).unwrap();
         assert_eq!(settings.steel_turn_planning.validate(), Err(SteelTurnPlanningConfigError::MissingProfilePath));
     }
 

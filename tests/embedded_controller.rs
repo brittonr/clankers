@@ -740,6 +740,50 @@ async fn steel_runtime_smoke_prompt_command_emits_redacted_receipt() {
 }
 
 #[tokio::test]
+async fn steel_runtime_smoke_default_settings_emit_redacted_receipt() {
+    let settings = clankers_config::settings::Settings::default();
+    let (mut ctrl, calls) = make_steel_smoke_controller(settings);
+    let raw_prompt = "default steel prompt should not appear in receipt";
+
+    ctrl.handle_command(SessionCommand::Prompt {
+        text: raw_prompt.to_string(),
+        images: Vec::new(),
+    })
+    .await;
+    let events = ctrl.drain_events();
+    let receipts = steel_receipt_events(&events);
+
+    assert_eq!(calls.load(Ordering::SeqCst), 1, "default Steel planner still leaves provider calls in Rust");
+    assert!(matches!(events.last(), Some(DaemonEvent::PromptDone { error: None })));
+    assert!(
+        receipts.iter().any(|receipt| receipt.contains("status=Authorized")
+            && receipt.contains("planner=SteelScheme")
+            && receipt.contains("fallback=NotNeeded")),
+        "default settings should emit authorized Steel receipt: {receipts:?}"
+    );
+    assert!(receipts.iter().all(|receipt| !receipt.contains(raw_prompt)));
+    assert!(receipts.iter().all(|receipt| !receipt.contains("(host")));
+}
+
+#[tokio::test]
+async fn steel_runtime_smoke_explicit_disable_keeps_rust_native() {
+    let mut settings = clankers_config::settings::Settings::default();
+    settings.steel_turn_planning.enabled = false;
+    let (mut ctrl, calls) = make_steel_smoke_controller(settings);
+
+    ctrl.handle_command(SessionCommand::Prompt {
+        text: "explicit disabled prompt".to_string(),
+        images: Vec::new(),
+    })
+    .await;
+    let events = ctrl.drain_events();
+
+    assert_eq!(calls.load(Ordering::SeqCst), 1, "explicit disable should keep Rust-native provider path");
+    assert!(matches!(events.last(), Some(DaemonEvent::PromptDone { error: None })));
+    assert!(steel_receipt_events(&events).is_empty(), "explicit disable must emit no Steel receipt");
+}
+
+#[tokio::test]
 async fn steel_runtime_smoke_hash_mismatch_fails_closed_before_receipt() {
     let temp = tempfile::TempDir::new().expect("tempdir should exist");
     let settings = steel_smoke_settings(&temp, |steel| {

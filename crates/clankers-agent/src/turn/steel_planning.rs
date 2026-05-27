@@ -31,6 +31,10 @@ use crate::tool::Tool;
 const AGENT_TURN_DECISION_ID: &str = "agent-turn-model-request";
 const AGENT_TURN_DECISION_CLASS: &str = "agent-turn-plan";
 const DEFAULT_STEEL_SOURCE: &str = "(host \"steel.host.plan_turn\")";
+const BUNDLED_DEFAULT_PROFILE_BYTES: &[u8] =
+    include_bytes!("../../../../policy/steel-default-orchestration/orchestration-profile.json");
+const BUNDLED_DEFAULT_SCRIPT: &str =
+    include_str!("../../../../policy/steel-default-orchestration/scripts/default-plan-turn.scm");
 
 #[derive(Debug, Clone)]
 pub struct AgentTurnSteelPlanningConfig {
@@ -132,6 +136,61 @@ pub fn steel_turn_planning_config_from_settings(
     settings
         .validate()
         .map_err(|error| SteelTurnPlanningActivationError::InvalidSettings(error.to_string()))?;
+    let artifacts = load_planning_artifacts(settings, base_dir)?;
+    build_config_from_artifacts(settings, artifacts).map(Some)
+}
+
+struct SteelPlanningArtifacts {
+    profile_bytes: Vec<u8>,
+    script_source: String,
+}
+
+fn build_config_from_artifacts(
+    settings: &SteelTurnPlanningSettings,
+    artifacts: SteelPlanningArtifacts,
+) -> Result<AgentTurnSteelPlanningConfig, SteelTurnPlanningActivationError> {
+    let profile_bytes = artifacts.profile_bytes;
+    let script_source = artifacts.script_source;
+    if script_source.trim().is_empty() {
+        return Err(SteelTurnPlanningActivationError::EmptyScript);
+    }
+    let script_bytes = script_source.as_bytes();
+    if script_bytes.len() as u64 > settings.max_source_bytes {
+        return Err(SteelTurnPlanningActivationError::ScriptTooLarge {
+            actual: script_bytes.len() as u64,
+            max: settings.max_source_bytes,
+        });
+    }
+    let script_hash = verify_optional_hash(settings.script_blake3.as_deref(), script_bytes, HashKind::Script)?;
+    let policy_hash = verify_optional_hash(settings.profile_blake3.as_deref(), &profile_bytes, HashKind::Profile)?;
+    let profile_export: NickelSteelOrchestrationProfile = serde_json::from_slice(&profile_bytes)
+        .map_err(|error| SteelTurnPlanningActivationError::InvalidProfileJson(error.to_string()))?;
+    let profile = runtime_profile_from_export(settings, &profile_export, script_hash, policy_hash)?;
+    ensure_session_authority(settings, &profile)?;
+    Ok(AgentTurnSteelPlanningConfig {
+        steel_plan_payload: format!(
+            "{STEEL_ORCHESTRATION_PLAN_SCHEMA}|{AGENT_TURN_DECISION_ID}|{DEFAULT_TURN_PLANNING_SEAM}|session:fixture|{AGENT_TURN_DECISION_CLASS}"
+        ),
+        steel_source: script_source,
+        session_capabilities: settings.session_capabilities.clone(),
+        granted_ucan_abilities: settings.granted_ucan_abilities.clone(),
+        ucan_authority_grants: authority_grants_from_settings(settings),
+        disabled_actions: settings.disabled_actions.clone(),
+        profile,
+    })
+}
+
+fn load_planning_artifacts(
+    settings: &SteelTurnPlanningSettings,
+    base_dir: &Path,
+) -> Result<SteelPlanningArtifacts, SteelTurnPlanningActivationError> {
+    if settings.uses_bundled_profile() {
+        return Ok(SteelPlanningArtifacts {
+            profile_bytes: BUNDLED_DEFAULT_PROFILE_BYTES.to_vec(),
+            script_source: BUNDLED_DEFAULT_SCRIPT.to_string(),
+        });
+    }
+
     let profile_path = resolve_config_path(
         base_dir,
         settings.profile_path.as_deref().ok_or(SteelTurnPlanningActivationError::MissingProfilePath)?,
@@ -150,33 +209,10 @@ pub fn steel_turn_planning_config_from_settings(
             path: script_path.clone(),
             message: error.to_string(),
         })?;
-    if script_source.trim().is_empty() {
-        return Err(SteelTurnPlanningActivationError::EmptyScript);
-    }
-    let script_bytes = script_source.as_bytes();
-    if script_bytes.len() as u64 > settings.max_source_bytes {
-        return Err(SteelTurnPlanningActivationError::ScriptTooLarge {
-            actual: script_bytes.len() as u64,
-            max: settings.max_source_bytes,
-        });
-    }
-    let script_hash = verify_optional_hash(settings.script_blake3.as_deref(), script_bytes, HashKind::Script)?;
-    let policy_hash = verify_optional_hash(settings.profile_blake3.as_deref(), &profile_bytes, HashKind::Profile)?;
-    let profile_export: NickelSteelOrchestrationProfile = serde_json::from_slice(&profile_bytes)
-        .map_err(|error| SteelTurnPlanningActivationError::InvalidProfileJson(error.to_string()))?;
-    let profile = runtime_profile_from_export(settings, &profile_export, script_hash, policy_hash)?;
-    ensure_session_authority(settings, &profile)?;
-    Ok(Some(AgentTurnSteelPlanningConfig {
-        steel_plan_payload: format!(
-            "{STEEL_ORCHESTRATION_PLAN_SCHEMA}|{AGENT_TURN_DECISION_ID}|{DEFAULT_TURN_PLANNING_SEAM}|session:fixture|{AGENT_TURN_DECISION_CLASS}"
-        ),
-        steel_source: script_source,
-        session_capabilities: settings.session_capabilities.clone(),
-        granted_ucan_abilities: settings.granted_ucan_abilities.clone(),
-        ucan_authority_grants: authority_grants_from_settings(settings),
-        disabled_actions: settings.disabled_actions.clone(),
-        profile,
-    }))
+    Ok(SteelPlanningArtifacts {
+        profile_bytes,
+        script_source,
+    })
 }
 
 #[derive(Debug, Deserialize)]
@@ -595,10 +631,63 @@ mod tests {
     }
 
     #[test]
-    fn settings_activation_disabled_by_default() {
-        let config = steel_turn_planning_config_from_settings(&SteelTurnPlanningSettings::default(), Path::new("."))
-            .expect("disabled settings are valid");
+    fn settings_activation_uses_bundled_default_without_paths() {
+        let config = steel_turn_planning_config_from_settings(
+            &SteelTurnPlanningSettings::default(),
+            Path::new("/path/that/does/not/contain/policy"),
+        )
+        .expect("bundled default settings are valid")
+        .expect("bundled default config present");
+        assert_eq!(config.profile.rollout_stage, OrchestrationRolloutStage::Default);
+        assert_eq!(config.profile.planning_seam, DEFAULT_TURN_PLANNING_SEAM);
+        assert_eq!(config.session_capabilities, vec!["steel-orchestration", "turn-planning"]);
+        assert_eq!(config.granted_ucan_abilities, vec!["clankers/steel/orchestrate.plan_turn"]);
+        assert!(config.steel_source.contains(DEFAULT_TURN_PLANNING_SEAM));
+        let outcome = plan(&config);
+        assert_eq!(outcome.execution_planner, AgentTurnExecutionPlanner::SteelScheme);
+        assert_eq!(outcome.receipt.status, OrchestrationPlanStatus::Authorized);
+    }
+
+    #[test]
+    fn settings_activation_explicit_disabled_uses_rust_native() {
+        let settings = SteelTurnPlanningSettings {
+            enabled: false,
+            ..SteelTurnPlanningSettings::default()
+        };
+        let config = steel_turn_planning_config_from_settings(&settings, Path::new("."))
+            .expect("explicitly disabled settings are valid");
         assert!(config.is_none());
+    }
+
+    #[test]
+    fn settings_activation_rejects_bundled_script_over_budget() {
+        let settings = SteelTurnPlanningSettings {
+            max_source_bytes: 1,
+            ..SteelTurnPlanningSettings::default()
+        };
+        let err = steel_turn_planning_config_from_settings(&settings, Path::new(".")).unwrap_err();
+        assert!(matches!(err, SteelTurnPlanningActivationError::ScriptTooLarge { .. }));
+    }
+
+    #[test]
+    fn settings_activation_rejects_bundled_hash_mismatch() {
+        let settings = SteelTurnPlanningSettings {
+            script_blake3: Some(ArtifactHash::digest(b"wrong-script").prefixed()),
+            ..SteelTurnPlanningSettings::default()
+        };
+        let err = steel_turn_planning_config_from_settings(&settings, Path::new(".")).unwrap_err();
+        assert!(matches!(err, SteelTurnPlanningActivationError::ScriptHashMismatch { .. }));
+    }
+
+    #[test]
+    fn artifact_core_rejects_malformed_profile_json() {
+        let settings = SteelTurnPlanningSettings::default();
+        let err = build_config_from_artifacts(&settings, SteelPlanningArtifacts {
+            profile_bytes: b"not-json".to_vec(),
+            script_source: DEFAULT_STEEL_SOURCE.to_string(),
+        })
+        .unwrap_err();
+        assert!(matches!(err, SteelTurnPlanningActivationError::InvalidProfileJson(_)));
     }
 
     #[test]

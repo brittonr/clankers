@@ -1,6 +1,6 @@
 # Steel Turn Planning Config Activation
 
-Steel turn planning is now activated from reviewed configuration instead of test-only `TurnConfig` wiring. The default remains disabled: absent or disabled settings produce no Steel execution and no Steel planning receipt.
+Steel turn planning is activated from reviewed configuration instead of test-only `TurnConfig` wiring. The default Steel planner is the bundled reviewed `steel.host.plan_turn` profile/script. Explicitly disabled settings keep Rust-native planning and produce no Steel planning receipt.
 
 ## Settings surface
 
@@ -21,15 +21,16 @@ Steel turn planning is now activated from reviewed configuration instead of test
 
 Both normal turns and orchestrated phase turns call the same Rust helper, `steel_turn_planning_config_from_settings(...)`, before constructing `TurnConfig`. The helper:
 
-1. maps missing config to disabled/no Steel planning;
-2. reads the profile and script relative to the current Clankers working directory unless paths are absolute;
-3. verifies optional profile/script BLAKE3 hashes;
-4. rejects empty or over-budget scripts before interpreter execution;
-5. parses only the reviewed Nickel-exported profile schema;
-6. requires the seam and allowed host action to be exactly `steel.host.plan_turn`;
-7. requires the configured session capabilities and UCAN ability to satisfy the profile;
-8. rejects disabled required host actions;
-9. constrains receipts to `target/steel-turn-planning-config-activation/...` or another `target/` prefix.
+1. maps missing config to the bundled reviewed Steel profile/script;
+2. maps explicit `enabled = false` to disabled/no Steel planning;
+3. reads explicit profile/script paths relative to the current Clankers working directory unless paths are absolute;
+4. computes or verifies profile/script BLAKE3 hashes;
+5. rejects empty or over-budget scripts before interpreter execution;
+6. parses only the reviewed Nickel-exported profile schema;
+7. requires the seam and allowed host action to be exactly `steel.host.plan_turn`;
+8. requires the configured session capabilities and UCAN ability to satisfy the profile;
+9. rejects disabled required host actions;
+10. constrains receipts to `target/steel-turn-planning-config-activation/...` or another `target/` prefix.
 
 ## Authority boundaries
 
@@ -37,7 +38,8 @@ Steel Scheme receives no ambient filesystem, shell, git, network, provider, cred
 
 ## Rollout behavior
 
-- **Disabled:** no Steel plan-turn config is built; Rust-native planning proceeds without a Steel receipt.
+- **Default:** missing settings use the bundled reviewed `steel.host.plan_turn` profile/script and emit redacted Steel planning receipts.
+- **Disabled:** explicit `steelTurnPlanning.enabled = false` builds no Steel plan-turn config; Rust-native planning proceeds without a Steel receipt.
 - **Comparison:** Steel runs and emits redacted planning evidence, but Rust-native execution remains selected.
 - **Default:** Steel may select the planning result only after Rust parses typed output and receives authorized effect evidence.
 - **Block:** malformed/denied Steel planning with block fallback stops before provider/tool effects.
