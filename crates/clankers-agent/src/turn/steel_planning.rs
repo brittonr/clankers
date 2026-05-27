@@ -82,6 +82,7 @@ pub enum SteelTurnPlanningActivationError {
     ProfileHashMismatch { expected: String, actual: String },
     ScriptTooLarge { actual: u64, max: u64 },
     EmptyScript,
+    UnsupportedScriptSource,
     EmptyHash,
     MissingSessionCapability(String),
     MissingUcanAbility(String),
@@ -115,6 +116,9 @@ impl std::fmt::Display for SteelTurnPlanningActivationError {
             }
             Self::ScriptTooLarge { actual, max } => write!(f, "Steel script too large: {actual} bytes exceeds {max}"),
             Self::EmptyScript => f.write_str("Steel script cannot be empty"),
+            Self::UnsupportedScriptSource => {
+                f.write_str("Steel turn-planning script must be the reviewed plan_turn host call")
+            }
             Self::EmptyHash => f.write_str("Steel profile/script hashes cannot be empty"),
             Self::MissingSessionCapability(capability) => write!(f, "missing Steel session capability `{capability}`"),
             Self::MissingUcanAbility(ability) => write!(f, "missing Steel UCAN ability `{ability}`"),
@@ -161,6 +165,7 @@ fn build_config_from_artifacts(
             max: settings.max_source_bytes,
         });
     }
+    validate_turn_planning_script_source(&script_source)?;
     let script_hash = verify_optional_hash(settings.script_blake3.as_deref(), script_bytes, HashKind::Script)?;
     let policy_hash = verify_optional_hash(settings.profile_blake3.as_deref(), &profile_bytes, HashKind::Profile)?;
     let profile_export: NickelSteelOrchestrationProfile = serde_json::from_slice(&profile_bytes)
@@ -178,6 +183,13 @@ fn build_config_from_artifacts(
         disabled_actions: settings.disabled_actions.clone(),
         profile,
     })
+}
+
+fn validate_turn_planning_script_source(source: &str) -> Result<(), SteelTurnPlanningActivationError> {
+    if source.trim() == DEFAULT_STEEL_SOURCE {
+        return Ok(());
+    }
+    Err(SteelTurnPlanningActivationError::UnsupportedScriptSource)
 }
 
 fn load_planning_artifacts(
@@ -680,6 +692,12 @@ mod tests {
     }
 
     #[test]
+    fn bundled_artifacts_are_compile_time_included() {
+        assert!(!BUNDLED_DEFAULT_PROFILE_BYTES.is_empty());
+        assert_eq!(BUNDLED_DEFAULT_SCRIPT.trim(), DEFAULT_STEEL_SOURCE);
+    }
+
+    #[test]
     fn artifact_core_rejects_malformed_profile_json() {
         let settings = SteelTurnPlanningSettings::default();
         let err = build_config_from_artifacts(&settings, SteelPlanningArtifacts {
@@ -688,6 +706,17 @@ mod tests {
         })
         .unwrap_err();
         assert!(matches!(err, SteelTurnPlanningActivationError::InvalidProfileJson(_)));
+    }
+
+    #[test]
+    fn artifact_core_rejects_malformed_script_before_steel_execution() {
+        let settings = SteelTurnPlanningSettings::default();
+        let err = build_config_from_artifacts(&settings, SteelPlanningArtifacts {
+            profile_bytes: BUNDLED_DEFAULT_PROFILE_BYTES.to_vec(),
+            script_source: "(write-file \"/tmp/not-allowed\" \"blocked\")".to_string(),
+        })
+        .unwrap_err();
+        assert_eq!(err, SteelTurnPlanningActivationError::UnsupportedScriptSource);
     }
 
     #[test]

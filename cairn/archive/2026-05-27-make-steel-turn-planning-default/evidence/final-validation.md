@@ -9,7 +9,9 @@ Status: PASS
 
 ## Command bundle
 
-Pueue task 33 ran:
+Pueue task 33 ran the archive validation bundle. Pueue task 13 reran focused tests, docs, `cairn validate`, and `git diff --check` after the V3 review follow-up.
+
+Original command bundle:
 
 ```text
 TMPDIR=/home/brittonr/.cargo-target/tmp RUSTC_WRAPPER= cargo test -p clankers-config steel_turn_planning --lib
@@ -32,7 +34,7 @@ git diff --check
 
 ```text
 clankers-config steel_turn_planning: 5 passed
-clankers-agent turn::steel_planning: 17 passed
+clankers-agent turn::steel_planning: 19 passed
 embedded_controller steel_runtime_smoke: 5 passed
 steel turn planning runtime smoke receipt written to target/steel-turn-planning-runtime-smoke/receipt.json
 steel turn planning config activation receipt written to target/steel-turn-planning-config-activation/receipt.json
@@ -43,6 +45,6 @@ INFO HTML book written to `/home/brittonr/git/clankers/docs/book`
 proposal gate: valid=true verdict=PASS issues=[]
 design gate: valid=true verdict=PASS issues=[]
 tasks gate: valid=true verdict=PASS issues=[]
-validate: valid=true issues=[] change_issues=[] spec_issues=[] specs_validated=108
+validate: valid=true issues=[] change_issues=[] spec_issues=[] specs_validated=106 after archive/follow-up
 git diff --check: pass
 ```
