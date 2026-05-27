@@ -57,6 +57,14 @@ struct SpecCategory {
     required_terms: &'static [&'static str],
 }
 
+#[derive(Debug)]
+struct StrongConstraintSpecCategory {
+    code: &'static str,
+    label: &'static str,
+    trigger_terms: &'static [&'static str],
+    required_terms: &'static [&'static str],
+}
+
 const CONTRACT_CATEGORIES: &[ContractCategory] = &[
     ContractCategory {
         code: "missing-deterministic-request-shape-task",
@@ -229,6 +237,39 @@ const SPEC_CATEGORIES: &[SpecCategory] = &[
     },
 ];
 
+const STRONG_CONSTRAINT_SPEC_CATEGORIES: &[StrongConstraintSpecCategory] = &[
+    StrongConstraintSpecCategory {
+        code: "missing-strong-constraint-spec",
+        label: "generated artifact hygiene",
+        trigger_terms: &["generated artifact hygiene", "generated artifacts", "artifact hygiene"],
+        required_terms: &["generated artifact", "hygiene", "must"],
+    },
+    StrongConstraintSpecCategory {
+        code: "missing-strong-constraint-spec",
+        label: "required local verification",
+        trigger_terms: &["required local verification", "local verification", "contract coverage"],
+        required_terms: &["local verification", "contract coverage", "must"],
+    },
+    StrongConstraintSpecCategory {
+        code: "missing-strong-constraint-spec",
+        label: "forbidden github delivery path",
+        trigger_terms: &["no-github", "forbidden delivery", "forbidden github"],
+        required_terms: &["github", "must not"],
+    },
+    StrongConstraintSpecCategory {
+        code: "missing-strong-constraint-spec",
+        label: "source preservation policy",
+        trigger_terms: &["source preservation", "preservation policy"],
+        required_terms: &["source", "preservation", "must"],
+    },
+    StrongConstraintSpecCategory {
+        code: "missing-strong-constraint-spec",
+        label: "capability boundary preservation",
+        trigger_terms: &["capability boundary", "boundary preservation"],
+        required_terms: &["capability", "boundary", "must"],
+    },
+];
+
 fn main() -> ExitCode {
     match run() {
         Ok(()) => {
@@ -285,6 +326,10 @@ fn verify_guidance_and_wiring() -> Result<(), String> {
         "omitted-provider default behavior",
         "malformed account-claim behavior",
         "provider-scoped status behavior",
+        "strong proposal constraint",
+        "generated artifact hygiene",
+        "required local verification",
+        "forbidden GitHub delivery path",
         "fixture/helper/command",
         "scripts/check-openspec-review-gates.rs",
         "Artifact-Type: oracle-checkpoint",
@@ -313,6 +358,7 @@ fn verify_guidance_and_wiring() -> Result<(), String> {
         "missing-omitted-provider-default-spec",
         "missing-malformed-account-claim-spec",
         "missing-provider-scoped-status-spec",
+        "missing-strong-constraint-spec",
         "missing-oracle-checkpoint-task",
         "invalid-oracle-checkpoint-evidence",
         "Artifact-Type: oracle-checkpoint",
@@ -429,6 +475,17 @@ fn evaluate_fixture(fixture_dir: &Path) -> Result<FixtureReport, String> {
         }
     }
 
+    for category in STRONG_CONSTRAINT_SPEC_CATEGORIES {
+        if strong_constraint_required(&lower_spec_source_text, category)
+            && !strong_constraint_satisfied(&lower_spec, category)
+        {
+            diagnostics.push(format!(
+                "{}: strong proposal constraint {:?} is missing or weakened in the delta spec",
+                category.code, category.label
+            ));
+        }
+    }
+
     if oracle_required(&lower_artifact_text) {
         let oracle_tasks = oracle_tasks(&task_lines);
         if oracle_tasks.is_empty() {
@@ -468,6 +525,14 @@ fn spec_category_required(text: &str, category: &SpecCategory) -> bool {
 }
 
 fn spec_category_satisfied(spec: &str, category: &SpecCategory) -> bool {
+    category.required_terms.iter().all(|term| spec.contains(term))
+}
+
+fn strong_constraint_required(text: &str, category: &StrongConstraintSpecCategory) -> bool {
+    category.trigger_terms.iter().any(|term| text.contains(term))
+}
+
+fn strong_constraint_satisfied(spec: &str, category: &StrongConstraintSpecCategory) -> bool {
     category.required_terms.iter().all(|term| spec.contains(term))
 }
 
