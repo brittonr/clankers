@@ -47,6 +47,8 @@ pub mod services;
 pub mod session;
 pub mod steel_mutation;
 pub mod steel_orchestration;
+pub mod steel_orchestration_mutation;
+pub mod steel_repo_evolution;
 pub mod steel_runtime;
 pub mod steel_tool_substrate;
 pub mod tools;

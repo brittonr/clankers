@@ -168,6 +168,30 @@
       "resource_prefix": "repo:",
       "rollback_required": true,
       "verification_profile": "focused-rust-and-cairn-gates"
+    },
+    {
+      "allowed_path_roots": [
+        ".clankers/steel/"
+      ],
+      "allowed_verbs": [
+        "propose_mutation",
+        "apply_mutation",
+        "rollback_mutation"
+      ],
+      "approval_tier": "human-oracle-checkpoint",
+      "denied_path_patterns": [
+        "../",
+        "/.git/",
+        "**/.env*",
+        "**/*secret*",
+        "target/",
+        "result"
+      ],
+      "name": "orchestration_pack",
+      "preflight_profile": "isolated-steel-pack-staging",
+      "resource_prefix": "steel-pack:",
+      "rollback_required": true,
+      "verification_profile": "steel-pack-validation-gates"
     }
   ],
   "ucan": {

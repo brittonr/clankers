@@ -22,6 +22,8 @@
 - [Steel Scheme Runtime](./reference/steel-scheme-runtime.md)
 - [Steel Eval Discovery and Dogfood Evidence 2026-05-24](./reference/steel-eval-discovery-and-dogfood-2026-05-24.md)
 - [Steel Default Orchestration](./reference/steel-default-orchestration.md)
+- [Steel Repo Evolution Packs](./reference/steel-repo-evolution-packs.md)
+- [Steel Orchestration Pack Mutation](./reference/steel-orchestration-pack-mutation.md)
 - [Steel Agent Turn Wiring](./reference/steel-agent-turn-wiring.md)
 - [Steel Turn Planning Config Activation](./reference/steel-turn-planning-config-activation.md)
 - [Steel Turn Planning Runtime Smoke](./reference/steel-turn-planning-runtime-smoke.md)

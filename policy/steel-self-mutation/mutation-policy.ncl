@@ -84,6 +84,17 @@ let ReceiptPolicy = {
       verification_profile = "focused-rust-and-cairn-gates",
       rollback_required = true,
     },
+    {
+      name = "orchestration_pack",
+      resource_prefix = "steel-pack:",
+      allowed_path_roots = [".clankers/steel/"],
+      denied_path_patterns = ["../", "/.git/", "**/.env*", "**/*secret*", "target/", "result"],
+      allowed_verbs = ["propose_mutation", "apply_mutation", "rollback_mutation"],
+      approval_tier = "human-oracle-checkpoint",
+      preflight_profile = "isolated-steel-pack-staging",
+      verification_profile = "steel-pack-validation-gates",
+      rollback_required = true,
+    },
   ],
   mutation_verbs | Array MutationVerb = [
     {

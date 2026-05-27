@@ -26,7 +26,7 @@ const INVALID_POLICY_JSON: &str = "policy/steel-self-mutation/invalid-policy.jso
 const DEFAULT_OUTPUT: &str = "target/steel-self-mutation/policy-receipt.json";
 const EXPECTED_SCHEMA: &str = "clankers.steel_self_mutation.policy.v1";
 const EXPECTED_RECEIPT_SCHEMA: &str = "clankers.steel_self_mutation.receipt.v1";
-const REQUIRED_TARGET_CLASSES: &[&str] = &["skill", "prompt", "tool_description", "repo_code"];
+const REQUIRED_TARGET_CLASSES: &[&str] = &["skill", "prompt", "tool_description", "repo_code", "orchestration_pack"];
 const REQUIRED_VERBS: &[(&str, &str)] = &[
     ("propose_mutation", "clankers/steel/mutation.propose"),
     ("apply_mutation", "clankers/steel/mutation.apply"),
