@@ -49,7 +49,7 @@ impl TuiTestHarness {
             .expect("Failed to open PTY");
 
         let mut cmd = CommandBuilder::new(env!("CARGO_BIN_EXE_clankers"));
-        cmd.args(["--no-zellij", "--no-daemon"]);
+        cmd.args(["--no-zellij", "--no-daemon", "--model", "claude-opus-4-6"]);
         cmd.args(extra_args);
         cmd.env("RUST_LOG", "off");
         cmd.env("TERM", "xterm-256color");

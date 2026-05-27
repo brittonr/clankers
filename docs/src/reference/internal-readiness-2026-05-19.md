@@ -14,7 +14,7 @@
 - The embedded SDK release receipt was regenerated after `main` was pushed and aligned with `origin/main`.
 - The receipt records schema `clankers.embedded_sdk.release_receipt.v1`.
 - The receipt records git status `## main...origin/main`.
-- The receipt hashes 49 embedded SDK evidence artifacts under docs, examples, OpenSpec specs, and release/check scripts.
+- The receipt hashes 49 embedded SDK evidence artifacts under docs, examples, Cairn specs, and release/check scripts.
 - The embedded SDK boundary is explicit:
   - green generic SDK crates include `clanker-message`, `clankers-engine`, `clankers-engine-host`, `clankers-tool-host`, `clankers-adapters`, and the optional prompt lifecycle reducer in `clankers-core`;
   - red exclusions keep daemon protocol clients, TUI, provider discovery/router/OAuth stores, session database ownership, plugin supervision, Matrix, iroh/P2P, built-in tool bundles, live credentials, network access, daemon startup, and shell-global service lookup outside the generic SDK boundary;
@@ -23,7 +23,7 @@
   - `scripts/check-embedded-agent-sdk.rs`
   - `nix build .#checks.$(nix eval --raw --impure --expr builtins.currentSystem).embedded-sdk-release-receipt`
   - `cargo check --workspace --all-targets`
-  - `openspec validate embedded-composition-kits --strict --json`
+  - `cairn validate embedded-composition-kits --strict --json`
   - `cargo fmt --check`
   - `git diff --check`
 - The final readiness fix refreshed `scripts/check-engine-host-feature-matrix.rs` to track the current engine-host test name before receipt regeneration.
@@ -50,4 +50,4 @@
 
 1. Run another report-only external-product dogfood target against this tag and preserve durable operator state.
 2. Promote the embedded SDK receipt rail into a routine CI/check entry so receipt freshness does not depend on manual release preparation.
-3. Continue product hardening with a scoped OpenSpec when changing process/job profile behavior or public agent surfaces.
+3. Continue product hardening with a scoped Cairn when changing process/job profile behavior or public agent surfaces.

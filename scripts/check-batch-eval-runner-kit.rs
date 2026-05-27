@@ -47,6 +47,6 @@ fn assert_contains(path: &str, haystack: &str, needles: &[&str]) {
     for needle in missing {
         eprintln!("  - missing {needle}");
     }
-    eprintln!("owner: update batch runner tests, quickstart docs, and OpenSpec receipt evidence together");
+    eprintln!("owner: update batch runner tests, quickstart docs, and Cairn receipt evidence together");
     std::process::exit(1);
 }

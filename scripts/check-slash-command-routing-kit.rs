@@ -69,6 +69,6 @@ fn assert_contains(path: &str, haystack: &str, needles: &[&str]) {
     for needle in missing {
         eprintln!("  - missing {needle}");
     }
-    eprintln!("owner: update slash tests, attach routing, docs, and OpenSpec evidence together");
+    eprintln!("owner: update slash tests, attach routing, docs, and Cairn evidence together");
     std::process::exit(1);
 }

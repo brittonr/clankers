@@ -25,7 +25,7 @@
 - [Steel Turn Planning Config Activation](./reference/steel-turn-planning-config-activation.md)
 - [Steel Turn Planning Runtime Smoke](./reference/steel-turn-planning-runtime-smoke.md)
 - [Steel Turn Planning UCAN Authority](./reference/steel-turn-planning-ucan-authority.md)
-- [OpenSpec Review Gates](./reference/openspec-review-gates.md)
+- [Cairn Review Gates](./reference/cairn-review-gates.md)
 - [Release Readiness](./reference/release-readiness.md)
 - [Native Process GC Review Closeout 2026-05-27](./reference/native-process-gc-review-closeout-2026-05-27.md)
 - [Current-HEAD Release Evidence Index 2026-05-27](./reference/current-head-release-evidence-index-2026-05-27.md)

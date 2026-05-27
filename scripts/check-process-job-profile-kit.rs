@@ -129,7 +129,7 @@ fn main() {
     require(
         &spec,
         "Process job profile kit validates backend-neutral job manifests",
-        "canonical OpenSpec requirement missing",
+        "canonical Cairn requirement missing",
     );
     require(
         &spec,

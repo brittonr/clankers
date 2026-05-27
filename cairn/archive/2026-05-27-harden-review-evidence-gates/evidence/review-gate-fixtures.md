@@ -3,8 +3,8 @@
 Evidence-ID: review-gate-fixtures
 Artifact-Type: command-output-summary
 Task-ID: V1
-Covers: openspec-review-gates.spec-stage-omission-prevention.strong-constraint-spec, openspec-review-gates.spec-stage-omission-prevention.strong-constraint-spec-satisfied
-Command: `TMPDIR=/home/brittonr/.cargo-target/tmp RUSTC_WRAPPER= ./scripts/check-openspec-review-gates.rs`
+Covers: cairn-review-gates.spec-stage-omission-prevention.strong-constraint-spec, cairn-review-gates.spec-stage-omission-prevention.strong-constraint-spec-satisfied
+Command: `TMPDIR=/home/brittonr/.cargo-target/tmp RUSTC_WRAPPER= ./scripts/check-cairn-review-gates.rs`
 Status: PASS
 Date: 2026-05-27
 
@@ -15,7 +15,7 @@ fixture negative-strong-constraint-design-source: Fail ["missing-strong-constrai
 fixture negative-strong-constraint-spec-omission: Fail ["missing-strong-constraint-spec: source_artifact=design.md constraint_family=\"generated artifact hygiene\" is missing or weakened in the delta spec", "missing-strong-constraint-spec: source_artifact=design.md constraint_family=\"required local verification\" is missing or weakened in the delta spec", "missing-strong-constraint-spec: source_artifact=proposal.md constraint_family=\"forbidden github delivery path\" is missing or weakened in the delta spec", "missing-strong-constraint-spec: source_artifact=proposal.md constraint_family=\"generated artifact hygiene\" is missing or weakened in the delta spec", "missing-strong-constraint-spec: source_artifact=proposal.md constraint_family=\"required local verification\" is missing or weakened in the delta spec"]
 fixture negative-strong-constraint-weak-spec: Fail ["missing-strong-constraint-spec: source_artifact=proposal.md constraint_family=\"generated artifact hygiene\" is missing or weakened in the delta spec", "missing-strong-constraint-spec: source_artifact=proposal.md constraint_family=\"required local verification\" is missing or weakened in the delta spec"]
 fixture positive-strong-constraint-spec-coverage: Pass []
-ok: openspec review-gate fixtures passed
+ok: cairn review-gate fixtures passed
 ```
 
 ## Scope

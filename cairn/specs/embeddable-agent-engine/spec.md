@@ -123,7 +123,7 @@ The engine MUST own the reusable conversation/message evolution rules needed for
 
 - **WHEN** a host supplies its own system prompt or prompt-building policy
 - **THEN** the engine still preserves the same message evolution and turn-orchestration contracts
-- **THEN** system-prompt discovery from AGENTS.md, OpenSpec context, skills, or project files remains outside the engine boundary
+- **THEN** system-prompt discovery from AGENTS.md, Cairn context, skills, or project files remains outside the engine boundary
 
 ### Requirement: Controller and agent shells MUST become adapters over the engine
 
@@ -150,7 +150,7 @@ The embeddable engine MUST not absorb Clankers application concerns that are not
 #### Scenario: system prompt assembly stays app-specific
 - GIVEN the scenario is evaluated
 
-- **WHEN** Clankers loads AGENTS.md, SYSTEM.md, APPEND_SYSTEM.md, OpenSpec context, or skill definitions
+- **WHEN** Clankers loads AGENTS.md, SYSTEM.md, APPEND_SYSTEM.md, Cairn context, or skill definitions
 - **THEN** that behavior remains outside the engine boundary
 - **THEN** the engine accepts already-prepared prompt inputs or explicit prompt-policy configuration rather than reading project context files directly
 
@@ -1027,7 +1027,7 @@ The system MUST keep embedded SDK acceptance commands reproducible from ordinary
 - THEN the verification output does not introduce new dead-code warnings for the touched helpers
 
 #### Scenario: drain-state reflects idle queue state [r[embeddable-agent-engine.verification-hygiene.drain-state]]
-- GIVEN `openspec list` reports no active changes after a queue drain
+- GIVEN `cairn list` reports no active changes after a queue drain
 - WHEN drain-state bookkeeping is inspected
 - THEN it reports no current active change and does not claim a pending last commit
 - THEN future drain reviews can treat the file as advisory idle state rather than stale implementation state

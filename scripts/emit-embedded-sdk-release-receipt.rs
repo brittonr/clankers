@@ -50,7 +50,7 @@ const VERIFICATION_COMMANDS: &[&str] = &[
     "scripts/check-embedded-agent-sdk.rs",
     "nix build .#checks.$(nix eval --raw --impure --expr builtins.currentSystem).embedded-sdk-release-receipt",
     "cargo check --workspace --all-targets",
-    "openspec validate embedded-composition-kits --strict --json",
+    "nix run .#cairn -- validate --root .",
     "cargo fmt --check",
     "git diff --check",
 ];

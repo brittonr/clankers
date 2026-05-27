@@ -57,8 +57,6 @@ pub mod session;
 pub mod slash_commands;
 pub mod soul_personality;
 pub mod tool_gateway;
-#[cfg(feature = "openspec")]
-pub use openspec as specs;
 pub mod tools;
 pub mod voice_mode;
 pub use clankers_tui as tui;

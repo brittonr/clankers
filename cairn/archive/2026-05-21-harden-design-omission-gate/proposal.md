@@ -6,15 +6,15 @@ Review metrics show repeated design-stage omission findings after the task-stage
 
 ## What Changes
 
-- Extend `scripts/check-openspec-review-gates.rs` with deterministic design-stage completeness categories.
+- Extend `scripts/check-cairn-review-gates.rs` with deterministic design-stage completeness categories.
 - Add paired sanitized fixtures that reject vague design prose and accept concrete design coverage.
-- Document the new diagnostics in `docs/src/reference/openspec-review-gates.md`.
+- Document the new diagnostics in `docs/src/reference/cairn-review-gates.md`.
 - Add Cairn requirements for design-stage omission prevention.
 
 ## Non-Goals
 
 - No live provider smoke, credential use, or qwen/aspen2 readiness run is required for this pure deterministic gate.
-- No broad rewrite of legacy OpenSpec history.
+- No broad rewrite of legacy Cairn history.
 
 ## Verification
 

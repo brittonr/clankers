@@ -7,16 +7,16 @@ Created-At: 2026-04-22T00:23:00Z
 
 ## Summary
 
-- Audited archived task ledger at `openspec/changes/archive/2026-04-22-no-std-functional-core/tasks.md` after archive.
+- Audited archived task ledger at `cairn/changes/archive/2026-04-22-no-std-functional-core/tasks.md` after archive.
 - Found `36` completed tasks and `0` incomplete tasks.
 - Task mix: `24` implementation tasks (`I#`), `11` verification tasks (`V#`), and `1` human checkpoint (`H#`).
 - Updated archived `[evidence=...]` paths to the archive location so the verification links remain reviewable after the move.
 
 ## Evidence integrity
 
-- Every archived `V#` / `H#` evidence path now points at `openspec/changes/archive/2026-04-22-no-std-functional-core/evidence/...`.
+- Every archived `V#` / `H#` evidence path now points at `cairn/changes/archive/2026-04-22-no-std-functional-core/evidence/...`.
 - Verified the archived evidence bundle contains all linked files for `V1`–`V11` and `H1`.
-- Human checkpoint artifact remains present at `openspec/changes/archive/2026-04-22-no-std-functional-core/evidence/anti-fork-review.txt` with `Artifact-Type: oracle-checkpoint`.
+- Human checkpoint artifact remains present at `cairn/changes/archive/2026-04-22-no-std-functional-core/evidence/anti-fork-review.txt` with `Artifact-Type: oracle-checkpoint`.
 
 ## Reviewer note
 

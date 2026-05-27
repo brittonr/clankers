@@ -20,7 +20,7 @@ The checker MUST include deterministic fixtures for repeated omission categories
 
 ### Requirement: first implementation [r[review-metrics-regression-rail.project-local-first]]
 
-The first implementation MUST harden Clankers repo-local review-gate fixtures/docs before touching generic Cairn/OpenSpec core.
+The first implementation MUST harden Clankers repo-local review-gate fixtures/docs before touching generic Cairn/Cairn core.
 
 #### Scenario: Repo-local rail owns first prevention
 - GIVEN a repeated Clankers finding category is unsupported

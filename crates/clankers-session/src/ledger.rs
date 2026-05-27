@@ -135,8 +135,8 @@ pub enum LedgerPayload {
     Block(BlockLedgerFact),
     /// Review finding/receipt fact.
     Review(ReviewLedgerFact),
-    /// OpenSpec change/task/requirement fact.
-    OpenSpec(OpenSpecLedgerFact),
+    /// Cairn change/task/requirement fact.
+    Cairn(CairnLedgerFact),
     /// Error fact with safe class/message.
     Error(ErrorLedgerFact),
     /// Artifact hash reference fact.
@@ -156,7 +156,7 @@ impl LedgerPayload {
             Self::Tool(fact) => Self::Tool(fact.sanitized()),
             Self::Block(fact) => Self::Block(fact.sanitized()),
             Self::Review(fact) => Self::Review(fact.sanitized()),
-            Self::OpenSpec(fact) => Self::OpenSpec(fact.sanitized()),
+            Self::Cairn(fact) => Self::Cairn(fact.sanitized()),
             Self::Error(fact) => Self::Error(fact.sanitized()),
             Self::ArtifactReference(fact) => Self::ArtifactReference(fact.sanitized()),
             Self::PendingChange(fact) => Self::PendingChange(fact.sanitized()),
@@ -173,7 +173,7 @@ impl LedgerPayload {
             Self::Tool(fact) => &fact.query,
             Self::Block(fact) => &fact.query,
             Self::Review(fact) => &fact.query,
-            Self::OpenSpec(fact) => &fact.query,
+            Self::Cairn(fact) => &fact.query,
             Self::Error(fact) => &fact.query,
             Self::ArtifactReference(fact) => &fact.query,
             Self::PendingChange(fact) => &fact.query,
@@ -362,14 +362,14 @@ impl ReviewLedgerFact {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct OpenSpecLedgerFact {
+pub struct CairnLedgerFact {
     pub change: String,
     pub task: String,
     pub status: String,
     pub query: LedgerQueryFields,
 }
 
-impl OpenSpecLedgerFact {
+impl CairnLedgerFact {
     fn sanitized(self) -> Self {
         Self {
             change: sanitize_ledger_text(self.change),
@@ -662,8 +662,8 @@ mod tests {
                 }),
             ),
             LedgerRecord::typed(
-                "openspec",
-                LedgerPayload::OpenSpec(OpenSpecLedgerFact {
+                "cairn",
+                LedgerPayload::Cairn(CairnLedgerFact {
                     change: "add-typed-durable-session-ledger".to_owned(),
                     task: "records".to_owned(),
                     status: "done".to_owned(),

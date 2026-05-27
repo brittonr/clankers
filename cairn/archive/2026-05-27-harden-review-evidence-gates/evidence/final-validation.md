@@ -3,7 +3,7 @@
 Evidence-ID: final-validation
 Artifact-Type: command-output-summary
 Task-ID: V2
-Covers: openspec-review-gates.spec-stage-omission-prevention.strong-constraint-spec, openspec-review-gates.spec-stage-omission-prevention.strong-constraint-spec-satisfied
+Covers: cairn-review-gates.spec-stage-omission-prevention.strong-constraint-spec, cairn-review-gates.spec-stage-omission-prevention.strong-constraint-spec-satisfied
 Date: 2026-05-27
 Status: PASS
 
@@ -12,7 +12,7 @@ Status: PASS
 Pueue task 15 ran:
 
 ```text
-TMPDIR=/home/brittonr/.cargo-target/tmp RUSTC_WRAPPER= ./scripts/check-openspec-review-gates.rs
+TMPDIR=/home/brittonr/.cargo-target/tmp RUSTC_WRAPPER= ./scripts/check-cairn-review-gates.rs
 mdbook build docs
 nix run .#cairn -- gate proposal harden-review-evidence-gates --root .
 nix run .#cairn -- gate design harden-review-evidence-gates --root .
@@ -24,7 +24,7 @@ git diff --check
 ## Relevant output
 
 ```text
-openspec review-gate fixtures: PASS, including source_artifact and weak-spec strong-constraint fixtures
+cairn review-gate fixtures: PASS, including source_artifact and weak-spec strong-constraint fixtures
 INFO HTML book written to `/home/brittonr/git/clankers/docs/book`
 proposal gate: valid=true verdict=PASS issues=[]
 design gate: valid=true verdict=PASS issues=[]

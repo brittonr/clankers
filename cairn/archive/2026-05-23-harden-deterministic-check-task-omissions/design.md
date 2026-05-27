@@ -14,7 +14,7 @@ The previous review-metrics rail added `missing-auto-fix-task` for `omission|tas
 
 ### 2. Keep the implementation project-local
 
-**Choice:** Implement the Clankers-specific wording in `scripts/check-openspec-review-gates.rs` and fixtures, while relying on central Cairn only for lifecycle gates.
+**Choice:** Implement the Clankers-specific wording in `scripts/check-cairn-review-gates.rs` and fixtures, while relying on central Cairn only for lifecycle gates.
 
 **Rationale:** The central Cairn review-metrics rail is already accepted. This slice tunes Clankers' checker vocabulary and fixture corpus.
 

@@ -63,7 +63,7 @@ fn main() {
     require(
         &spec,
         "Observability kit emits bounded redacted receipts",
-        "canonical OpenSpec requirement missing",
+        "canonical Cairn requirement missing",
     );
     require(
         &spec,

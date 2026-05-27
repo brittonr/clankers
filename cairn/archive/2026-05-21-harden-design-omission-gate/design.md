@@ -2,7 +2,7 @@
 
 ## Scope
 
-This is a deterministic review-gate hardening slice. The gate reads sanitized fixtures under `scripts/fixtures/openspec-review-gates/` and never calls provider APIs or reads credentials.
+This is a deterministic review-gate hardening slice. The gate reads sanitized fixtures under `scripts/fixtures/cairn-review-gates/` and never calls provider APIs or reads credentials.
 
 ## Decisions
 

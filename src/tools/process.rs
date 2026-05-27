@@ -5227,8 +5227,8 @@ mod tests {
                 &make_ctx(),
                 json!({
                     "action": "start",
-                    "program": "python3",
-                    "args": ["-c", "import signal,time; signal.signal(signal.SIGTERM, signal.SIG_IGN); time.sleep(10)"],
+                    "program": "sh",
+                    "args": ["-c", "trap '' TERM; sleep 10"],
                 }),
             )
             .await;

@@ -31,10 +31,10 @@ fn main() {
     require(&docs, "app-edge", "documented app-edge boundary");
 
     let spec = fs::read_to_string("cairn/specs/daemon-event-translation/spec.md")
-        .expect("read promoted OpenSpec");
-    require(&spec, "daemon-event-translation-kit", "promoted OpenSpec requirement");
-    require(&spec, "streaming-replay", "OpenSpec streaming/replay scenario");
-    require(&spec, "app-edge", "OpenSpec app-edge scenario");
+        .expect("read promoted Cairn");
+    require(&spec, "daemon-event-translation-kit", "promoted Cairn requirement");
+    require(&spec, "streaming-replay", "Cairn streaming/replay scenario");
+    require(&spec, "app-edge", "Cairn app-edge scenario");
 }
 
 fn require(haystack: &str, needle: &str, label: &str) {

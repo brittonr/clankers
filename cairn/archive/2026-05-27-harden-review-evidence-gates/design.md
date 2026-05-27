@@ -22,7 +22,7 @@ The selected category should be handled as a project-local fixture-backed diagno
 
 ### 3. Keep the implementation project-local
 
-**Choice:** Update `scripts/check-openspec-review-gates.rs`, fixtures, and Clankers authoring guidance first. Do not patch generic Cairn core in this change.
+**Choice:** Update `scripts/check-cairn-review-gates.rs`, fixtures, and Clankers authoring guidance first. Do not patch generic Cairn core in this change.
 
 **Rationale:** Clankers has the metrics evidence and a repo-local drift rail. Generic lifecycle engine changes should wait until this rule shape proves stable.
 

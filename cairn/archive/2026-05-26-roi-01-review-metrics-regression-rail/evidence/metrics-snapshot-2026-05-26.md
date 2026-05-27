@@ -8,10 +8,10 @@ This snapshot preserves counts/classes only. It intentionally omits raw transcri
 
 | Rank | Count | Key | Sources / stages | Planning use |
 | --- | ---: | --- | --- | --- |
-| 1 | 491 | `omission|tasks|auto-fix` | mostly `openspec-gate`, tasks stage | First fixture family for task text that omits spec-required verification or boundary detail. |
-| 2 | 151 | `omission|tasks|deterministic-check` | `openspec-gate`, tasks stage | Deterministic-check fixture family for retry/header/SSE/request-contract gaps. |
-| 3 | 132 | `omission|tasks|prompt` | `openspec-gate` and `done-review` | Traceability fixture family for prompt/design/spec requirements not carried into tasks. |
-| 4 | 79 | `omission|design|prompt` | `openspec-gate`, design stage | Later design-stage fixture family if task-stage rails do not reduce recurrence. |
+| 1 | 491 | `omission|tasks|auto-fix` | mostly `cairn-gate`, tasks stage | First fixture family for task text that omits spec-required verification or boundary detail. |
+| 2 | 151 | `omission|tasks|deterministic-check` | `cairn-gate`, tasks stage | Deterministic-check fixture family for retry/header/SSE/request-contract gaps. |
+| 3 | 132 | `omission|tasks|prompt` | `cairn-gate` and `done-review` | Traceability fixture family for prompt/design/spec requirements not carried into tasks. |
+| 4 | 79 | `omission|design|prompt` | `cairn-gate`, design stage | Later design-stage fixture family if task-stage rails do not reduce recurrence. |
 | 5 | 40 | `omission|spec|prompt` | proposal/design/spec stages | Later spec-stage fixture family for proposal-to-spec compatibility boundaries. |
 
 ## Sanitized example classes

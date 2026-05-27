@@ -14,7 +14,7 @@ This checkpoint records the embedded SDK lego/brick readiness slice completed on
 
 ## What landed
 
-The OpenSpec queue for embedded SDK lego/brick readiness was drained and archived. The completed rails cover:
+The Cairn queue for embedded SDK lego/brick readiness was drained and archived. The completed rails cover:
 
 - real product dogfood evidence
 - provider adapter kit fixtures
@@ -52,7 +52,7 @@ The checkpoint receipt generator reported a clean `main...origin/main` state and
 
 ## Verification run
 
-Release-readiness checkpoint commands run after the OpenSpec drain:
+Release-readiness checkpoint commands run after the Cairn drain:
 
 ```bash
 TMPDIR=/home/brittonr/.cargo-target/tmp RUSTC_WRAPPER= cargo check --workspace --all-targets

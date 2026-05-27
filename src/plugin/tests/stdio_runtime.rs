@@ -571,7 +571,32 @@ fn copy_reference_stdio_fixture(dst_root: &Path) -> PathBuf {
     let source = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("examples/plugins/clankers-stdio-echo");
     let dst = dst_root.join("clankers-stdio-echo");
     copy_dir_recursive(&source, &dst);
+    rewrite_reference_stdio_fixture_to_absolute_python(&dst);
     dst
+}
+
+fn rewrite_reference_stdio_fixture_to_absolute_python(plugin_dir: &Path) {
+    let Some(python) = find_python3_interpreter() else {
+        return;
+    };
+    let manifest_path = plugin_dir.join("plugin.json");
+    let mut manifest: serde_json::Value = serde_json::from_str(&std::fs::read_to_string(&manifest_path).unwrap())
+        .expect("reference stdio fixture manifest is valid JSON");
+    manifest["stdio"]["command"] = serde_json::Value::String(python.display().to_string());
+    manifest["stdio"]["args"] = serde_json::json!(["plugin.py"]);
+    std::fs::write(&manifest_path, serde_json::to_string_pretty(&manifest).unwrap()).unwrap();
+}
+
+fn find_python3_interpreter() -> Option<PathBuf> {
+    if let Ok(path) = std::env::var("PYTHON3") {
+        let candidate = PathBuf::from(path);
+        if candidate.is_absolute() && candidate.exists() {
+            return Some(candidate);
+        }
+    }
+    std::env::var_os("PATH").and_then(|paths| {
+        std::env::split_paths(&paths).map(|dir| dir.join("python3")).find(|candidate| candidate.is_file())
+    })
 }
 
 fn copy_extism_test_plugin_fixture(dst_root: &Path) -> PathBuf {

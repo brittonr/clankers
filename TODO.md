@@ -1,7 +1,7 @@
 ## Open
 
-- [x] **snix Integration** — In-process Nix evaluation, store ref annotation, flake ref parsing. (legacy lifecycle item; migrated OpenSpec tree to `cairn/`)
-- [x] **Matrix Daemon v2** — Daemon-integrated Matrix: heartbeat scheduler, trigger pipes, idle reaper, `allowed_users`, `!` command prefix, `<sendfile>` uploads. (legacy lifecycle item; migrated OpenSpec tree to `cairn/`)
+- [x] **snix Integration** — In-process Nix evaluation, store ref annotation, flake ref parsing. (legacy lifecycle item; migrated Cairn tree to `cairn/`)
+- [x] **Matrix Daemon v2** — Daemon-integrated Matrix: heartbeat scheduler, trigger pipes, idle reaper, `allowed_users`, `!` command prefix, `<sendfile>` uploads. (legacy lifecycle item; migrated Cairn tree to `cairn/`)
 - [ ] **UCAN Auth** — Capability-based auth for daemon/remote access with delegation chains. (track future lifecycle work under `cairn/changes/`)
 
 ## Done

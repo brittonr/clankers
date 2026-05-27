@@ -75,7 +75,7 @@ The checked-in consumer fixture under `examples/embedded-agent-sdk/` is the exec
 
 The provider-adapter kit is fixture backed. `examples/embedded-provider-adapter/fixtures/provider-adapter-fixtures.json` pins explicit request, completed-response, retryable-failure, terminal-failure, usage-accounting, and `ProductModelProfile` data. `scripts/check-provider-adapter-kit.rs` verifies those fixtures, the product-owned `ProductProviderAdapter` implementation, and the dependency boundary so expected provider shapes are not derived from the adapter under test and the generic SDK path stays free of `clankers-provider`, router daemon RPC, OAuth stores, provider discovery, and live network credentials.
 
-The session-resume-brick evidence is fixture backed across two product-shaped stores. `examples/embedded-session-store/session-resume-evidence.json` pins the `embedded-session-store` and `embedded-product-workbench` DTO/store shapes, expected restored `EngineModelRequest` role/text order, missing-session errors, and forbidden shell dependencies. `scripts/check-session-resume-brick.rs` verifies that both examples keep product-owned session/message DTOs, preserve restored user/tool/assistant context into the follow-up model request, fail closed for missing sessions before model/tool execution, and avoid `clankers-session`, `clankers-db`, JSONL restore shells, daemon sockets, and TUI/session restore logic. This is convergence evidence only: reusable session APIs require a later OpenSpec instead of importing storage ownership into green SDK crates.
+The session-resume-brick evidence is fixture backed across two product-shaped stores. `examples/embedded-session-store/session-resume-evidence.json` pins the `embedded-session-store` and `embedded-product-workbench` DTO/store shapes, expected restored `EngineModelRequest` role/text order, missing-session errors, and forbidden shell dependencies. `scripts/check-session-resume-brick.rs` verifies that both examples keep product-owned session/message DTOs, preserve restored user/tool/assistant context into the follow-up model request, fail closed for missing sessions before model/tool execution, and avoid `clankers-session`, `clankers-db`, JSONL restore shells, daemon sockets, and TUI/session restore logic. This is convergence evidence only: reusable session APIs require a later Cairn instead of importing storage ownership into green SDK crates.
 
 ## Adapter contracts
 
@@ -129,7 +129,7 @@ The product-facing lego policy lives under `policy/embedded-lego/`. `lego-contra
 
 `examples/embedded-product-workbench/dogfood-manifest.json` is the checked real-product dogfood manifest. `scripts/check-real-product-dogfood.rs` validates that the workbench uses only policy-approved green SDK crates, declares product-owned provider/session/tool seams, excludes shell/runtime surfaces, and then emits deterministic dependency-boundary, sanitized-transcript, and BLAKE3 receipt evidence under `target/embedded-sdk-release/product-dogfood/`. The generated transcript is sanitized fixture evidence: it proves the product-style seams and fail-closed paths without live credentials, network access, daemon startup, provider discovery, OAuth stores, or user-local Clankers session state.
 
-Reusable app-owned glue found while extending this dogfood path should become a follow-up OpenSpec before entering green SDK crates; do not silently widen green dependencies from product evidence alone.
+Reusable app-owned glue found while extending this dogfood path should become a follow-up Cairn before entering green SDK crates; do not silently widen green dependencies from product evidence alone.
 
 ## Feature and default policy
 
@@ -145,7 +145,7 @@ Current SDK crates are intended to work with their default features for the mini
 ## Product embedding crate guidance
 
 - **Green**: `clanker-message`, `clankers-engine`, `clankers-engine-host`, `clankers-tool-host`, and `clankers-adapters` are the checked product-embedding crates. `clankers-core` is green only for hosts that want prompt lifecycle reduction before an engine turn.
-- **Yellow**: app-edge crates such as daemon, MCP, ACP, runtime extension services, provider adapters, storage, or plugin boundaries may be composed by a product, but only behind a product-owned integration layer and not as transitive dependencies of generic SDK crates. Product-owned session/message DTOs and storage schemas are yellow app-edge concerns unless a later OpenSpec promotes a reusable storage API after multiple products converge on the same shape.
+- **Yellow**: app-edge crates such as daemon, MCP, ACP, runtime extension services, provider adapters, storage, or plugin boundaries may be composed by a product, but only behind a product-owned integration layer and not as transitive dependencies of generic SDK crates. Product-owned session/message DTOs and storage schemas are yellow app-edge concerns unless a later Cairn promotes a reusable storage API after multiple products converge on the same shape.
 - **Red**: `clankers-agent`, `clankers-controller`, `clankers-provider`, `clanker-router`, `clankers-db`, `clankers-protocol`, `clankers-tui`, prompt/skill bundles, Matrix, iroh/P2P, ratatui, and crossterm are not generic product SDK dependencies.
 
 The minimal embedding path must not require features that pull in daemon, TUI, provider discovery, database, prompt assembly, plugin supervision, built-in tools, Matrix, iroh, ratatui, or crossterm. Any future optional SDK feature must be documented here and validated by the feature/default-policy checker before it is advertised.
@@ -190,7 +190,7 @@ That bundle must prove:
 - executable kit examples cover minimal adapter bricks, tool catalogs, product-owned provider adapter conversion, host-owned session persistence/resume, and one combined product-workbench dogfood recipe that composes provider, tool, and session seams together;
 - real-product dogfood validation checks `examples/embedded-product-workbench/dogfood-manifest.json` before accepting runtime evidence and emits dependency-boundary, sanitized-transcript, and BLAKE3 receipt artifacts under `target/embedded-sdk-release/product-dogfood/`;
 - release-receipt generation records commit/status metadata, verification commands, green/yellow/red boundaries, and BLAKE3 hashes for embedded SDK docs/spec/scripts/examples;
-- example dependency graph excludes Clankers shell/runtime crates and UI/network crates listed in the OpenSpec change;
+- example dependency graph excludes Clankers shell/runtime crates and UI/network crates listed in the Cairn change;
 - feature/default policy matches manifests and a minimal example build;
 - generic SDK crates reject provider/router, daemon/TUI, database, networking, timestamp, shell-generated ID, runtime-handle, provider-shaped request/response, hidden-global-service, and concrete Clankers runtime leakage;
 - default `clankers-agent::Agent` still routes through the reusable host runner and preserves streaming, tool, retry, cancellation, usage, and terminal behavior.

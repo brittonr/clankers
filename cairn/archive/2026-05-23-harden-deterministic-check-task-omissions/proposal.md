@@ -6,10 +6,10 @@ Review metrics still show `omission|tasks|deterministic-check` as the largest re
 
 - Add a project-local review-gate diagnostic for vague deterministic-check tasks.
 - Add sanitized positive and negative fixtures that cover the repeated omission pattern.
-- Update operator guidance and the accepted `openspec-review-gates` spec so future changes know the required task shape.
+- Update operator guidance and the accepted `cairn-review-gates` spec so future changes know the required task shape.
 - Preserve a sanitized metrics snapshot as reviewable evidence for the selected category.
 
 ## Impact
 
-- **Files**: `scripts/check-openspec-review-gates.rs`, `scripts/fixtures/openspec-review-gates/*`, `docs/src/reference/openspec-review-gates.md`, `cairn/specs/openspec-review-gates/spec.md`, and this change package.
+- **Files**: `scripts/check-cairn-review-gates.rs`, `scripts/fixtures/cairn-review-gates/*`, `docs/src/reference/cairn-review-gates.md`, `cairn/specs/cairn-review-gates/spec.md`, and this change package.
 - **Testing**: Run the focused review-gate checker, docs build, Cairn proposal/design/tasks gates, Cairn validation, and whitespace diff checks.

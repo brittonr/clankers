@@ -475,6 +475,8 @@ pub fn normalize_styled_text(text: &str) -> String {
 /// Replaces volatile fields (git status counters, timestamps, etc.)
 /// with stable placeholders so snapshots don't break on unrelated changes.
 const TODO_EMPTY_FIRST_ROW_TEXT: &str = "No items. Use";
+const TODO_EMPTY_NARROW_FIRST_ROW_TEXT: &str = "No items.";
+const TODO_STRUCTURE_MIN_FIRST_ROW_WIDTH: usize = 15;
 const TODO_MESSAGES_TITLE: &str = "┌Messages";
 
 pub fn normalize_screen_text(text: &str) -> String {
@@ -517,7 +519,24 @@ fn normalize_todo_empty_first_row(line: &str) -> String {
         return line.to_string();
     }
 
-    let stable_inner = clip_prefix_to_width(TODO_EMPTY_FIRST_ROW_TEXT, current_inner.chars().count());
+    let separator = &line[close_border..marker_start];
+    let is_structure_separator = separator.starts_with("│ │");
+    let messages_title_width = line[marker_start..].chars().take_while(|ch| !matches!(*ch, '┐' | ' ')).count();
+    let is_narrow_structure_separator = is_structure_separator && messages_title_width <= 40;
+    let mut stable_width = current_inner.chars().count();
+    if is_narrow_structure_separator {
+        stable_width = if stable_width < TODO_EMPTY_NARROW_FIRST_ROW_TEXT.chars().count() {
+            TODO_EMPTY_NARROW_FIRST_ROW_TEXT.chars().count()
+        } else {
+            stable_width.max(TODO_STRUCTURE_MIN_FIRST_ROW_WIDTH)
+        };
+    }
+    let stable_text = if stable_width < TODO_EMPTY_FIRST_ROW_TEXT.chars().count() {
+        TODO_EMPTY_NARROW_FIRST_ROW_TEXT
+    } else {
+        TODO_EMPTY_FIRST_ROW_TEXT
+    };
+    let stable_inner = clip_prefix_to_width(stable_text, stable_width);
     format!("{}{}{}", &line[..inner_start], stable_inner, &line[close_border..])
 }
 
@@ -676,7 +695,9 @@ mod tests {
     const TMUX_WIDE_TODO_ROW_NORMALIZED: &str =
         "│No items. Use     ││┌Messages──────────────────────────────────────┐││No subagents running        │";
     const STRUCTURE_TODO_ROW_WITH_SPACER: &str = " │No items. Useh│ │┌Messages───────────── ┐ │ │No subagents │";
-    const STRUCTURE_TODO_ROW_NORMALIZED: &str = " │No items. Use │ │┌Messages───────────── ┐ │ │No subagents │";
+    const STRUCTURE_TODO_ROW_NORMALIZED: &str = " │No items. Use  │ │┌Messages───────────── ┐ │ │No subagents │";
+    const NARROW_STRUCTURE_TODO_ROW_WITH_SPACER: &str = " │No │ │┌Messages───────────── ┐ │ │No subagents │";
+    const NARROW_STRUCTURE_TODO_ROW_NORMALIZED: &str = " │No items.│ │┌Messages───────────── ┐ │ │No subagents │";
     const NON_EMPTY_TODO_ROW: &str = "│/todo add     ││┌Messages────────────────────────────┐││No subagents running  │";
 
     #[test]
@@ -692,6 +713,14 @@ mod tests {
     #[test]
     fn normalize_todo_empty_first_row_handles_structure_separator_spacing() {
         assert_eq!(normalize_todo_empty_first_row(STRUCTURE_TODO_ROW_WITH_SPACER), STRUCTURE_TODO_ROW_NORMALIZED);
+    }
+
+    #[test]
+    fn normalize_todo_empty_first_row_handles_narrow_structure_separator_spacing() {
+        assert_eq!(
+            normalize_todo_empty_first_row(NARROW_STRUCTURE_TODO_ROW_WITH_SPACER),
+            NARROW_STRUCTURE_TODO_ROW_NORMALIZED
+        );
     }
 
     #[test]

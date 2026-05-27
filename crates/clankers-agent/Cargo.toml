@@ -22,7 +22,6 @@ clankers-runtime = { version = "0.1.0", path = "../clankers-runtime" }
 clankers-artifacts = { version = "0.1.0", path = "../clankers-artifacts" }
 clanker-router = { workspace = true }
 clankers-skills = { version = "0.1.0", path = "../clankers-skills" }
-openspec = { workspace = true, optional = true }
 clanker-tui-types = { workspace = true }
 clankers-util = { version = "0.1.0", path = "../clankers-util" }
 
@@ -39,8 +38,7 @@ tokio-util = { version = "0.7", features = ["codec"] }
 tracing = { workspace = true }
 
 [features]
-default = ["openspec"]
-openspec = ["dep:openspec"]
+default = []
 
 [lints]
 workspace = true

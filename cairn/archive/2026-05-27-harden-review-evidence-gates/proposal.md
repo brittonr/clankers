@@ -13,6 +13,6 @@ These are expensive late-stage review WARNs because authors believe the change i
 
 ## Impact
 
-- **Files**: `scripts/check-openspec-review-gates.rs`, `scripts/fixtures/openspec-review-gates/*`, `docs/src/reference/openspec-review-gates.md`, `cairn/specs/openspec-review-gates/spec.md`, and this change package.
+- **Files**: `scripts/check-cairn-review-gates.rs`, `scripts/fixtures/cairn-review-gates/*`, `docs/src/reference/cairn-review-gates.md`, `cairn/specs/cairn-review-gates/spec.md`, and this change package.
 - **Testing**: Run the focused review-gate checker, docs build, Cairn proposal/design/tasks gates, Cairn validation, and whitespace diff checks.
 - **Non-goals**: no live provider probes, no raw private transcripts, no hidden prompts, no credentials, no generic Cairn-core gate change in this slice.

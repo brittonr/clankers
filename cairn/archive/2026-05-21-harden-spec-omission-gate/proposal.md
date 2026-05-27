@@ -8,10 +8,10 @@ Representative repeated omissions include omitted-provider Anthropic defaults, m
 
 ## What Changes
 
-- Add deterministic spec-stage omission categories to `scripts/check-openspec-review-gates.rs`.
+- Add deterministic spec-stage omission categories to `scripts/check-cairn-review-gates.rs`.
 - Add sanitized positive and negative fixtures for proposal/design promises that are or are not encoded in `spec.md`.
 - Document spec-stage completeness guidance and diagnostic codes.
-- Update the canonical `openspec-review-gates` Cairn spec through sync/archive.
+- Update the canonical `cairn-review-gates` Cairn spec through sync/archive.
 
 ## Non-goals
 

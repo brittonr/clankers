@@ -34,10 +34,10 @@ fn main() {
     require(&docs, "hidden-menu", "documented hide-rule negative path");
 
     let spec = fs::read_to_string("cairn/specs/tui-action-menu-composition/spec.md")
-        .expect("read promoted OpenSpec");
-    require(&spec, "tui-action-menu-kit", "promoted OpenSpec requirement");
-    require(&spec, "conflict-resolution", "OpenSpec conflict scenario");
-    require(&spec, "hidden-menu", "OpenSpec hidden-menu scenario");
+        .expect("read promoted Cairn");
+    require(&spec, "tui-action-menu-kit", "promoted Cairn requirement");
+    require(&spec, "conflict-resolution", "Cairn conflict scenario");
+    require(&spec, "hidden-menu", "Cairn hidden-menu scenario");
 }
 
 fn require(haystack: &str, needle: &str, label: &str) {

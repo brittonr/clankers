@@ -282,7 +282,7 @@
             touch $out
           '';
 
-          openspec-review-gates = pkgs.runCommand "openspec-review-gates" {
+          cairn-review-gates = pkgs.runCommand "cairn-review-gates" {
             nativeBuildInputs = [ rustToolchain pkgs.clang pkgs.mold ];
             src = ./.;
           } ''
@@ -292,7 +292,7 @@
             export HOME="$TMPDIR/home"
             export CARGO_HOME="$TMPDIR/cargo-home"
             mkdir -p "$HOME" "$CARGO_HOME"
-            cargo -q -Zscript scripts/check-openspec-review-gates.rs
+            cargo -q -Zscript scripts/check-cairn-review-gates.rs
             touch $out
           '';
 
@@ -766,6 +766,7 @@
             pkgs.rust-analyzer
             unit2nix.packages.${system}.unit2nix
             pkgs.tmux
+            pkgs.python3
             pkgs.cargo-insta
             pkgs.mdbook
             pkgs.sunxi-tools

@@ -12,12 +12,20 @@
 //! Tests using this harness are skipped when tmux is not installed.
 
 use std::process::Command;
+use std::process::Stdio;
+use std::sync::Mutex;
+use std::sync::MutexGuard;
 use std::sync::atomic::AtomicUsize;
 use std::sync::atomic::Ordering;
 use std::time::Duration;
 use std::time::Instant;
 
 static SESSION_COUNTER: AtomicUsize = AtomicUsize::new(0);
+static TMUX_LOCK: Mutex<()> = Mutex::new(());
+
+fn lock_tmux_server() -> MutexGuard<'static, ()> {
+    TMUX_LOCK.lock().unwrap_or_else(|poisoned| poisoned.into_inner())
+}
 
 /// Check whether tmux is available on PATH.
 pub fn tmux_available() -> bool {
@@ -40,6 +48,7 @@ pub struct TmuxTestHarness {
     session: String,
     rows: u16,
     cols: u16,
+    _tmux_lock: MutexGuard<'static, ()>,
 }
 
 impl TmuxTestHarness {
@@ -51,6 +60,13 @@ impl TmuxTestHarness {
         if !tmux_available() {
             return None;
         }
+
+        // tmux has one process-global server. Running several harness sessions
+        // concurrently makes teardown of one session race capture/startup of
+        // another, yielding intermittent "can't find pane/session" failures.
+        // Keep the real tmux tests enabled, but serialize their use of the
+        // shared server for deterministic assertions.
+        let tmux_lock = lock_tmux_server();
 
         let id = SESSION_COUNTER.fetch_add(1, Ordering::SeqCst);
         let session = format!("clankers-test-{}-{}", std::process::id(), id);
@@ -78,6 +94,8 @@ impl TmuxTestHarness {
                 binary,
                 "--no-zellij",
                 "--no-daemon",
+                "--model",
+                "claude-opus-4-6",
             ])
             .current_dir(cwd)
             .status()
@@ -85,7 +103,12 @@ impl TmuxTestHarness {
 
         assert!(status.success(), "tmux new-session failed: {status}");
 
-        let harness = Self { session, rows, cols };
+        let harness = Self {
+            session,
+            rows,
+            cols,
+            _tmux_lock: tmux_lock,
+        };
 
         // Wait for the TUI to start rendering
         harness.wait_for_text("NORMAL", Duration::from_secs(10));
@@ -135,7 +158,13 @@ impl TmuxTestHarness {
             ])
             .output()
             .expect("tmux capture-pane failed");
-        assert!(output.status.success());
+        assert!(
+            output.status.success(),
+            "tmux capture-pane failed for {}: status={} stderr={}",
+            self.session,
+            output.status,
+            String::from_utf8_lossy(&output.stderr)
+        );
         String::from_utf8_lossy(&output.stdout).to_string()
     }
 
@@ -151,7 +180,13 @@ impl TmuxTestHarness {
             ])
             .output()
             .expect("tmux capture-pane -e failed");
-        assert!(output.status.success());
+        assert!(
+            output.status.success(),
+            "tmux capture-pane -e failed for {}: status={} stderr={}",
+            self.session,
+            output.status,
+            String::from_utf8_lossy(&output.stderr)
+        );
         String::from_utf8_lossy(&output.stdout).to_string()
     }
 
@@ -230,9 +265,22 @@ impl TmuxTestHarness {
 
     /// Quit the TUI cleanly.
     pub fn quit(&self) {
-        self.send_key(TmuxKey::Escape);
+        // Cleanup is best-effort: some tests exercise quit paths directly, and
+        // tmux may remove the session before shared teardown runs under the
+        // full concurrent TUI suite. Interaction helpers still assert while the
+        // test is driving behavior; this method should not fail a completed
+        // assertion just because the process already exited.
+        let _ = Command::new("tmux")
+            .args(["send-keys", "-t", &self.session, TmuxKey::Escape.as_tmux_str()])
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .status();
         self.settle(Duration::from_millis(100));
-        self.type_str("q");
+        let _ = Command::new("tmux")
+            .args(["send-keys", "-t", &self.session, "-l", "q"])
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .status();
         self.settle(Duration::from_millis(300));
     }
 
@@ -251,7 +299,11 @@ impl TmuxTestHarness {
 impl Drop for TmuxTestHarness {
     fn drop(&mut self) {
         // Kill the session on cleanup — ignore errors (may already be dead)
-        let _ = Command::new("tmux").args(["kill-session", "-t", &self.session]).status();
+        let _ = Command::new("tmux")
+            .args(["kill-session", "-t", &self.session])
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .status();
     }
 }
 

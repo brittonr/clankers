@@ -4,7 +4,7 @@
 //! provenance/replay code: stable artifact kinds, canonical envelope versions,
 //! redaction classes, validated hash identifiers, and deterministic canonical
 //! envelopes. Immutable storage and receipt plumbing are layered on top of these
-//! types by later OpenSpec tasks.
+//! types by later Cairn tasks.
 
 use std::fmt;
 use std::fs;
@@ -1159,7 +1159,7 @@ mod tests {
             (
                 ArtifactKind::SkillReference,
                 RedactionClass::MetadataOnly,
-                json!({"name":"openspec","version":"1","updated_at":"ignored"}),
+                json!({"name":"cairn","version":"1","updated_at":"ignored"}),
                 "b3:788a07609fb4d550e1309c211bf4af2a79c438127acc5b7fa0e7f2bf05a82ad7",
             ),
             (

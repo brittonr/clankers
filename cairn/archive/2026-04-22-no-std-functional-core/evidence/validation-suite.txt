@@ -15,7 +15,7 @@ Created-At: 2026-04-21T23:55:30Z
 
 ## Machine-produced execution artifact
 
-- Raw log: `openspec/changes/no-std-functional-core/evidence/validation-suite.task-43.log`
+- Raw log: `cairn/changes/no-std-functional-core/evidence/validation-suite.task-43.log`
 - Source: `pueue` task `43` (`label=verify-no-std-functional-core-post-review`)
 - Command: `CC=gcc CXX=g++ CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_LINKER=gcc RUSTFLAGS='-C link-arg=-fuse-ld=bfd' ./scripts/verify-no-std-functional-core.sh`
 - Start: `2026-04-21T19:53:58-04:00`

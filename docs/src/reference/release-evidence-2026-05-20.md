@@ -15,7 +15,7 @@ This bundle indexes the durable evidence for the `internal-readiness-2026-05-20`
 
 - Clankers branch state: `## main...origin/main`
 - Clankers worktree state before bundle capture: clean
-- Active OpenSpec changes: none
+- Active Cairn changes: none
 - Current readiness scope: internal/trusted dogfood and embedded SDK readiness only
 
 ## Deterministic harness evidence
@@ -27,7 +27,7 @@ Tagged-checkpoint harness evidence:
 - Full harness run: `20260520T161137Z-1226432`
 - Full harness status: `6` passed, `0` failed, `0` skipped
 
-Post-tag code-state follow-up harness evidence after the OpenSpec, docs, and flake-readiness commits:
+Post-tag code-state follow-up harness evidence after the Cairn, docs, and flake-readiness commits:
 
 - Verified code commit: `c74241d6a3fdbe80f3b6aa3e1425fdbbb448f362`
 - Evidence-recording commit: `97d3a9a282790fc6775426f632bfc6606337e1d1`
@@ -57,19 +57,19 @@ Harness steps that passed in both full runs:
 - Required Rust-owned rail: `scripts/check-embedded-agent-sdk.rs`
 - Routine Nix check: `checks.<system>.embedded-sdk-release-receipt`
 
-## Canonical OpenSpec evidence
+## Canonical Cairn evidence
 
 The canonical specs below validated strictly during evidence capture:
 
 - `embedded-composition-kits`: valid
 - `durable-process-jobs`: valid
-- `openspec-review-gates`: valid
+- `cairn-review-gates`: valid
 
-Post-bundle follow-up normalized legacy spec formatting and made the repo-wide strict OpenSpec gate green:
+Post-bundle follow-up normalized legacy spec formatting and made the repo-wide strict Cairn gate green:
 
-- Command: `openspec validate --all --strict --json`
+- Command: `cairn validate --all --strict --json`
 - Result: `83` items, `0` invalid
-- Evidence file: `/tmp/clankers-openspec-all-green.json`
+- Evidence file: `/tmp/clankers-cairn-all-green.json`
 
 ## External-product dogfood evidence
 

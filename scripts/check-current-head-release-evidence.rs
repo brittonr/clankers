@@ -76,7 +76,6 @@ struct RepositoryState {
     describe: String,
     tracked_dirty: bool,
     active_cairn_changes: Vec<String>,
-    active_openspec_changes: Vec<String>,
 }
 
 #[derive(Clone, Serialize)]
@@ -197,7 +196,11 @@ fn scan_receipts(result_dir: &Path, repository: &RepositoryState) -> Result<Rece
     })
 }
 
-fn parse_receipt(result_dir: &Path, results_path: &Path, repository: &RepositoryState) -> Result<SelectedReceipt, String> {
+fn parse_receipt(
+    result_dir: &Path,
+    results_path: &Path,
+    repository: &RepositoryState,
+) -> Result<SelectedReceipt, String> {
     let text = fs::read_to_string(results_path).map_err(|error| format!("unreadable JSON: {error}"))?;
     let json: Value = serde_json::from_str(&text).map_err(|error| format!("invalid JSON: {error}"))?;
     let mode = required_str(&json, "mode")?.to_string();
@@ -258,7 +261,8 @@ fn receipt_payload_status(json: &Value, repository: &RepositoryState) -> Payload
     let Some(payload) = json.get("payload") else {
         return PayloadStatus {
             verified: false,
-            note: "receipt selected from local harness output; payload commit unavailable in legacy harness schema".to_string(),
+            note: "receipt selected from local harness output; payload commit unavailable in legacy harness schema"
+                .to_string(),
         };
     };
     let Some(commit) = payload.get("commit").and_then(Value::as_str) else {
@@ -315,7 +319,6 @@ fn collect_repository_state() -> Result<RepositoryState, String> {
         describe,
         tracked_dirty: !status.trim().is_empty(),
         active_cairn_changes: active_dirs(Path::new("cairn/changes"))?,
-        active_openspec_changes: active_dirs(Path::new("openspec/changes"))?,
     })
 }
 
@@ -388,10 +391,6 @@ fn render_markdown(index: &IndexReceipt) -> String {
     }
     out.push_str("\n## Lifecycle\n\n");
     out.push_str(&format!("- active_cairn_changes: `{}`\n", join_or_none(&index.repository.active_cairn_changes)));
-    out.push_str(&format!(
-        "- active_openspec_changes: `{}`\n",
-        join_or_none(&index.repository.active_openspec_changes)
-    ));
     out.push_str("\n## Selected receipts\n\n");
     if index.selected_receipts.is_empty() {
         out.push_str("- none\n");

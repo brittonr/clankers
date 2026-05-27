@@ -241,10 +241,9 @@
         "clankers-tui",
         "clankers-ucan",
         "clankers-util",
-        "clankers-zellij",
-        "openspec"
+        "clankers-zellij"
       ],
-      "internal_dependency_count": 30,
+      "internal_dependency_count": 29,
       "owner": "product-shell wiring only; reusable behavior must move behind workspace brick APIs",
       "package": "clankers"
     },

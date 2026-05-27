@@ -1536,7 +1536,6 @@ dependencies = [
  "madsim",
  "mime",
  "open",
- "openspec",
  "parking_lot",
  "portable-pty",
  "pretty_assertions",
@@ -1610,7 +1609,6 @@ dependencies = [
  "clankers-util",
  "dirs 6.0.0",
  "futures",
- "openspec",
  "parking_lot",
  "regex",
  "serde",
@@ -7334,17 +7332,6 @@ dependencies = [
  "is-wsl",
  "libc",
  "pathdiff",
-]
-
-[[package]]
-name = "openspec"
-version = "0.1.0"
-dependencies = [
- "chrono",
- "petgraph 0.7.1",
- "serde",
- "serde_yaml",
- "tempfile",
 ]
 
 [[package]]

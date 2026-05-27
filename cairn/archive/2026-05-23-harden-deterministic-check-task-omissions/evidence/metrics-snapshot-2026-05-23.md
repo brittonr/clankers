@@ -4,7 +4,7 @@
 - Date: 2026-05-23
 - Selected category: `omission|tasks|deterministic-check`
 - Count: 151
-- Sources: `openspec-gate=151`
+- Sources: `cairn-gate=151`
 - Stages: `tasks=151`
 
 ## Safe representative examples

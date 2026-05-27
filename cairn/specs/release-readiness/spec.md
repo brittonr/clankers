@@ -116,7 +116,7 @@ The evidence helper MUST gather current Git state, lifecycle state, and local ha
 #### Scenario: Generator records repository state [r[automated-current-head-release-evidence-index.generator.repo-state]]
 - GIVEN the helper runs in a Clankers checkout
 - WHEN it writes an index
-- THEN the index records branch, HEAD, upstream status, tag/describe distance, dirty status, and active Cairn/OpenSpec change directories
+- THEN the index records branch, HEAD, upstream status, tag/describe distance, dirty status, and active Cairn/Cairn change directories
 
 #### Scenario: Generator selects latest valid receipt per mode [r[automated-current-head-release-evidence-index.generator.receipt-selection]]
 - GIVEN multiple harness run receipts exist under the result directory

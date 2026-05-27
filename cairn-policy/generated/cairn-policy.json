@@ -197,38 +197,6 @@
       },
       {
         "args": [
-          "migrate",
-          "openspec",
-          "--root",
-          "<root>"
-        ],
-        "command_kind": "migrate_dry_run",
-        "comparison_modes": [
-          "repeated",
-          "cross_root"
-        ],
-        "display_only_paths": [
-          "actions.source",
-          "actions.destination",
-          "root"
-        ],
-        "expected_mutability": "read_only_or_dry_run",
-        "fixture_root": "fixtures/basic",
-        "hash_fields": [
-          "source_manifest_hash",
-          "destination_manifest_hash",
-          "manifest_hash",
-          "policy_hash",
-          "receipt_hash"
-        ],
-        "id": "migrate_dry_run",
-        "normalization_rules": [
-          "portable_root_paths",
-          "canonical_json"
-        ]
-      },
-      {
-        "args": [
           "release-readiness",
           "--root",
           "<root>"
@@ -464,7 +432,6 @@
           "gate_tasks",
           "mcp_describe",
           "mcp_status",
-          "migrate_dry_run",
           "release_readiness",
           "status",
           "sync_dry_run",
@@ -589,19 +556,6 @@
         "full"
       ],
       "surface_kind": "mcp"
-    },
-    {
-      "command": "migrate openspec --root <root>",
-      "determinism_claim": "migration_dry_run_stability",
-      "id": "migrate_dry_run",
-      "receipt_command": "migrate",
-      "required_replay_cases": [
-        "migrate_dry_run"
-      ],
-      "required_replay_groups": [
-        "full"
-      ],
-      "surface_kind": "cli"
     },
     {
       "command": "release-readiness --root <root>",
@@ -794,11 +748,11 @@
     "archive": {
       "require_passing_gate": true
     },
-    "migrate": {
-      "require_manifest": true
-    },
     "sync": {
       "require_passing_gate": true
+    },
+    "migrate": {
+      "require_manifest": true
     }
   },
   "name": "cairn-default",
@@ -1711,7 +1665,7 @@
     "sections": [
       "Findings",
       "Required Fixes",
-      "OpenSpec Check",
+      "Cairn Check",
       "Gaps",
       "Next Steps"
     ],
@@ -1758,7 +1712,7 @@
           ]
         }
       ],
-      "description": "OpenSpec proposal/spec/design/tasks lifecycle",
+      "description": "Cairn proposal/spec/design/tasks lifecycle",
       "id": "spec-driven"
     }
   ],

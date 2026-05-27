@@ -33,8 +33,9 @@ data/
 !CLAUDE.md
 !TODO.md
 !CONTRIBUTING.md
-!openspec/**/*.md
+!cairn/**/*.md
 !docs/**/*.md
+!scripts/fixtures/**/*.md
 !bench/results/*.md
 
 # TUI test captures (generated PNG screenshots, ANSI files)

@@ -43,5 +43,5 @@
     "plugin supervision",
     "built-in tool bundles"
   ],
-  "follow_up_policy": "Reusable app-owned glue discovered by this dogfood must become a follow-up OpenSpec before entering green SDK crates."
+  "follow_up_policy": "Reusable app-owned glue discovered by this dogfood must become a follow-up Cairn before entering green SDK crates."
 }

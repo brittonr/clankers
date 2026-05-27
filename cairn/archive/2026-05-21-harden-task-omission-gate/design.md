@@ -2,7 +2,7 @@
 
 ## Scope
 
-The implementation extends `scripts/check-openspec-review-gates.rs`, its sanitized fixtures in `scripts/fixtures/openspec-review-gates/`, and `docs/src/reference/openspec-review-gates.md`.
+The implementation extends `scripts/check-cairn-review-gates.rs`, its sanitized fixtures in `scripts/fixtures/cairn-review-gates/`, and `docs/src/reference/cairn-review-gates.md`.
 
 ## Decisions
 

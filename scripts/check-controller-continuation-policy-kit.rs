@@ -63,7 +63,7 @@ fn main() {
     require(
         &spec,
         "Controller continuation kit proves post-prompt state transitions",
-        "canonical OpenSpec requirement missing",
+        "canonical Cairn requirement missing",
     );
     require(
         &spec,

@@ -6,7 +6,7 @@
 - Records scanned: 50 of 661
 - Selected category: `omission|spec|prompt`
 - Count: 8
-- Sources: `openspec-gate=8`
+- Sources: `cairn-gate=8`
 - Stages: `proposal=8`
 
 ## Safe representative examples

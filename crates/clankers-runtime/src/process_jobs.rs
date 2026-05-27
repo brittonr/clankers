@@ -2019,7 +2019,7 @@ pub struct ProcessJobBackendCapabilities {
     pub unavailable_reason: Option<String>,
 }
 
-/// Short alias used by OpenSpec and service-layer callers for the process/job backend matrix.
+/// Short alias used by Cairn and service-layer callers for the process/job backend matrix.
 pub type BackendCapabilities = ProcessJobBackendCapabilities;
 
 impl ProcessJobBackendCapabilities {

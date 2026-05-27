@@ -18,8 +18,6 @@ use clankers_config::paths::ClankersPaths;
 use clankers_config::paths::ProjectPaths;
 use clankers_prompts as prompts;
 use clankers_skills as skills;
-#[cfg(feature = "openspec")]
-use openspec::SpecEngine;
 
 /// A context file with its source path and content
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -129,7 +127,7 @@ fn format_agents_section(agents_files: &[ContextFile]) -> String {
 /// 3. SOUL.md / personality preset sections (if enabled and local)
 /// 4. AGENTS.md / CLAUDE.md files (labeled with path)
 /// 5. Context files (.clankers/context.md, .clankers/context/*.md)
-/// 6. Spec context (from openspec/ if present)
+/// 6. Spec context (from cairn/ if present)
 /// 7. Skills listing
 /// 8. Settings prefix/suffix
 pub fn assemble_system_prompt(
@@ -573,20 +571,62 @@ fn load_append_system_md(global_config_dir: &Path, project_config_dir: &Path) ->
     load_config_file(global_config_dir, project_config_dir, "APPEND_SYSTEM.md")
 }
 
-/// Load spec context from openspec/ directory
-#[cfg(feature = "openspec")]
+/// Load spec context from the Cairn specification directory.
 fn load_spec_context(project_root: &Path) -> String {
-    let engine = SpecEngine::new(project_root);
-    if engine.is_initialized() {
-        engine.specs_for_context()
-    } else {
-        String::new()
+    let specs_dir = project_root.join("cairn").join("specs");
+    let spec_paths = cairn_spec_paths(&specs_dir);
+    if spec_paths.is_empty() {
+        return String::new();
     }
+
+    let mut context = String::from("## Project Specifications\n\n");
+    for spec_path in spec_paths {
+        let Ok(spec) = std::fs::read_to_string(&spec_path) else {
+            continue;
+        };
+        let domain = spec_path.parent().and_then(Path::file_name).and_then(|name| name.to_str()).unwrap_or("unknown");
+        writeln!(&mut context, "### {} ({})", domain, spec_path.display()).ok();
+        if let Some(purpose) = markdown_section(&spec, "## Purpose") {
+            writeln!(&mut context, "{}", purpose.trim()).ok();
+        }
+        for requirement in requirement_headings(&spec) {
+            writeln!(&mut context, "- **{}**", requirement).ok();
+        }
+        context.push('\n');
+    }
+    context
 }
 
-#[cfg(not(feature = "openspec"))]
-fn load_spec_context(_project_root: &Path) -> String {
-    String::new()
+fn cairn_spec_paths(specs_dir: &Path) -> Vec<PathBuf> {
+    if !specs_dir.is_dir() {
+        return Vec::new();
+    }
+
+    let mut paths: Vec<PathBuf> = std::fs::read_dir(specs_dir)
+        .into_iter()
+        .flatten()
+        .flatten()
+        .map(|entry| entry.path().join("spec.md"))
+        .filter(|path| path.is_file())
+        .collect();
+    paths.sort();
+    paths
+}
+
+fn markdown_section(content: &str, heading: &str) -> Option<String> {
+    let start = content.find(heading)?;
+    let after_heading = &content[start + heading.len()..];
+    let end = after_heading.find("\n## ").unwrap_or(after_heading.len());
+    Some(after_heading[..end].trim().to_owned())
+}
+
+fn requirement_headings(content: &str) -> Vec<String> {
+    content
+        .lines()
+        .filter_map(|line| line.trim().strip_prefix("### Requirement:").map(str::trim))
+        .filter(|line| !line.is_empty())
+        .map(ToOwned::to_owned)
+        .collect()
 }
 
 /// Feature flags controlling which system prompt sections are included.
@@ -848,11 +888,11 @@ mod tests {
     #[test]
     fn test_assemble_with_spec_context() {
         let mut resources = make_test_resources();
-        resources.spec_context = "Spec context from openspec/".to_string();
+        resources.spec_context = "Spec context from cairn/".to_string();
 
         let result = assemble_system_prompt("Base", &resources, None, None);
         assert!(result.contains("Base"));
-        assert!(result.contains("Spec context from openspec"));
+        assert!(result.contains("Spec context from cairn"));
     }
 
     #[test]

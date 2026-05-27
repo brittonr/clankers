@@ -66,8 +66,6 @@ clanker-plugin-sdk = { path = "crates/clanker-plugin-sdk" }
 clanker-router = { path = "crates/clanker-router" }
 clanker-scheduler = { git = "https://github.com/brittonr/clanker-scheduler" }
 clanker-tui-types = { path = "crates/clanker-tui-types" }
-# Vendored snapshot; see vendor/openspec/VENDORED_FROM for source provenance.
-openspec = { path = "vendor/openspec" }
 graggle = { git = "https://github.com/brittonr/graggle" }
 rat-branches = { path = "../rats/subwayrat/crates/rat-branches" }
 rat-keymap = { path = "../rats/subwayrat/crates/rat-keymap" }
@@ -119,7 +117,6 @@ clankers-skills = { version = "0.1.0", path = "crates/clankers-skills" }
 clankers-protocol = { version = "0.1.0", path = "crates/clankers-protocol" }
 clanker-actor = { workspace = true }
 clankers-controller = { version = "0.1.0", path = "crates/clankers-controller" }
-openspec = { workspace = true, optional = true }
 clankers-tts = { version = "0.1.0", path = "crates/clankers-tts" }
 clankers-tui = { version = "0.1.0", path = "crates/clankers-tui" }
 clankers-zellij = { version = "0.1.0", path = "crates/clankers-zellij", optional = true }
@@ -198,9 +195,8 @@ image = "0.25.10"
 workspace = true
 
 [features]
-default = ["tui-validate", "openspec", "zellij-share"]
+default = ["tui-validate", "zellij-share"]
 tui-validate = ["dep:portable-pty", "dep:vt100"]
-openspec = ["dep:openspec"]
 zellij-share = ["dep:clankers-zellij"]
 simulation = ["dep:madsim"]
 property-testing = ["dep:bolero", "dep:bolero-generator", "dep:proptest"]
@@ -265,7 +261,6 @@ type_complexity = { level = "allow", priority = 1 }
 [workspace.metadata.tigerstyle]
 default_scope = ["--workspace"]
 cargo_check_args = []
-
 
 [workspace.metadata.dylint]
 libraries = [

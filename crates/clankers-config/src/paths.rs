@@ -64,7 +64,7 @@ pub struct ProjectPaths {
     /// Project context files: .clankers/context.md, .clankers/context/
     pub context_file: PathBuf,
     pub context_dir: PathBuf,
-    /// OpenSpec directory: openspec/
+    /// Cairn directory: cairn/
     pub spec_dir: PathBuf,
 }
 
@@ -160,7 +160,7 @@ impl ProjectPaths {
             prompts_dir: config_dir.join("prompts"),
             context_file: config_dir.join("context.md"),
             context_dir: config_dir.join("context"),
-            spec_dir: root.join("openspec"),
+            spec_dir: root.join("cairn"),
             config_dir,
             root,
         }

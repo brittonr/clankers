@@ -8,10 +8,10 @@ Review metrics show repeated stage-gate omissions dominating the backlog: tasks 
 
 - Add a Clankers-local review metrics regression rail for the highest-count omission categories.
 - Preserve a sanitized metrics snapshot as planning evidence without raw prompts, credentials, or private transcript data.
-- Extend repo-owned checker fixtures/docs before changing generic Cairn/OpenSpec core.
+- Extend repo-owned checker fixtures/docs before changing generic Cairn/Cairn core.
 
 ## Non-Goals
 
-- No generic Cairn/OpenSpec gate rewrite in this change.
+- No generic Cairn/Cairn gate rewrite in this change.
 - No raw review transcript, secret, credential, or provider payload publication.
 - No auto-fixing active changes without explicit later drain work.

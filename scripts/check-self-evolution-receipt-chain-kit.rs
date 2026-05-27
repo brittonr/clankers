@@ -79,7 +79,7 @@ fn main() {
     require(
         &spec,
         "Self-evolution receipt chain kit proves gated artifact promotion",
-        "canonical OpenSpec requirement missing",
+        "canonical Cairn requirement missing",
     );
     require(
         &spec,
