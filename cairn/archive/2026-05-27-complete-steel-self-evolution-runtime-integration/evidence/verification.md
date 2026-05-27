@@ -47,7 +47,7 @@ Result excerpt:
 
 ```text
 Checking clankers-agent v0.1.0 (/home/brittonr/git/clankers/crates/clankers-agent)
-Finished `dev` profile [optimized + debuginfo] target(s) in 1.65s
+Finished `dev` profile [optimized + debuginfo] target(s) in 1.74s
 ```
 
 This compiles the turn-path integration that calls `load_repo_evolution_pack(...)` from normal and orchestrated turn planning paths.
@@ -63,11 +63,12 @@ TMPDIR=/home/brittonr/.cargo-target/tmp RUSTC_WRAPPER= cargo test -p clankers-ru
 Result excerpt:
 
 ```text
-running 4 tests
+running 5 tests
+test steel_orchestration_mutation::tests::denied_receipts_redact_unsafe_content ... ok
 test steel_orchestration_mutation::tests::valid_orchestration_patch_stages_and_promotes_after_gates ... ok
 test steel_orchestration_mutation::tests::failed_gate_blocks_activation_after_isolated_stage ... ok
 test steel_orchestration_mutation::tests::rollback_requires_current_and_backup_hash_match ... ok
-test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 153 filtered out; finished in 0.03s
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 153 filtered out; finished in 0.14s
 ```
 
 Command:
@@ -82,7 +83,7 @@ Result:
 steel orchestration-pack mutation receipt written to target/steel-orchestration-pack-mutation/receipt.json
 ```
 
-The checker uses `stage_orchestration_patch_to_directory(...)`, `promote_staged_orchestration_pack_to_directory(...)`, and `rollback_orchestration_pack_to_directory(...)`. It proves typed payloads write only below an isolated staging root after preflight validation, live promotion copies staged files only after hash guards, and rollback restores backup files only after current/backup hash guards.
+The checker uses `stage_orchestration_patch_to_directory(...)`, `promote_staged_orchestration_pack_to_directory(...)`, and `rollback_orchestration_pack_to_directory(...)`. It proves typed payloads write only below an isolated staging root after preflight validation, live promotion copies staged files only after hash guards, rollback restores backup files only after current/backup hash guards, raw write attempts fail before side effects, and unsafe receipt content is redacted.
 
 ### Docs, Cairn, diff rails
 
@@ -98,12 +99,12 @@ Result excerpt:
 INFO HTML book written to `/home/brittonr/git/clankers/docs/book`
 {
   "change_issues": [],
-  "changes": 1,
+  "changes": 0,
   "issues": [],
   "layout": "cairn",
   "policy": "cairn-default",
   "spec_issues": [],
-  "specs_validated": 108,
+  "specs_validated": 106,
   "valid": true
 }
 ```

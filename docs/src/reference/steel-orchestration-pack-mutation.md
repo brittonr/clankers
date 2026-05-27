@@ -26,7 +26,7 @@ Steel may update scripts, gate selection, and repo-local policy that stays withi
 - disabling required gates for its own mutation
 - Rust source capability changes
 
-Those requests are denied as authority-kernel changes and must become a human/oracle checkpoint or ordinary coding-agent task.
+Raw write requests such as `raw_write:...`, `write_file:...`, or `fs.write:...` are denied before any side effect and recorded only as the safe authority class `raw_write`. Other authority-kernel changes are denied and must become a human/oracle checkpoint or ordinary coding-agent task.
 
 ## Metaprogramming
 
@@ -40,7 +40,7 @@ Steel macros and DSL expansion are allowed for orchestration planning, but Rust 
 
 ## Receipts
 
-Receipts include old/new pack hashes, patch hash, safe target metadata, policy/script hashes where available, selected gates, gate result hashes, activation decision, rollback reference, issue code, and receipt hash. They omit raw prompts, credentials, compact UCAN tokens, provider payloads, secret paths, unbounded patch bodies, and private transcript material.
+Receipts include old/new pack hashes, patch hash, safe target metadata, policy/script hashes where available, selected gates, gate result hashes, activation decision, rollback reference, issue code, and receipt hash. Denied receipts redact malformed patch hashes, unsafe target paths, and raw authority-change payloads to bounded classes. They omit raw prompts, credentials, compact UCAN tokens, provider payloads, secret paths, unbounded patch bodies, and private transcript material.
 
 ## Verification
 
@@ -50,4 +50,4 @@ Run:
 ./scripts/check-steel-orchestration-pack-mutation.rs
 ```
 
-The checker covers valid update, path escape, stale before hash, authority widening, required gate removal, failed validation, malformed schema, malformed patch hash, stale rollback, and guarded rollback fixtures. It writes `target/steel-orchestration-pack-mutation/receipt.json`.
+The checker covers valid update, path escape, stale before hash, raw write attempt, authority widening, required gate removal, failed validation, malformed schema, malformed patch hash, unsafe receipt content, stale rollback, and guarded rollback fixtures. It writes `target/steel-orchestration-pack-mutation/receipt.json`.

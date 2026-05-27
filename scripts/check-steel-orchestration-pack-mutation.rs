@@ -27,6 +27,8 @@ const PATCH_BYTES: &[u8] = b"patch";
 const REQUIRED_VALIDATE_GATE: &str = "steel-pack-validate";
 const REQUIRED_SMOKE_GATE: &str = "steel-pack-smoke";
 const TARGET_PATH: &str = ".clankers/steel/scripts/plan-evolution.scm";
+const UNSAFE_SECRET_TOKEN: &str = "sk-live-secret-token";
+const UNSAFE_SECRET_PATH: &str = "/home/operator/.ssh/id_rsa";
 
 fn main() -> ExitCode {
     match run() {
@@ -70,6 +72,10 @@ fn run() -> Result<PathBuf, String> {
             denied(stale_hash_proposal()) == SteelOrchestrationMutationReason::StalePackHash,
         ),
         (
+            "raw-write-attempt",
+            denied(raw_write_attempt_proposal()) == SteelOrchestrationMutationReason::RawHostWriteDenied,
+        ),
+        (
             "authority-widening",
             denied(authority_change_proposal()) == SteelOrchestrationMutationReason::AuthorityKernelChange,
         ),
@@ -89,6 +95,7 @@ fn run() -> Result<PathBuf, String> {
             "malformed-patch-hash",
             denied(malformed_patch_hash_proposal()) == SteelOrchestrationMutationReason::MalformedPatchHash,
         ),
+        ("unsafe-receipt-content", unsafe_receipt_content_redacted()),
         (
             "stale-rollback",
             current_changed.reason_code == SteelOrchestrationMutationReason::CurrentPackChanged,
@@ -113,7 +120,9 @@ fn run() -> Result<PathBuf, String> {
             "typed-orchestration-patch-schema",
             "path-root-validation",
             "stale-before-hash-denial",
+            "raw-write-attempt-denial",
             "authority-kernel-checkpoint-denial",
+            "unsafe-receipt-redaction",
             "required-gate-preservation",
             "isolated-stage-before-promotion",
             "hash-guarded-live-promotion",
@@ -162,6 +171,12 @@ fn path_escape_proposal() -> SteelOrchestrationPatchProposal {
 fn stale_hash_proposal() -> SteelOrchestrationPatchProposal {
     let mut proposal = proposal();
     proposal.expected_pack_hash = ArtifactHash::digest(b"stale").prefixed();
+    proposal
+}
+
+fn raw_write_attempt_proposal() -> SteelOrchestrationPatchProposal {
+    let mut proposal = proposal();
+    proposal.authority_changes = vec![format!("raw_write:{UNSAFE_SECRET_PATH}")];
     proposal
 }
 
@@ -237,6 +252,26 @@ fn failed_gate_receipt() -> SteelOrchestrationMutationReceipt {
     let stage_dir = Path::new(OUT_DIR).join("stage-failed-gate");
     let _ = fs::remove_dir_all(&stage_dir);
     stage_orchestration_patch_to_directory(&proposal(), &state(), &stage_dir, &[patch_payload()], &failed)
+}
+
+fn unsafe_receipt_content_redacted() -> bool {
+    let mut proposal = proposal();
+    proposal.target_paths = vec![UNSAFE_SECRET_PATH.to_string()];
+    proposal.patch_hash = UNSAFE_SECRET_TOKEN.to_string();
+    proposal.authority_changes = vec![
+        format!("raw_write:{UNSAFE_SECRET_PATH}"),
+        format!("credential:{UNSAFE_SECRET_TOKEN}"),
+    ];
+    let receipt = validate_orchestration_patch_proposal(&proposal, &state());
+    let Ok(receipt_json) = serde_json::to_string(&receipt) else {
+        return false;
+    };
+    receipt.status == SteelOrchestrationMutationStatus::Denied
+        && receipt.patch_hash.as_deref() == Some("redacted:invalid-patch-hash")
+        && receipt.target_paths == vec!["redacted:target-path".to_string()]
+        && !receipt_json.contains(UNSAFE_SECRET_TOKEN)
+        && !receipt_json.contains(UNSAFE_SECRET_PATH)
+        && !receipt_json.contains("raw_write:")
 }
 
 fn denied(proposal: SteelOrchestrationPatchProposal) -> SteelOrchestrationMutationReason {

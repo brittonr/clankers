@@ -17,6 +17,27 @@ pub const STEEL_ORCHESTRATION_PACK_ROOT: &str = ".clankers/steel";
 const ACTIVATION_EXPLICIT_RELOAD: &str = "explicit_reload";
 const ACTIVATION_NEXT_TURN: &str = "next_turn";
 const REQUIRED_GATE_PREFIX: &str = "steel-pack-";
+const REDACTED_INVALID_PATCH_HASH: &str = "redacted:invalid-patch-hash";
+const REDACTED_UNSAFE_TARGET_PATH: &str = "redacted:target-path";
+const RAW_WRITE_AUTHORITY_CLASS: &str = "raw_write";
+const UNKNOWN_AUTHORITY_CLASS: &str = "authority_change";
+
+const RAW_HOST_AUTHORITY_PREFIXES: &[(&str, &str)] = &[
+    ("raw_write:", RAW_WRITE_AUTHORITY_CLASS),
+    ("write_file:", RAW_WRITE_AUTHORITY_CLASS),
+    ("fs.write:", RAW_WRITE_AUTHORITY_CLASS),
+    ("raw_shell:", "raw_shell"),
+    ("shell:", "raw_shell"),
+    ("git:", "git"),
+    ("network:", "network"),
+    ("provider:", "provider"),
+    ("credential:", "credential"),
+    ("daemon:", "daemon"),
+    ("tui:", "tui"),
+    ("native_tool:", "native_tool"),
+    ("session_mutation:", "session_mutation"),
+    ("capability_mint:", "capability_mint"),
+];
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SteelOrchestrationPatchProposal {
@@ -78,6 +99,7 @@ pub enum SteelOrchestrationMutationReason {
     MalformedPatchHash,
     PathEscape,
     StalePackHash,
+    RawHostWriteDenied,
     AuthorityKernelChange,
     RequiredGateRemoval,
     UnknownActivationPolicy,
@@ -158,6 +180,14 @@ pub fn validate_orchestration_patch_proposal(
             proposal,
             SteelOrchestrationMutationReason::PathEscape,
             "orchestration patch target escapes the repo-local Steel pack root",
+        );
+    }
+    if proposal.authority_changes.iter().any(|change| raw_host_write_attempt(change)) {
+        return denied_receipt(
+            state,
+            proposal,
+            SteelOrchestrationMutationReason::RawHostWriteDenied,
+            "orchestration patch requests raw host write authority and is denied",
         );
     }
     if !proposal.authority_changes.is_empty() {
@@ -464,15 +494,46 @@ fn denied_receipt(
         safe_message: message.into(),
         old_pack_hash: state.pack_hash,
         proposed_new_pack_hash: None,
-        patch_hash: Some(proposal.patch_hash.clone()),
-        target_paths: sorted(proposal.target_paths.clone()),
+        patch_hash: safe_patch_hash_for_receipt(&proposal.patch_hash),
+        target_paths: safe_target_paths_for_receipt(&proposal.target_paths),
         selected_gates: sorted(proposal.selected_gates.clone()),
         gate_result_hashes: Vec::new(),
         activation_decision: SteelOrchestrationActivationDecision::Denied,
         rollback_reference: None,
         writes_performed: false,
-        authority_changes: sorted(proposal.authority_changes.clone()),
+        authority_changes: safe_authority_changes_for_receipt(&proposal.authority_changes),
     }
+}
+
+fn safe_patch_hash_for_receipt(patch_hash: &str) -> Option<String> {
+    if patch_hash.starts_with("b3:") {
+        Some(patch_hash.to_string())
+    } else {
+        Some(REDACTED_INVALID_PATCH_HASH.to_string())
+    }
+}
+
+fn safe_target_paths_for_receipt(target_paths: &[String]) -> Vec<String> {
+    if target_paths.iter().all(|path| pack_path_allowed(path)) {
+        sorted(target_paths.to_vec())
+    } else {
+        vec![REDACTED_UNSAFE_TARGET_PATH.to_string()]
+    }
+}
+
+fn safe_authority_changes_for_receipt(authority_changes: &[String]) -> Vec<String> {
+    sorted(authority_changes.iter().map(|change| authority_change_class(change).to_string()))
+}
+
+fn raw_host_write_attempt(authority_change: &str) -> bool {
+    authority_change_class(authority_change) == RAW_WRITE_AUTHORITY_CLASS
+}
+
+fn authority_change_class(authority_change: &str) -> &str {
+    RAW_HOST_AUTHORITY_PREFIXES
+        .iter()
+        .find_map(|(prefix, class)| authority_change.starts_with(prefix).then_some(*class))
+        .unwrap_or(UNKNOWN_AUTHORITY_CLASS)
 }
 
 fn apply_failed_receipt(
@@ -681,6 +742,9 @@ mod tests {
         let mut stale = proposal();
         stale.expected_pack_hash = ArtifactHash::digest(b"other").prefixed();
         cases.push((stale, SteelOrchestrationMutationReason::StalePackHash));
+        let mut raw_write = proposal();
+        raw_write.authority_changes = vec!["raw_write:/home/operator/.ssh/id_rsa".to_string()];
+        cases.push((raw_write, SteelOrchestrationMutationReason::RawHostWriteDenied));
         let mut authority = proposal();
         authority.authority_changes = vec!["new_host_call:repo.raw_shell".to_string()];
         cases.push((authority, SteelOrchestrationMutationReason::AuthorityKernelChange));
@@ -697,6 +761,26 @@ mod tests {
             assert_eq!(receipt.reason_code, reason);
             assert!(!receipt.writes_performed);
         }
+    }
+
+    #[test]
+    fn denied_receipts_redact_unsafe_content() {
+        let mut unsafe_proposal = proposal();
+        unsafe_proposal.target_paths = vec!["/home/operator/.ssh/id_rsa".to_string()];
+        unsafe_proposal.patch_hash = "sk-live-secret-token".to_string();
+        unsafe_proposal.authority_changes = vec![
+            "raw_write:/home/operator/.ssh/id_rsa".to_string(),
+            "credential:sk-live-secret-token".to_string(),
+        ];
+        let receipt = validate_orchestration_patch_proposal(&unsafe_proposal, &state());
+        let receipt_json = serde_json::to_string(&receipt).expect("receipt serializes");
+        assert_eq!(receipt.status, SteelOrchestrationMutationStatus::Denied);
+        assert_eq!(receipt.patch_hash.as_deref(), Some(REDACTED_INVALID_PATCH_HASH));
+        assert_eq!(receipt.target_paths, vec![REDACTED_UNSAFE_TARGET_PATH.to_string()]);
+        assert_eq!(receipt.authority_changes, vec!["credential".to_string(), RAW_WRITE_AUTHORITY_CLASS.to_string()]);
+        assert!(!receipt_json.contains("sk-live-secret-token"));
+        assert!(!receipt_json.contains("/home/operator"));
+        assert!(!receipt_json.contains("raw_write:"));
     }
 
     #[test]
