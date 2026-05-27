@@ -576,7 +576,7 @@ impl ProcessJobService for NativeProcessJobService {
     }
 
     async fn restart(&self, id: ProcessJobId) -> Result<ProcessJobReceipt, RuntimeError> {
-        restart_native_process_job(id, None).await
+        restart_native_process_job(id, None, None, None).await
     }
 
     async fn write_stdin(
@@ -1842,6 +1842,8 @@ async fn stop_native_entry_for_restart(entry: &ProcessEntry) -> bool {
 async fn restart_native_process_job(
     id: ProcessJobId,
     db: Option<clankers_db::Db>,
+    process_monitor: Option<&crate::procmon::ProcessMonitorHandle>,
+    call_id: Option<&str>,
 ) -> Result<ProcessJobReceipt, RuntimeError> {
     let old_entry = native_entry(&id)?;
     let restart_request = old_entry.restart_request.clone();
@@ -1880,6 +1882,15 @@ async fn restart_native_process_job(
     let backend_ref = new_entry.backend_ref.clone();
     ProcessTool::insert(new_entry.clone());
     admission.release();
+    if let Some(monitor) = process_monitor
+        && let Some(pid) = pid
+    {
+        monitor.register(pid, crate::procmon::ProcessMeta {
+            tool_name: "process".to_string(),
+            command: ProcessJobRedactionPolicy::default().safe_command_preview(&new_entry.command),
+            call_id: call_id.unwrap_or("process-restart").to_string(),
+        });
+    }
     persist_entry(db.as_ref(), &new_entry).await;
     spawn_reader(new_entry.clone(), "stdout", stdout);
     spawn_reader(new_entry.clone(), "stderr", stderr);
@@ -3253,7 +3264,7 @@ impl ProcessTool {
         }
     }
 
-    async fn handle_restart(ctx: &ToolContext, params: &Value) -> ToolResult {
+    async fn handle_restart(&self, ctx: &ToolContext, params: &Value) -> ToolResult {
         let request = match Self::process_job_tool_request(params) {
             Ok(ProcessJobToolRequest::Restart(request)) => request,
             Ok(_) => return ToolResult::error("Parsed unexpected process job request for restart action"),
@@ -3266,7 +3277,14 @@ impl ProcessTool {
         if let Some(id) = Self::systemd_id(&session_id) {
             return Self::systemd_receipt_result(Self::systemd_service().restart(id).await).await;
         }
-        match restart_native_process_job(request.id, ctx.db().cloned()).await {
+        match restart_native_process_job(
+            request.id,
+            ctx.db().cloned(),
+            self.process_monitor.as_ref(),
+            Some(ctx.call_id.as_str()),
+        )
+        .await
+        {
             Ok(receipt) => Self::receipt_result(receipt),
             Err(error) => ToolResult::error(error.to_string()),
         }
@@ -3298,7 +3316,7 @@ impl Tool for ProcessTool {
             "log" => Self::handle_log(ctx, &params).await,
             "wait" => Self::handle_wait(ctx, &params).await,
             "kill" => Self::handle_kill(ctx, &params).await,
-            "restart" => Self::handle_restart(ctx, &params).await,
+            "restart" => self.handle_restart(ctx, &params).await,
             "write" => Self::handle_write(&params, false).await,
             "submit" => Self::handle_write(&params, true).await,
             "close" => Self::handle_close(&params).await,
@@ -4651,6 +4669,35 @@ mod tests {
             .await;
         assert!(!waited.is_error, "{waited:?}");
         assert!(text(&waited).contains("after-restart"), "{}", text(&waited));
+    }
+
+    #[tokio::test]
+    async fn native_restart_registers_relaunched_pid_with_process_monitor() {
+        let monitor =
+            Arc::new(crate::procmon::ProcessMonitor::new(crate::procmon::ProcessMonitorConfig::default(), None));
+        let tool = ProcessTool::new().with_process_monitor(monitor.clone());
+        let ctx = make_ctx();
+        let started = tool.execute(&ctx, json!({"action": "start", "command": "cat"})).await;
+        assert!(!started.is_error, "{started:?}");
+        let id = extract_process_id(&started);
+
+        let restarted = tool.execute(&ctx, json!({"action": "restart", "session_id": id.clone()})).await;
+        assert!(!restarted.is_error, "{restarted:?}");
+        let envelope = tool_receipt_json(&restarted);
+        let backend_ref = envelope["common"]["backend_ref"].as_str().expect("restart receipt has backend ref");
+        let restarted_pid = native_pid_from_backend_ref(&BackendRef(backend_ref.to_string())).expect("pid parses");
+        let snapshot = monitor.snapshot();
+        assert!(
+            snapshot.iter().any(|(pid, proc)| *pid == restarted_pid && proc.meta.call_id == ctx.call_id),
+            "restarted pid {restarted_pid} must be tracked in process monitor: {snapshot:?}"
+        );
+
+        let closed = tool.execute(&ctx, json!({"action": "close", "session_id": id.clone()})).await;
+        assert!(!closed.is_error, "{closed:?}");
+        let waited = tool
+            .execute(&ctx, json!({"action": "wait", "session_id": id, "timeout": SHORT_PROCESS_TEST_TIMEOUT_SECS}))
+            .await;
+        assert!(!waited.is_error, "{waited:?}");
     }
 
     #[tokio::test]
