@@ -220,7 +220,7 @@
     },
     {
       "script": "scripts/check-runtime-extension-service-matrix.rs",
-      "class": "temporary_string_presence_check",
+      "class": "executable_fixture",
       "owner": "embedded-sdk",
       "requirement_ids": [
         "behavioral-lego-parity-rails.conversion.runtime-shell-matrices"
@@ -229,13 +229,11 @@
         "scripts/check-runtime-extension-service-matrix.rs",
         "crates/clankers-runtime/src/lib.rs",
         "src/runtime_services.rs"
-      ],
-      "failure_mode": "symbol-presence checks can pass after behavior is weakened",
-      "replacement_path": "replace with fixture execution plus behavioral receipt verification"
+      ]
     },
     {
       "script": "scripts/check-shell-adapter-parity-matrix.rs",
-      "class": "temporary_string_presence_check",
+      "class": "executable_fixture",
       "owner": "embedded-sdk",
       "requirement_ids": [
         "behavioral-lego-parity-rails.conversion.runtime-shell-matrices"
@@ -244,9 +242,7 @@
         "scripts/check-shell-adapter-parity-matrix.rs",
         "crates/clankers-agent/src/turn/mod.rs",
         "crates/clankers-controller/tests/fcis_shell_boundaries.rs"
-      ],
-      "failure_mode": "symbol-presence checks can pass after behavior is weakened",
-      "replacement_path": "replace with fixture execution plus behavioral receipt verification"
+      ]
     },
     {
       "script": "scripts/check-batch-eval-runner-kit.rs",
