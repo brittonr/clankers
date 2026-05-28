@@ -20,6 +20,122 @@
       "environment secrets"
     ]
   },
+  "negative_fixtures": [
+    {
+      "case_id": "provider-auth-disabled-defaults",
+      "axes": {
+        "services": [
+          "provider_router",
+          "auth_store",
+          "credential_pool"
+        ],
+        "state": "disabled_default"
+      },
+      "expected_outcome": "disabled provider/auth defaults fail closed without ambient fallback",
+      "observed_outcome": "fail_closed",
+      "source_artifacts": [
+        "scripts/check-runtime-extension-service-matrix.rs",
+        "crates/clankers-runtime/src/lib.rs"
+      ],
+      "artifact_markers": [
+        "runtime_extension_service_matrix_default_safe_fails_closed_independently",
+        "ExtensionStatus::Unavailable",
+        "no_ambient"
+      ],
+      "owner": "embedded-sdk",
+      "requirement_ids": [
+        "behavioral-lego-parity-rails.negative-fixtures.fail-closed"
+      ]
+    },
+    {
+      "case_id": "missing-session-stores",
+      "axes": {
+        "service": "session_store",
+        "state": "missing_session"
+      },
+      "expected_outcome": "missing product-owned session stores fail closed before model/tool execution",
+      "observed_outcome": "fail_closed",
+      "source_artifacts": [
+        "scripts/check-session-resume-brick.rs",
+        "examples/embedded-session-store/session-resume-evidence.json"
+      ],
+      "artifact_markers": [
+        "missing_session_fail_closed",
+        "missing_session_error"
+      ],
+      "owner": "embedded-sdk",
+      "requirement_ids": [
+        "behavioral-lego-parity-rails.negative-fixtures.fail-closed"
+      ]
+    },
+    {
+      "case_id": "denied-capabilities",
+      "axes": {
+        "service": "capability_gate",
+        "state": "denied"
+      },
+      "expected_outcome": "denied dangerous capabilities fail closed before product code or tool execution",
+      "observed_outcome": "fail_closed",
+      "source_artifacts": [
+        "scripts/check-real-product-dogfood.rs",
+        "examples/embedded-product-workbench/dogfood-manifest.json",
+        "crates/clankers-agent/src/turn/mod.rs"
+      ],
+      "artifact_markers": [
+        "dangerous-tool-denied-before-product-code",
+        "DeniedByCapabilityGate"
+      ],
+      "owner": "embedded-sdk",
+      "requirement_ids": [
+        "behavioral-lego-parity-rails.negative-fixtures.fail-closed"
+      ]
+    },
+    {
+      "case_id": "event-redaction",
+      "axes": {
+        "service": "semantic_event_projection",
+        "state": "secret_like_metadata"
+      },
+      "expected_outcome": "secret-like event and audit metadata is redacted before receipts or daemon/TUI projection",
+      "observed_outcome": "redacted",
+      "source_artifacts": [
+        "scripts/check-daemon-event-translation-kit.rs",
+        "scripts/check-observability-audit-receipt-kit.rs",
+        "crates/clankers-controller/src/convert.rs",
+        "crates/clankers-controller/src/audit.rs"
+      ],
+      "artifact_markers": [
+        "token=[REDACTED]",
+        "!receipt_json.contains(\"SECRET_TOKEN\")"
+      ],
+      "owner": "embedded-sdk",
+      "requirement_ids": [
+        "behavioral-lego-parity-rails.negative-fixtures.fail-closed"
+      ]
+    },
+    {
+      "case_id": "forbidden-transport-leakage",
+      "axes": {
+        "service": "runtime_public_api",
+        "state": "forbidden_transport_type"
+      },
+      "expected_outcome": "transport/protocol DTO leakage into reusable runtime API is rejected",
+      "observed_outcome": "fail_closed",
+      "source_artifacts": [
+        "crates/clankers-runtime/src/lib.rs",
+        "crates/clankers-runtime/src/boundary.rs"
+      ],
+      "artifact_markers": [
+        "public_api_boundary_rejects_transport_type_leakage",
+        "DaemonEvent",
+        "SessionCommand"
+      ],
+      "owner": "embedded-sdk",
+      "requirement_ids": [
+        "behavioral-lego-parity-rails.negative-fixtures.fail-closed"
+      ]
+    }
+  ],
   "rails": [
     {
       "script": "scripts/check-embedded-sdk-api.rs",
