@@ -1,0 +1,388 @@
+{
+  "schema": "clankers.embedded_lego.behavioral_rail_inventory.v1",
+  "receipt_schema": {
+    "schema": "clankers.embedded_lego.behavioral_receipt.v1",
+    "required_fields": [
+      "case_id",
+      "axes",
+      "expected_outcome",
+      "observed_outcome",
+      "source_artifacts",
+      "sanitized_hashes",
+      "owner",
+      "requirement_ids"
+    ],
+    "forbidden_comparison_inputs": [
+      "volatile paths",
+      "credentials",
+      "provider payloads",
+      "raw hidden context",
+      "environment secrets"
+    ]
+  },
+  "rails": [
+    {
+      "script": "scripts/check-embedded-sdk-api.rs",
+      "class": "ast_cargo_rail",
+      "owner": "embedded-sdk",
+      "requirement_ids": [
+        "behavioral-lego-parity-rails.inventory.classification"
+      ],
+      "source_artifacts": [
+        "scripts/check-embedded-sdk-api.rs",
+        "docs/src/generated/embedded-sdk-api.md",
+        "docs/src/tutorials/embedded-agent-sdk.md"
+      ]
+    },
+    {
+      "script": "scripts/check-brick-inventory-stability.rs",
+      "class": "receipt_verifier",
+      "owner": "embedded-sdk",
+      "requirement_ids": [
+        "behavioral-lego-parity-rails.inventory.classification"
+      ],
+      "source_artifacts": [
+        "scripts/check-brick-inventory-stability.rs",
+        "policy/embedded-lego/brick-inventory-stability.json",
+        "docs/src/generated/embedded-sdk-api.md"
+      ]
+    },
+    {
+      "script": "scripts/check-behavioral-lego-rails.rs",
+      "class": "receipt_verifier",
+      "owner": "embedded-sdk",
+      "requirement_ids": [
+        "behavioral-lego-parity-rails.inventory.classification",
+        "behavioral-lego-parity-rails.receipts.schema"
+      ],
+      "source_artifacts": [
+        "scripts/check-behavioral-lego-rails.rs",
+        "policy/embedded-lego/behavioral-rail-inventory.json",
+        "scripts/check-embedded-agent-sdk.rs"
+      ]
+    },
+    {
+      "script": "scripts/check-embedded-lego-contracts.rs",
+      "class": "receipt_verifier",
+      "owner": "embedded-sdk",
+      "requirement_ids": [
+        "behavioral-lego-parity-rails.inventory.classification"
+      ],
+      "source_artifacts": [
+        "scripts/check-embedded-lego-contracts.rs",
+        "policy/embedded-lego/lego-contracts.json"
+      ]
+    },
+    {
+      "script": "scripts/check-real-product-dogfood.rs",
+      "class": "receipt_verifier",
+      "owner": "embedded-sdk",
+      "requirement_ids": [
+        "behavioral-lego-parity-rails.inventory.classification"
+      ],
+      "source_artifacts": [
+        "scripts/check-real-product-dogfood.rs",
+        "examples/embedded-product-workbench/dogfood-manifest.json"
+      ]
+    },
+    {
+      "script": "scripts/check-provider-adapter-kit.rs",
+      "class": "executable_fixture",
+      "owner": "embedded-sdk",
+      "requirement_ids": [
+        "behavioral-lego-parity-rails.receipts.schema"
+      ],
+      "source_artifacts": [
+        "scripts/check-provider-adapter-kit.rs",
+        "examples/embedded-provider-adapter/fixtures/provider-adapter-fixtures.json",
+        "examples/embedded-provider-adapter/src/main.rs",
+        "cairn/specs/embedded-composition-kits/spec.md"
+      ]
+    },
+    {
+      "script": "scripts/check-session-resume-brick.rs",
+      "class": "executable_fixture",
+      "owner": "embedded-sdk",
+      "requirement_ids": [
+        "behavioral-lego-parity-rails.receipts.schema"
+      ],
+      "source_artifacts": [
+        "scripts/check-session-resume-brick.rs",
+        "examples/embedded-session-store/session-resume-evidence.json",
+        "examples/embedded-session-store/src/main.rs",
+        "cairn/specs/embedded-composition-kits/spec.md"
+      ]
+    },
+    {
+      "script": "scripts/check-tool-catalog-manifest.rs",
+      "class": "executable_fixture",
+      "owner": "embedded-sdk",
+      "requirement_ids": [
+        "behavioral-lego-parity-rails.receipts.schema"
+      ],
+      "source_artifacts": [
+        "scripts/check-tool-catalog-manifest.rs",
+        "examples/embedded-tool-kit/tool-catalog-manifest.json",
+        "cairn/specs/embedded-composition-kits/spec.md"
+      ]
+    },
+    {
+      "script": "scripts/check-capability-pack-composition.rs",
+      "class": "executable_fixture",
+      "owner": "embedded-sdk",
+      "requirement_ids": [
+        "behavioral-lego-parity-rails.receipts.schema"
+      ],
+      "source_artifacts": [
+        "scripts/check-capability-pack-composition.rs",
+        "policy/embedded-lego/capability-pack-composition.json",
+        "cairn/specs/embedded-composition-kits/spec.md"
+      ]
+    },
+    {
+      "script": "scripts/check-plugin-runtime-dispatch.rs",
+      "class": "executable_fixture",
+      "owner": "embedded-sdk",
+      "requirement_ids": [
+        "behavioral-lego-parity-rails.receipts.schema"
+      ],
+      "source_artifacts": [
+        "scripts/check-plugin-runtime-dispatch.rs",
+        "policy/embedded-lego/plugin-runtime-dispatch.json",
+        "cairn/specs/embedded-composition-kits/spec.md"
+      ]
+    },
+    {
+      "script": "scripts/check-embedded-sdk-deps.rs",
+      "class": "ast_cargo_rail",
+      "owner": "embedded-sdk",
+      "requirement_ids": [
+        "behavioral-lego-parity-rails.inventory.classification"
+      ],
+      "source_artifacts": [
+        "scripts/check-embedded-sdk-deps.rs",
+        "policy/embedded-lego/lego-contracts.json"
+      ]
+    },
+    {
+      "script": "scripts/check-embedded-adapters-deps.rs",
+      "class": "ast_cargo_rail",
+      "owner": "embedded-sdk",
+      "requirement_ids": [
+        "behavioral-lego-parity-rails.inventory.classification"
+      ],
+      "source_artifacts": [
+        "scripts/check-embedded-adapters-deps.rs",
+        "crates/clankers-adapters/Cargo.toml"
+      ]
+    },
+    {
+      "script": "scripts/check-llm-contract-boundary.rs",
+      "class": "ast_cargo_rail",
+      "owner": "embedded-sdk",
+      "requirement_ids": [
+        "behavioral-lego-parity-rails.inventory.classification"
+      ],
+      "source_artifacts": [
+        "scripts/check-llm-contract-boundary.rs",
+        "crates/clankers-engine/Cargo.toml",
+        "crates/clankers-engine-host/Cargo.toml",
+        "crates/clankers-tool-host/Cargo.toml"
+      ]
+    },
+    {
+      "script": "scripts/check-engine-host-feature-matrix.rs",
+      "class": "temporary_string_presence_check",
+      "owner": "embedded-sdk",
+      "requirement_ids": [
+        "behavioral-lego-parity-rails.conversion.runtime-shell-matrices"
+      ],
+      "source_artifacts": [
+        "scripts/check-engine-host-feature-matrix.rs",
+        "crates/clankers-engine-host/src/lib.rs"
+      ],
+      "failure_mode": "symbol-presence checks can pass after behavior is weakened",
+      "replacement_path": "replace with fixture execution plus behavioral receipt verification"
+    },
+    {
+      "script": "scripts/check-tool-catalog-matrix.rs",
+      "class": "temporary_string_presence_check",
+      "owner": "embedded-sdk",
+      "requirement_ids": [
+        "behavioral-lego-parity-rails.negative-fixtures.fail-closed"
+      ],
+      "source_artifacts": [
+        "scripts/check-tool-catalog-matrix.rs",
+        "crates/clankers-runtime/src/lib.rs"
+      ],
+      "failure_mode": "symbol-presence checks can pass after behavior is weakened",
+      "replacement_path": "replace with fixture execution plus behavioral receipt verification"
+    },
+    {
+      "script": "scripts/check-runtime-extension-service-matrix.rs",
+      "class": "temporary_string_presence_check",
+      "owner": "embedded-sdk",
+      "requirement_ids": [
+        "behavioral-lego-parity-rails.conversion.runtime-shell-matrices"
+      ],
+      "source_artifacts": [
+        "scripts/check-runtime-extension-service-matrix.rs",
+        "crates/clankers-runtime/src/lib.rs",
+        "src/runtime_services.rs"
+      ],
+      "failure_mode": "symbol-presence checks can pass after behavior is weakened",
+      "replacement_path": "replace with fixture execution plus behavioral receipt verification"
+    },
+    {
+      "script": "scripts/check-shell-adapter-parity-matrix.rs",
+      "class": "temporary_string_presence_check",
+      "owner": "embedded-sdk",
+      "requirement_ids": [
+        "behavioral-lego-parity-rails.conversion.runtime-shell-matrices"
+      ],
+      "source_artifacts": [
+        "scripts/check-shell-adapter-parity-matrix.rs",
+        "crates/clankers-agent/src/turn/mod.rs",
+        "crates/clankers-controller/tests/fcis_shell_boundaries.rs"
+      ],
+      "failure_mode": "symbol-presence checks can pass after behavior is weakened",
+      "replacement_path": "replace with fixture execution plus behavioral receipt verification"
+    },
+    {
+      "script": "scripts/check-batch-eval-runner-kit.rs",
+      "class": "temporary_string_presence_check",
+      "owner": "embedded-sdk",
+      "requirement_ids": [
+        "behavioral-lego-parity-rails.receipts.schema"
+      ],
+      "source_artifacts": [
+        "scripts/check-batch-eval-runner-kit.rs",
+        "src/modes/batch.rs",
+        "cairn/specs/batch-trajectory-runner/spec.md"
+      ],
+      "failure_mode": "symbol-presence checks can pass after behavior is weakened",
+      "replacement_path": "replace with fixture execution plus behavioral receipt verification"
+    },
+    {
+      "script": "scripts/check-slash-command-routing-kit.rs",
+      "class": "temporary_string_presence_check",
+      "owner": "embedded-sdk",
+      "requirement_ids": [
+        "behavioral-lego-parity-rails.receipts.schema"
+      ],
+      "source_artifacts": [
+        "scripts/check-slash-command-routing-kit.rs",
+        "src/slash_commands/tests.rs",
+        "src/modes/attach/commands.rs",
+        "cairn/specs/slash-command-composition/spec.md"
+      ],
+      "failure_mode": "symbol-presence checks can pass after behavior is weakened",
+      "replacement_path": "replace with fixture execution plus behavioral receipt verification"
+    },
+    {
+      "script": "scripts/check-tui-action-menu-kit.rs",
+      "class": "temporary_string_presence_check",
+      "owner": "embedded-sdk",
+      "requirement_ids": [
+        "behavioral-lego-parity-rails.receipts.schema"
+      ],
+      "source_artifacts": [
+        "scripts/check-tui-action-menu-kit.rs",
+        "crates/clankers-tui/src/components/leader_menu/mod.rs",
+        "cairn/specs/tui-action-menu-composition/spec.md"
+      ],
+      "failure_mode": "symbol-presence checks can pass after behavior is weakened",
+      "replacement_path": "replace with fixture execution plus behavioral receipt verification"
+    },
+    {
+      "script": "scripts/check-daemon-event-translation-kit.rs",
+      "class": "temporary_string_presence_check",
+      "owner": "embedded-sdk",
+      "requirement_ids": [
+        "behavioral-lego-parity-rails.receipts.schema"
+      ],
+      "source_artifacts": [
+        "scripts/check-daemon-event-translation-kit.rs",
+        "crates/clankers-controller/src/convert.rs",
+        "src/modes/attach/events.rs",
+        "cairn/specs/daemon-event-translation/spec.md"
+      ],
+      "failure_mode": "symbol-presence checks can pass after behavior is weakened",
+      "replacement_path": "replace with fixture execution plus behavioral receipt verification"
+    },
+    {
+      "script": "scripts/check-controller-continuation-policy-kit.rs",
+      "class": "temporary_string_presence_check",
+      "owner": "embedded-sdk",
+      "requirement_ids": [
+        "behavioral-lego-parity-rails.receipts.schema"
+      ],
+      "source_artifacts": [
+        "scripts/check-controller-continuation-policy-kit.rs",
+        "crates/clankers-controller/src/auto_test.rs",
+        "cairn/specs/controller-continuation-policy/spec.md"
+      ],
+      "failure_mode": "symbol-presence checks can pass after behavior is weakened",
+      "replacement_path": "replace with fixture execution plus behavioral receipt verification"
+    },
+    {
+      "script": "scripts/check-observability-audit-receipt-kit.rs",
+      "class": "temporary_string_presence_check",
+      "owner": "embedded-sdk",
+      "requirement_ids": [
+        "behavioral-lego-parity-rails.negative-fixtures.fail-closed"
+      ],
+      "source_artifacts": [
+        "scripts/check-observability-audit-receipt-kit.rs",
+        "crates/clankers-controller/src/audit.rs",
+        "cairn/specs/session-metrics-capture/spec.md"
+      ],
+      "failure_mode": "symbol-presence checks can pass after behavior is weakened",
+      "replacement_path": "replace with fixture execution plus behavioral receipt verification"
+    },
+    {
+      "script": "scripts/check-self-evolution-receipt-chain-kit.rs",
+      "class": "temporary_string_presence_check",
+      "owner": "embedded-sdk",
+      "requirement_ids": [
+        "behavioral-lego-parity-rails.negative-fixtures.fail-closed"
+      ],
+      "source_artifacts": [
+        "scripts/check-self-evolution-receipt-chain-kit.rs",
+        "src/self_evolution.rs",
+        "src/self_evolution/validation.rs",
+        "cairn/specs/self-evolution-control/spec.md"
+      ],
+      "failure_mode": "symbol-presence checks can pass after behavior is weakened",
+      "replacement_path": "replace with fixture execution plus behavioral receipt verification"
+    },
+    {
+      "script": "scripts/check-process-job-profile-kit.rs",
+      "class": "temporary_string_presence_check",
+      "owner": "embedded-sdk",
+      "requirement_ids": [
+        "behavioral-lego-parity-rails.negative-fixtures.fail-closed"
+      ],
+      "source_artifacts": [
+        "scripts/check-process-job-profile-kit.rs",
+        "crates/clankers-runtime/src/process_jobs.rs",
+        "cairn/specs/durable-process-jobs/spec.md"
+      ],
+      "failure_mode": "symbol-presence checks can pass after behavior is weakened",
+      "replacement_path": "replace with fixture execution plus behavioral receipt verification"
+    },
+    {
+      "script": "scripts/emit-embedded-sdk-release-receipt.rs",
+      "class": "receipt_verifier",
+      "owner": "embedded-sdk",
+      "requirement_ids": [
+        "behavioral-lego-parity-rails.acceptance.wired-receipts"
+      ],
+      "source_artifacts": [
+        "scripts/emit-embedded-sdk-release-receipt.rs",
+        "docs/src/generated/embedded-sdk-api.md",
+        "docs/src/tutorials/embedded-agent-sdk.md"
+      ]
+    }
+  ]
+}
