@@ -50,6 +50,10 @@ Support labels:
 | `EngineTerminalFailure` | `clankers-engine` | struct | supported | `crates/clankers-engine/src/lib.rs` |
 | `EngineToolCall` | `clankers-engine` | struct | supported | `crates/clankers-engine/src/lib.rs` |
 | `EngineTurnPhase` | `clankers-engine` | enum | supported | `crates/clankers-engine/src/lib.rs` |
+| `EngineTurnReceipt` | `clankers-engine` | struct | supported | `crates/clankers-engine/src/lib.rs` |
+| `EngineTurnRequest` | `clankers-engine` | struct | supported | `crates/clankers-engine/src/lib.rs` |
+| `EngineTurnResult` | `clankers-engine` | struct | supported | `crates/clankers-engine/src/lib.rs` |
+| `EmbeddableEngine` | `clankers-engine` | struct | supported | `crates/clankers-engine/src/lib.rs` |
 | `reduce` | `clankers-engine` | function | supported | `crates/clankers-engine/src/lib.rs` |
 | `embedded-agent-sdk example` | `example` | example | supported | `examples/embedded-agent-sdk/Cargo.toml` |
 | `embedded-minimal-kit example` | `example` | example | supported | `examples/embedded-minimal-kit/Cargo.toml` |
@@ -78,14 +82,23 @@ Support labels:
 | `TOOL_CANCELLED_ERROR_PREFIX` | `clankers-engine-host` | constant | unsupported-internal | `crates/clankers-engine-host/src/lib.rs` |
 | `AdapterDiagnostic` | `clankers-engine-host` | struct | supported | `crates/clankers-engine-host/src/lib.rs` |
 | `CancellationSource` | `clankers-engine-host` | trait | supported | `crates/clankers-engine-host/src/lib.rs` |
+| `CostAccountingPort` | `clankers-engine-host` | trait | experimental | `crates/clankers-engine-host/src/lib.rs` |
+| `EngineCostObservation` | `clankers-engine-host` | struct | experimental | `crates/clankers-engine-host/src/lib.rs` |
 | `EngineEventSink` | `clankers-engine-host` | trait | supported | `crates/clankers-engine-host/src/lib.rs` |
+| `EngineHistoryRecord` | `clankers-engine-host` | struct | experimental | `crates/clankers-engine-host/src/lib.rs` |
+| `EngineHookObservation` | `clankers-engine-host` | struct | experimental | `crates/clankers-engine-host/src/lib.rs` |
+| `EnginePersistenceRecord` | `clankers-engine-host` | struct | experimental | `crates/clankers-engine-host/src/lib.rs` |
+| `EnginePromptBundle` | `clankers-engine-host` | struct | experimental | `crates/clankers-engine-host/src/lib.rs` |
 | `EngineRunReport` | `clankers-engine-host` | struct | supported | `crates/clankers-engine-host/src/lib.rs` |
 | `EngineRunSeed` | `clankers-engine-host` | struct | supported | `crates/clankers-engine-host/src/lib.rs` |
 | `HostAdapterComponent` | `clankers-engine-host` | enum | supported | `crates/clankers-engine-host/src/lib.rs` |
 | `HostAdapterError` | `clankers-engine-host` | enum | supported | `crates/clankers-engine-host/src/lib.rs` |
 | `HostAdapters` | `clankers-engine-host` | struct | supported | `crates/clankers-engine-host/src/lib.rs` |
 | `ModelHost` | `clankers-engine-host` | trait | supported | `crates/clankers-engine-host/src/lib.rs` |
+| `HookPort` | `clankers-engine-host` | trait | experimental | `crates/clankers-engine-host/src/lib.rs` |
 | `ModelHostOutcome` | `clankers-engine-host` | enum | supported | `crates/clankers-engine-host/src/lib.rs` |
+| `PersistencePort` | `clankers-engine-host` | trait | experimental | `crates/clankers-engine-host/src/lib.rs` |
+| `PromptHistoryPort` | `clankers-engine-host` | trait | experimental | `crates/clankers-engine-host/src/lib.rs` |
 | `RetrySleeper` | `clankers-engine-host` | trait | supported | `crates/clankers-engine-host/src/lib.rs` |
 | `UsageObservation` | `clankers-engine-host` | struct | supported | `crates/clankers-engine-host/src/lib.rs` |
 | `UsageObservationKind` | `clankers-engine-host` | enum | supported | `crates/clankers-engine-host/src/lib.rs` |

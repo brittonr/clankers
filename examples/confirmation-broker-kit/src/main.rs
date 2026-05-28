@@ -117,3 +117,11 @@ async fn main() -> Result<(), RuntimeError> {
 
     Ok(())
 }
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn confirmation_broker_kit_smoke() {
+        super::main().expect("confirmation broker example passes");
+    }
+}

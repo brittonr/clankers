@@ -139,6 +139,7 @@ pub use prompt::HostContext;
 pub use prompt::ModelAdapter;
 pub use prompt::ModelFailure;
 pub use prompt::ModelRequest;
+pub use prompt::ModelRequestMetadata;
 pub use prompt::ModelResponse;
 pub use prompt::PromptAssembler;
 pub use prompt::PromptAssemblyPolicy;

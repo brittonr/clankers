@@ -7,6 +7,6 @@
 
 ## Phase 2: Verification
 
-- [ ] [parallel] V1: Add deterministic runtime tests for successful assistant output, tool call/result continuation, retryable model failure, cancellation, usage observation, and missing adapter fail-closed behavior. [covers=r[runtime-engine-host.verification.deterministic-matrix]]
-- [ ] [serial] V2: Add runtime-vs-agent fake-provider parity evidence for session id, prompt acceptance, model request metadata, event ordering, and terminal completion. [covers=r[runtime-engine-host.adapter-parity.agent-runtime]]
-- [ ] [serial] V3: Run `scripts/check-embedded-agent-sdk.rs`, `cargo test -p clankers-runtime --lib`, focused agent turn tests, Cairn validate/gates, and `git diff --check` before archive. [covers=r[runtime-engine-host.verification.closeout]]
+- [x] [parallel] V1: Add deterministic runtime tests for successful assistant output, tool call/result continuation, retryable model failure, cancellation, usage observation, and missing adapter fail-closed behavior. [covers=r[runtime-engine-host.verification.deterministic-matrix]]
+- [x] [serial] V2: Add runtime-vs-agent fake-provider parity evidence for session id, prompt acceptance, model request metadata, event ordering, and terminal completion. [covers=r[runtime-engine-host.adapter-parity.agent-runtime]]
+- [x] [serial] V3: Run `scripts/check-embedded-agent-sdk.rs`, `cargo test -p clankers-runtime --lib`, focused agent turn tests, Cairn validate/gates, and `git diff --check` before archive. [covers=r[runtime-engine-host.verification.closeout]]

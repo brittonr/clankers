@@ -74,6 +74,20 @@ pub struct ModelRequest {
     pub model: Option<String>,
     pub prompt: AssembledPrompt,
     pub disabled_tools: BTreeSet<String>,
+    #[serde(default)]
+    pub metadata: ModelRequestMetadata,
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+pub struct ModelRequestMetadata {
+    pub request_id: String,
+    pub message_count: usize,
+    pub system_prompt: String,
+    pub max_tokens: Option<usize>,
+    pub temperature: Option<f64>,
+    pub tool_names: Vec<String>,
+    pub no_cache: bool,
+    pub cache_ttl: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

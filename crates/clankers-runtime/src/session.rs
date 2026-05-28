@@ -44,6 +44,7 @@ use crate::AssembledPrompt;
 use crate::EventMetadata;
 use crate::ModelAdapter;
 use crate::ModelRequest;
+use crate::ModelRequestMetadata;
 use crate::PromptAssembler;
 use crate::PromptId;
 use crate::PromptInput;
@@ -148,7 +149,8 @@ impl RuntimeModelHost {
 impl ModelHost for RuntimeModelHost {
     async fn execute_model(&mut self, request: EngineModelRequest) -> ModelHostOutcome {
         let mut model_request = self.request.clone();
-        model_request.model = Some(request.model);
+        model_request.model = Some(request.model.clone());
+        model_request.metadata = model_request_metadata(&request);
         match self.model.complete(model_request) {
             Ok(response) => {
                 if let Some(failure) = response.failure {
@@ -466,6 +468,21 @@ fn engine_tool_definitions(catalog: &ToolCatalog) -> Vec<ToolDefinition> {
         .collect()
 }
 
+fn model_request_metadata(request: &EngineModelRequest) -> ModelRequestMetadata {
+    let mut tool_names = request.tools.iter().map(|tool| tool.name.clone()).collect::<Vec<_>>();
+    tool_names.sort();
+    ModelRequestMetadata {
+        request_id: request.request_id.0.clone(),
+        message_count: request.messages.len(),
+        system_prompt: request.system_prompt.clone(),
+        max_tokens: request.max_tokens,
+        temperature: request.temperature,
+        tool_names,
+        no_cache: request.no_cache,
+        cache_ttl: request.cache_ttl.clone(),
+    }
+}
+
 impl SessionHandle {
     pub(crate) fn new(runtime: Arc<RuntimeInner>, options: SessionOptions) -> Result<Self, RuntimeError> {
         let session_id = options.session_id.unwrap_or_default();
@@ -554,6 +571,7 @@ impl SessionHandle {
                 model,
                 prompt: assembled.clone(),
                 disabled_tools,
+                metadata: ModelRequestMetadata::default(),
             },
             Arc::clone(&event_log),
         );

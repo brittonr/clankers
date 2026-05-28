@@ -1,0 +1,102 @@
+# embedded-composition-kits Specification
+
+## Purpose
+
+Define reusable embedded SDK composition kits that prove product-owned provider, tool, session, capability, and runtime-dispatch seams can be validated without daemon, TUI, provider discovery, live credentials, or shell-owned state.
+
+## Requirements
+
+### Requirement: Provider adapter fixtures are product owned
+
+The provider-adapter kit SHALL use checked fixtures and product-owned model capability profiles rather than deriving expected contracts from live provider/router implementations.
+
+#### Scenario: provider-adapter-template-is-fixture-backed
+- GIVEN the provider adapter kit validates its request and response examples
+- WHEN `scripts/check-provider-adapter-kit.rs` runs
+- THEN the fixture file MUST define completed, retryable-failure, terminal-failure, and usage-accounting cases.
+
+#### Scenario: model-capability-profile-remains-product-owned
+- GIVEN a product-owned adapter describes model capabilities
+- WHEN the kit validates the profile
+- THEN the profile MUST reject live credentials and network requirements.
+
+#### Scenario: template-dependency-boundary-is-enforced
+- GIVEN the provider adapter example is compiled
+- WHEN its manifest and source are checked
+- THEN it MUST avoid provider discovery, router, OAuth, live-network, and Clankers shell dependencies.
+
+### Requirement: Session/resume brick convergence
+
+The session-resume-brick SHALL demonstrate product-owned session/message DTOs that can restore context across more than one product-shaped store without depending on shell session storage.
+
+#### Scenario: Multiple product-shaped stores prove restored context
+- GIVEN multiple product-shaped stores replay a saved session fixture
+- WHEN the resume kit reloads the session
+- THEN restored context MUST include the expected user, assistant, and tool-result DTOs.
+
+#### Scenario: Missing and stale sessions fail closed
+- GIVEN a missing, stale, or schema-incompatible session is requested
+- WHEN the resume kit validates the store
+- THEN it MUST fail closed before fabricating context.
+
+#### Scenario: Reusable API promotion waits for convergence
+- GIVEN the resume behavior is still kit-level
+- WHEN a reusable API is proposed
+- THEN promotion MUST wait until the fixture evidence converges across product-shaped stores.
+
+### Requirement: Tool catalog manifests are runtime neutral
+
+The tool-catalog-manifest kit SHALL export normalized, runtime-neutral tool metadata and diagnostics.
+
+#### Scenario: Manifest export is normalized and runtime-neutral
+- GIVEN a tool catalog manifest is emitted
+- WHEN `scripts/check-tool-catalog-manifest.rs` validates it
+- THEN runtime-neutral names, capabilities, approval, and redaction metadata MUST be present without shell runtime identifiers.
+
+#### Scenario: Manifest validation diagnostics are actionable
+- GIVEN invalid manifests are checked
+- WHEN validation fails
+- THEN diagnostics MUST name the bad field and reason.
+
+#### Scenario: Normalized evidence distinguishes semantic drift
+- GIVEN manifest evidence is compared between runs
+- WHEN only ordering or formatting changes
+- THEN semantic drift MUST be distinguished from non-semantic normalization changes.
+
+### Requirement: Capability pack composition is deterministic
+
+Capability pack composition SHALL merge safe packs deterministically and fail closed on dangerous conflicts.
+
+#### Scenario: Pack merge order is deterministic
+- GIVEN multiple capability packs are selected
+- WHEN composition runs
+- THEN the resulting capability order MUST be deterministic.
+
+#### Scenario: Dangerous conflicts fail closed
+- GIVEN a pack contains dangerous capabilities
+- WHEN it lacks explicit dangerous and approval metadata
+- THEN composition MUST deny the pack before Rust use.
+
+#### Scenario: Pack policy is checked before Rust use
+- GIVEN a composed pack would be consumed by Rust adapters
+- WHEN policy validation fails
+- THEN no Rust adapter may execute from that pack.
+
+### Requirement: Plugin runtime dispatch is explicit
+
+Runtime plugin dispatch SHALL distinguish Extism, stdio, built-in, and product-owned runtime kinds before loading or execution.
+
+#### Scenario: Runtime kind dispatch is explicit
+- GIVEN a plugin descriptor declares a runtime kind
+- WHEN dispatch planning runs
+- THEN the kind MUST be selected from the allowed dispatch matrix.
+
+#### Scenario: Launch policy is contract checked
+- GIVEN a runtime kind has launch policy metadata
+- WHEN validation runs
+- THEN unsupported loaders or forbidden launch policies MUST be rejected.
+
+#### Scenario: Dispatch matrix evidence is content addressed
+- GIVEN runtime dispatch evidence is emitted
+- WHEN the receipt is generated
+- THEN the dispatch matrix MUST be content addressed for review and replay.

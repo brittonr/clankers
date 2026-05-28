@@ -617,6 +617,312 @@ mod tests {
         }));
     }
 
+    #[tokio::test]
+    async fn agent_and_runtime_fake_paths_agree_on_engine_host_projection() {
+        use std::sync::Mutex;
+        use std::sync::atomic::AtomicUsize;
+        use std::sync::atomic::Ordering;
+        use std::time::Duration;
+
+        const SESSION_ID: &str = "agent-runtime-parity-session";
+        const USER_PROMPT: &str = "hello";
+        const SYSTEM_PROMPT: &str = "[system]\nYou are a test assistant.";
+        const FINAL_TEXT: &str = "done";
+
+        struct ParityProvider {
+            call_count: AtomicUsize,
+            captured: Mutex<Vec<clankers_provider::CompletionRequest>>,
+        }
+
+        #[async_trait]
+        impl clankers_provider::Provider for ParityProvider {
+            async fn complete(
+                &self,
+                request: clankers_provider::CompletionRequest,
+                tx: mpsc::Sender<StreamEvent>,
+            ) -> clankers_provider::error::Result<()> {
+                self.captured.lock().expect("capture lock poisoned").push(request);
+                let call_index = self.call_count.fetch_add(1, Ordering::SeqCst);
+                tx.send(StreamEvent::MessageStart {
+                    message: MessageMetadata {
+                        id: format!("msg-{call_index}"),
+                        model: "test-model".into(),
+                        role: "assistant".into(),
+                    },
+                })
+                .await
+                .ok();
+
+                match call_index {
+                    0 => {
+                        tx.send(StreamEvent::ContentBlockStart {
+                            index: 0,
+                            content_block: Content::ToolUse {
+                                id: "call-1".into(),
+                                name: "direct_tool".into(),
+                                input: json!({"topic":"parity"}),
+                            },
+                        })
+                        .await
+                        .ok();
+                        tx.send(StreamEvent::ContentBlockStop { index: 0 }).await.ok();
+                        tx.send(StreamEvent::MessageDelta {
+                            stop_reason: Some("tool_use".into()),
+                            usage: Usage {
+                                input_tokens: 4,
+                                output_tokens: 1,
+                                cache_creation_input_tokens: 0,
+                                cache_read_input_tokens: 0,
+                            },
+                        })
+                        .await
+                        .ok();
+                    }
+                    1 => {
+                        tx.send(StreamEvent::ContentBlockStart {
+                            index: 0,
+                            content_block: Content::Text { text: String::new() },
+                        })
+                        .await
+                        .ok();
+                        tx.send(StreamEvent::ContentBlockDelta {
+                            index: 0,
+                            delta: ContentDelta::TextDelta {
+                                text: FINAL_TEXT.to_string(),
+                            },
+                        })
+                        .await
+                        .ok();
+                        tx.send(StreamEvent::ContentBlockStop { index: 0 }).await.ok();
+                        tx.send(StreamEvent::MessageDelta {
+                            stop_reason: Some("end_turn".into()),
+                            usage: Usage {
+                                input_tokens: 6,
+                                output_tokens: 2,
+                                cache_creation_input_tokens: 0,
+                                cache_read_input_tokens: 0,
+                            },
+                        })
+                        .await
+                        .ok();
+                    }
+                    _ => panic!("unexpected provider call index: {call_index}"),
+                }
+
+                tx.send(StreamEvent::MessageStop).await.ok();
+                Ok(())
+            }
+
+            fn models(&self) -> &[clankers_provider::Model] {
+                &[]
+            }
+
+            fn name(&self) -> &str {
+                "agent-runtime-parity"
+            }
+        }
+
+        struct ParityRuntimeModel {
+            call_count: AtomicUsize,
+            captured: Mutex<Vec<clankers_runtime::ModelRequest>>,
+        }
+
+        impl clankers_runtime::ModelAdapter for ParityRuntimeModel {
+            fn complete(
+                &self,
+                request: clankers_runtime::ModelRequest,
+            ) -> std::result::Result<clankers_runtime::ModelResponse, clankers_runtime::RuntimeError> {
+                self.captured.lock().expect("capture lock poisoned").push(request.clone());
+                let call_index = self.call_count.fetch_add(1, Ordering::SeqCst);
+                match call_index {
+                    0 => Ok(clankers_runtime::ModelResponse {
+                        engine_content: vec![Content::ToolUse {
+                            id: "call-1".into(),
+                            name: "direct_tool".into(),
+                            input: json!({"topic":"parity"}),
+                        }],
+                        stop_reason: Some(StopReason::ToolUse),
+                        ..clankers_runtime::ModelResponse::default()
+                    }),
+                    1 => Ok(clankers_runtime::ModelResponse {
+                        events: vec![clankers_runtime::SessionEvent::AssistantDelta {
+                            prompt_id: request.prompt_id,
+                            text: FINAL_TEXT.to_string(),
+                            metadata: clankers_runtime::EventMetadata::empty().with("source", "parity"),
+                        }],
+                        ..clankers_runtime::ModelResponse::default()
+                    }),
+                    _ => panic!("unexpected runtime model call index: {call_index}"),
+                }
+            }
+        }
+
+        struct ParityRuntimeTool;
+
+        impl clankers_runtime::RuntimeToolAdapter for ParityRuntimeTool {
+            fn execute_tool(
+                &self,
+                request: clankers_runtime::RuntimeToolRequest,
+            ) -> std::result::Result<clankers_runtime::RuntimeToolResponse, clankers_runtime::RuntimeError>
+            {
+                assert_eq!(request.session_id.as_str(), SESSION_ID);
+                assert_eq!(request.tool_name, "direct_tool");
+                Ok(clankers_runtime::RuntimeToolResponse::succeeded(
+                    vec![Content::Text {
+                        text: "direct output".to_string(),
+                    }],
+                    json!({"source":"parity"}),
+                ))
+            }
+        }
+
+        let provider = ParityProvider {
+            call_count: AtomicUsize::new(0),
+            captured: Mutex::new(Vec::new()),
+        };
+        let mut config = make_turn_config();
+        config.system_prompt = SYSTEM_PROMPT.to_string();
+        config.max_tokens = None;
+        config.model_request_slot_budget = 2;
+        let mut agent_messages = vec![AgentMessage::User(UserMessage {
+            id: MessageId::new("parity-user"),
+            content: vec![Content::Text {
+                text: USER_PROMPT.to_string(),
+            }],
+            timestamp: Utc::now(),
+        })];
+        let mut agent_tools: HashMap<String, Arc<dyn Tool>> = HashMap::new();
+        agent_tools.insert("direct_tool".to_string(), Arc::new(DirectResultTool::new()));
+        let (agent_event_tx, mut agent_event_rx) = broadcast::channel(256);
+
+        test_run_turn_loop(
+            &provider,
+            &agent_tools,
+            &mut agent_messages,
+            &config,
+            &agent_event_tx,
+            CancellationToken::new(),
+            None,
+            None,
+            None,
+            SESSION_ID,
+            None,
+            None,
+            None,
+        )
+        .await
+        .expect("agent parity turn succeeds");
+
+        let runtime_model = Arc::new(ParityRuntimeModel {
+            call_count: AtomicUsize::new(0),
+            captured: Mutex::new(Vec::new()),
+        });
+        let runtime_catalog = clankers_runtime::ToolCatalog::builder()
+            .custom_tool(clankers_runtime::ToolDescriptor::new(
+                "direct_tool",
+                "Returns direct result",
+                clankers_runtime::SideEffectLevel::ReadOnly,
+            ))
+            .expect("custom runtime tool is valid")
+            .build()
+            .expect("runtime catalog builds");
+        let runtime = clankers_runtime::RuntimeBuilder::new()
+            .model_adapter(runtime_model.clone())
+            .tool_catalog(runtime_catalog)
+            .tool_adapter(Arc::new(ParityRuntimeTool))
+            .prompt_assembly(
+                clankers_runtime::PromptAssemblyPolicy::desktop_default(),
+                clankers_runtime::PromptSources {
+                    system_prompt: Some("You are a test assistant.".to_string()),
+                    ..clankers_runtime::PromptSources::default()
+                },
+            )
+            .build()
+            .expect("runtime builds");
+        let runtime_session = runtime
+            .create_session(clankers_runtime::SessionOptions {
+                session_id: Some(clankers_runtime::SessionId::from_host(SESSION_ID)),
+                model: Some("test-model".to_string()),
+            })
+            .await
+            .expect("runtime session creates");
+        let mut runtime_event_rx = runtime_session.take_events().await.expect("runtime events available");
+        runtime_session
+            .submit_prompt(clankers_runtime::PromptInput::new(USER_PROMPT))
+            .await
+            .expect("runtime parity turn succeeds");
+
+        let agent_requests = provider.captured.lock().expect("capture lock poisoned").clone();
+        let runtime_requests = runtime_model.captured.lock().expect("capture lock poisoned").clone();
+        assert_eq!(agent_requests.len(), 2);
+        assert_eq!(runtime_requests.len(), 2);
+        for (agent_request, runtime_request) in agent_requests.iter().zip(runtime_requests.iter()) {
+            assert_eq!(agent_request.model, runtime_request.model.as_deref().unwrap_or_default());
+            assert_eq!(agent_request.extra_params.get("_session_id"), Some(&json!(SESSION_ID)));
+            assert_eq!(runtime_request.session_id.as_str(), SESSION_ID);
+            assert_eq!(agent_request.system_prompt.as_deref(), Some(runtime_request.metadata.system_prompt.as_str()));
+            assert_eq!(agent_request.messages.len(), runtime_request.metadata.message_count);
+            assert_eq!(sorted_tool_names(&agent_request.tools), runtime_request.metadata.tool_names);
+            assert_eq!(agent_request.max_tokens, runtime_request.metadata.max_tokens);
+            assert_eq!(agent_request.no_cache, runtime_request.metadata.no_cache);
+            assert_eq!(runtime_request.prompt.user_prompt, USER_PROMPT);
+        }
+
+        assert_eq!(agent_requests[0].messages.len(), 1);
+        assert_eq!(agent_requests[1].messages.len(), 3);
+        assert!(
+            matches!(agent_messages.last(), Some(AgentMessage::Assistant(message)) if message.stop_reason == StopReason::Stop)
+        );
+
+        let mut agent_order = Vec::new();
+        while let Ok(event) = agent_event_rx.try_recv() {
+            if let Some(kind) = projected_agent_event_kind(&event) {
+                agent_order.push(kind);
+            }
+        }
+
+        let mut runtime_order = Vec::new();
+        let mut saw_prompt_accepted = false;
+        let mut runtime_terminal = None;
+        for _ in 0..5 {
+            let event = tokio::time::timeout(Duration::from_secs(1), runtime_event_rx.recv())
+                .await
+                .expect("runtime event timeout")
+                .expect("runtime event");
+            let summary = clankers_runtime::safe_event_summary(&event);
+            match summary["type"].as_str().expect("summary has type") {
+                "prompt_accepted" => saw_prompt_accepted = true,
+                "tool_started" => runtime_order.push("tool_started"),
+                "tool_finished" => runtime_order.push("tool_finished"),
+                "assistant_delta" => runtime_order.push("assistant_delta"),
+                "completed" => runtime_terminal = Some(summary["stop_reason"].clone()),
+                other => panic!("unexpected runtime event kind: {other}"),
+            }
+        }
+
+        assert!(saw_prompt_accepted);
+        assert_eq!(runtime_terminal, Some(json!("Complete")));
+        assert_eq!(agent_order, runtime_order);
+    }
+
+    fn sorted_tool_names(tools: &[clankers_provider::ToolDefinition]) -> Vec<String> {
+        let mut names = tools.iter().map(|tool| tool.name.clone()).collect::<Vec<_>>();
+        names.sort();
+        names
+    }
+
+    fn projected_agent_event_kind(event: &AgentEvent) -> Option<&'static str> {
+        match event {
+            AgentEvent::ToolExecutionStart { .. } => Some("tool_started"),
+            AgentEvent::ToolExecutionEnd { .. } => Some("tool_finished"),
+            AgentEvent::MessageUpdate {
+                delta: ContentDelta::TextDelta { text },
+                ..
+            } if !text.is_empty() => Some("assistant_delta"),
+            _ => None,
+        }
+    }
+
     #[test]
     fn shell_adapter_parity_matrix_evidence_is_present_and_source_bounded() {
         let unsupported_shell_paths = ["daemon socket", "database store", "oauth", "plugin runtime"];
