@@ -238,11 +238,129 @@ pub trait Tool: Send + Sync {
     }
 }
 
+/// Compatibility adapter from legacy agent tools to neutral tool-host execution.
+pub struct LegacyAgentToolExecutor {
+    tool: Arc<dyn Tool>,
+}
+
+impl LegacyAgentToolExecutor {
+    #[must_use]
+    pub fn new(tool: Arc<dyn Tool>) -> Self {
+        Self { tool }
+    }
+}
+
+impl clankers_tool_host::NeutralToolExecutor for LegacyAgentToolExecutor {
+    async fn execute_tool_with_context(
+        &mut self,
+        call: clankers_engine::EngineToolCall,
+        context: clankers_tool_host::ToolInvocationContext,
+    ) -> clankers_tool_host::ToolHostOutcome {
+        if let Err(outcome) = context.ensure_not_cancelled(&call.tool_name) {
+            return outcome;
+        }
+        if let Err(outcome) = context.ensure_allowed(&call.tool_name) {
+            return outcome;
+        }
+        let token = CancellationToken::new();
+        let ctx = ToolContext::new(context.call_id.clone(), token, None);
+        let result = self.tool.execute(&ctx, call.input).await;
+        legacy_tool_result_to_host_outcome(&call.tool_name, result)
+    }
+}
+
+fn legacy_tool_result_to_host_outcome(tool_name: &str, result: ToolResult) -> clankers_tool_host::ToolHostOutcome {
+    let content = result.content.iter().map(tool_result_content_to_content).collect::<Vec<_>>();
+    let details = result.details.unwrap_or_else(|| serde_json::json!({}));
+    if result.is_error {
+        return clankers_tool_host::ToolHostOutcome::ToolError {
+            message: first_tool_result_text(&content).unwrap_or_else(|| format!("{tool_name} failed")),
+            content,
+            details,
+        };
+    }
+    clankers_tool_host::ToolHostOutcome::Succeeded { content, details }
+}
+
+fn tool_result_content_to_content(content: &ToolResultContent) -> clanker_message::Content {
+    match content {
+        ToolResultContent::Text { text } => clanker_message::Content::Text { text: text.clone() },
+        ToolResultContent::Image { media_type, data } => clanker_message::Content::Image {
+            source: clanker_message::ImageSource::Base64 {
+                media_type: media_type.clone(),
+                data: data.clone(),
+            },
+        },
+    }
+}
+
+fn first_tool_result_text(content: &[clanker_message::Content]) -> Option<String> {
+    content.iter().find_map(|block| match block {
+        clanker_message::Content::Text { text } => Some(text.clone()),
+        _ => None,
+    })
+}
+
 #[cfg(test)]
 mod tests {
+    use clankers_tool_host::NeutralToolExecutor;
     use tokio_util::sync::CancellationToken;
 
     use super::*;
+
+    struct FakeLegacyTool {
+        definition: ToolDefinition,
+    }
+
+    #[async_trait]
+    impl Tool for FakeLegacyTool {
+        fn definition(&self) -> &ToolDefinition {
+            &self.definition
+        }
+
+        async fn execute(&self, ctx: &ToolContext, params: Value) -> ToolResult {
+            ToolResult::text(format!("{}:{}", ctx.call_id, params["value"].as_str().unwrap_or("missing")))
+        }
+    }
+
+    #[tokio::test]
+    async fn legacy_tool_executor_bridges_neutral_context_to_agent_tool() {
+        let tool = Arc::new(FakeLegacyTool {
+            definition: ToolDefinition {
+                name: "fake_legacy".to_string(),
+                description: "fake legacy tool".to_string(),
+                input_schema: serde_json::json!({"type":"object"}),
+            },
+        });
+        let mut executor = LegacyAgentToolExecutor::new(tool);
+        let call = clankers_engine::EngineToolCall {
+            call_id: clankers_engine::EngineCorrelationId("call-neutral".to_string()),
+            tool_name: "fake_legacy".to_string(),
+            input: serde_json::json!({"value":"ok"}),
+        };
+
+        let outcome = executor
+            .execute_tool_with_context(call.clone(), clankers_tool_host::ToolInvocationContext::new("call-neutral"))
+            .await;
+        let clankers_tool_host::ToolHostOutcome::Succeeded { content, .. } = outcome else {
+            panic!("expected successful legacy bridge");
+        };
+        assert!(matches!(&content[0], clanker_message::Content::Text { text } if text == "call-neutral:ok"));
+
+        let denied = executor
+            .execute_tool_with_context(
+                call,
+                clankers_tool_host::ToolInvocationContext::new("call-neutral").with_capability(
+                    clankers_tool_host::CapabilityDecision::Denied {
+                        reason: "blocked".to_string(),
+                    },
+                ),
+            )
+            .await;
+        assert!(
+            matches!(denied, clankers_tool_host::ToolHostOutcome::CapabilityDenied { reason, .. } if reason == "blocked")
+        );
+    }
 
     #[test]
     fn context_emit_progress_no_channel_is_noop() {

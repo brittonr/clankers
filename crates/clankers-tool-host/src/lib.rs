@@ -4,6 +4,9 @@
 //! not supervise Clankers plugins, discover built-in tools, or interpret engine
 //! reducer policy.
 
+use std::collections::BTreeMap;
+use std::sync::Arc;
+
 use clanker_message::Content;
 use clankers_engine::EngineCorrelationId;
 use clankers_engine::EngineToolCall;
@@ -19,6 +22,84 @@ pub const DEFAULT_TOOL_MAX_LINES: usize = 10_000;
 pub struct ToolDescriptor {
     pub name: String,
     pub description: String,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ToolHostServiceKind {
+    Storage,
+    Search,
+    Hooks,
+    Process,
+    Progress,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "status", rename_all = "snake_case")]
+pub enum ToolHostServiceStatus {
+    Available,
+    Unavailable { reason: String },
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ToolHostServiceHandle {
+    pub kind: ToolHostServiceKind,
+    pub status: ToolHostServiceStatus,
+    pub metadata: BTreeMap<String, String>,
+}
+
+impl ToolHostServiceHandle {
+    #[must_use]
+    pub fn available(kind: ToolHostServiceKind) -> Self {
+        Self {
+            kind,
+            status: ToolHostServiceStatus::Available,
+            metadata: BTreeMap::new(),
+        }
+    }
+
+    #[must_use]
+    pub fn unavailable(kind: ToolHostServiceKind, reason: impl Into<String>) -> Self {
+        Self {
+            kind,
+            status: ToolHostServiceStatus::Unavailable { reason: reason.into() },
+            metadata: BTreeMap::new(),
+        }
+    }
+
+    #[must_use]
+    pub fn with_metadata(mut self, key: impl Into<String>, value: impl Into<String>) -> Self {
+        self.metadata.insert(safe_metadata_key(key.into()), safe_metadata(value.into()));
+        self
+    }
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ToolHostServices {
+    services: BTreeMap<ToolHostServiceKind, ToolHostServiceHandle>,
+}
+
+impl ToolHostServices {
+    #[must_use]
+    pub fn empty() -> Self {
+        Self::default()
+    }
+
+    #[must_use]
+    pub fn with_service(mut self, handle: ToolHostServiceHandle) -> Self {
+        self.services.insert(handle.kind, handle);
+        self
+    }
+
+    #[must_use]
+    pub fn get(&self, kind: ToolHostServiceKind) -> Option<&ToolHostServiceHandle> {
+        self.services.get(&kind)
+    }
+
+    #[must_use]
+    pub fn is_available(&self, kind: ToolHostServiceKind) -> bool {
+        matches!(self.get(kind).map(|handle| &handle.status), Some(ToolHostServiceStatus::Available))
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -97,8 +178,180 @@ pub trait ToolHook {
     fn after_tool(&mut self, call: &EngineToolCall, outcome: &ToolHostOutcome) -> Result<(), ToolHostError>;
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ToolProgressKind {
+    Started,
+    Progress,
+    Completed,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ToolProgressEvent {
+    pub call_id: String,
+    pub kind: ToolProgressKind,
+    pub message: String,
+    pub metadata: BTreeMap<String, String>,
+}
+
+impl ToolProgressEvent {
+    #[must_use]
+    pub fn new(call_id: impl Into<String>, kind: ToolProgressKind, message: impl Into<String>) -> Self {
+        Self {
+            call_id: call_id.into(),
+            kind,
+            message: safe_metadata(message.into()),
+            metadata: BTreeMap::new(),
+        }
+    }
+
+    #[must_use]
+    pub fn with_metadata(mut self, key: impl Into<String>, value: impl Into<String>) -> Self {
+        self.metadata.insert(safe_metadata_key(key.into()), safe_metadata(value.into()));
+        self
+    }
+}
+
+pub trait ToolProgressSink: Send + Sync {
+    fn emit(&self, event: ToolProgressEvent) -> Result<(), ToolHostError>;
+}
+
+pub struct NullToolProgressSink;
+
+impl ToolProgressSink for NullToolProgressSink {
+    fn emit(&self, event: ToolProgressEvent) -> Result<(), ToolHostError> {
+        let _ = event;
+        Ok(())
+    }
+}
+
+#[derive(Clone)]
+pub struct ToolInvocationContext {
+    pub call_id: String,
+    pub capability: CapabilityDecision,
+    pub services: ToolHostServices,
+    pub cancellation: ToolInvocationCancellation,
+    pub progress: Arc<dyn ToolProgressSink>,
+    pub metadata: BTreeMap<String, String>,
+}
+
+impl ToolInvocationContext {
+    #[must_use]
+    pub fn new(call_id: impl Into<String>) -> Self {
+        Self {
+            call_id: call_id.into(),
+            capability: CapabilityDecision::Allowed,
+            services: ToolHostServices::empty(),
+            cancellation: ToolInvocationCancellation::default(),
+            progress: Arc::new(NullToolProgressSink),
+            metadata: BTreeMap::new(),
+        }
+    }
+
+    #[must_use]
+    pub fn with_capability(mut self, capability: CapabilityDecision) -> Self {
+        self.capability = capability;
+        self
+    }
+
+    #[must_use]
+    pub fn with_services(mut self, services: ToolHostServices) -> Self {
+        self.services = services;
+        self
+    }
+
+    #[must_use]
+    pub fn with_cancellation(mut self, cancellation: ToolInvocationCancellation) -> Self {
+        self.cancellation = cancellation;
+        self
+    }
+
+    #[must_use]
+    pub fn with_progress_sink(mut self, progress: Arc<dyn ToolProgressSink>) -> Self {
+        self.progress = progress;
+        self
+    }
+
+    #[must_use]
+    pub fn with_metadata(mut self, key: impl Into<String>, value: impl Into<String>) -> Self {
+        self.metadata.insert(safe_metadata_key(key.into()), safe_metadata(value.into()));
+        self
+    }
+
+    pub fn ensure_allowed(&self, tool_name: &str) -> Result<(), ToolHostOutcome> {
+        match &self.capability {
+            CapabilityDecision::Allowed => Ok(()),
+            CapabilityDecision::Denied { reason } => Err(ToolHostOutcome::CapabilityDenied {
+                name: tool_name.to_string(),
+                reason: reason.clone(),
+            }),
+        }
+    }
+
+    pub fn ensure_not_cancelled(&self, tool_name: &str) -> Result<(), ToolHostOutcome> {
+        if self.cancellation.cancelled {
+            return Err(ToolHostOutcome::Cancelled {
+                name: tool_name.to_string(),
+            });
+        }
+        Ok(())
+    }
+
+    pub fn require_service(&self, tool_name: &str, kind: ToolHostServiceKind) -> Result<(), ToolHostOutcome> {
+        if self.services.is_available(kind) {
+            return Ok(());
+        }
+        let message = match self.services.get(kind).map(|handle| &handle.status) {
+            Some(ToolHostServiceStatus::Unavailable { reason }) => reason.clone(),
+            Some(ToolHostServiceStatus::Available) => String::new(),
+            None => format!("required service {kind:?} unavailable"),
+        };
+        Err(ToolHostOutcome::ToolError {
+            content: vec![Content::Text { text: message.clone() }],
+            details: serde_json::json!({
+                "tool": tool_name,
+                "missing_service": format!("{kind:?}").to_ascii_lowercase(),
+            }),
+            message,
+        })
+    }
+
+    pub fn emit_progress(&self, kind: ToolProgressKind, message: impl Into<String>) -> Result<(), ToolHostError> {
+        self.progress.emit(ToolProgressEvent::new(self.call_id.clone(), kind, message))
+    }
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ToolInvocationCancellation {
+    pub cancelled: bool,
+    pub reason: Option<String>,
+}
+
+impl ToolInvocationCancellation {
+    #[must_use]
+    pub fn active() -> Self {
+        Self::default()
+    }
+
+    #[must_use]
+    pub fn cancelled(reason: impl Into<String>) -> Self {
+        Self {
+            cancelled: true,
+            reason: Some(reason.into()),
+        }
+    }
+}
+
 pub trait ToolExecutor {
     fn execute_tool(&mut self, call: EngineToolCall) -> impl core::future::Future<Output = ToolHostOutcome> + Send;
+}
+
+pub trait NeutralToolExecutor {
+    fn execute_tool_with_context(
+        &mut self,
+        call: EngineToolCall,
+        context: ToolInvocationContext,
+    ) -> impl core::future::Future<Output = ToolHostOutcome> + Send;
 }
 
 #[derive(Debug, Clone)]
@@ -155,6 +408,36 @@ pub fn tool_call_id(call: &EngineToolCall) -> &EngineCorrelationId {
 }
 
 #[must_use]
+fn safe_metadata_key(value: String) -> String {
+    value.chars().take(160).collect()
+}
+
+#[must_use]
+fn safe_metadata(value: String) -> String {
+    if contains_secret_marker(&value) {
+        "[REDACTED]".to_string()
+    } else {
+        value.chars().take(160).collect()
+    }
+}
+
+#[must_use]
+fn contains_secret_marker(value: &str) -> bool {
+    let lower = value.to_ascii_lowercase();
+    [
+        "token",
+        "secret",
+        "password",
+        "api_key",
+        "authorization",
+        "bearer",
+        "cookie",
+    ]
+    .iter()
+    .any(|marker| lower.contains(marker))
+}
+
+#[must_use]
 fn count_lines(text: &str) -> usize {
     if text.is_empty() {
         return 0;
@@ -203,6 +486,12 @@ fn utf8_prefix(text: &str, max_bytes: usize) -> &str {
 
 #[cfg(test)]
 mod tests {
+    use std::future::Future;
+    use std::task::Context;
+    use std::task::Poll;
+    use std::task::Wake;
+    use std::task::Waker;
+
     use super::*;
 
     const SMALL_BYTES: usize = 6;
@@ -237,6 +526,69 @@ mod tests {
         events: Vec<&'static str>,
     }
 
+    #[derive(Default)]
+    struct RecordingProgressSink {
+        events: std::sync::Mutex<Vec<ToolProgressEvent>>,
+    }
+
+    impl ToolProgressSink for RecordingProgressSink {
+        fn emit(&self, event: ToolProgressEvent) -> Result<(), ToolHostError> {
+            self.events.lock().expect("progress lock").push(event);
+            Ok(())
+        }
+    }
+
+    struct NeutralReadFixtureTool;
+
+    impl NeutralToolExecutor for NeutralReadFixtureTool {
+        async fn execute_tool_with_context(
+            &mut self,
+            call: EngineToolCall,
+            context: ToolInvocationContext,
+        ) -> ToolHostOutcome {
+            if let Err(outcome) = context.ensure_not_cancelled(&call.tool_name) {
+                return outcome;
+            }
+            if let Err(outcome) = context.ensure_allowed(&call.tool_name) {
+                return outcome;
+            }
+            let _ = context.emit_progress(ToolProgressKind::Started, "reading fixture");
+            ToolHostOutcome::Succeeded {
+                content: vec![Content::Text {
+                    text: "read fixture".to_string(),
+                }],
+                details: serde_json::json!({"source": "neutral_read_fixture"}),
+            }
+        }
+    }
+
+    struct NeutralMutationFixtureTool;
+
+    impl NeutralToolExecutor for NeutralMutationFixtureTool {
+        async fn execute_tool_with_context(
+            &mut self,
+            call: EngineToolCall,
+            context: ToolInvocationContext,
+        ) -> ToolHostOutcome {
+            if let Err(outcome) = context.ensure_not_cancelled(&call.tool_name) {
+                return outcome;
+            }
+            if let Err(outcome) = context.ensure_allowed(&call.tool_name) {
+                return outcome;
+            }
+            if let Err(outcome) = context.require_service(&call.tool_name, ToolHostServiceKind::Storage) {
+                return outcome;
+            }
+            let _ = context.emit_progress(ToolProgressKind::Progress, "writing fixture");
+            let mut accumulator = ToolOutputAccumulator::new(ToolTruncationLimits {
+                max_bytes: SMALL_BYTES,
+                max_lines: DEFAULT_TOOL_MAX_LINES,
+            });
+            accumulator.push("mutation-output");
+            accumulator.finish()
+        }
+    }
+
     impl ToolHook for RecordingHook {
         fn before_tool(&mut self, _call: &EngineToolCall) -> Result<(), ToolHostError> {
             self.events.push("before");
@@ -246,6 +598,22 @@ mod tests {
         fn after_tool(&mut self, _call: &EngineToolCall, _outcome: &ToolHostOutcome) -> Result<(), ToolHostError> {
             self.events.push("after");
             Ok(())
+        }
+    }
+
+    fn block_on<F: Future>(future: F) -> F::Output {
+        struct NoopWaker;
+        impl Wake for NoopWaker {
+            fn wake(self: Arc<Self>) {}
+        }
+        let waker = Waker::from(Arc::new(NoopWaker));
+        let mut context = Context::from_waker(&waker);
+        let mut future = Box::pin(future);
+        loop {
+            match future.as_mut().poll(&mut context) {
+                Poll::Ready(output) => return output,
+                Poll::Pending => std::thread::yield_now(),
+            }
         }
     }
 
@@ -364,6 +732,60 @@ mod tests {
         hook.after_tool(&call, &outcome).expect("after hook should pass");
 
         assert_eq!(hook.events, vec!["before", "after"]);
+    }
+
+    #[test]
+    fn neutral_context_fixtures_cover_success_progress_storage_denial_cancel_and_truncation() {
+        let call = engine_tool_call("neutral_read");
+        let progress = Arc::new(RecordingProgressSink::default());
+        let mut read_tool = NeutralReadFixtureTool;
+        let read_outcome = block_on(read_tool.execute_tool_with_context(
+            call.clone(),
+            ToolInvocationContext::new("call-1").with_progress_sink(progress.clone()),
+        ));
+        assert!(matches!(read_outcome, ToolHostOutcome::Succeeded { .. }));
+        assert_eq!(progress.events.lock().expect("progress lock").len(), 1);
+
+        let denied = block_on(read_tool.execute_tool_with_context(
+            call.clone(),
+            ToolInvocationContext::new("call-1").with_capability(CapabilityDecision::Denied {
+                reason: "blocked".to_string(),
+            }),
+        ));
+        assert!(matches!(denied, ToolHostOutcome::CapabilityDenied { reason, .. } if reason == "blocked"));
+
+        let cancelled = block_on(read_tool.execute_tool_with_context(
+            call.clone(),
+            ToolInvocationContext::new("call-1").with_cancellation(ToolInvocationCancellation::cancelled("user")),
+        ));
+        assert!(matches!(cancelled, ToolHostOutcome::Cancelled { .. }));
+
+        let mut mutation_tool = NeutralMutationFixtureTool;
+        let missing_storage =
+            block_on(mutation_tool.execute_tool_with_context(call.clone(), ToolInvocationContext::new("call-1")));
+        assert!(
+            matches!(missing_storage, ToolHostOutcome::ToolError { message, .. } if message.to_ascii_lowercase().contains("storage"))
+        );
+
+        let truncation = block_on(mutation_tool.execute_tool_with_context(
+            call,
+            ToolInvocationContext::new("call-1").with_services(
+                ToolHostServices::empty().with_service(ToolHostServiceHandle::available(ToolHostServiceKind::Storage)),
+            ),
+        ));
+        assert!(matches!(truncation, ToolHostOutcome::Truncated { .. }));
+    }
+
+    #[test]
+    fn neutral_context_redacts_secret_progress_and_metadata() {
+        let event = ToolProgressEvent::new("call-secret", ToolProgressKind::Progress, "bearer token abc")
+            .with_metadata("authorization", "secret value");
+        assert_eq!(event.message, "[REDACTED]");
+        assert_eq!(event.metadata.get("authorization").unwrap(), "[REDACTED]");
+
+        let handle =
+            ToolHostServiceHandle::available(ToolHostServiceKind::Storage).with_metadata("api_key", "secret value");
+        assert_eq!(handle.metadata.get("api_key").unwrap(), "[REDACTED]");
     }
 
     #[test]

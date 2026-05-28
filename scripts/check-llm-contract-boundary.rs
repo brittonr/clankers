@@ -155,6 +155,9 @@ const HOST_FORBIDDEN_SOURCE_TOKENS: &[&str] = &[
     "clanker_tui_types",
     "clankers_db",
     "clankers_config",
+    "AgentEvent",
+    "HookPipeline",
+    "SearchIndex",
     "CompletionRequest",
     "CompletionResponse",
     "ProviderResponse",
@@ -196,6 +199,26 @@ fn run() -> Result<(), String> {
     check_source_excludes_tokens("crates/clankers-engine/src", ENGINE_FORBIDDEN_SOURCE_TOKENS)?;
     check_source_excludes_tokens("crates/clankers-engine-host/src", HOST_FORBIDDEN_SOURCE_TOKENS)?;
     check_source_excludes_tokens("crates/clankers-tool-host/src", HOST_FORBIDDEN_SOURCE_TOKENS)?;
+    check_tool_host_context_contract()?;
+    Ok(())
+}
+
+fn check_tool_host_context_contract() -> Result<(), String> {
+    let source = fs::read_to_string("crates/clankers-tool-host/src/lib.rs")
+        .map_err(|error| format!("failed to read clankers-tool-host source: {error}"))?;
+    for marker in [
+        "pub struct ToolInvocationContext",
+        "pub struct ToolHostServices",
+        "pub trait ToolProgressSink",
+        "pub trait NeutralToolExecutor",
+        "ToolHostServiceKind::Storage",
+        "ToolInvocationCancellation",
+    ] {
+        if !source.contains(marker) {
+            return Err(format!("clankers-tool-host missing neutral tool context marker `{marker}`"));
+        }
+    }
+    println!("ok: clankers-tool-host neutral context markers are present");
     Ok(())
 }
 

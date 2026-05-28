@@ -81,6 +81,8 @@ The session-resume-brick evidence is fixture backed across two product-shaped st
 
 `clankers-engine-host` depends on explicit interfaces. Hosts provide implementations; SDK crates do not instantiate Clankers runtime implementations.
 
+`clankers-tool-host` provides the neutral tool context layer: `ToolInvocationContext`, `ToolHostServices`, `ToolProgressSink`, and `NeutralToolExecutor`. These contracts carry call identity, cancellation, capability decisions, semantic progress, and typed host-service availability without importing `AgentEvent`, database handles, hook pipelines, TUI progress widgets, daemon frames, or root-shell state. Legacy Clankers tools bridge through `LegacyAgentToolExecutor` at the agent edge; reusable SDK code should depend on the neutral context instead.
+
 | Adapter | Trait/type | Host responsibility | Positive path | Negative path |
 |---|---|---|---|---|
 | Model execution | `ModelHost` returns `ModelHostOutcome` | Convert `EngineModelRequest` into the host provider request, execute it, and convert output back to `EngineModelResponse` or stream events | Return `Completed` with `Content`, `StopReason`, and optional `Usage`, or `Streamed` provider-neutral events | Return `Failed { EngineTerminalFailure { retryable, status, message } }` for retryable and terminal provider failures |
