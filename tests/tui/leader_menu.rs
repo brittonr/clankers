@@ -68,12 +68,13 @@ fn unknown_key_dismisses_leader_menu() {
 fn leader_t_toggles_thinking() {
     let mut h = TuiTestHarness::spawn(24, 100);
 
-    // Space → t should toggle thinking
+    // Space → t cycles the default max thinking level to off.
+    h.wait_for_status_bar_contains("💭 max", TIMEOUT);
     h.type_str(" ");
     h.wait_for_text("Space", TIMEOUT);
     h.type_str("t");
-    h.wait_for_text("Thinking: low", TIMEOUT);
-    assert!(h.status_bar().contains("💭"), "Thinking badge should appear");
+    h.wait_for_text("Thinking: off", TIMEOUT);
+    h.wait_for_status_bar_absent("💭", TIMEOUT);
 
     h.quit();
 }

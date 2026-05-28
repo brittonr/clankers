@@ -12,32 +12,28 @@ const TIMEOUT: Duration = Duration::from_secs(5);
 fn toggle_thinking_with_ctrl_t() {
     let mut h = TuiTestHarness::spawn(24, 100);
 
-    // Initially no thinking badge in status bar
-    assert!(!h.status_bar().contains("💭"), "Thinking should be off initially");
+    // Thinking defaults to max and Ctrl+t cycles from max back to off.
+    h.wait_for_status_bar_contains("💭 max", TIMEOUT);
 
-    // Ctrl+t cycles to "low"
     h.send_key(Key::CtrlT);
-    h.wait_for_text("💭", TIMEOUT);
-    assert!(h.status_bar().contains("💭"), "Status bar should show 💭 after Ctrl+t");
-    assert!(h.screen_contains("Thinking: low"), "Should show low level:\n{}", h.screen_text());
+    h.wait_for_text("Thinking: off", TIMEOUT);
+    h.wait_for_status_bar_absent("💭", TIMEOUT);
 
-    // Ctrl+t cycles to "medium"
+    // Then continue through low → medium → high → max.
+    h.send_key(Key::CtrlT);
+    h.wait_for_text("Thinking: low", TIMEOUT);
+    h.wait_for_status_bar_contains("💭 low", TIMEOUT);
+
     h.send_key(Key::CtrlT);
     h.wait_for_text("Thinking: medium", TIMEOUT);
-    assert!(h.status_bar().contains("💭 medium"), "Status bar should show medium level");
+    h.wait_for_status_bar_contains("💭 medium", TIMEOUT);
 
-    // Ctrl+t cycles to "high"
     h.send_key(Key::CtrlT);
     h.wait_for_text("Thinking: high", TIMEOUT);
 
-    // Ctrl+t cycles to "max"
     h.send_key(Key::CtrlT);
     h.wait_for_text("Thinking: max", TIMEOUT);
-
-    // Ctrl+t cycles back to "off"
-    h.send_key(Key::CtrlT);
-    h.wait_for_text("Thinking: off", TIMEOUT);
-    assert!(!h.status_bar().contains("💭"), "Status bar should not show 💭 when off");
+    h.wait_for_status_bar_contains("💭 max", TIMEOUT);
 
     h.quit();
 }
@@ -46,31 +42,39 @@ fn toggle_thinking_with_ctrl_t() {
 fn toggle_thinking_with_slash_think() {
     let mut h = TuiTestHarness::spawn(24, 100);
 
-    // /think cycles to "low"
+    // /think cycles the default max level to off.
+    h.wait_for_status_bar_contains("💭 max", TIMEOUT);
     h.type_str("i/think");
     h.settle(SETTLE);
     h.send_key(Key::Enter);
-    h.wait_for_text("💭", TIMEOUT);
-    assert!(h.status_bar().contains("💭"));
-    assert!(h.screen_contains("Thinking: low"));
+    h.wait_for_text("Thinking: off", TIMEOUT);
+    h.wait_for_status_bar_absent("💭", TIMEOUT);
 
-    // /think off disables
+    // /think cycles off to low.
+    h.send_key(Key::Escape);
+    h.settle(SETTLE);
+    h.type_str("i/think");
+    h.settle(SETTLE);
+    h.send_key(Key::Enter);
+    h.wait_for_text("Thinking: low", TIMEOUT);
+    h.wait_for_status_bar_contains("💭 low", TIMEOUT);
+
+    // /think off disables.
     h.send_key(Key::Escape);
     h.settle(SETTLE);
     h.type_str("i/think off");
     h.settle(SETTLE);
     h.send_key(Key::Enter);
-    h.wait_for_text("Thinking: off", TIMEOUT);
-    assert!(!h.status_bar().contains("💭"));
+    h.wait_for_status_bar_absent("💭", TIMEOUT);
 
-    // /think high sets directly
+    // /think xhigh aliases max.
     h.send_key(Key::Escape);
     h.settle(SETTLE);
-    h.type_str("i/think high");
+    h.type_str("i/think xhigh");
     h.settle(SETTLE);
     h.send_key(Key::Enter);
-    h.wait_for_text("Thinking: high", TIMEOUT);
-    assert!(h.status_bar().contains("💭 high"));
+    h.wait_for_text("Thinking: max", TIMEOUT);
+    h.wait_for_status_bar_contains("💭 max", TIMEOUT);
 
     h.quit();
 }
@@ -94,9 +98,8 @@ fn toggle_show_thinking_with_shift_t() {
 fn thinking_badge_persists_across_commands() {
     let mut h = TuiTestHarness::spawn(24, 100);
 
-    // Enable thinking
-    h.send_key(Key::CtrlT);
-    h.wait_for_text("💭", TIMEOUT);
+    // Thinking is enabled by default.
+    h.wait_for_status_bar_contains("💭 max", TIMEOUT);
 
     // Run a slash command — badge should persist
     h.type_str("i/version");
@@ -104,7 +107,7 @@ fn thinking_badge_persists_across_commands() {
     h.send_key(Key::Enter);
     h.wait_for_text("clankers 0.1.0", TIMEOUT);
 
-    assert!(h.status_bar().contains("💭"), "Thinking badge should persist after /version");
+    assert!(h.status_bar().contains("💭 max"), "Thinking badge should persist after /version");
 
     h.quit();
 }

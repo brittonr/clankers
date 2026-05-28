@@ -467,6 +467,12 @@ pub fn normalize_styled_text(text: &str) -> String {
     let re_bare_pipe = regex::Regex::new(r"\s+\|\s*$").unwrap();
     s = re_bare_pipe.replace_all(&s, "").to_string();
 
+    // The model segment can be width-truncated by one cell depending on tmux
+    // timing and double-width emoji handling. Normalize the styled status bar
+    // model the same way plain-text snapshots do.
+    let re_model = regex::Regex::new(r"(idle \| )\S+").unwrap();
+    s = re_model.replace_all(&s, "${1}MODEL").to_string();
+
     s
 }
 

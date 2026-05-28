@@ -88,24 +88,24 @@ fn status_bar_updates_after_model_switch() {
 fn status_bar_thinking_badge_toggle() {
     let mut h = TuiTestHarness::spawn(24, 120);
 
-    assert!(!h.status_bar().contains("💭"), "No thinking badge initially");
+    h.wait_for_status_bar_contains("💭 max", TIMEOUT);
 
-    // Ctrl+t cycles to low
+    // Ctrl+t cycles max to off.
     h.send_key(Key::CtrlT);
-    h.wait_for_text("💭", TIMEOUT);
-    assert!(h.status_bar().contains("💭"), "Badge should appear");
-    assert!(h.status_bar().contains("💭 low"), "Badge should show 'low' level");
+    h.wait_for_text("Thinking: off", TIMEOUT);
+    h.wait_for_status_bar_absent("💭", TIMEOUT);
 
-    // Cycle through all levels back to off
+    // Continue through the enabled levels back to max.
+    h.send_key(Key::CtrlT); // low
+    h.wait_for_text("Thinking: low", TIMEOUT);
+    h.wait_for_status_bar_contains("💭 low", TIMEOUT);
     h.send_key(Key::CtrlT); // medium
     h.wait_for_text("Thinking: medium", TIMEOUT);
     h.send_key(Key::CtrlT); // high
     h.wait_for_text("Thinking: high", TIMEOUT);
     h.send_key(Key::CtrlT); // max
     h.wait_for_text("Thinking: max", TIMEOUT);
-    h.send_key(Key::CtrlT); // off
-    h.wait_for_text("Thinking: off", TIMEOUT);
-    assert!(!h.status_bar().contains("💭"), "Badge should disappear");
+    h.wait_for_status_bar_contains("💭 max", TIMEOUT);
 
     h.quit();
 }

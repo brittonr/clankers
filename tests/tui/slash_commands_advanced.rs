@@ -100,8 +100,8 @@ fn slash_think_with_budget() {
 
     // /think 20000 maps to nearest level (high = 32k)
     run_slash(&mut h, "/think 20000");
-    h.wait_for_text("💭", TIMEOUT);
-    assert!(h.screen_contains("Thinking: high"), "20000 should map to high level");
+    h.wait_for_text("Thinking: high", TIMEOUT);
+    h.wait_for_status_bar_contains("💭 high", TIMEOUT);
 
     h.quit();
 }

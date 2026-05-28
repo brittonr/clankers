@@ -254,6 +254,42 @@ impl TuiTestHarness {
         self.row_text(self.rows - 1)
     }
 
+    pub fn wait_for_status_bar_contains(&mut self, needle: &str, timeout: Duration) {
+        let start = Instant::now();
+        loop {
+            let status_bar = self.status_bar();
+            if status_bar.contains(needle) {
+                return;
+            }
+            assert!(
+                start.elapsed() < timeout,
+                "Timed out waiting for status bar to contain {:?}.\nStatus bar:\n{}\nScreen contents:\n{}",
+                needle,
+                status_bar,
+                self.screen_text()
+            );
+            std::thread::sleep(SCREEN_POLL_INTERVAL);
+        }
+    }
+
+    pub fn wait_for_status_bar_absent(&mut self, needle: &str, timeout: Duration) {
+        let start = Instant::now();
+        loop {
+            let status_bar = self.status_bar();
+            if !status_bar.contains(needle) {
+                return;
+            }
+            assert!(
+                start.elapsed() < timeout,
+                "Timed out waiting for status bar to omit {:?}.\nStatus bar:\n{}\nScreen contents:\n{}",
+                needle,
+                status_bar,
+                self.screen_text()
+            );
+            std::thread::sleep(SCREEN_POLL_INTERVAL);
+        }
+    }
+
     /// Quit cleanly: Esc to normal mode, then q
     pub fn quit(&mut self) {
         self.send_key(Key::Escape);

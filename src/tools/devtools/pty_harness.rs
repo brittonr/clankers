@@ -16,6 +16,8 @@ use portable_pty::PtySize;
 use portable_pty::PtySystem;
 use vt100::Parser;
 
+const INITIAL_RENDER_TIMEOUT: Duration = Duration::from_secs(30);
+
 // ── Key name mapping ────────────────────────────────────────────────
 
 pub(super) fn key_bytes(name: &str) -> Option<&'static [u8]> {
@@ -101,6 +103,11 @@ impl PtyHarness {
         }
         cmd.env("RUST_LOG", "off");
         cmd.env("TERM", "xterm-256color");
+        // PTY validation must exercise the local TUI only. The child also gets
+        // --no-daemon, but provider discovery checks this env var before trying
+        // to connect to or auto-start the router daemon; doing that before the
+        // first render can leave the screen blank until the harness times out.
+        cmd.env("CLANKERS_NO_DAEMON", "1");
 
         let child = pair.slave.spawn_command(cmd).map_err(|e| format!("Failed to spawn clankers: {}", e))?;
         drop(pair.slave);
@@ -134,7 +141,7 @@ impl PtyHarness {
 
         // Wait for initial render
         harness
-            .wait_for("NORMAL", Duration::from_secs(10))
+            .wait_for("NORMAL", INITIAL_RENDER_TIMEOUT)
             .map_err(|e| format!("TUI failed to start: {}", e))?;
 
         Ok(harness)

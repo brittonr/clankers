@@ -20,6 +20,8 @@ use std::sync::atomic::Ordering;
 use std::time::Duration;
 use std::time::Instant;
 
+const INITIAL_RENDER_TIMEOUT: Duration = Duration::from_secs(30);
+
 static SESSION_COUNTER: AtomicUsize = AtomicUsize::new(0);
 static TMUX_LOCK: Mutex<()> = Mutex::new(());
 
@@ -111,7 +113,7 @@ impl TmuxTestHarness {
         };
 
         // Wait for the TUI to start rendering
-        harness.wait_for_text("NORMAL", Duration::from_secs(10));
+        harness.wait_for_text("NORMAL", INITIAL_RENDER_TIMEOUT);
         Some(harness)
     }
 
