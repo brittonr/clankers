@@ -2,6 +2,11 @@
 
 use chrono::DateTime;
 use chrono::Utc;
+use clanker_message::SemanticErrorClass;
+use clanker_message::SemanticEvent;
+use clanker_message::SemanticEventMetadata;
+use clanker_message::SemanticImage;
+use clanker_message::SemanticToolStatus;
 use clankers_provider::Usage;
 use clankers_provider::message::AgentMessage;
 use clankers_provider::message::AssistantMessage;
@@ -167,6 +172,115 @@ pub enum AgentEvent {
 }
 
 impl AgentEvent {
+    /// Convert this agent event into the shared semantic event stream.
+    #[must_use]
+    pub fn to_semantic_event(&self) -> Option<SemanticEvent> {
+        match self {
+            Self::AgentStart => Some(SemanticEvent::AgentStart {
+                metadata: SemanticEventMetadata::empty().with("source", "agent"),
+            }),
+            Self::AgentEnd { .. } => Some(SemanticEvent::AgentEnd {
+                metadata: SemanticEventMetadata::empty().with("source", "agent"),
+            }),
+            Self::ContentBlockStart { content_block, .. } => Some(SemanticEvent::ContentBlockStart {
+                is_thinking: matches!(content_block, Content::Thinking { .. }),
+                metadata: SemanticEventMetadata::empty().with("source", "agent"),
+            }),
+            Self::ContentBlockStop { .. } => Some(SemanticEvent::ContentBlockStop {
+                metadata: SemanticEventMetadata::empty().with("source", "agent"),
+            }),
+            Self::MessageUpdate { delta, .. } => stream_delta_to_semantic_event(delta),
+            Self::ToolCall {
+                tool_name,
+                call_id,
+                input,
+            } => Some(SemanticEvent::ToolCall {
+                tool_name: tool_name.clone(),
+                call_id: call_id.clone(),
+                input: input.clone(),
+                metadata: SemanticEventMetadata::empty().with("source", "agent"),
+            }),
+            Self::ToolExecutionStart { call_id, tool_name } => Some(SemanticEvent::ToolStarted {
+                call_id: call_id.clone(),
+                tool_name: tool_name.clone(),
+                metadata: SemanticEventMetadata::empty().with("source", "agent"),
+            }),
+            Self::ToolExecutionUpdate { call_id, partial } => {
+                let (text, images) = tool_result_content_to_semantic_parts(&partial.content);
+                Some(SemanticEvent::ToolOutput {
+                    call_id: call_id.clone(),
+                    text,
+                    images,
+                    metadata: SemanticEventMetadata::empty().with("source", "agent"),
+                })
+            }
+            Self::ToolExecutionEnd {
+                call_id,
+                result,
+                is_error,
+            } => {
+                let (text, images) = tool_result_content_to_semantic_parts(&result.content);
+                Some(SemanticEvent::ToolFinished {
+                    call_id: call_id.clone(),
+                    status: if *is_error {
+                        SemanticToolStatus::Failed
+                    } else {
+                        SemanticToolStatus::Succeeded
+                    },
+                    text,
+                    images,
+                    metadata: SemanticEventMetadata::empty().with("source", "agent"),
+                })
+            }
+            Self::ToolProgressUpdate { call_id, progress } => Some(SemanticEvent::ToolProgressUpdate {
+                call_id: call_id.clone(),
+                message: progress.message.clone(),
+                metadata: SemanticEventMetadata::empty().with("source", "agent"),
+            }),
+            Self::ToolResultChunk { call_id, chunk } => Some(SemanticEvent::ToolChunk {
+                call_id: call_id.clone(),
+                content: chunk.content.clone(),
+                content_type: chunk.content_type.clone(),
+                metadata: SemanticEventMetadata::empty().with("source", "agent"),
+            }),
+            Self::UserInput {
+                text,
+                agent_msg_count,
+                timestamp,
+            } => Some(SemanticEvent::UserInput {
+                text: text.clone(),
+                agent_msg_count: *agent_msg_count,
+                timestamp_rfc3339: timestamp.to_rfc3339(),
+                metadata: SemanticEventMetadata::empty().with("source", "agent"),
+            }),
+            Self::SessionCompaction {
+                compacted_count,
+                tokens_saved,
+            } => Some(SemanticEvent::SessionCompaction {
+                compacted_count: *compacted_count,
+                tokens_saved: *tokens_saved,
+                metadata: SemanticEventMetadata::empty().with("source", "agent"),
+            }),
+            Self::UsageUpdate { cumulative_usage, .. } => Some(SemanticEvent::UsageUpdated {
+                input_tokens: cumulative_usage.input_tokens as u64,
+                output_tokens: cumulative_usage.output_tokens as u64,
+                cache_read_tokens: cumulative_usage.cache_read_input_tokens as u64,
+                metadata: SemanticEventMetadata::empty().with("source", "agent"),
+            }),
+            Self::UserCancel => Some(SemanticEvent::Error {
+                message: "user cancelled".to_string(),
+                error_class: SemanticErrorClass::Session,
+                metadata: SemanticEventMetadata::empty().with("source", "agent"),
+            }),
+            Self::SessionShutdown { session_id } => Some(SemanticEvent::Shutdown {
+                metadata: SemanticEventMetadata::empty()
+                    .with("source", "agent")
+                    .with_session_id(session_id.clone()),
+            }),
+            _ => None,
+        }
+    }
+
     /// String tag for plugin event matching.
     ///
     /// Returns the snake_case identifier that plugin manifests use
@@ -196,7 +310,113 @@ impl AgentEvent {
     }
 }
 
+fn stream_delta_to_semantic_event(delta: &clankers_provider::streaming::StreamDelta) -> Option<SemanticEvent> {
+    match delta {
+        clankers_provider::streaming::ContentDelta::TextDelta { text } => Some(SemanticEvent::AssistantDelta {
+            text: text.clone(),
+            metadata: SemanticEventMetadata::empty().with("source", "agent"),
+        }),
+        clankers_provider::streaming::ContentDelta::ThinkingDelta { thinking } => {
+            Some(SemanticEvent::ThinkingDelta {
+                text: thinking.clone(),
+                metadata: SemanticEventMetadata::empty().with("source", "agent"),
+            })
+        }
+        clankers_provider::streaming::ContentDelta::InputJsonDelta { .. }
+        | clankers_provider::streaming::ContentDelta::SignatureDelta { .. } => None,
+    }
+}
+
+fn tool_result_content_to_semantic_parts(content: &[crate::tool::ToolResultContent]) -> (String, Vec<SemanticImage>) {
+    let mut text = String::new();
+    let mut images = Vec::new();
+    for item in content {
+        match item {
+            crate::tool::ToolResultContent::Text { text: fragment } => {
+                if !text.is_empty() {
+                    text.push('\n');
+                }
+                text.push_str(fragment);
+            }
+            crate::tool::ToolResultContent::Image { media_type, data } => images.push(SemanticImage {
+                data: data.clone(),
+                media_type: media_type.clone(),
+            }),
+        }
+    }
+    (text, images)
+}
+
 /// Convert a `ProcessEvent` from the procmon crate into an `AgentEvent`.
+#[cfg(test)]
+mod tests {
+    use clanker_message::SemanticToolStatus;
+    use clankers_provider::streaming::ContentDelta;
+
+    use super::*;
+    use crate::tool::ToolResult;
+    use crate::tool::ToolResultContent;
+
+    #[test]
+    fn agent_event_projects_core_semantic_order() {
+        let events = vec![
+            AgentEvent::AgentStart,
+            AgentEvent::MessageUpdate {
+                index: 0,
+                delta: ContentDelta::ThinkingDelta {
+                    thinking: "thinking".to_string(),
+                },
+            },
+            AgentEvent::MessageUpdate {
+                index: 0,
+                delta: ContentDelta::TextDelta {
+                    text: "answer".to_string(),
+                },
+            },
+            AgentEvent::ToolExecutionStart {
+                call_id: "call-1".to_string(),
+                tool_name: "bash".to_string(),
+            },
+            AgentEvent::ToolExecutionEnd {
+                call_id: "call-1".to_string(),
+                result: ToolResult {
+                    content: vec![ToolResultContent::Text {
+                        text: "ok".to_string(),
+                    }],
+                    details: None,
+                    full_output_path: None,
+                    is_error: false,
+                },
+                is_error: false,
+            },
+            AgentEvent::AgentEnd { messages: Vec::new() },
+        ];
+        let semantic: Vec<_> = events
+            .iter()
+            .map(|event| event.to_semantic_event().expect("fixture events map to semantic"))
+            .collect();
+        let kinds: Vec<_> = semantic.iter().map(SemanticEvent::kind).collect();
+        assert_eq!(
+            kinds,
+            vec![
+                "agent_start",
+                "thinking_delta",
+                "assistant_delta",
+                "tool_started",
+                "tool_finished",
+                "agent_end"
+            ]
+        );
+        assert!(matches!(
+            &semantic[4],
+            SemanticEvent::ToolFinished {
+                status: SemanticToolStatus::Succeeded,
+                ..
+            }
+        ));
+    }
+}
+
 pub fn process_event_to_agent(pe: clankers_procmon::ProcessEvent) -> AgentEvent {
     match pe {
         clankers_procmon::ProcessEvent::Spawn { pid, meta } => AgentEvent::ProcessSpawn { pid, meta },

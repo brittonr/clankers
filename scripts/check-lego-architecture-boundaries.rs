@@ -643,71 +643,93 @@ fn controller_domain_event_signature() -> Result<Value, String> {
     let domain_event = &domain_event_file.source;
     let convert = &convert_file.source;
 
-    require_rust_enum(&domain_event_file, "ControllerDomainEvent", "neutral controller event enum")?;
-    require_rust_struct(&domain_event_file, "DomainImage", "neutral image receipt DTO")?;
     require_rust_fn(
         &domain_event_file,
         "agent_event_to_domain_event",
-        "agent/runtime event to neutral domain event projection",
+        "agent/runtime event to shared semantic event projection",
     )?;
     require_rust_fn(&domain_event_file, "tool_content_to_domain_parts", "neutral tool receipt projection")?;
-    forbid_rust_path(&domain_event_file, "DaemonEvent", "domain event protocol DTO leakage")?;
-    forbid_rust_path(&domain_event_file, "TuiEvent", "domain event TUI DTO leakage")?;
-    forbid_rust_path(&domain_event_file, "clankers_protocol", "domain event protocol crate dependency")?;
-    forbid_rust_path(&domain_event_file, "clanker_tui_types", "domain event TUI crate dependency")?;
+    forbid_rust_path(&domain_event_file, "DaemonEvent", "semantic event adapter protocol DTO leakage")?;
+    forbid_rust_path(&domain_event_file, "TuiEvent", "semantic event adapter TUI DTO leakage")?;
+    forbid_rust_path(&domain_event_file, "clankers_protocol", "semantic event adapter protocol crate dependency")?;
+    forbid_rust_path(&domain_event_file, "clanker_tui_types", "semantic event adapter TUI crate dependency")?;
+    require_rust_path(
+        &domain_event_file,
+        "SemanticEvent",
+        "controller compatibility alias points at shared semantic event contract",
+    )?;
     require_rust_path(
         &convert_file,
         "agent_event_to_domain_event",
-        "protocol projection delegates through neutral domain event seam",
+        "protocol projection delegates through semantic event seam",
     )?;
     require_rust_path(
         &convert_file,
-        "domain_event_to_daemon_event",
-        "protocol projection delegates through neutral domain event seam",
+        "semantic_event_to_daemon_event",
+        "daemon projection is owned by semantic event edge adapter",
+    )?;
+    require_rust_path(
+        &convert_file,
+        "semantic_event_to_tui_event",
+        "TUI projection is owned by semantic event edge adapter",
     )?;
 
     require_contains(
-        &domain_event,
-        "Neutral controller domain events projected from agent/runtime events",
-        "controller domain event seam purpose",
+        domain_event,
+        "ControllerDomainEvent` is kept as the controller-local compatibility name",
+        "controller domain event seam convergence note",
     )?;
-    require_contains(&domain_event, "enum ControllerDomainEvent", "neutral controller event enum")?;
-    require_contains(&domain_event, "struct DomainImage", "neutral image receipt DTO")?;
     require_contains(
-        &domain_event,
+        domain_event,
+        "pub(crate) type ControllerDomainEvent = SemanticEvent",
+        "controller domain event compatibility alias",
+    )?;
+    require_contains(
+        domain_event,
+        "pub(crate) type DomainImage = SemanticImage",
+        "neutral image receipt DTO compatibility alias",
+    )?;
+    require_contains(
+        domain_event,
         "agent_event_to_domain_event",
-        "agent/runtime event to neutral domain event projection",
+        "agent/runtime event to semantic event projection",
     )?;
-    require_contains(&domain_event, "tool_content_to_domain_parts", "neutral tool receipt projection")?;
+    require_contains(domain_event, "tool_content_to_domain_parts", "neutral tool receipt projection")?;
     require_contains(
-        &domain_event,
+        domain_event,
         "projects_agent_streaming_without_protocol_or_tui_types",
         "neutral streaming projection fixture",
     )?;
     require_contains(
-        &domain_event,
+        domain_event,
         "projects_tool_receipts_to_neutral_text_and_images",
         "neutral receipt projection fixture",
     )?;
-    forbid_contains(&domain_event, "DaemonEvent", "domain event protocol DTO leakage")?;
-    forbid_contains(&domain_event, "TuiEvent", "domain event TUI DTO leakage")?;
-    forbid_contains(&domain_event, "clankers_protocol", "domain event protocol crate dependency")?;
-    forbid_contains(&domain_event, "clanker_tui_types", "domain event TUI crate dependency")?;
+    forbid_contains(domain_event, "DaemonEvent", "semantic event adapter protocol DTO leakage")?;
+    forbid_contains(domain_event, "TuiEvent", "semantic event adapter TUI DTO leakage")?;
+    forbid_contains(domain_event, "clankers_protocol", "semantic event adapter protocol crate dependency")?;
+    forbid_contains(domain_event, "clanker_tui_types", "semantic event adapter TUI crate dependency")?;
     require_contains(
-        &convert,
-        "agent_event_to_domain_event(event).map(domain_event_to_daemon_event)",
-        "protocol projection delegates through neutral domain event seam",
+        convert,
+        "agent_event_to_domain_event(event).and_then(|event| semantic_event_to_daemon_event(&event))",
+        "protocol projection delegates through semantic event seam",
+    )?;
+    require_contains(
+        convert,
+        "semantic_event_projection_preserves_daemon_tui_and_json_shapes",
+        "semantic edge projection parity fixture",
     )?;
 
     Ok(json!({
         "domain_event_module": CONTROLLER_DOMAIN_EVENT,
         "protocol_projection_module": CONTROLLER_CONVERT,
-        "neutral_event_enum": "ControllerDomainEvent",
-        "neutral_receipt_dto": "DomainImage",
+        "neutral_event_contract": "clanker_message::SemanticEvent",
+        "compatibility_alias": "ControllerDomainEvent",
+        "neutral_receipt_dto": "SemanticImage",
         "protocol_references_in_domain_module": 0,
         "tui_references_in_domain_module": 0,
-        "protocol_projection_owner": "convert::domain_event_to_daemon_event",
-        "typed_rail_kind": "Rust AST enum, struct, function, path, and forbidden edge-dependency checks"
+        "protocol_projection_owner": "convert::semantic_event_to_daemon_event",
+        "typed_rail_kind": "Rust AST function, path, alias, and forbidden edge-dependency checks"
     }))
 }
 

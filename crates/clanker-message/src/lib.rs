@@ -11,6 +11,7 @@
 pub mod contracts;
 pub mod message;
 pub mod result_streaming;
+pub mod semantic_event;
 pub mod streaming;
 pub mod tool_result;
 
@@ -24,6 +25,13 @@ pub use message::*;
 pub use result_streaming::ResultChunk;
 pub use result_streaming::ToolResultAccumulator;
 pub use result_streaming::TruncationConfig;
+pub use semantic_event::SemanticConfirmationRequest;
+pub use semantic_event::SemanticErrorClass;
+pub use semantic_event::SemanticEvent;
+pub use semantic_event::SemanticEventMetadata;
+pub use semantic_event::SemanticImage;
+pub use semantic_event::SemanticStopReason;
+pub use semantic_event::SemanticToolStatus;
 pub use streaming::ContentDelta;
 pub use streaming::MessageMetadata;
 pub use streaming::StreamDelta;

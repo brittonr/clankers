@@ -384,6 +384,30 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn runtime_events_project_to_shared_semantic_stream_in_order() {
+        let runtime = RuntimeBuilder::new().model_adapter(Arc::new(ScriptedModel)).build().unwrap();
+        let session = runtime
+            .create_session(SessionOptions {
+                session_id: Some(SessionId::from_host("semantic-session")),
+                model: None,
+            })
+            .await
+            .unwrap();
+        let mut events = session.take_events().await.unwrap();
+        session.submit_prompt(PromptInput::new("semantic prompt")).await.unwrap();
+
+        let mut kinds = Vec::new();
+        for _ in 0..4 {
+            let event = events.recv().await.unwrap();
+            let semantic = event.to_semantic_event();
+            assert_eq!(semantic.metadata().session_id.as_deref(), Some("semantic-session"));
+            assert!(!semantic.metadata().contains_secret_markers());
+            kinds.push(semantic.kind().to_string());
+        }
+        assert_eq!(kinds, vec!["prompt_accepted", "thinking_delta", "assistant_delta", "completed"]);
+    }
+
+    #[tokio::test]
     async fn default_runtime_does_not_need_ambient_paths() {
         let runtime = RuntimeBuilder::new().build().unwrap();
         let metadata = runtime.inner.services.capability_metadata();

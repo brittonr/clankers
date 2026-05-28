@@ -148,6 +148,7 @@ Support labels:
 | `contracts` | `clanker-message` | module | optional-support | `crates/clanker-message/src/lib.rs` |
 | `message` | `clanker-message` | module | optional-support | `crates/clanker-message/src/lib.rs` |
 | `result_streaming` | `clanker-message` | module | optional-support | `crates/clanker-message/src/lib.rs` |
+| `semantic_event` | `clanker-message` | module | supported | `crates/clanker-message/src/lib.rs` |
 | `streaming` | `clanker-message` | module | optional-support | `crates/clanker-message/src/lib.rs` |
 | `tool_result` | `clanker-message` | module | optional-support | `crates/clanker-message/src/lib.rs` |
 | `ThinkingConfig` | `clanker-message` | struct | supported | `crates/clanker-message/src/contracts.rs` |
@@ -168,6 +169,13 @@ Support labels:
 | `generate_id` | `clanker-message` | function | unsupported-internal | `crates/clanker-message/src/message.rs` |
 | `ResultChunk` | `clanker-message` | struct | optional-support | `crates/clanker-message/src/result_streaming.rs` |
 | `ToolResultAccumulator` | `clanker-message` | struct | optional-support | `crates/clanker-message/src/result_streaming.rs` |
+| `SemanticConfirmationRequest` | `clanker-message` | struct | supported | `crates/clanker-message/src/semantic_event.rs` |
+| `SemanticErrorClass` | `clanker-message` | enum | supported | `crates/clanker-message/src/semantic_event.rs` |
+| `SemanticEvent` | `clanker-message` | enum | supported | `crates/clanker-message/src/semantic_event.rs` |
+| `SemanticEventMetadata` | `clanker-message` | struct | supported | `crates/clanker-message/src/semantic_event.rs` |
+| `SemanticImage` | `clanker-message` | struct | supported | `crates/clanker-message/src/semantic_event.rs` |
+| `SemanticStopReason` | `clanker-message` | enum | supported | `crates/clanker-message/src/semantic_event.rs` |
+| `SemanticToolStatus` | `clanker-message` | enum | supported | `crates/clanker-message/src/semantic_event.rs` |
 | `TruncationConfig` | `clanker-message` | struct | optional-support | `crates/clanker-message/src/result_streaming.rs` |
 | `ContentDelta` | `clanker-message` | enum | optional-support | `crates/clanker-message/src/streaming.rs` |
 | `MessageMetadata` | `clanker-message` | struct | optional-support | `crates/clanker-message/src/streaming.rs` |

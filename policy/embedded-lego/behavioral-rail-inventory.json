@@ -232,6 +232,22 @@
       ]
     },
     {
+      "script": "scripts/check-semantic-event-stream.rs",
+      "class": "executable_fixture",
+      "owner": "embedded-sdk",
+      "requirement_ids": [
+        "semantic-event-stream.verification",
+        "behavioral-lego-parity-rails.receipts.schema"
+      ],
+      "source_artifacts": [
+        "scripts/check-semantic-event-stream.rs",
+        "crates/clanker-message/src/semantic_event.rs",
+        "crates/clankers-agent/src/events.rs",
+        "crates/clankers-runtime/src/events.rs",
+        "crates/clankers-controller/src/convert.rs"
+      ]
+    },
+    {
       "script": "scripts/check-session-resume-brick.rs",
       "class": "executable_fixture",
       "owner": "embedded-sdk",

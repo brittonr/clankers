@@ -1,167 +1,23 @@
-//! Neutral controller domain events projected from agent/runtime events.
+//! Shared semantic event compatibility adapter for controller projection.
 //!
-//! This seam keeps agent/controller/runtime output semantics independent from
-//! daemon protocol frames and TUI display DTOs. Transport and display modules
-//! project these neutral events at their edges.
+//! `ControllerDomainEvent` is kept as the controller-local compatibility name
+//! while migration converges on [`clanker_message::SemanticEvent`]. The type is
+//! a direct alias, so transport and display code project from the reusable
+//! semantic event contract instead of a controller-private event model.
 
+use clanker_message::SemanticEvent;
+use clanker_message::SemanticImage;
 use clankers_agent::ToolResultContent;
 use clankers_agent::events::AgentEvent;
-use clankers_provider::message::Content;
-use clankers_provider::streaming::ContentDelta;
-use serde_json::Value;
 
-#[derive(Debug, Clone, PartialEq)]
-pub(crate) enum ControllerDomainEvent {
-    AgentStart,
-    AgentEnd,
-    ContentBlockStart {
-        is_thinking: bool,
-    },
-    ContentBlockStop,
-    TextDelta {
-        text: String,
-    },
-    ThinkingDelta {
-        text: String,
-    },
-    ToolCall {
-        tool_name: String,
-        call_id: String,
-        input: Value,
-    },
-    ToolStart {
-        call_id: String,
-        tool_name: String,
-    },
-    ToolOutput {
-        call_id: String,
-        text: String,
-        images: Vec<DomainImage>,
-    },
-    ToolProgressUpdate {
-        call_id: String,
-        message: Option<String>,
-    },
-    ToolChunk {
-        call_id: String,
-        content: String,
-        content_type: String,
-    },
-    ToolDone {
-        call_id: String,
-        text: String,
-        images: Vec<DomainImage>,
-        is_error: bool,
-    },
-    UserInput {
-        text: String,
-        agent_msg_count: usize,
-        timestamp_rfc3339: String,
-    },
-    SessionCompaction {
-        compacted_count: usize,
-        tokens_saved: usize,
-    },
-    UsageUpdate {
-        input_tokens: u64,
-        output_tokens: u64,
-        cache_read: u64,
-    },
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct DomainImage {
-    pub(crate) data: String,
-    pub(crate) media_type: String,
-}
+pub(crate) type ControllerDomainEvent = SemanticEvent;
+pub(crate) type DomainImage = SemanticImage;
 
 pub(crate) fn agent_event_to_domain_event(event: &AgentEvent) -> Option<ControllerDomainEvent> {
-    match event {
-        AgentEvent::AgentStart => Some(ControllerDomainEvent::AgentStart),
-        AgentEvent::AgentEnd { .. } => Some(ControllerDomainEvent::AgentEnd),
-        AgentEvent::ContentBlockStart { content_block, .. } => Some(ControllerDomainEvent::ContentBlockStart {
-            is_thinking: matches!(content_block, Content::Thinking { .. }),
-        }),
-        AgentEvent::ContentBlockStop { .. } => Some(ControllerDomainEvent::ContentBlockStop),
-        AgentEvent::MessageUpdate { delta, .. } => delta_to_domain_event(delta),
-        AgentEvent::ToolCall {
-            tool_name,
-            call_id,
-            input,
-        } => Some(ControllerDomainEvent::ToolCall {
-            tool_name: tool_name.clone(),
-            call_id: call_id.clone(),
-            input: input.clone(),
-        }),
-        AgentEvent::ToolExecutionStart { call_id, tool_name } => Some(ControllerDomainEvent::ToolStart {
-            call_id: call_id.clone(),
-            tool_name: tool_name.clone(),
-        }),
-        AgentEvent::ToolExecutionUpdate { call_id, partial } => {
-            let (text, images) = tool_content_to_domain_parts(&partial.content);
-            Some(ControllerDomainEvent::ToolOutput {
-                call_id: call_id.clone(),
-                text,
-                images,
-            })
-        }
-        AgentEvent::ToolExecutionEnd {
-            call_id,
-            result,
-            is_error,
-        } => {
-            let (text, images) = tool_content_to_domain_parts(&result.content);
-            Some(ControllerDomainEvent::ToolDone {
-                call_id: call_id.clone(),
-                text,
-                images,
-                is_error: *is_error,
-            })
-        }
-        AgentEvent::ToolProgressUpdate { call_id, progress } => Some(ControllerDomainEvent::ToolProgressUpdate {
-            call_id: call_id.clone(),
-            message: progress.message.clone(),
-        }),
-        AgentEvent::ToolResultChunk { call_id, chunk } => Some(ControllerDomainEvent::ToolChunk {
-            call_id: call_id.clone(),
-            content: chunk.content.clone(),
-            content_type: chunk.content_type.clone(),
-        }),
-        AgentEvent::UserInput {
-            text,
-            agent_msg_count,
-            timestamp,
-        } => Some(ControllerDomainEvent::UserInput {
-            text: text.clone(),
-            agent_msg_count: *agent_msg_count,
-            timestamp_rfc3339: timestamp.to_rfc3339(),
-        }),
-        AgentEvent::SessionCompaction {
-            compacted_count,
-            tokens_saved,
-        } => Some(ControllerDomainEvent::SessionCompaction {
-            compacted_count: *compacted_count,
-            tokens_saved: *tokens_saved,
-        }),
-        AgentEvent::UsageUpdate { cumulative_usage, .. } => Some(ControllerDomainEvent::UsageUpdate {
-            input_tokens: cumulative_usage.input_tokens as u64,
-            output_tokens: cumulative_usage.output_tokens as u64,
-            cache_read: cumulative_usage.cache_read_input_tokens as u64,
-        }),
-        _ => None,
-    }
+    event.to_semantic_event()
 }
 
-fn delta_to_domain_event(delta: &ContentDelta) -> Option<ControllerDomainEvent> {
-    match delta {
-        ContentDelta::TextDelta { text } => Some(ControllerDomainEvent::TextDelta { text: text.clone() }),
-        ContentDelta::ThinkingDelta { thinking } => {
-            Some(ControllerDomainEvent::ThinkingDelta { text: thinking.clone() })
-        }
-        _ => None,
-    }
-}
-
+#[allow(dead_code)]
 pub(crate) fn tool_content_to_domain_parts(content: &[ToolResultContent]) -> (String, Vec<DomainImage>) {
     let mut text = String::new();
     let mut images = Vec::new();
@@ -184,6 +40,7 @@ pub(crate) fn tool_content_to_domain_parts(content: &[ToolResultContent]) -> (St
 
 #[cfg(test)]
 mod tests {
+    use clanker_message::SemanticToolStatus;
     use clankers_agent::ToolResult;
     use clankers_agent::events::AgentEvent;
     use clankers_provider::streaming::ContentDelta;
@@ -201,8 +58,9 @@ mod tests {
 
         assert_eq!(
             agent_event_to_domain_event(&event),
-            Some(ControllerDomainEvent::TextDelta {
+            Some(ControllerDomainEvent::AssistantDelta {
                 text: "hello".to_string(),
+                metadata: clanker_message::SemanticEventMetadata::empty().with("source", "agent"),
             })
         );
     }
@@ -233,14 +91,15 @@ mod tests {
 
         assert_eq!(
             agent_event_to_domain_event(&event),
-            Some(ControllerDomainEvent::ToolDone {
+            Some(ControllerDomainEvent::ToolFinished {
                 call_id: "call-1".to_string(),
+                status: SemanticToolStatus::Failed,
                 text: "line 1\nline 2".to_string(),
                 images: vec![DomainImage {
                     data: "base64".to_string(),
                     media_type: "image/png".to_string(),
                 }],
-                is_error: true,
+                metadata: clanker_message::SemanticEventMetadata::empty().with("source", "agent"),
             })
         );
     }

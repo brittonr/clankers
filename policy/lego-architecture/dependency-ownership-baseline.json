@@ -146,14 +146,15 @@
       "package": "clankers-controller"
     },
     "controller_domain_event": {
+      "compatibility_alias": "ControllerDomainEvent",
       "domain_event_module": "crates/clankers-controller/src/domain_event.rs",
-      "neutral_event_enum": "ControllerDomainEvent",
-      "neutral_receipt_dto": "DomainImage",
+      "neutral_event_contract": "clanker_message::SemanticEvent",
+      "neutral_receipt_dto": "SemanticImage",
       "protocol_projection_module": "crates/clankers-controller/src/convert.rs",
-      "protocol_projection_owner": "convert::domain_event_to_daemon_event",
+      "protocol_projection_owner": "convert::semantic_event_to_daemon_event",
       "protocol_references_in_domain_module": 0,
       "tui_references_in_domain_module": 0,
-      "typed_rail_kind": "Rust AST enum, struct, function, path, and forbidden edge-dependency checks"
+      "typed_rail_kind": "Rust AST function, path, alias, and forbidden edge-dependency checks"
     },
     "controller_effect_interpretation": {
       "agent_runtime_references": 0,

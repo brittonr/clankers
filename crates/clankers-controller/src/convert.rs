@@ -5,94 +5,131 @@
 
 use chrono::DateTime;
 use chrono::Utc;
+use clanker_message::SemanticEvent;
+use clanker_message::SemanticToolStatus;
 use clankers_agent::events::AgentEvent;
 use clankers_protocol::event::DaemonEvent;
 use clankers_protocol::types::ImageData;
 
-use crate::domain_event::ControllerDomainEvent;
 use crate::domain_event::DomainImage;
 use crate::domain_event::agent_event_to_domain_event;
 
 /// Translate an AgentEvent into a DaemonEvent (or None for events clients
 /// don't need, like Context, BeforeAgentStart, TurnStart, etc.).
 pub fn agent_event_to_daemon_event(event: &AgentEvent) -> Option<DaemonEvent> {
-    agent_event_to_domain_event(event).map(domain_event_to_daemon_event)
+    agent_event_to_domain_event(event).and_then(|event| semantic_event_to_daemon_event(&event))
 }
 
-fn domain_event_to_daemon_event(event: ControllerDomainEvent) -> DaemonEvent {
+pub fn semantic_event_to_daemon_event(event: &SemanticEvent) -> Option<DaemonEvent> {
     match event {
-        ControllerDomainEvent::AgentStart => DaemonEvent::AgentStart,
-        ControllerDomainEvent::AgentEnd => DaemonEvent::AgentEnd,
-        ControllerDomainEvent::ContentBlockStart { is_thinking } => DaemonEvent::ContentBlockStart { is_thinking },
-        ControllerDomainEvent::ContentBlockStop => DaemonEvent::ContentBlockStop,
-        ControllerDomainEvent::TextDelta { text } => DaemonEvent::TextDelta { text },
-        ControllerDomainEvent::ThinkingDelta { text } => DaemonEvent::ThinkingDelta { text },
-        ControllerDomainEvent::ToolCall {
+        SemanticEvent::AgentStart { .. } => Some(DaemonEvent::AgentStart),
+        SemanticEvent::AgentEnd { .. } => Some(DaemonEvent::AgentEnd),
+        SemanticEvent::ContentBlockStart { is_thinking, .. } => Some(DaemonEvent::ContentBlockStart {
+            is_thinking: *is_thinking,
+        }),
+        SemanticEvent::ContentBlockStop { .. } => Some(DaemonEvent::ContentBlockStop),
+        SemanticEvent::AssistantDelta { text, .. } => Some(DaemonEvent::TextDelta { text: text.clone() }),
+        SemanticEvent::ThinkingDelta { text, .. } => Some(DaemonEvent::ThinkingDelta { text: text.clone() }),
+        SemanticEvent::ToolCall {
             tool_name,
             call_id,
             input,
-        } => DaemonEvent::ToolCall {
-            tool_name,
-            call_id,
-            input,
-        },
-        ControllerDomainEvent::ToolStart { call_id, tool_name } => DaemonEvent::ToolStart { call_id, tool_name },
-        ControllerDomainEvent::ToolOutput { call_id, text, images } => DaemonEvent::ToolOutput {
-            call_id,
-            text,
-            images: images.into_iter().map(domain_image_to_protocol_image).collect(),
-        },
-        ControllerDomainEvent::ToolProgressUpdate { call_id, message } => DaemonEvent::ToolProgressUpdate {
-            call_id,
-            progress: serde_json::json!({ "message": message }),
-        },
-        ControllerDomainEvent::ToolChunk {
-            call_id,
-            content,
-            content_type,
-        } => DaemonEvent::ToolChunk {
-            call_id,
-            content,
-            content_type,
-        },
-        ControllerDomainEvent::ToolDone {
+            ..
+        } => Some(DaemonEvent::ToolCall {
+            tool_name: tool_name.clone(),
+            call_id: call_id.clone(),
+            input: input.clone(),
+        }),
+        SemanticEvent::ToolStarted {
+            call_id, tool_name, ..
+        } => Some(DaemonEvent::ToolStart {
+            call_id: call_id.clone(),
+            tool_name: tool_name.clone(),
+        }),
+        SemanticEvent::ToolOutput {
             call_id,
             text,
             images,
-            is_error,
-        } => DaemonEvent::ToolDone {
+            ..
+        } => Some(DaemonEvent::ToolOutput {
+            call_id: call_id.clone(),
+            text: text.clone(),
+            images: images.iter().cloned().map(domain_image_to_protocol_image).collect(),
+        }),
+        SemanticEvent::ToolProgressUpdate { call_id, message, .. } => Some(DaemonEvent::ToolProgressUpdate {
+            call_id: call_id.clone(),
+            progress: serde_json::json!({ "message": message }),
+        }),
+        SemanticEvent::ToolChunk {
             call_id,
+            content,
+            content_type,
+            ..
+        } => Some(DaemonEvent::ToolChunk {
+            call_id: call_id.clone(),
+            content: content.clone(),
+            content_type: content_type.clone(),
+        }),
+        SemanticEvent::ToolFinished {
+            call_id,
+            status,
             text,
-            images: images.into_iter().map(domain_image_to_protocol_image).collect(),
-            is_error,
-        },
-        ControllerDomainEvent::UserInput {
+            images,
+            ..
+        } => Some(DaemonEvent::ToolDone {
+            call_id: call_id.clone(),
+            text: text.clone(),
+            images: images.iter().cloned().map(domain_image_to_protocol_image).collect(),
+            is_error: matches!(status, SemanticToolStatus::Failed | SemanticToolStatus::Denied),
+        }),
+        SemanticEvent::ConfirmationRequested { request, .. } => Some(DaemonEvent::ConfirmRequest {
+            request_id: request.request_id.clone(),
+            command: request.summary.clone(),
+            working_dir: request.working_dir.clone().unwrap_or_default(),
+        }),
+        SemanticEvent::UsageUpdated {
+            input_tokens,
+            output_tokens,
+            cache_read_tokens,
+            ..
+        } => Some(DaemonEvent::UsageUpdate {
+            input_tokens: *input_tokens,
+            output_tokens: *output_tokens,
+            cache_read: *cache_read_tokens,
+            model: String::new(),
+        }),
+        SemanticEvent::Error { message, .. } => Some(DaemonEvent::SystemMessage {
+            text: message.clone(),
+            is_error: true,
+        }),
+        SemanticEvent::UserInput {
             text,
             agent_msg_count,
             timestamp_rfc3339,
-        } => DaemonEvent::UserInput {
-            text,
-            agent_msg_count,
-            timestamp: timestamp_rfc3339,
-        },
-        ControllerDomainEvent::SessionCompaction {
+            ..
+        } => Some(DaemonEvent::UserInput {
+            text: text.clone(),
+            agent_msg_count: *agent_msg_count,
+            timestamp: timestamp_rfc3339.clone(),
+        }),
+        SemanticEvent::SessionCompaction {
             compacted_count,
             tokens_saved,
-        } => DaemonEvent::SessionCompaction {
-            compacted_count,
-            tokens_saved,
-        },
-        ControllerDomainEvent::UsageUpdate {
-            input_tokens,
-            output_tokens,
-            cache_read,
-        } => DaemonEvent::UsageUpdate {
-            input_tokens,
-            output_tokens,
-            cache_read,
-            model: String::new(),
-        },
+            ..
+        } => Some(DaemonEvent::SessionCompaction {
+            compacted_count: *compacted_count,
+            tokens_saved: *tokens_saved,
+        }),
+        SemanticEvent::PromptAccepted { .. } | SemanticEvent::Completed { .. } | SemanticEvent::Shutdown { .. } => None,
     }
+}
+
+pub fn semantic_event_to_tui_event(event: &SemanticEvent) -> Option<clanker_tui_types::TuiEvent> {
+    semantic_event_to_daemon_event(event).and_then(|event| daemon_event_to_tui_event(&event))
+}
+
+pub fn semantic_event_to_json_value(event: &SemanticEvent) -> serde_json::Value {
+    serde_json::to_value(event).unwrap_or_else(|_| serde_json::json!({ "type": "serialization_error" }))
 }
 
 fn domain_image_to_protocol_image(image: DomainImage) -> ImageData {
@@ -557,6 +594,49 @@ mod tests {
             timestamp: fixed_timestamp(),
         });
         assert!(agent_message_to_tui_events(&branch).is_empty());
+    }
+
+    #[test]
+    fn semantic_event_projection_preserves_daemon_tui_and_json_shapes() {
+        let metadata = clanker_message::SemanticEventMetadata::empty()
+            .with_session_id("session-1")
+            .with_prompt_id("prompt-1")
+            .with("authorization", "Bearer SECRET_TOKEN");
+        let event = SemanticEvent::ToolFinished {
+            call_id: "call-1".to_string(),
+            status: SemanticToolStatus::Failed,
+            text: "tool failed".to_string(),
+            images: vec![clanker_message::SemanticImage {
+                data: "base64".to_string(),
+                media_type: "image/png".to_string(),
+            }],
+            metadata,
+        };
+
+        let daemon = semantic_event_to_daemon_event(&event).expect("tool maps to daemon event");
+        assert!(matches!(
+            &daemon,
+            DaemonEvent::ToolDone {
+                call_id,
+                text,
+                images,
+                is_error: true,
+            } if call_id == "call-1" && text == "tool failed" && images.len() == 1
+        ));
+        let tui = semantic_event_to_tui_event(&event).expect("tool maps to tui event");
+        assert!(matches!(
+            tui,
+            clanker_tui_types::TuiEvent::ToolDone {
+                call_id,
+                text,
+                is_error: true,
+                ..
+            } if call_id == "call-1" && text == "tool failed"
+        ));
+        let json = semantic_event_to_json_value(&event);
+        let json_text = serde_json::to_string(&json).expect("json value serializes");
+        assert_eq!(json["type"], "tool_finished");
+        assert!(!json_text.contains("SECRET_TOKEN"));
     }
 
     #[test]

@@ -199,7 +199,39 @@ fn run() -> Result<(), String> {
     check_source_excludes_tokens("crates/clankers-engine/src", ENGINE_FORBIDDEN_SOURCE_TOKENS)?;
     check_source_excludes_tokens("crates/clankers-engine-host/src", HOST_FORBIDDEN_SOURCE_TOKENS)?;
     check_source_excludes_tokens("crates/clankers-tool-host/src", HOST_FORBIDDEN_SOURCE_TOKENS)?;
+    check_message_semantic_event_contract()?;
     check_tool_host_context_contract()?;
+    Ok(())
+}
+
+fn check_message_semantic_event_contract() -> Result<(), String> {
+    let source = fs::read_to_string("crates/clanker-message/src/semantic_event.rs")
+        .map_err(|error| format!("failed to read clanker-message semantic event source: {error}"))?;
+    for marker in [
+        "pub enum SemanticEvent",
+        "pub struct SemanticEventMetadata",
+        "PromptAccepted",
+        "ToolFinished",
+        "ConfirmationRequested",
+        "UsageUpdated",
+    ] {
+        if !source.contains(marker) {
+            return Err(format!("clanker-message missing semantic event marker `{marker}`"));
+        }
+    }
+    for forbidden in [
+        "DaemonEvent",
+        "TuiEvent",
+        "clankers_protocol",
+        "clanker_tui_types",
+        "clankers_provider",
+        "clanker_router",
+    ] {
+        if source.contains(forbidden) {
+            return Err(format!("clanker-message semantic event source contains forbidden token `{forbidden}`"));
+        }
+    }
+    println!("ok: clanker-message semantic event contract markers are present");
     Ok(())
 }
 
