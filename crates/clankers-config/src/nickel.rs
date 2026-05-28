@@ -125,7 +125,7 @@ pub fn generate_starter_config() -> String {
   # Uncomment and edit the fields you want to override:
 
   # model = "openai-codex/gpt-5.5",
-  # thinkingLevel = "medium",
+  # thinkingLevel = "max",
   # maxTokens = 16384,
   # planMode = false,
   # useDaemon = true,

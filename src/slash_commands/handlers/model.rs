@@ -36,7 +36,7 @@ impl SlashHandler for ThinkHandler {
     fn command(&self) -> super::super::SlashCommand {
         super::super::SlashCommand {
             name: "think",
-            description: "Set thinking level (off/low/medium/high/max)",
+            description: "Set thinking level (off/low/medium/high/xhigh/max)",
             help: "Cycle or set extended thinking level.\n\n\
                    Usage:\n  \
                    /think              — cycle to next level\n  \
@@ -44,6 +44,7 @@ impl SlashHandler for ThinkHandler {
                    /think low          — light reasoning (~5k tokens)\n  \
                    /think medium       — moderate reasoning (~10k tokens)\n  \
                    /think high         — deep reasoning (~32k tokens)\n  \
+                   /think xhigh        — alias for max reasoning (~128k tokens)\n  \
                    /think max          — maximum reasoning (~128k tokens)\n  \
                    /think <number>     — set budget directly (maps to nearest level)\n\n\
                    Keybinding: Ctrl+T cycles through levels.",
@@ -53,6 +54,7 @@ impl SlashHandler for ThinkHandler {
                 ("low", "light reasoning (~5k tokens)"),
                 ("medium", "moderate reasoning (~10k tokens)"),
                 ("high", "deep reasoning (~32k tokens)"),
+                ("xhigh", "alias for max reasoning (~128k tokens)"),
                 ("max", "maximum reasoning (~128k tokens)"),
             ],
         }
@@ -67,7 +69,8 @@ impl SlashHandler for ThinkHandler {
             let level = crate::provider::ThinkingLevel::from_budget(budget);
             ctx.cmd_tx.send(AgentCommand::SetThinkingLevel(level)).ok();
         } else {
-            ctx.app.push_system("Usage: /think [off|low|medium|high|max] or /think <budget>".to_string(), true);
+            ctx.app
+                .push_system("Usage: /think [off|low|medium|high|xhigh|max] or /think <budget>".to_string(), true);
         }
     }
 }

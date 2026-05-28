@@ -131,7 +131,7 @@ pub enum ThinkingLevel {
     Off,
     /// Quick reasoning (~5k tokens).
     Low,
-    /// Moderate reasoning (~10k tokens, default).
+    /// Moderate reasoning (~10k tokens).
     Medium,
     /// Deep reasoning (~32k tokens).
     High,
@@ -183,9 +183,9 @@ impl ThinkingLevel {
         match s.trim().to_lowercase().as_str() {
             "off" | "none" | "disable" | "disabled" => Some(Self::Off),
             "low" | "lo" | "l" => Some(Self::Low),
-            "medium" | "med" | "m" | "default" => Some(Self::Medium),
+            "medium" | "med" | "m" => Some(Self::Medium),
             "high" | "hi" | "h" => Some(Self::High),
-            "max" | "maximum" | "full" => Some(Self::Max),
+            "xhigh" | "x-high" | "extra-high" | "max" | "maximum" | "full" | "default" => Some(Self::Max),
             _ => None,
         }
     }

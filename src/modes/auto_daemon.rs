@@ -121,7 +121,7 @@ pub async fn run_auto_daemon_attach(opts: AutoDaemonOptions) -> Result<()> {
     // Forward CLI flags that translate to session commands
     if opts.thinking {
         client.send(SessionCommand::SetThinkingLevel {
-            level: "high".to_string(),
+            level: "max".to_string(),
         });
     }
 
@@ -146,7 +146,7 @@ pub async fn run_auto_daemon_attach(opts: AutoDaemonOptions) -> Result<()> {
     super::common::apply_thinking_settings(&mut app, &opts.settings);
     if opts.thinking {
         app.thinking_enabled = true;
-        app.thinking_level = clanker_tui_types::ThinkingLevel::High;
+        app.thinking_level = clanker_tui_types::ThinkingLevel::Max;
     }
 
     let slash_registry = build_client_slash_registry();

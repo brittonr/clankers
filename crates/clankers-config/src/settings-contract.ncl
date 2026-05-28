@@ -14,8 +14,8 @@
   # Default model for LLM requests.
   model | String | default = "openai-codex/gpt-5.5",
 
-  # Default thinking/reasoning level: "off", "low", "medium", "high", or "max".
-  thinkingLevel | String | default = "medium",
+  # Default thinking/reasoning level: "off", "low", "medium", "high", "xhigh", or "max".
+  thinkingLevel | String | default = "max",
 
   # Max output tokens per request.
   maxTokens | Number | default = 16384,

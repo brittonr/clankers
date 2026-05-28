@@ -53,8 +53,8 @@ Use `openai-codex/...` for ChatGPT subscription Codex models and `openai/...` fo
 /model openai/gpt-4o
 ```
 
-### `/think [off|low|medium|high|max]`
-Set or cycle through extended thinking levels. New sessions default to `medium` unless `thinkingLevel` is changed in config.
+### `/think [off|low|medium|high|xhigh|max]`
+Set or cycle through extended thinking levels. New sessions default to `max` unless `thinkingLevel` is changed in config.
 
 **Usage:**
 ```
@@ -63,6 +63,7 @@ Set or cycle through extended thinking levels. New sessions default to `medium` 
 /think low          # light reasoning (~5k tokens)
 /think medium       # moderate reasoning (~10k tokens)
 /think high         # deep reasoning (~32k tokens)
+/think xhigh        # alias for max reasoning (~128k tokens)
 /think max          # maximum reasoning (~128k tokens)
 /think 10000        # set budget directly (maps to nearest level)
 ```

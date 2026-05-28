@@ -112,7 +112,7 @@ impl AgentBuilder {
         let thinking_level = if let Some(ref thinking) = self.thinking {
             if thinking.enabled {
                 clankers_provider::ThinkingLevel::from_budget(
-                    u32::try_from(thinking.budget_tokens.unwrap_or(10_000)).unwrap_or(u32::MAX),
+                    u32::try_from(thinking.budget_tokens.unwrap_or(128_000)).unwrap_or(u32::MAX),
                 )
             } else {
                 clankers_provider::ThinkingLevel::Off
@@ -164,7 +164,7 @@ mod tests {
     }
 
     #[test]
-    fn builder_enables_medium_thinking_from_default_settings() {
+    fn builder_enables_max_thinking_from_default_settings() {
         let agent = AgentBuilder::new(
             Arc::new(MockProvider),
             Settings::default(),
@@ -173,7 +173,7 @@ mod tests {
         )
         .build();
 
-        assert_eq!(agent.thinking_level(), clankers_provider::ThinkingLevel::Medium);
+        assert_eq!(agent.thinking_level(), clankers_provider::ThinkingLevel::Max);
         assert!(agent.is_thinking_enabled());
     }
 

@@ -22,7 +22,7 @@ pub struct Settings {
     pub model: String,
 
     /// Default thinking/reasoning level.
-    /// Use "off", "low", "medium", "high", or "max".
+    /// Use "off", "low", "medium", "high", "xhigh", or "max".
     #[serde(default = "default_thinking_level")]
     pub thinking_level: String,
 
@@ -1128,7 +1128,7 @@ fn default_max_tokens() -> usize {
     16384
 }
 fn default_thinking_level() -> String {
-    "medium".to_string()
+    "max".to_string()
 }
 fn default_true() -> bool {
     true
@@ -1190,7 +1190,7 @@ impl Default for Settings {
 impl Settings {
     /// Parsed thinking level for provider requests and TUI state.
     pub fn parsed_thinking_level(&self) -> ThinkingLevel {
-        ThinkingLevel::from_str_or_budget(&self.thinking_level).unwrap_or(ThinkingLevel::Medium)
+        ThinkingLevel::from_str_or_budget(&self.thinking_level).unwrap_or(ThinkingLevel::Max)
     }
 
     /// Load settings by merging pi fallback, global, and project files.
@@ -1805,10 +1805,17 @@ mod tests {
     }
 
     #[test]
-    fn thinking_level_default_medium() {
+    fn thinking_level_default_max() {
         let json = r"{}";
         let settings: Settings = serde_json::from_str(json).unwrap();
-        assert_eq!(settings.parsed_thinking_level(), ThinkingLevel::Medium);
+        assert_eq!(settings.parsed_thinking_level(), ThinkingLevel::Max);
+    }
+
+    #[test]
+    fn thinking_level_xhigh_aliases_max() {
+        let json = r#"{"thinkingLevel": "xhigh"}"#;
+        let settings: Settings = serde_json::from_str(json).unwrap();
+        assert_eq!(settings.parsed_thinking_level(), ThinkingLevel::Max);
     }
 
     #[test]

@@ -30,7 +30,7 @@ A more complete example:
 ```nickel
 (import "clankers://settings") & {
   model = "openai-codex/gpt-5.5",
-  thinkingLevel = "medium",
+  thinkingLevel = "max",
   maxTokens = 32768,
   planMode = true,
 
