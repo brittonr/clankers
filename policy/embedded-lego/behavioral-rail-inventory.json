@@ -248,6 +248,22 @@
       ]
     },
     {
+      "script": "scripts/check-root-controller-runtime-adapters.rs",
+      "class": "executable_fixture",
+      "owner": "embedded-sdk",
+      "requirement_ids": [
+        "root-controller-runtime-adapters.verification",
+        "behavioral-lego-parity-rails.receipts.schema"
+      ],
+      "source_artifacts": [
+        "scripts/check-root-controller-runtime-adapters.rs",
+        "crates/clankers-controller/src/runtime_adapter.rs",
+        "crates/clankers-controller/src/command.rs",
+        "scripts/check-lego-architecture-boundaries.rs",
+        "policy/lego-architecture/dependency-ownership-baseline.json"
+      ]
+    },
+    {
       "script": "scripts/check-session-resume-brick.rs",
       "class": "executable_fixture",
       "owner": "embedded-sdk",

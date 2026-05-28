@@ -28,6 +28,11 @@ use tracing::info;
 use tracing::warn;
 
 use crate::SessionController;
+use crate::convert::semantic_event_to_daemon_event;
+use crate::runtime_adapter::ControllerRuntimeAdapter;
+use crate::runtime_adapter::RuntimeControlRequest;
+use crate::runtime_adapter::RuntimePromptCompletion;
+use crate::runtime_adapter::RuntimePromptRequest;
 
 impl SessionController {
     /// Process a command from a client. Requires daemon mode (agent owned).
@@ -416,6 +421,166 @@ impl SessionController {
 
     fn thinking_label(level: CoreThinkingLevel) -> &'static str {
         Self::provider_thinking_level(level).label()
+    }
+
+    /// Submit a prompt through a controller runtime/session adapter.
+    ///
+    /// This path exercises the same reducer-backed prompt lifecycle as daemon
+    /// mode, but receives semantic events from an injected runtime adapter. It
+    /// is intentionally independent from sockets, TUI state, providers, and
+    /// desktop session storage.
+    pub fn submit_prompt_with_runtime_adapter(
+        &mut self,
+        adapter: &mut dyn ControllerRuntimeAdapter,
+        text: String,
+        image_count: u32,
+    ) -> bool {
+        let prompt_input = CoreInput::PromptRequested(PromptRequest {
+            text: text.clone(),
+            image_count,
+            originating_follow_up_effect_id: None,
+        });
+
+        let accepted_prompt = match clankers_core::reduce(&self.core_state, &prompt_input) {
+            CoreOutcome::Transitioned { next_state, effects } => {
+                self.apply_core_state(next_state);
+                self.execute_prompt_request_effects(effects, &text, image_count)
+            }
+            CoreOutcome::Rejected {
+                error: clankers_core::CoreError::Busy,
+                ..
+            } => {
+                self.emit(DaemonEvent::SystemMessage {
+                    text: "A prompt is already in progress".to_string(),
+                    is_error: true,
+                });
+                return false;
+            }
+            CoreOutcome::Rejected { .. } => unreachable!("prompt request should only reject while busy"),
+        };
+
+        let prompt_effect_id = accepted_prompt.prompt_start().core_effect_id;
+        let result = adapter.submit_prompt(RuntimePromptRequest {
+            session_id: self.session_id.clone(),
+            model: self.model.clone(),
+            text,
+            image_count,
+        });
+
+        for event in result.semantic_events {
+            if let Some(daemon_event) = semantic_event_to_daemon_event(&event) {
+                self.outgoing.push(daemon_event);
+            }
+        }
+
+        let (completion_status, prompt_error) = match result.completion {
+            RuntimePromptCompletion::Succeeded => (CompletionStatus::Succeeded, None),
+            RuntimePromptCompletion::Cancelled => {
+                (CompletionStatus::Failed(CoreFailure::Cancelled), Some("cancelled".to_string()))
+            }
+            RuntimePromptCompletion::Failed { message } => {
+                (CompletionStatus::Failed(CoreFailure::Message(message.clone())), Some(message))
+            }
+        };
+
+        let applied = self.apply_prompt_completion(clankers_core::PromptCompleted {
+            effect_id: prompt_effect_id,
+            completion_status,
+        });
+        debug_assert!(applied, "prompt completion should match the pending prompt");
+        self.emit(DaemonEvent::PromptDone { error: prompt_error });
+        true
+    }
+
+    /// Apply a controller control request through an injected runtime/session adapter.
+    pub fn apply_control_with_runtime_adapter(
+        &mut self,
+        adapter: &mut dyn ControllerRuntimeAdapter,
+        request: RuntimeControlRequest,
+    ) -> bool {
+        match request {
+            RuntimeControlRequest::Abort => {
+                adapter.apply_control(RuntimeControlRequest::Abort);
+                self.busy = false;
+                self.core_state.busy = false;
+                self.core_state.pending_prompt = None;
+                self.emit(DaemonEvent::SystemMessage {
+                    text: "Operation cancelled".to_string(),
+                    is_error: false,
+                });
+                true
+            }
+            RuntimeControlRequest::ResetCancel => {
+                adapter.apply_control(RuntimeControlRequest::ResetCancel);
+                true
+            }
+            RuntimeControlRequest::SetThinkingLevel { level } => self.apply_adapter_thinking_level(adapter, level),
+            RuntimeControlRequest::SetDisabledTools { tools } => self.apply_adapter_disabled_tools(adapter, tools),
+        }
+    }
+
+    fn apply_adapter_thinking_level(
+        &mut self,
+        adapter: &mut dyn ControllerRuntimeAdapter,
+        level: CoreThinkingLevel,
+    ) -> bool {
+        let input = CoreInput::SetThinkingLevel {
+            requested: CoreThinkingLevelInput::Level(level),
+        };
+
+        match clankers_core::reduce(&self.core_state, &input) {
+            CoreOutcome::Transitioned { next_state, effects } => {
+                self.apply_core_state(next_state);
+                let applied_levels = crate::effect_interpretation::applied_thinking_levels(&effects).collect::<Vec<_>>();
+                let thinking_change = crate::effect_interpretation::interpret_thinking_change(&effects)
+                    .expect("thinking level change must emit a logical event");
+                for level in applied_levels {
+                    adapter.apply_control(RuntimeControlRequest::SetThinkingLevel { level });
+                }
+                self.emit(DaemonEvent::SystemMessage {
+                    text: format!(
+                        "Thinking: {} → {}",
+                        Self::thinking_label(thinking_change.previous),
+                        Self::thinking_label(thinking_change.current)
+                    ),
+                    is_error: false,
+                });
+                true
+            }
+            CoreOutcome::Rejected { .. } => false,
+        }
+    }
+
+    fn apply_adapter_disabled_tools(
+        &mut self,
+        adapter: &mut dyn ControllerRuntimeAdapter,
+        tools: Vec<String>,
+    ) -> bool {
+        let input = CoreInput::SetDisabledTools(DisabledToolsUpdate {
+            requested_disabled_tools: tools.clone(),
+        });
+
+        match clankers_core::reduce(&self.core_state, &input) {
+            CoreOutcome::Transitioned { next_state, effects } => {
+                self.apply_core_state(next_state);
+                if let Some(application) = crate::effect_interpretation::interpret_tool_filter_application(&effects) {
+                    adapter.apply_control(RuntimeControlRequest::SetDisabledTools {
+                        tools: application.disabled_tools.clone(),
+                    });
+                    self.apply_tool_filter_feedback(ToolFilterApplied {
+                        effect_id: application.effect_id,
+                        applied_disabled_tool_set: application.disabled_tools,
+                    });
+                    self.emit(DaemonEvent::SystemMessage {
+                        text: format!("Disabled tools updated: {}", tools.join(", ")),
+                        is_error: false,
+                    });
+                    return true;
+                }
+                false
+            }
+            CoreOutcome::Rejected { .. } => false,
+        }
     }
 
     /// Handle a prompt command (daemon mode only).
@@ -951,6 +1116,97 @@ mod tests {
         assert!(events.iter().any(|e| matches!(
             e,
             DaemonEvent::Capabilities { capabilities: Some(caps) } if caps.len() == 2
+        )));
+    }
+
+    #[test]
+    fn runtime_adapter_fixture_covers_prompt_control_identity_and_semantic_projection() {
+        let mut ctrl = SessionController::new_embedded(ControllerConfig {
+            session_id: "runtime-fixture-session".to_string(),
+            model: "runtime-fixture-model".to_string(),
+            ..Default::default()
+        });
+        let mut adapter = crate::runtime_adapter::FakeRuntimeAdapter::new(vec![
+            crate::runtime_adapter::RuntimePromptResult::succeeded(vec![
+                clanker_message::SemanticEvent::AssistantDelta {
+                    text: "runtime answer".to_string(),
+                    metadata: clanker_message::SemanticEventMetadata::empty().with("source", "fake-runtime"),
+                },
+                clanker_message::SemanticEvent::UsageUpdated {
+                    input_tokens: 11,
+                    output_tokens: 7,
+                    cache_read_tokens: 3,
+                    metadata: clanker_message::SemanticEventMetadata::empty().with("source", "fake-runtime"),
+                },
+                clanker_message::SemanticEvent::Completed {
+                    stop_reason: clanker_message::SemanticStopReason::Complete,
+                    metadata: clanker_message::SemanticEventMetadata::empty().with("source", "fake-runtime"),
+                },
+            ]),
+        ]);
+
+        assert!(ctrl.submit_prompt_with_runtime_adapter(&mut adapter, "hello runtime".to_string(), 0));
+        assert_eq!(adapter.prompts.len(), 1);
+        assert_eq!(adapter.prompts[0].session_id, "runtime-fixture-session");
+        assert_eq!(adapter.prompts[0].model, "runtime-fixture-model");
+        assert_eq!(adapter.prompts[0].text, "hello runtime");
+        assert!(!ctrl.busy);
+        assert!(!ctrl.core_state.busy);
+        assert!(ctrl.core_state.pending_prompt.is_none());
+        let prompt_events = ctrl.drain_events();
+        assert!(matches!(prompt_events.first(), Some(DaemonEvent::TextDelta { text }) if text == "runtime answer"));
+        assert!(prompt_events.iter().any(|event| matches!(
+            event,
+            DaemonEvent::UsageUpdate {
+                input_tokens: 11,
+                output_tokens: 7,
+                cache_read: 3,
+                ..
+            }
+        )));
+        assert!(matches!(prompt_events.last(), Some(DaemonEvent::PromptDone { error: None })));
+
+        assert!(ctrl.apply_control_with_runtime_adapter(
+            &mut adapter,
+            RuntimeControlRequest::SetThinkingLevel {
+                level: CoreThinkingLevel::High,
+            },
+        ));
+        assert!(ctrl.apply_control_with_runtime_adapter(
+            &mut adapter,
+            RuntimeControlRequest::SetDisabledTools {
+                tools: vec!["bash".to_string()],
+            },
+        ));
+        assert!(ctrl.start_embedded_prompt("cancel me", 0));
+        assert!(ctrl.apply_control_with_runtime_adapter(&mut adapter, RuntimeControlRequest::Abort));
+        assert_eq!(
+            adapter.controls,
+            vec![
+                RuntimeControlRequest::SetThinkingLevel {
+                    level: CoreThinkingLevel::High,
+                },
+                RuntimeControlRequest::SetDisabledTools {
+                    tools: vec!["bash".to_string()],
+                },
+                RuntimeControlRequest::Abort,
+            ]
+        );
+        assert!(!ctrl.busy);
+        assert!(!ctrl.core_state.busy);
+        assert!(ctrl.core_state.pending_prompt.is_none());
+        let control_events = ctrl.drain_events();
+        assert!(control_events.iter().any(|event| matches!(
+            event,
+            DaemonEvent::SystemMessage { text, is_error: false } if text.contains("Thinking")
+        )));
+        assert!(control_events.iter().any(|event| matches!(
+            event,
+            DaemonEvent::DisabledToolsChanged { tools } if tools == &vec!["bash".to_string()]
+        )));
+        assert!(control_events.iter().any(|event| matches!(
+            event,
+            DaemonEvent::SystemMessage { text, is_error: false } if text == "Operation cancelled"
         )));
     }
 

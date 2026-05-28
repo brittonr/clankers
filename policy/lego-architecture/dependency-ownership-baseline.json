@@ -143,6 +143,85 @@
       "concrete_dependency_count": 8,
       "internal_dependency_count": 11,
       "owner": "session orchestration shell; translation, effect, continuation, persistence, and projection seams stay separately testable",
+      "owner_receipts": [
+        {
+          "adapter_module": "crates/clankers-controller/src/convert.rs",
+          "convergence_condition": "controller projects from SemanticEvent/message DTOs only",
+          "owner_category": "shared semantic/message DTO",
+          "source_crate": "clankers-controller",
+          "target_crate": "clanker-message"
+        },
+        {
+          "adapter_module": "crates/clankers-controller/src/auto_test.rs",
+          "convergence_condition": "display state sync remains edge-only until moved behind neutral DTO",
+          "owner_category": "display sync compatibility",
+          "source_crate": "clankers-controller",
+          "target_crate": "clanker-tui-types"
+        },
+        {
+          "adapter_module": "crates/clankers-controller/src/runtime_adapter.rs",
+          "convergence_condition": "prompt/control execution moves behind ControllerRuntimeAdapter",
+          "owner_category": "daemon agent runtime adapter",
+          "source_crate": "clankers-controller",
+          "target_crate": "clankers-agent"
+        },
+        {
+          "adapter_module": "crates/clankers-controller/src/config.rs",
+          "convergence_condition": "configuration remains construction input only",
+          "owner_category": "controller config DTO",
+          "source_crate": "clankers-controller",
+          "target_crate": "clankers-config"
+        },
+        {
+          "adapter_module": "crates/clankers-controller/src/command.rs",
+          "convergence_condition": "core policy remains in clankers-core and interpretation seams",
+          "owner_category": "pure control reducer",
+          "source_crate": "clankers-controller",
+          "target_crate": "clankers-core"
+        },
+        {
+          "adapter_module": "crates/clankers-controller/src/persistence.rs",
+          "convergence_condition": "storage/search moves behind session service interface",
+          "owner_category": "optional search index shell",
+          "source_crate": "clankers-controller",
+          "target_crate": "clankers-db"
+        },
+        {
+          "adapter_module": "crates/clankers-controller/src/core_engine_composition.rs",
+          "convergence_condition": "engine data remains adapter source only",
+          "owner_category": "engine composition fixture",
+          "source_crate": "clankers-controller",
+          "target_crate": "clankers-engine"
+        },
+        {
+          "adapter_module": "crates/clankers-controller/src/event_processing.rs",
+          "convergence_condition": "hook policy remains in hooks crate",
+          "owner_category": "lifecycle hook adapter",
+          "source_crate": "clankers-controller",
+          "target_crate": "clankers-hooks"
+        },
+        {
+          "adapter_module": "crates/clankers-controller/src/transport_convert.rs",
+          "convergence_condition": "protocol construction stays in conversion modules",
+          "owner_category": "transport protocol edge",
+          "source_crate": "clankers-controller",
+          "target_crate": "clankers-protocol"
+        },
+        {
+          "adapter_module": "crates/clankers-controller/src/command.rs",
+          "convergence_condition": "provider types disappear when agent runtime adapter owns execution",
+          "owner_category": "provider thinking compatibility",
+          "source_crate": "clankers-controller",
+          "target_crate": "clankers-provider"
+        },
+        {
+          "adapter_module": "crates/clankers-controller/src/persistence.rs",
+          "convergence_condition": "persistence migrates behind SessionStore/ledger service",
+          "owner_category": "session persistence shell",
+          "source_crate": "clankers-controller",
+          "target_crate": "clankers-session"
+        }
+      ],
       "package": "clankers-controller"
     },
     "controller_domain_event": {
@@ -267,6 +346,211 @@
       ],
       "internal_dependency_count": 29,
       "owner": "product-shell wiring only; reusable behavior must move behind workspace brick APIs",
+      "owner_receipts": [
+        {
+          "adapter_module": "src/runtime_services.rs",
+          "convergence_condition": "remain shared DTO only; no root-owned message policy",
+          "owner_category": "shared message DTO",
+          "source_crate": "clankers",
+          "target_crate": "clanker-message"
+        },
+        {
+          "adapter_module": "src/runtime_services.rs",
+          "convergence_condition": "route through ProviderRouterService and provider bridge",
+          "owner_category": "desktop provider routing",
+          "source_crate": "clankers",
+          "target_crate": "clanker-router"
+        },
+        {
+          "adapter_module": "src/modes/event_loop_runner",
+          "convergence_condition": "keep rendering rules in TUI/display adapters",
+          "owner_category": "display-edge DTO",
+          "source_crate": "clankers",
+          "target_crate": "clanker-tui-types"
+        },
+        {
+          "adapter_module": "src/agent.rs",
+          "convergence_condition": "agent execution policy migrates behind runtime/controller adapters",
+          "owner_category": "desktop agent construction",
+          "source_crate": "clankers",
+          "target_crate": "clankers-agent"
+        },
+        {
+          "adapter_module": "src/cli.rs",
+          "convergence_condition": "profile semantics stay in agent-defs crate",
+          "owner_category": "CLI agent profile loading",
+          "source_crate": "clankers",
+          "target_crate": "clankers-agent-defs"
+        },
+        {
+          "adapter_module": "src/commands",
+          "convergence_condition": "artifact policy remains in artifacts crate",
+          "owner_category": "artifact command shell",
+          "source_crate": "clankers",
+          "target_crate": "clankers-artifacts"
+        },
+        {
+          "adapter_module": "src/modes",
+          "convergence_condition": "research policy remains in autoresearch crate",
+          "owner_category": "mode dispatch",
+          "source_crate": "clankers",
+          "target_crate": "clankers-autoresearch"
+        },
+        {
+          "adapter_module": "src/config",
+          "convergence_condition": "neutral config stays in clankers-config core DTOs",
+          "owner_category": "desktop config loading",
+          "source_crate": "clankers",
+          "target_crate": "clankers-config"
+        },
+        {
+          "adapter_module": "src/modes/event_loop_runner",
+          "convergence_condition": "controller owns command lifecycle only",
+          "owner_category": "session orchestration adapter",
+          "source_crate": "clankers",
+          "target_crate": "clankers-controller"
+        },
+        {
+          "adapter_module": "src/modes/session_command_policy.rs",
+          "convergence_condition": "core reducer policy remains in clankers-core",
+          "owner_category": "control-state bridge",
+          "source_crate": "clankers",
+          "target_crate": "clankers-core"
+        },
+        {
+          "adapter_module": "src/runtime_services.rs",
+          "convergence_condition": "storage access moves behind runtime/session stores",
+          "owner_category": "desktop storage wiring",
+          "source_crate": "clankers",
+          "target_crate": "clankers-db"
+        },
+        {
+          "adapter_module": "src/modes",
+          "convergence_condition": "hook policy remains in hooks crate",
+          "owner_category": "desktop hook wiring",
+          "source_crate": "clankers",
+          "target_crate": "clankers-hooks"
+        },
+        {
+          "adapter_module": "src/commands/daemon.rs",
+          "convergence_condition": "Matrix protocol remains in matrix crate",
+          "owner_category": "optional Matrix mode",
+          "source_crate": "clankers",
+          "target_crate": "clankers-matrix"
+        },
+        {
+          "adapter_module": "src/runtime_services.rs",
+          "convergence_condition": "model routing state moves behind provider/runtime service",
+          "owner_category": "desktop model selection",
+          "source_crate": "clankers",
+          "target_crate": "clankers-model-selection"
+        },
+        {
+          "adapter_module": "src/tools",
+          "convergence_condition": "Nix semantics remain in clankers-nix crate",
+          "owner_category": "Nix tool/mode shell",
+          "source_crate": "clankers",
+          "target_crate": "clankers-nix"
+        },
+        {
+          "adapter_module": "src/plugin",
+          "convergence_condition": "plugin runtime policy remains in plugin host facade",
+          "owner_category": "plugin host wiring",
+          "source_crate": "clankers",
+          "target_crate": "clankers-plugin"
+        },
+        {
+          "adapter_module": "src/tools/process",
+          "convergence_condition": "process policy remains in procmon/tool adapter",
+          "owner_category": "process-monitor tool shell",
+          "source_crate": "clankers",
+          "target_crate": "clankers-procmon"
+        },
+        {
+          "adapter_module": "src/runtime_prompt.rs",
+          "convergence_condition": "prompt assembly stays in prompt/runtime services",
+          "owner_category": "desktop prompt source wiring",
+          "source_crate": "clankers",
+          "target_crate": "clankers-prompts"
+        },
+        {
+          "adapter_module": "src/modes/daemon",
+          "convergence_condition": "protocol frames stay at transport edge",
+          "owner_category": "daemon protocol edge",
+          "source_crate": "clankers",
+          "target_crate": "clankers-protocol"
+        },
+        {
+          "adapter_module": "src/runtime_services.rs",
+          "convergence_condition": "provider shaping stays in provider/router bridge",
+          "owner_category": "desktop provider construction",
+          "source_crate": "clankers",
+          "target_crate": "clankers-provider"
+        },
+        {
+          "adapter_module": "src/runtime_services.rs",
+          "convergence_condition": "runtime services remain explicit embeddable bricks",
+          "owner_category": "runtime facade composition",
+          "source_crate": "clankers",
+          "target_crate": "clankers-runtime"
+        },
+        {
+          "adapter_module": "src/modes/session_setup.rs",
+          "convergence_condition": "storage policy moves behind SessionStore/ledger DTOs",
+          "owner_category": "desktop session storage",
+          "source_crate": "clankers",
+          "target_crate": "clankers-session"
+        },
+        {
+          "adapter_module": "src/runtime_services.rs",
+          "convergence_condition": "skill discovery stays behind explicit SkillStore roots",
+          "owner_category": "desktop skill discovery",
+          "source_crate": "clankers",
+          "target_crate": "clankers-skills"
+        },
+        {
+          "adapter_module": "src/tools",
+          "convergence_condition": "tool execution policy stays in tool-host/adapters",
+          "owner_category": "tool host DTO bridge",
+          "source_crate": "clankers",
+          "target_crate": "clankers-tool-host"
+        },
+        {
+          "adapter_module": "src/commands",
+          "convergence_condition": "TTS policy stays in tts crate",
+          "owner_category": "optional voice mode",
+          "source_crate": "clankers",
+          "target_crate": "clankers-tts"
+        },
+        {
+          "adapter_module": "src/modes/event_loop_runner",
+          "convergence_condition": "rendering remains in TUI crate",
+          "owner_category": "display shell",
+          "source_crate": "clankers",
+          "target_crate": "clankers-tui"
+        },
+        {
+          "adapter_module": "src/capability",
+          "convergence_condition": "authorization policy stays in UCAN/capability gate",
+          "owner_category": "capability auth shell",
+          "source_crate": "clankers",
+          "target_crate": "clankers-ucan"
+        },
+        {
+          "adapter_module": "src",
+          "convergence_condition": "utilities must stay leaf helpers, not reusable policy owner",
+          "owner_category": "desktop utility wiring",
+          "source_crate": "clankers",
+          "target_crate": "clankers-util"
+        },
+        {
+          "adapter_module": "src/commands",
+          "convergence_condition": "zellij integration remains edge adapter",
+          "owner_category": "optional zellij mode",
+          "source_crate": "clankers",
+          "target_crate": "clankers-zellij"
+        }
+      ],
       "package": "clankers"
     },
     "session_command_policy": {

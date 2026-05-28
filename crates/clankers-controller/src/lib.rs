@@ -46,6 +46,7 @@ pub mod event_processing;
 pub mod loop_mode;
 pub mod metrics_capture;
 pub mod persistence;
+pub mod runtime_adapter;
 pub mod transport;
 pub mod transport_convert;
 
@@ -68,6 +69,13 @@ use tracing::warn;
 use self::audit::AuditTracker;
 use self::config::ControllerConfig;
 use self::confirm::ConfirmStore;
+pub use runtime_adapter::ControllerRuntimeAdapter;
+pub use runtime_adapter::FakeRuntimeAdapter;
+pub use runtime_adapter::RuntimeControlRequest;
+pub use runtime_adapter::RuntimeControlResult;
+pub use runtime_adapter::RuntimePromptCompletion;
+pub use runtime_adapter::RuntimePromptRequest;
+pub use runtime_adapter::RuntimePromptResult;
 
 /// Controller-owned identity for pending shell work correlated back into the core.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]

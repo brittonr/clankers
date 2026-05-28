@@ -21,6 +21,7 @@ const RUST_CHECKS: &[&str] = &[
     "scripts/check-provider-adapter-kit.rs",
     "scripts/check-config-prompt-skill-services.rs",
     "scripts/check-semantic-event-stream.rs",
+    "scripts/check-root-controller-runtime-adapters.rs",
     "scripts/check-session-resume-brick.rs",
     "scripts/check-tool-catalog-manifest.rs",
     "scripts/check-capability-pack-composition.rs",

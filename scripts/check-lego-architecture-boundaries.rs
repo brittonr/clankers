@@ -102,6 +102,8 @@ fn run() -> Result<PathBuf, String> {
     let controller_internal = internal_deps(CONTROLLER_PACKAGE, &dependency_map)?;
     let agent_concrete = matching_deps(&agent_internal, AGENT_CONCRETE_DEPS);
     let controller_concrete = matching_deps(&controller_internal, CONTROLLER_CONCRETE_DEPS);
+    let root_owner_receipts = dependency_owner_receipts(ROOT_PACKAGE, &root_internal)?;
+    let controller_owner_receipts = dependency_owner_receipts(CONTROLLER_PACKAGE, &controller_internal)?;
     let shared_dtos = shared_dto_crates(&reverse_map);
     let process_tool_adapter = process_tool_adapter_signature()?;
     let agent_turn_ports = agent_turn_ports_signature()?;
@@ -120,6 +122,7 @@ fn run() -> Result<PathBuf, String> {
             "package": ROOT_PACKAGE,
             "internal_dependency_count": root_internal.len(),
             "internal_dependencies": root_internal,
+            "owner_receipts": root_owner_receipts,
             "owner": "product-shell wiring only; reusable behavior must move behind workspace brick APIs"
         },
         "agent_crate": {
@@ -134,6 +137,7 @@ fn run() -> Result<PathBuf, String> {
             "internal_dependency_count": controller_internal.len(),
             "concrete_dependency_count": controller_concrete.len(),
             "concrete_dependencies": controller_concrete,
+            "owner_receipts": controller_owner_receipts,
             "owner": "session orchestration shell; translation, effect, continuation, persistence, and projection seams stay separately testable"
         },
         "most_shared_dto_crates": shared_dtos,
@@ -321,6 +325,78 @@ fn internal_deps(package: &str, dependency_map: &BTreeMap<String, BTreeSet<Strin
 
 fn matching_deps(actual: &[String], expected: &[&str]) -> Vec<String> {
     actual.iter().filter(|dep| expected.contains(&dep.as_str())).cloned().collect()
+}
+
+fn dependency_owner_receipts(source_crate: &str, deps: &[String]) -> Result<Vec<Value>, String> {
+    deps.iter().map(|target| dependency_owner_receipt(source_crate, target)).collect()
+}
+
+fn dependency_owner_receipt(source_crate: &str, target_crate: &str) -> Result<Value, String> {
+    let (owner_category, adapter_module, convergence_condition) = match source_crate {
+        ROOT_PACKAGE => root_dependency_owner(target_crate)?,
+        CONTROLLER_PACKAGE => controller_dependency_owner(target_crate)?,
+        other => return Err(format!("no dependency owner table for `{other}`")),
+    };
+    Ok(json!({
+        "source_crate": source_crate,
+        "target_crate": target_crate,
+        "owner_category": owner_category,
+        "adapter_module": adapter_module,
+        "convergence_condition": convergence_condition,
+    }))
+}
+
+fn root_dependency_owner(target_crate: &str) -> Result<(&'static str, &'static str, &'static str), String> {
+    match target_crate {
+        "clanker-message" => Ok(("shared message DTO", "src/runtime_services.rs", "remain shared DTO only; no root-owned message policy")),
+        "clanker-router" => Ok(("desktop provider routing", "src/runtime_services.rs", "route through ProviderRouterService and provider bridge")),
+        "clanker-tui-types" => Ok(("display-edge DTO", "src/modes/event_loop_runner", "keep rendering rules in TUI/display adapters")),
+        "clankers-agent" => Ok(("desktop agent construction", "src/agent.rs", "agent execution policy migrates behind runtime/controller adapters")),
+        "clankers-agent-defs" => Ok(("CLI agent profile loading", "src/cli.rs", "profile semantics stay in agent-defs crate")),
+        "clankers-artifacts" => Ok(("artifact command shell", "src/commands", "artifact policy remains in artifacts crate")),
+        "clankers-autoresearch" => Ok(("mode dispatch", "src/modes", "research policy remains in autoresearch crate")),
+        "clankers-config" => Ok(("desktop config loading", "src/config", "neutral config stays in clankers-config core DTOs")),
+        "clankers-controller" => Ok(("session orchestration adapter", "src/modes/event_loop_runner", "controller owns command lifecycle only")),
+        "clankers-core" => Ok(("control-state bridge", "src/modes/session_command_policy.rs", "core reducer policy remains in clankers-core")),
+        "clankers-db" => Ok(("desktop storage wiring", "src/runtime_services.rs", "storage access moves behind runtime/session stores")),
+        "clankers-hooks" => Ok(("desktop hook wiring", "src/modes", "hook policy remains in hooks crate")),
+        "clankers-matrix" => Ok(("optional Matrix mode", "src/commands/daemon.rs", "Matrix protocol remains in matrix crate")),
+        "clankers-model-selection" => Ok(("desktop model selection", "src/runtime_services.rs", "model routing state moves behind provider/runtime service")),
+        "clankers-nix" => Ok(("Nix tool/mode shell", "src/tools", "Nix semantics remain in clankers-nix crate")),
+        "clankers-plugin" => Ok(("plugin host wiring", "src/plugin", "plugin runtime policy remains in plugin host facade")),
+        "clankers-procmon" => Ok(("process-monitor tool shell", "src/tools/process", "process policy remains in procmon/tool adapter")),
+        "clankers-prompts" => Ok(("desktop prompt source wiring", "src/runtime_prompt.rs", "prompt assembly stays in prompt/runtime services")),
+        "clankers-protocol" => Ok(("daemon protocol edge", "src/modes/daemon", "protocol frames stay at transport edge")),
+        "clankers-provider" => Ok(("desktop provider construction", "src/runtime_services.rs", "provider shaping stays in provider/router bridge")),
+        "clankers-runtime" => Ok(("runtime facade composition", "src/runtime_services.rs", "runtime services remain explicit embeddable bricks")),
+        "clankers-session" => Ok(("desktop session storage", "src/modes/session_setup.rs", "storage policy moves behind SessionStore/ledger DTOs")),
+        "clankers-skills" => Ok(("desktop skill discovery", "src/runtime_services.rs", "skill discovery stays behind explicit SkillStore roots")),
+        "clankers-tool-host" => Ok(("tool host DTO bridge", "src/tools", "tool execution policy stays in tool-host/adapters")),
+        "clankers-tts" => Ok(("optional voice mode", "src/commands", "TTS policy stays in tts crate")),
+        "clankers-tui" => Ok(("display shell", "src/modes/event_loop_runner", "rendering remains in TUI crate")),
+        "clankers-ucan" => Ok(("capability auth shell", "src/capability", "authorization policy stays in UCAN/capability gate")),
+        "clankers-util" => Ok(("desktop utility wiring", "src", "utilities must stay leaf helpers, not reusable policy owner")),
+        "clankers-zellij" => Ok(("optional zellij mode", "src/commands", "zellij integration remains edge adapter")),
+        other => Err(format!("unowned root dependency `{other}`")),
+    }
+}
+
+fn controller_dependency_owner(target_crate: &str) -> Result<(&'static str, &'static str, &'static str), String> {
+    match target_crate {
+        "clanker-loop" => Ok(("loop state service", "crates/clankers-controller/src/loop_mode.rs", "loop policy remains in clanker-loop/core effects")),
+        "clanker-message" => Ok(("shared semantic/message DTO", "crates/clankers-controller/src/convert.rs", "controller projects from SemanticEvent/message DTOs only")),
+        "clanker-tui-types" => Ok(("display sync compatibility", "crates/clankers-controller/src/auto_test.rs", "display state sync remains edge-only until moved behind neutral DTO")),
+        "clankers-agent" => Ok(("daemon agent runtime adapter", "crates/clankers-controller/src/runtime_adapter.rs", "prompt/control execution moves behind ControllerRuntimeAdapter")),
+        "clankers-config" => Ok(("controller config DTO", "crates/clankers-controller/src/config.rs", "configuration remains construction input only")),
+        "clankers-core" => Ok(("pure control reducer", "crates/clankers-controller/src/command.rs", "core policy remains in clankers-core and interpretation seams")),
+        "clankers-db" => Ok(("optional search index shell", "crates/clankers-controller/src/persistence.rs", "storage/search moves behind session service interface")),
+        "clankers-engine" => Ok(("engine composition fixture", "crates/clankers-controller/src/core_engine_composition.rs", "engine data remains adapter source only")),
+        "clankers-hooks" => Ok(("lifecycle hook adapter", "crates/clankers-controller/src/event_processing.rs", "hook policy remains in hooks crate")),
+        "clankers-protocol" => Ok(("transport protocol edge", "crates/clankers-controller/src/transport_convert.rs", "protocol construction stays in conversion modules")),
+        "clankers-provider" => Ok(("provider thinking compatibility", "crates/clankers-controller/src/command.rs", "provider types disappear when agent runtime adapter owns execution")),
+        "clankers-session" => Ok(("session persistence shell", "crates/clankers-controller/src/persistence.rs", "persistence migrates behind SessionStore/ledger service")),
+        other => Err(format!("unowned controller dependency `{other}`")),
+    }
 }
 
 fn shared_dto_crates(reverse_map: &BTreeMap<String, BTreeSet<String>>) -> Vec<Value> {
