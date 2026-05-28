@@ -2,6 +2,8 @@
 
 use std::collections::BTreeSet;
 
+use clanker_message::Content;
+use clanker_message::Usage;
 use serde::Deserialize;
 use serde::Serialize;
 use uuid::Uuid;
@@ -74,10 +76,45 @@ pub struct ModelRequest {
     pub disabled_tools: BTreeSet<String>,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ModelFailure {
+    pub message: String,
+    pub status: Option<u16>,
+    pub retryable: bool,
+}
+
+impl ModelFailure {
+    #[must_use]
+    pub fn retryable(message: impl Into<String>, status: Option<u16>) -> Self {
+        Self {
+            message: message.into(),
+            status,
+            retryable: true,
+        }
+    }
+
+    #[must_use]
+    pub fn terminal(message: impl Into<String>, status: Option<u16>) -> Self {
+        Self {
+            message: message.into(),
+            status,
+            retryable: false,
+        }
+    }
+}
+
 /// Semantic events returned by a model adapter.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct ModelResponse {
     pub events: Vec<SessionEvent>,
+    #[serde(default)]
+    pub engine_content: Vec<Content>,
+    #[serde(default)]
+    pub usage: Option<Usage>,
+    #[serde(default)]
+    pub stop_reason: Option<clanker_message::StopReason>,
+    #[serde(default)]
+    pub failure: Option<ModelFailure>,
 }
 
 /// Deterministic default model for embedded tests and examples.
@@ -99,6 +136,10 @@ impl ModelAdapter for EchoModelAdapter {
                     metadata: EventMetadata::empty().with("source", "echo_model"),
                 },
             ],
+            engine_content: Vec::new(),
+            usage: None,
+            stop_reason: None,
+            failure: None,
         })
     }
 }

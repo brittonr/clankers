@@ -32,6 +32,7 @@ use serde::Serialize;
 use serde_json::json;
 use thiserror::Error;
 
+pub mod adapters;
 mod boundary;
 pub mod confirmation;
 pub mod dynamic_runtime;
@@ -48,6 +49,22 @@ pub mod steel_orchestration;
 pub mod steel_runtime;
 pub mod tools;
 
+pub use adapters::NoopRuntimeCancellationAdapter;
+pub use adapters::NoopRuntimeEventObserver;
+pub use adapters::NoopRuntimeRetryAdapter;
+pub use adapters::NoopRuntimeUsageAdapter;
+pub use adapters::RuntimeCancellationAdapter;
+pub use adapters::RuntimeEventObserver;
+pub use adapters::RuntimeRetryAdapter;
+pub use adapters::RuntimeRetryRequest;
+pub use adapters::RuntimeToolAdapter;
+pub use adapters::RuntimeToolRequest;
+pub use adapters::RuntimeToolResponse;
+pub use adapters::RuntimeToolStatus;
+pub use adapters::RuntimeUsageAdapter;
+pub use adapters::RuntimeUsageObservation;
+pub use adapters::RuntimeUsageObservationKind;
+pub use adapters::UnavailableRuntimeToolAdapter;
 #[cfg(test)]
 use boundary::public_type_names;
 pub use confirmation::ConfirmationAction;
@@ -120,6 +137,7 @@ pub use prompt::ContextReferenceRequest;
 pub use prompt::EchoModelAdapter;
 pub use prompt::HostContext;
 pub use prompt::ModelAdapter;
+pub use prompt::ModelFailure;
 pub use prompt::ModelRequest;
 pub use prompt::ModelResponse;
 pub use prompt::PromptAssembler;
@@ -290,6 +308,10 @@ mod tests {
                         metadata: EventMetadata::empty().with("source", "scripted"),
                     },
                 ],
+                engine_content: Vec::new(),
+                usage: None,
+                stop_reason: None,
+                failure: None,
             })
         }
     }
@@ -523,6 +545,321 @@ mod tests {
             kinds.push(safe_event_summary(&events.recv().await.unwrap())["type"].as_str().unwrap().to_string());
         }
         assert_eq!(kinds, headless_prompt_parity_fixture("parity"));
+    }
+
+    struct ToolThenDoneModel {
+        calls: std::sync::Mutex<usize>,
+    }
+
+    impl ToolThenDoneModel {
+        fn new() -> Self {
+            Self {
+                calls: std::sync::Mutex::new(0),
+            }
+        }
+    }
+
+    impl ModelAdapter for ToolThenDoneModel {
+        fn complete(&self, request: ModelRequest) -> Result<ModelResponse, RuntimeError> {
+            let mut calls = self.calls.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+            *calls += 1;
+            if *calls == 1 {
+                return Ok(ModelResponse {
+                    events: Vec::new(),
+                    engine_content: vec![clanker_message::Content::ToolUse {
+                        id: "runtime-tool-call".to_string(),
+                        name: "read".to_string(),
+                        input: json!({"path": "README.md"}),
+                    }],
+                    usage: None,
+                    stop_reason: Some(clanker_message::StopReason::ToolUse),
+                    failure: None,
+                });
+            }
+            Ok(ModelResponse {
+                events: vec![SessionEvent::AssistantDelta {
+                    prompt_id: request.prompt_id,
+                    text: "continued after tool feedback".to_string(),
+                    metadata: EventMetadata::empty().with("source", "tool_then_done"),
+                }],
+                engine_content: Vec::new(),
+                usage: None,
+                stop_reason: None,
+                failure: None,
+            })
+        }
+    }
+
+    struct CountingRuntimeToolAdapter {
+        calls: std::sync::atomic::AtomicUsize,
+    }
+
+    impl CountingRuntimeToolAdapter {
+        fn new() -> Self {
+            Self {
+                calls: std::sync::atomic::AtomicUsize::new(0),
+            }
+        }
+
+        fn calls(&self) -> usize {
+            self.calls.load(std::sync::atomic::Ordering::SeqCst)
+        }
+    }
+
+    impl RuntimeToolAdapter for CountingRuntimeToolAdapter {
+        fn execute_tool(&self, request: RuntimeToolRequest) -> Result<RuntimeToolResponse, RuntimeError> {
+            self.calls.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+            assert_eq!(request.tool_name, "read");
+            Ok(RuntimeToolResponse::succeeded(
+                vec![clanker_message::Content::Text {
+                    text: "tool adapter result".to_string(),
+                }],
+                json!({"source": "counting_tool_adapter"}),
+            ))
+        }
+    }
+
+    #[tokio::test]
+    async fn runtime_facade_tool_feedback_uses_engine_host_turn_loop() {
+        let tool_adapter = Arc::new(CountingRuntimeToolAdapter::new());
+        let runtime = RuntimeBuilder::new()
+            .model_adapter(Arc::new(ToolThenDoneModel::new()))
+            .tool_adapter(tool_adapter.clone())
+            .build()
+            .unwrap();
+        let session = runtime
+            .create_session(SessionOptions {
+                session_id: Some(SessionId::from_host("runtime-engine-host-session")),
+                model: Some("runtime-engine-host-model".to_string()),
+            })
+            .await
+            .unwrap();
+        let mut events = session.take_events().await.unwrap();
+        session.submit_prompt(PromptInput::new("exercise tool loop")).await.unwrap();
+
+        let mut kinds = Vec::new();
+        for _ in 0..5 {
+            kinds.push(safe_event_summary(&events.recv().await.unwrap())["type"].as_str().unwrap().to_string());
+        }
+        assert_eq!(kinds, vec![
+            "prompt_accepted",
+            "tool_started",
+            "tool_finished",
+            "assistant_delta",
+            "completed",
+        ]);
+        assert_eq!(tool_adapter.calls(), 1);
+    }
+
+    struct CountingRuntimeEventObserver {
+        events: std::sync::atomic::AtomicUsize,
+    }
+
+    impl CountingRuntimeEventObserver {
+        fn new() -> Self {
+            Self {
+                events: std::sync::atomic::AtomicUsize::new(0),
+            }
+        }
+
+        fn events(&self) -> usize {
+            self.events.load(std::sync::atomic::Ordering::SeqCst)
+        }
+    }
+
+    impl RuntimeEventObserver for CountingRuntimeEventObserver {
+        fn observe_engine_event(&self, _event: &clankers_engine::EngineEvent) -> Result<(), RuntimeError> {
+            self.events.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+            Ok(())
+        }
+    }
+
+    struct CountingRuntimeUsageAdapter {
+        observations: std::sync::atomic::AtomicUsize,
+    }
+
+    impl CountingRuntimeUsageAdapter {
+        fn new() -> Self {
+            Self {
+                observations: std::sync::atomic::AtomicUsize::new(0),
+            }
+        }
+
+        fn observations(&self) -> usize {
+            self.observations.load(std::sync::atomic::Ordering::SeqCst)
+        }
+    }
+
+    impl RuntimeUsageAdapter for CountingRuntimeUsageAdapter {
+        fn observe_usage(&self, _observation: RuntimeUsageObservation) -> Result<(), RuntimeError> {
+            self.observations.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+            Ok(())
+        }
+    }
+
+    #[tokio::test]
+    async fn runtime_facade_invokes_event_and_usage_adapter_slots() {
+        let event_observer = Arc::new(CountingRuntimeEventObserver::new());
+        let usage_adapter = Arc::new(CountingRuntimeUsageAdapter::new());
+        let runtime = RuntimeBuilder::new()
+            .event_observer(event_observer.clone())
+            .usage_adapter(usage_adapter.clone())
+            .build()
+            .unwrap();
+        let session = runtime.create_session(SessionOptions::default()).await.unwrap();
+        session.submit_prompt(PromptInput::new("adapter slot counters")).await.unwrap();
+
+        assert!(event_observer.events() >= 1);
+        assert_eq!(usage_adapter.observations(), 1);
+    }
+
+    struct FailingModel;
+
+    impl ModelAdapter for FailingModel {
+        fn complete(&self, _request: ModelRequest) -> Result<ModelResponse, RuntimeError> {
+            Err(RuntimeError::Model("provider unavailable".to_string()))
+        }
+    }
+
+    #[tokio::test]
+    async fn runtime_facade_projects_model_failure_to_error_event() {
+        let runtime = RuntimeBuilder::new().model_adapter(Arc::new(FailingModel)).build().unwrap();
+        let session = runtime.create_session(SessionOptions::default()).await.unwrap();
+        let mut events = session.take_events().await.unwrap();
+        let error = session.submit_prompt(PromptInput::new("fail please")).await.unwrap_err();
+        assert_eq!(error.class(), ErrorClass::Model);
+
+        assert_eq!(safe_event_summary(&events.recv().await.unwrap())["type"], "prompt_accepted");
+        let error_summary = safe_event_summary(&events.recv().await.unwrap());
+        assert_eq!(error_summary["type"], "error");
+        assert_eq!(error_summary["class"], "Model");
+    }
+
+    struct RetryThenDoneModel {
+        calls: std::sync::atomic::AtomicUsize,
+    }
+
+    impl RetryThenDoneModel {
+        fn new() -> Self {
+            Self {
+                calls: std::sync::atomic::AtomicUsize::new(0),
+            }
+        }
+    }
+
+    impl ModelAdapter for RetryThenDoneModel {
+        fn complete(&self, request: ModelRequest) -> Result<ModelResponse, RuntimeError> {
+            let call = self.calls.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+            if call == 0 {
+                return Ok(ModelResponse {
+                    failure: Some(ModelFailure::retryable("rate limited", Some(429))),
+                    ..ModelResponse::default()
+                });
+            }
+            Ok(ModelResponse {
+                events: vec![SessionEvent::AssistantDelta {
+                    prompt_id: request.prompt_id,
+                    text: "recovered after retry".to_string(),
+                    metadata: EventMetadata::empty().with("source", "retry_then_done"),
+                }],
+                ..ModelResponse::default()
+            })
+        }
+    }
+
+    struct CountingRuntimeRetryAdapter {
+        sleeps: std::sync::atomic::AtomicUsize,
+    }
+
+    impl CountingRuntimeRetryAdapter {
+        fn new() -> Self {
+            Self {
+                sleeps: std::sync::atomic::AtomicUsize::new(0),
+            }
+        }
+
+        fn sleeps(&self) -> usize {
+            self.sleeps.load(std::sync::atomic::Ordering::SeqCst)
+        }
+    }
+
+    impl RuntimeRetryAdapter for CountingRuntimeRetryAdapter {
+        fn sleep_for_retry(&self, request: RuntimeRetryRequest) -> Result<(), RuntimeError> {
+            assert_eq!(request.delay_ms, 1000);
+            self.sleeps.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+            Ok(())
+        }
+    }
+
+    #[tokio::test]
+    async fn runtime_facade_retryable_model_failure_uses_retry_adapter() {
+        let retry = Arc::new(CountingRuntimeRetryAdapter::new());
+        let runtime = RuntimeBuilder::new()
+            .model_adapter(Arc::new(RetryThenDoneModel::new()))
+            .retry_adapter(retry.clone())
+            .build()
+            .unwrap();
+        let session = runtime.create_session(SessionOptions::default()).await.unwrap();
+        let mut events = session.take_events().await.unwrap();
+        session.submit_prompt(PromptInput::new("retry once")).await.unwrap();
+
+        assert_eq!(retry.sleeps(), 1);
+        assert_eq!(safe_event_summary(&events.recv().await.unwrap())["type"], "prompt_accepted");
+        assert_eq!(safe_event_summary(&events.recv().await.unwrap())["type"], "assistant_delta");
+        assert_eq!(safe_event_summary(&events.recv().await.unwrap())["type"], "completed");
+    }
+
+    struct PanicModel;
+
+    impl ModelAdapter for PanicModel {
+        fn complete(&self, _request: ModelRequest) -> Result<ModelResponse, RuntimeError> {
+            panic!("cancelled runtime must not invoke model adapter");
+        }
+    }
+
+    struct AlwaysCancelled;
+
+    impl RuntimeCancellationAdapter for AlwaysCancelled {
+        fn is_cancelled(&self) -> bool {
+            true
+        }
+
+        fn cancellation_reason(&self) -> String {
+            "host cancelled before model".to_string()
+        }
+    }
+
+    #[tokio::test]
+    async fn runtime_facade_cancellation_adapter_finishes_without_model_call() {
+        let runtime = RuntimeBuilder::new()
+            .model_adapter(Arc::new(PanicModel))
+            .cancellation_adapter(Arc::new(AlwaysCancelled))
+            .build()
+            .unwrap();
+        let session = runtime.create_session(SessionOptions::default()).await.unwrap();
+        let mut events = session.take_events().await.unwrap();
+        session.submit_prompt(PromptInput::new("cancel before model")).await.unwrap();
+
+        assert_eq!(safe_event_summary(&events.recv().await.unwrap())["type"], "prompt_accepted");
+        let complete = safe_event_summary(&events.recv().await.unwrap());
+        assert_eq!(complete["type"], "completed");
+        assert_eq!(complete["stop_reason"], "Cancelled");
+    }
+
+    #[tokio::test]
+    async fn runtime_facade_missing_tool_adapter_fails_closed_before_side_effects() {
+        let runtime = RuntimeBuilder::new().model_adapter(Arc::new(ToolThenDoneModel::new())).build().unwrap();
+        let session = runtime.create_session(SessionOptions::default()).await.unwrap();
+        let mut events = session.take_events().await.unwrap();
+        session.submit_prompt(PromptInput::new("missing tool adapter")).await.unwrap();
+
+        assert_eq!(safe_event_summary(&events.recv().await.unwrap())["type"], "prompt_accepted");
+        assert_eq!(safe_event_summary(&events.recv().await.unwrap())["type"], "tool_started");
+        let tool_done = safe_event_summary(&events.recv().await.unwrap());
+        assert_eq!(tool_done["type"], "tool_finished");
+        assert_eq!(tool_done["status"], "Failed");
+        assert_eq!(safe_event_summary(&events.recv().await.unwrap())["type"], "assistant_delta");
+        assert_eq!(safe_event_summary(&events.recv().await.unwrap())["type"], "completed");
     }
 
     #[test]

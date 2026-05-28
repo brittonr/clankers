@@ -9,14 +9,24 @@ use crate::ConfirmationRequest;
 use crate::EchoModelAdapter;
 use crate::FailClosedConfirmationBroker;
 use crate::ModelAdapter;
+use crate::NoopRuntimeCancellationAdapter;
+use crate::NoopRuntimeEventObserver;
+use crate::NoopRuntimeRetryAdapter;
+use crate::NoopRuntimeUsageAdapter;
 use crate::PromptAssembler;
 use crate::PromptAssemblyPolicy;
 use crate::PromptSources;
+use crate::RuntimeCancellationAdapter;
 use crate::RuntimeError;
+use crate::RuntimeEventObserver;
+use crate::RuntimeRetryAdapter;
 use crate::RuntimeServices;
+use crate::RuntimeToolAdapter;
+use crate::RuntimeUsageAdapter;
 use crate::SessionHandle;
 use crate::SessionOptions;
 use crate::ToolCatalog;
+use crate::UnavailableRuntimeToolAdapter;
 use crate::boundary::validate_public_runtime_boundary;
 use crate::request_confirmation_fail_closed;
 
@@ -27,6 +37,11 @@ pub struct RuntimeBuilder {
     pub(crate) prompt_policy: PromptAssemblyPolicy,
     pub(crate) prompt_sources: PromptSources,
     pub(crate) tool_catalog: ToolCatalog,
+    pub(crate) tool_adapter: Arc<dyn RuntimeToolAdapter>,
+    pub(crate) retry_adapter: Arc<dyn RuntimeRetryAdapter>,
+    pub(crate) event_observer: Arc<dyn RuntimeEventObserver>,
+    pub(crate) cancellation: Arc<dyn RuntimeCancellationAdapter>,
+    pub(crate) usage_adapter: Arc<dyn RuntimeUsageAdapter>,
     pub(crate) confirmation_broker: Arc<dyn ConfirmationBroker>,
     pub(crate) event_buffer: usize,
 }
@@ -41,6 +56,11 @@ impl RuntimeBuilder {
             prompt_policy: PromptAssemblyPolicy::host_context_only(),
             prompt_sources: PromptSources::default(),
             tool_catalog: ToolCatalog::embedding_safe(),
+            tool_adapter: Arc::new(UnavailableRuntimeToolAdapter),
+            retry_adapter: Arc::new(NoopRuntimeRetryAdapter),
+            event_observer: Arc::new(NoopRuntimeEventObserver),
+            cancellation: Arc::new(NoopRuntimeCancellationAdapter),
+            usage_adapter: Arc::new(NoopRuntimeUsageAdapter),
             confirmation_broker: Arc::new(FailClosedConfirmationBroker),
             event_buffer: 128,
         }
@@ -75,6 +95,41 @@ impl RuntimeBuilder {
         self
     }
 
+    /// Use a host-supplied tool execution adapter.
+    #[must_use]
+    pub fn tool_adapter(mut self, adapter: Arc<dyn RuntimeToolAdapter>) -> Self {
+        self.tool_adapter = adapter;
+        self
+    }
+
+    /// Use a host-supplied retry adapter.
+    #[must_use]
+    pub fn retry_adapter(mut self, adapter: Arc<dyn RuntimeRetryAdapter>) -> Self {
+        self.retry_adapter = adapter;
+        self
+    }
+
+    /// Use a host-supplied engine event observer.
+    #[must_use]
+    pub fn event_observer(mut self, observer: Arc<dyn RuntimeEventObserver>) -> Self {
+        self.event_observer = observer;
+        self
+    }
+
+    /// Use a host-supplied cancellation adapter.
+    #[must_use]
+    pub fn cancellation_adapter(mut self, adapter: Arc<dyn RuntimeCancellationAdapter>) -> Self {
+        self.cancellation = adapter;
+        self
+    }
+
+    /// Use a host-supplied usage observer.
+    #[must_use]
+    pub fn usage_adapter(mut self, adapter: Arc<dyn RuntimeUsageAdapter>) -> Self {
+        self.usage_adapter = adapter;
+        self
+    }
+
     /// Use a host-supplied confirmation broker.
     #[must_use]
     pub fn confirmation_broker(mut self, broker: Arc<dyn ConfirmationBroker>) -> Self {
@@ -99,6 +154,11 @@ impl RuntimeBuilder {
                 prompt_policy: self.prompt_policy,
                 prompt_sources: self.prompt_sources,
                 tool_catalog: self.tool_catalog,
+                tool_adapter: self.tool_adapter,
+                retry_adapter: self.retry_adapter,
+                event_observer: self.event_observer,
+                cancellation: self.cancellation,
+                usage_adapter: self.usage_adapter,
                 confirmation_broker: self.confirmation_broker,
                 event_buffer: self.event_buffer,
             }),
@@ -124,6 +184,11 @@ pub(crate) struct RuntimeInner {
     pub(crate) prompt_policy: PromptAssemblyPolicy,
     pub(crate) prompt_sources: PromptSources,
     pub(crate) tool_catalog: ToolCatalog,
+    pub(crate) tool_adapter: Arc<dyn RuntimeToolAdapter>,
+    pub(crate) retry_adapter: Arc<dyn RuntimeRetryAdapter>,
+    pub(crate) event_observer: Arc<dyn RuntimeEventObserver>,
+    pub(crate) cancellation: Arc<dyn RuntimeCancellationAdapter>,
+    pub(crate) usage_adapter: Arc<dyn RuntimeUsageAdapter>,
     pub(crate) confirmation_broker: Arc<dyn ConfirmationBroker>,
     pub(crate) event_buffer: usize,
 }

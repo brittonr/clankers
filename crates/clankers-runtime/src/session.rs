@@ -3,25 +3,68 @@
 use std::collections::BTreeSet;
 use std::fmt;
 use std::sync::Arc;
+use std::sync::Mutex as StdMutex;
 
 use chrono::Utc;
+use clanker_message::Content;
+use clanker_message::ToolDefinition;
+use clanker_message::Usage;
+use clankers_engine::EngineCorrelationId;
+use clankers_engine::EngineEvent;
+use clankers_engine::EngineInput;
+use clankers_engine::EngineMessage;
+use clankers_engine::EngineMessageRole;
+use clankers_engine::EngineModelRequest;
+use clankers_engine::EngineModelResponse;
+use clankers_engine::EnginePromptSubmission;
+use clankers_engine::EngineState;
+use clankers_engine::EngineTerminalFailure;
+use clankers_engine::EngineToolCall;
+use clankers_engine::reduce;
+use clankers_engine_host::CancellationSource;
+use clankers_engine_host::EngineEventSink;
+use clankers_engine_host::EngineRunSeed;
+use clankers_engine_host::HostAdapterError;
+use clankers_engine_host::HostAdapters;
+use clankers_engine_host::ModelHost;
+use clankers_engine_host::ModelHostOutcome;
+use clankers_engine_host::RetrySleeper;
+use clankers_engine_host::UsageObservation;
+use clankers_engine_host::UsageObserver;
+use clankers_engine_host::run_engine_turn;
+use clankers_tool_host::ToolExecutor;
+use clankers_tool_host::ToolHostOutcome;
 use serde::Deserialize;
 use serde::Serialize;
 use tokio::sync::Mutex;
 use tokio::sync::mpsc;
 use uuid::Uuid;
 
+use crate::AssembledPrompt;
 use crate::EventMetadata;
+use crate::ModelAdapter;
 use crate::ModelRequest;
 use crate::PromptAssembler;
 use crate::PromptId;
 use crate::PromptInput;
 use crate::PromptReceipt;
 use crate::PromptReplayEntry;
+use crate::RuntimeCancellationAdapter;
 use crate::RuntimeError;
+use crate::RuntimeEventObserver;
+use crate::RuntimeRetryAdapter;
+use crate::RuntimeRetryRequest;
+use crate::RuntimeToolAdapter;
+use crate::RuntimeToolRequest;
+use crate::RuntimeToolResponse;
+use crate::RuntimeToolStatus;
+use crate::RuntimeUsageAdapter;
+use crate::RuntimeUsageObservation;
+use crate::RuntimeUsageObservationKind;
 use crate::SessionEvent;
 use crate::SessionRecord;
 use crate::StopReason;
+use crate::ToolCatalog;
 use crate::runtime::RuntimeInner;
 
 /// Stable identifier for a host-facing runtime session.
@@ -86,6 +129,343 @@ struct SessionState {
     is_shutdown: bool,
 }
 
+struct RuntimeModelHost {
+    model: Arc<dyn ModelAdapter>,
+    request: ModelRequest,
+    event_log: Arc<StdMutex<Vec<SessionEvent>>>,
+}
+
+impl RuntimeModelHost {
+    fn new(model: Arc<dyn ModelAdapter>, request: ModelRequest, event_log: Arc<StdMutex<Vec<SessionEvent>>>) -> Self {
+        Self {
+            model,
+            request,
+            event_log,
+        }
+    }
+}
+
+impl ModelHost for RuntimeModelHost {
+    async fn execute_model(&mut self, request: EngineModelRequest) -> ModelHostOutcome {
+        let mut model_request = self.request.clone();
+        model_request.model = Some(request.model);
+        match self.model.complete(model_request) {
+            Ok(response) => {
+                if let Some(failure) = response.failure {
+                    return ModelHostOutcome::Failed {
+                        failure: EngineTerminalFailure {
+                            message: failure.message,
+                            status: failure.status,
+                            retryable: failure.retryable,
+                        },
+                    };
+                }
+                let (mut content, event_usage, events, failure) = model_response_to_engine_parts(response.events);
+                if let Some(message) = failure {
+                    return ModelHostOutcome::Failed {
+                        failure: EngineTerminalFailure {
+                            message,
+                            status: None,
+                            retryable: false,
+                        },
+                    };
+                }
+                if !response.engine_content.is_empty() {
+                    content = response.engine_content;
+                }
+                self.event_log.lock().unwrap_or_else(|poisoned| poisoned.into_inner()).extend(events);
+                ModelHostOutcome::Completed {
+                    response: EngineModelResponse {
+                        output: content,
+                        stop_reason: response.stop_reason.unwrap_or(clanker_message::StopReason::Stop),
+                    },
+                    usage: response.usage.or(event_usage),
+                }
+            }
+            Err(error) => ModelHostOutcome::Failed {
+                failure: EngineTerminalFailure {
+                    message: error.safe_message(),
+                    status: None,
+                    retryable: false,
+                },
+            },
+        }
+    }
+}
+
+struct RuntimeToolHost {
+    session_id: SessionId,
+    prompt_id: PromptId,
+    catalog: ToolCatalog,
+    adapter: Arc<dyn RuntimeToolAdapter>,
+    event_log: Arc<StdMutex<Vec<SessionEvent>>>,
+}
+
+impl RuntimeToolHost {
+    fn new(
+        session_id: SessionId,
+        prompt_id: PromptId,
+        catalog: ToolCatalog,
+        adapter: Arc<dyn RuntimeToolAdapter>,
+        event_log: Arc<StdMutex<Vec<SessionEvent>>>,
+    ) -> Self {
+        Self {
+            session_id,
+            prompt_id,
+            catalog,
+            adapter,
+            event_log,
+        }
+    }
+}
+
+impl ToolExecutor for RuntimeToolHost {
+    async fn execute_tool(&mut self, call: EngineToolCall) -> ToolHostOutcome {
+        if !self.catalog.contains_tool(&call.tool_name) {
+            return ToolHostOutcome::MissingTool { name: call.tool_name };
+        }
+        push_runtime_tool_event(&self.event_log, SessionEvent::ToolStarted {
+            prompt_id: self.prompt_id.clone(),
+            call_id: call.call_id.0.clone(),
+            tool_name: call.tool_name.clone(),
+            metadata: EventMetadata::new(self.session_id.clone()).with("source", "runtime_tool_host"),
+        });
+        let request = RuntimeToolRequest {
+            session_id: self.session_id.clone(),
+            prompt_id: self.prompt_id.clone(),
+            call_id: call.call_id.0.clone(),
+            tool_name: call.tool_name.clone(),
+            input: call.input,
+        };
+        match self.adapter.execute_tool(request) {
+            Ok(response) => {
+                push_runtime_tool_event(&self.event_log, SessionEvent::ToolFinished {
+                    prompt_id: self.prompt_id.clone(),
+                    call_id: call.call_id.0.clone(),
+                    status: runtime_tool_status_to_session_status(response.status),
+                    metadata: EventMetadata::new(self.session_id.clone())
+                        .with("runtime_tool_status", format!("{:?}", response.status)),
+                });
+                runtime_tool_response_to_host_outcome(call.tool_name, response)
+            }
+            Err(error) => {
+                let message = error.safe_message();
+                push_runtime_tool_event(&self.event_log, SessionEvent::ToolFinished {
+                    prompt_id: self.prompt_id.clone(),
+                    call_id: call.call_id.0,
+                    status: crate::ToolStatus::Failed,
+                    metadata: EventMetadata::new(self.session_id.clone())
+                        .with("error_class", format!("{:?}", error.class())),
+                });
+                ToolHostOutcome::ToolError {
+                    content: vec![Content::Text { text: message.clone() }],
+                    details: serde_json::json!({"error_class": format!("{:?}", error.class())}),
+                    message,
+                }
+            }
+        }
+    }
+}
+
+fn push_runtime_tool_event(event_log: &Arc<StdMutex<Vec<SessionEvent>>>, event: SessionEvent) {
+    event_log.lock().unwrap_or_else(|poisoned| poisoned.into_inner()).push(event);
+}
+
+fn runtime_tool_status_to_session_status(status: RuntimeToolStatus) -> crate::ToolStatus {
+    match status {
+        RuntimeToolStatus::Succeeded => crate::ToolStatus::Succeeded,
+        RuntimeToolStatus::Denied => crate::ToolStatus::Denied,
+        RuntimeToolStatus::Failed | RuntimeToolStatus::Missing | RuntimeToolStatus::Cancelled => {
+            crate::ToolStatus::Failed
+        }
+    }
+}
+
+fn runtime_tool_response_to_host_outcome(tool_name: String, response: RuntimeToolResponse) -> ToolHostOutcome {
+    match response.status {
+        RuntimeToolStatus::Succeeded => ToolHostOutcome::Succeeded {
+            content: response.content,
+            details: response.details,
+        },
+        RuntimeToolStatus::Denied => ToolHostOutcome::CapabilityDenied {
+            name: tool_name,
+            reason: response.message.unwrap_or_else(|| "denied by runtime tool adapter".to_string()),
+        },
+        RuntimeToolStatus::Missing => ToolHostOutcome::MissingTool { name: tool_name },
+        RuntimeToolStatus::Cancelled => ToolHostOutcome::Cancelled { name: tool_name },
+        RuntimeToolStatus::Failed => {
+            let message = response.message.unwrap_or_else(|| "runtime tool adapter failed".to_string());
+            let content = if response.content.is_empty() {
+                vec![Content::Text { text: message.clone() }]
+            } else {
+                response.content
+            };
+            ToolHostOutcome::ToolError {
+                content,
+                details: response.details,
+                message,
+            }
+        }
+    }
+}
+
+struct RuntimeRetrySleeper {
+    adapter: Arc<dyn RuntimeRetryAdapter>,
+}
+
+impl RetrySleeper for RuntimeRetrySleeper {
+    async fn sleep_for_retry(
+        &mut self,
+        request_id: EngineCorrelationId,
+        delay: std::time::Duration,
+    ) -> Result<(), HostAdapterError> {
+        self.adapter
+            .sleep_for_retry(RuntimeRetryRequest::new(request_id.0, delay))
+            .map_err(|error| HostAdapterError::failed(error.safe_message()))
+    }
+}
+
+struct RuntimeEngineEventSink {
+    observer: Arc<dyn RuntimeEventObserver>,
+    events: Vec<EngineEvent>,
+}
+
+impl EngineEventSink for RuntimeEngineEventSink {
+    fn emit_engine_event(&mut self, event: &EngineEvent) -> Result<(), HostAdapterError> {
+        self.events.push(event.clone());
+        self.observer
+            .observe_engine_event(event)
+            .map_err(|error| HostAdapterError::failed(error.safe_message()))
+    }
+}
+
+struct RuntimeCancellationSource {
+    adapter: Arc<dyn RuntimeCancellationAdapter>,
+}
+
+impl CancellationSource for RuntimeCancellationSource {
+    fn is_cancelled(&mut self) -> bool {
+        self.adapter.is_cancelled()
+    }
+
+    fn cancellation_reason(&mut self) -> String {
+        self.adapter.cancellation_reason()
+    }
+}
+
+struct RuntimeUsageObserver {
+    adapter: Arc<dyn RuntimeUsageAdapter>,
+    session_id: SessionId,
+    prompt_id: PromptId,
+    event_log: Arc<StdMutex<Vec<SessionEvent>>>,
+    observations: Vec<UsageObservation>,
+}
+
+impl UsageObserver for RuntimeUsageObserver {
+    fn observe_usage(&mut self, observation: &UsageObservation) -> Result<(), HostAdapterError> {
+        self.observations.push(observation.clone());
+        push_runtime_tool_event(&self.event_log, SessionEvent::CostUpdated {
+            prompt_id: self.prompt_id.clone(),
+            input_tokens: observation.usage.input_tokens as u64,
+            output_tokens: observation.usage.output_tokens as u64,
+            metadata: EventMetadata::new(self.session_id.clone()).with("source", "engine_host_usage"),
+        });
+        self.adapter
+            .observe_usage(runtime_usage_observation(observation))
+            .map_err(|error| HostAdapterError::failed(error.safe_message()))
+    }
+}
+
+fn runtime_usage_observation(observation: &UsageObservation) -> RuntimeUsageObservation {
+    RuntimeUsageObservation {
+        kind: match observation.kind {
+            clankers_engine_host::UsageObservationKind::StreamDelta => RuntimeUsageObservationKind::StreamDelta,
+            clankers_engine_host::UsageObservationKind::FinalSummary => RuntimeUsageObservationKind::FinalSummary,
+        },
+        usage: observation.usage.clone(),
+    }
+}
+
+fn model_response_to_engine_parts(
+    events: Vec<SessionEvent>,
+) -> (Vec<Content>, Option<Usage>, Vec<SessionEvent>, Option<String>) {
+    let mut assistant_text = String::new();
+    let mut thinking_text = String::new();
+    let mut usage = None;
+    let mut replay_events = Vec::new();
+    let mut failure = None;
+
+    for event in events {
+        match &event {
+            SessionEvent::AssistantDelta { text, .. } => assistant_text.push_str(text),
+            SessionEvent::ThinkingDelta { text, .. } => thinking_text.push_str(text),
+            SessionEvent::CostUpdated {
+                input_tokens,
+                output_tokens,
+                ..
+            } => {
+                usage = Some(Usage {
+                    input_tokens: *input_tokens as usize,
+                    output_tokens: *output_tokens as usize,
+                    cache_creation_input_tokens: 0,
+                    cache_read_input_tokens: 0,
+                });
+            }
+            SessionEvent::Error { message, .. } => failure = Some(message.clone()),
+            SessionEvent::PromptAccepted { .. } | SessionEvent::Completed { .. } | SessionEvent::Shutdown { .. } => {}
+            SessionEvent::ToolStarted { .. }
+            | SessionEvent::ToolFinished { .. }
+            | SessionEvent::ConfirmationRequested { .. } => {}
+        }
+        if should_replay_model_event(&event) {
+            replay_events.push(event);
+        }
+    }
+
+    let mut content = Vec::new();
+    if !thinking_text.is_empty() {
+        content.push(Content::Thinking {
+            thinking: thinking_text,
+            signature: String::new(),
+        });
+    }
+    if !assistant_text.is_empty() {
+        content.push(Content::Text { text: assistant_text });
+    }
+    (content, usage, replay_events, failure)
+}
+
+fn should_replay_model_event(event: &SessionEvent) -> bool {
+    matches!(
+        event,
+        SessionEvent::ThinkingDelta { .. }
+            | SessionEvent::AssistantDelta { .. }
+            | SessionEvent::ToolStarted { .. }
+            | SessionEvent::ToolFinished { .. }
+            | SessionEvent::ConfirmationRequested { .. }
+    )
+}
+
+fn system_prompt_from_assembled(assembled: &AssembledPrompt) -> String {
+    assembled
+        .sections
+        .iter()
+        .map(|section| format!("[{}]\n{}", section.label, section.content))
+        .collect::<Vec<_>>()
+        .join("\n\n")
+}
+
+fn engine_tool_definitions(catalog: &ToolCatalog) -> Vec<ToolDefinition> {
+    catalog
+        .tools()
+        .map(|tool| ToolDefinition {
+            name: tool.name.clone(),
+            description: tool.description.clone(),
+            input_schema: serde_json::json!({"type":"object"}),
+        })
+        .collect()
+}
+
 impl SessionHandle {
     pub(crate) fn new(runtime: Arc<RuntimeInner>, options: SessionOptions) -> Result<Self, RuntimeError> {
         let session_id = options.session_id.unwrap_or_default();
@@ -145,53 +525,118 @@ impl SessionHandle {
         })
         .await?;
 
-        let request = ModelRequest {
+        let submission = EnginePromptSubmission {
+            messages: vec![EngineMessage {
+                role: EngineMessageRole::User,
+                content: vec![Content::Text {
+                    text: assembled.user_prompt.clone(),
+                }],
+            }],
+            model: model.clone().unwrap_or_else(|| "default".to_string()),
+            system_prompt: system_prompt_from_assembled(&assembled),
+            max_tokens: None,
+            temperature: None,
+            thinking: None,
+            tools: engine_tool_definitions(&self.runtime.tool_catalog),
+            no_cache: true,
+            cache_ttl: None,
+            session_id: session_id.to_string(),
+            model_request_slot_budget: 8,
+        };
+        let initial_state = EngineState::new();
+        let first_outcome = reduce(&initial_state, &EngineInput::submit_user_prompt(submission));
+        let event_log = Arc::new(StdMutex::new(Vec::new()));
+        let mut model_host = RuntimeModelHost::new(
+            self.runtime.model.clone(),
+            ModelRequest {
+                session_id: session_id.clone(),
+                prompt_id: prompt_id.clone(),
+                model,
+                prompt: assembled.clone(),
+                disabled_tools,
+            },
+            Arc::clone(&event_log),
+        );
+        let mut tool_host = RuntimeToolHost::new(
+            session_id.clone(),
+            prompt_id.clone(),
+            self.runtime.tool_catalog.clone(),
+            Arc::clone(&self.runtime.tool_adapter),
+            Arc::clone(&event_log),
+        );
+        let mut retry_sleeper = RuntimeRetrySleeper {
+            adapter: Arc::clone(&self.runtime.retry_adapter),
+        };
+        let mut event_sink = RuntimeEngineEventSink {
+            observer: Arc::clone(&self.runtime.event_observer),
+            events: Vec::new(),
+        };
+        let mut cancellation = RuntimeCancellationSource {
+            adapter: Arc::clone(&self.runtime.cancellation),
+        };
+        let mut usage_observer = RuntimeUsageObserver {
+            adapter: Arc::clone(&self.runtime.usage_adapter),
             session_id: session_id.clone(),
             prompt_id: prompt_id.clone(),
-            model,
-            prompt: assembled.clone(),
-            disabled_tools,
+            event_log: Arc::clone(&event_log),
+            observations: Vec::new(),
         };
-        match self.runtime.model.complete(request) {
-            Ok(response) => {
-                for event in response.events {
-                    self.emit(event.with_session_metadata(session_id.clone(), prompt_id.clone())).await?;
-                }
-                let mut record = self
-                    .runtime
-                    .services
-                    .sessions
-                    .load(&session_id)?
-                    .unwrap_or_else(|| SessionRecord::new(session_id.clone()));
-                record.last_prompt = Some(prompt_id.clone());
-                record.prompts.push(PromptReplayEntry {
-                    prompt_id: prompt_id.clone(),
-                    user_prompt: assembled.user_prompt.clone(),
-                    assembled_prompt: assembled.clone(),
-                    completed_at: Utc::now(),
-                });
-                self.runtime.services.sessions.save(SessionRecord {
-                    session_id: session_id.clone(),
-                    ..record
-                })?;
-                self.emit(SessionEvent::Completed {
-                    prompt_id: prompt_id.clone(),
-                    stop_reason: StopReason::Complete,
-                    metadata: EventMetadata::new(session_id).with("prompt_id", prompt_id.as_str()),
-                })
-                .await?;
-            }
-            Err(error) => {
-                self.emit(SessionEvent::Error {
-                    prompt_id: Some(prompt_id.clone()),
-                    message: error.safe_message(),
-                    error_class: error.class(),
-                    metadata: EventMetadata::new(session_id).with("prompt_id", prompt_id.as_str()),
-                })
-                .await?;
-                return Err(error);
-            }
+
+        let report = run_engine_turn(EngineRunSeed::new(initial_state, first_outcome), HostAdapters {
+            model: &mut model_host,
+            tools: &mut tool_host,
+            retry_sleeper: &mut retry_sleeper,
+            event_sink: &mut event_sink,
+            cancellation: &mut cancellation,
+            usage_observer: &mut usage_observer,
+        })
+        .await;
+
+        let events = std::mem::take(&mut *event_log.lock().unwrap_or_else(|poisoned| poisoned.into_inner()));
+        for event in events {
+            self.emit(event.with_session_metadata(session_id.clone(), prompt_id.clone())).await?;
         }
+
+        if let Some(failure) = report.last_outcome.terminal_failure {
+            let error = RuntimeError::Model(failure.message);
+            self.emit(SessionEvent::Error {
+                prompt_id: Some(prompt_id.clone()),
+                message: error.safe_message(),
+                error_class: error.class(),
+                metadata: EventMetadata::new(session_id).with("prompt_id", prompt_id.as_str()),
+            })
+            .await?;
+            return Err(error);
+        }
+
+        let mut record = self
+            .runtime
+            .services
+            .sessions
+            .load(&session_id)?
+            .unwrap_or_else(|| SessionRecord::new(session_id.clone()));
+        record.last_prompt = Some(prompt_id.clone());
+        record.prompts.push(PromptReplayEntry {
+            prompt_id: prompt_id.clone(),
+            user_prompt: assembled.user_prompt.clone(),
+            assembled_prompt: assembled.clone(),
+            completed_at: Utc::now(),
+        });
+        self.runtime.services.sessions.save(SessionRecord {
+            session_id: session_id.clone(),
+            ..record
+        })?;
+        let stop_reason = if self.runtime.cancellation.is_cancelled() {
+            StopReason::Cancelled
+        } else {
+            StopReason::Complete
+        };
+        self.emit(SessionEvent::Completed {
+            prompt_id: prompt_id.clone(),
+            stop_reason,
+            metadata: EventMetadata::new(session_id).with("prompt_id", prompt_id.as_str()),
+        })
+        .await?;
         Ok(PromptReceipt { prompt_id })
     }
 

@@ -9,7 +9,11 @@ async-trait = "0.1"
 basalt = { workspace = true }
 blake3 = { workspace = true }
 chrono = { workspace = true }
+clanker-message = { workspace = true }
 clankers-artifacts = { version = "0.1.0", path = "../clankers-artifacts" }
+clankers-engine = { version = "0.1.0", path = "../clankers-engine" }
+clankers-engine-host = { version = "0.1.0", path = "../clankers-engine-host" }
+clankers-tool-host = { version = "0.1.0", path = "../clankers-tool-host" }
 serde = { workspace = true }
 serde_json = { workspace = true }
 thiserror = { workspace = true }
