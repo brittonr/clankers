@@ -5,15 +5,137 @@
 //! router's provider-native JSON message surface. Backends behind
 //! `clanker-router` still own final provider HTTP body construction.
 
+use std::collections::HashMap;
+
+use chrono::Utc;
+use serde::Deserialize;
+use serde::Serialize;
+use serde_json::Value;
 use serde_json::json;
 
 use crate::CompletionRequest;
+use crate::Usage;
 use crate::message::AgentMessage;
+use crate::message::AssistantMessage;
 use crate::message::Content;
 use crate::message::ImageSource;
+use crate::message::MessageId;
+use crate::message::StopReason;
+use crate::message::ToolResultMessage;
+use crate::message::UserMessage;
 
 const BRANCH_SUMMARY_MESSAGE_PREFIX: &str = "Branch summary";
 const COMPACTION_SUMMARY_MESSAGE_PREFIX: &str = "Compaction summary";
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CompletionRequestBridgeInput {
+    pub model: String,
+    pub messages: Vec<CompletionRequestBridgeMessage>,
+    pub system_prompt: Option<String>,
+    pub max_tokens: Option<usize>,
+    pub temperature: Option<f64>,
+    pub tools: Vec<crate::ToolDefinition>,
+    pub thinking: Option<crate::ThinkingConfig>,
+    pub no_cache: bool,
+    pub cache_ttl: Option<String>,
+    pub extra_params: HashMap<String, Value>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum CompletionRequestBridgeMessageRole {
+    User,
+    Assistant,
+    Tool,
+    System,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CompletionRequestBridgeMessage {
+    pub role: CompletionRequestBridgeMessageRole,
+    pub content: Vec<Content>,
+    pub id: Option<String>,
+    pub model: Option<String>,
+    pub call_id: Option<String>,
+    pub tool_name: Option<String>,
+    pub is_error: bool,
+}
+
+#[must_use]
+pub fn completion_request_from_bridge_input(input: CompletionRequestBridgeInput) -> CompletionRequest {
+    let messages = bridge_messages_to_agent_messages(&input.model, input.messages);
+    CompletionRequest {
+        model: input.model,
+        messages,
+        system_prompt: input.system_prompt,
+        max_tokens: input.max_tokens,
+        temperature: input.temperature,
+        tools: input.tools,
+        thinking: input.thinking,
+        no_cache: input.no_cache,
+        cache_ttl: input.cache_ttl,
+        extra_params: input.extra_params,
+    }
+}
+
+fn bridge_messages_to_agent_messages(
+    default_model: &str,
+    messages: Vec<CompletionRequestBridgeMessage>,
+) -> Vec<AgentMessage> {
+    messages
+        .into_iter()
+        .enumerate()
+        .map(|(index, message)| bridge_message_to_agent_message(default_model, index, message))
+        .collect()
+}
+
+fn bridge_message_to_agent_message(
+    default_model: &str,
+    index: usize,
+    message: CompletionRequestBridgeMessage,
+) -> AgentMessage {
+    let id = MessageId::new(message.id.unwrap_or_else(|| format!("runtime-provider-{index}")));
+    let timestamp = Utc::now();
+    match message.role {
+        CompletionRequestBridgeMessageRole::User | CompletionRequestBridgeMessageRole::System => {
+            AgentMessage::User(UserMessage {
+                id,
+                content: message.content,
+                timestamp,
+            })
+        }
+        CompletionRequestBridgeMessageRole::Assistant => AgentMessage::Assistant(AssistantMessage {
+            id,
+            content: message.content,
+            model: message.model.unwrap_or_else(|| default_model.to_string()),
+            usage: Usage::default(),
+            stop_reason: StopReason::Stop,
+            timestamp,
+        }),
+        CompletionRequestBridgeMessageRole::Tool => {
+            let call_id = message
+                .call_id
+                .or_else(|| first_tool_result_id(&message.content))
+                .unwrap_or_else(|| format!("runtime-provider-tool-{index}"));
+            AgentMessage::ToolResult(ToolResultMessage {
+                id,
+                call_id,
+                tool_name: message.tool_name.unwrap_or_else(|| "tool".to_string()),
+                content: message.content,
+                is_error: message.is_error,
+                details: None,
+                timestamp,
+            })
+        }
+    }
+}
+
+fn first_tool_result_id(content: &[Content]) -> Option<String> {
+    content.iter().find_map(|block| match block {
+        Content::ToolResult { tool_use_id, .. } => Some(tool_use_id.clone()),
+        _ => None,
+    })
+}
 
 pub(crate) fn build_router_request(request: CompletionRequest) -> clanker_router::CompletionRequest {
     clanker_router::CompletionRequest {

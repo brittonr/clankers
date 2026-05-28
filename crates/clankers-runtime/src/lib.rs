@@ -176,6 +176,7 @@ pub use services::CredentialPoolPolicyService;
 pub use services::CredentialPoolRequest;
 pub use services::DesktopRuntimeServices;
 pub use services::DisabledExtensionService;
+pub use services::DisabledSessionStore;
 pub use services::ExtensionAuthStoreService;
 pub use services::ExtensionReceipt;
 pub use services::ExtensionRuntimeKind;
@@ -184,14 +185,19 @@ pub use services::ExtensionRuntimeService;
 pub use services::ExtensionServices;
 pub use services::ExtensionStatus;
 pub use services::ExtensionToolDescriptor;
-pub use services::DisabledSessionStore;
 pub use services::InMemorySessionStore;
 pub use services::NoopService;
 pub use services::PluginStore;
 pub use services::ProjectContextService;
 pub use services::PromptReplayEntry;
-pub use services::ProviderExecutionRequest;
+pub use services::ProviderMessage;
+pub use services::ProviderMessageRole;
+pub use services::ProviderModelFailure;
+pub use services::ProviderModelRequest;
+pub use services::ProviderModelResponse;
+pub use services::ProviderModelStatus;
 pub use services::ProviderRouterService;
+pub use services::ProviderStreamEvent;
 pub use services::RuntimeServices;
 pub use services::SessionRecord;
 pub use services::SessionStore;
@@ -391,19 +397,7 @@ mod tests {
         assert_eq!(extensions.runtime.publishable_tools(ExtensionRuntimeKind::Mcp).unwrap(), Vec::new());
         assert_eq!(extensions.runtime.publishable_tools(ExtensionRuntimeKind::Gateway).unwrap(), Vec::new());
 
-        let provider_error = extensions
-            .provider_router
-            .execute(ProviderExecutionRequest {
-                provider: "openai-codex".to_string(),
-                model: Some("gpt-5.3-codex".to_string()),
-                account_label: Some("desktop".to_string()),
-                route_source: "embedded".to_string(),
-                prompt: Some("hello".to_string()),
-                system_prompt: None,
-                max_tokens: Some(8),
-                session_id: Some("session-runtime-test".to_string()),
-            })
-            .unwrap_err();
+        let provider_error = extensions.provider_router.complete(provider_request()).unwrap_err();
         assert_eq!(provider_error, RuntimeError::ExtensionUnavailable("provider router disabled".to_string()));
 
         let auth_error = extensions
@@ -442,6 +436,144 @@ mod tests {
     }
 
     #[test]
+    fn provider_model_contract_literal_fixtures_cover_request_stream_failures_and_usage() {
+        let request = ProviderModelRequest {
+            provider: "openai-codex".to_string(),
+            model: Some("openai-codex/gpt-5.3-codex".to_string()),
+            account_label: Some("chatgpt-work".to_string()),
+            route_source: "embedded-test".to_string(),
+            session_id: Some("session-provider-contract".to_string()),
+            system_prompt: Some("Be precise".to_string()),
+            messages: vec![
+                ProviderMessage::user_text("hello"),
+                ProviderMessage::assistant(
+                    vec![clanker_message::Content::Text {
+                        text: "previous answer".to_string(),
+                    }],
+                    Some("openai-codex/gpt-5.3-codex".to_string()),
+                ),
+                ProviderMessage::tool_result(
+                    "call_1:item_1",
+                    "read_file",
+                    vec![clanker_message::Content::Text {
+                        text: "file contents".to_string(),
+                    }],
+                    false,
+                ),
+            ],
+            tools: vec![clanker_message::ToolDefinition {
+                name: "read_file".to_string(),
+                description: "Read a file".to_string(),
+                input_schema: json!({"type":"object"}),
+            }],
+            thinking: Some(clanker_message::ThinkingConfig {
+                enabled: true,
+                budget_tokens: Some(1024),
+            }),
+            max_tokens: Some(256),
+            temperature: Some(0.1),
+            no_cache: true,
+            cache_ttl: Some("1h".to_string()),
+            metadata: EventMetadata::empty().with("request_kind", "contract-fixture"),
+        };
+
+        assert_eq!(
+            serde_json::to_value(&request).unwrap(),
+            json!({
+                "provider": "openai-codex",
+                "model": "openai-codex/gpt-5.3-codex",
+                "account_label": "chatgpt-work",
+                "route_source": "embedded-test",
+                "session_id": "session-provider-contract",
+                "system_prompt": "Be precise",
+                "messages": [
+                    {
+                        "role": "user",
+                        "content": [{"type": "Text", "text": "hello"}],
+                        "id": null,
+                        "model": null,
+                        "call_id": null,
+                        "tool_name": null,
+                        "is_error": false
+                    },
+                    {
+                        "role": "assistant",
+                        "content": [{"type": "Text", "text": "previous answer"}],
+                        "id": null,
+                        "model": "openai-codex/gpt-5.3-codex",
+                        "call_id": null,
+                        "tool_name": null,
+                        "is_error": false
+                    },
+                    {
+                        "role": "tool",
+                        "content": [{"type": "Text", "text": "file contents"}],
+                        "id": null,
+                        "model": null,
+                        "call_id": "call_1:item_1",
+                        "tool_name": "read_file",
+                        "is_error": false
+                    }
+                ],
+                "tools": [{"name": "read_file", "description": "Read a file", "input_schema": {"type":"object"}}],
+                "thinking": {"enabled": true, "budget_tokens": 1024},
+                "max_tokens": 256,
+                "temperature": 0.1,
+                "no_cache": true,
+                "cache_ttl": "1h",
+                "metadata": {"session_id": null, "fields": {"request_kind": "contract-fixture"}}
+            })
+        );
+
+        let response = ProviderModelResponse::completed(
+            vec![
+                ProviderStreamEvent::TextDelta {
+                    index: 0,
+                    text: "hi".to_string(),
+                },
+                ProviderStreamEvent::Usage {
+                    stop_reason: Some(clanker_message::StopReason::Stop),
+                    usage: clanker_message::Usage {
+                        input_tokens: 7,
+                        output_tokens: 11,
+                        cache_creation_input_tokens: 0,
+                        cache_read_input_tokens: 3,
+                    },
+                },
+            ],
+            vec![clanker_message::Content::Text { text: "hi".to_string() }],
+            Some(clanker_message::Usage {
+                input_tokens: 7,
+                output_tokens: 11,
+                cache_creation_input_tokens: 0,
+                cache_read_input_tokens: 3,
+            }),
+            Some(clanker_message::StopReason::Stop),
+            ExtensionReceipt::new("provider", "complete", ExtensionStatus::Succeeded)
+                .with_metadata("provider", "openai-codex"),
+        );
+        assert_eq!(serde_json::to_value(&response).unwrap()["status"], json!("completed"));
+        assert_eq!(serde_json::to_value(&response).unwrap()["stream_events"][0]["type"], json!("text_delta"));
+        assert_eq!(serde_json::to_value(&response).unwrap()["usage"]["output_tokens"], json!(11));
+
+        let retry = ProviderModelResponse::failure(
+            ProviderModelStatus::RetryableFailure,
+            ProviderModelFailure::retryable("rate limited", Some(429)),
+            ExtensionReceipt::new("provider", "complete", ExtensionStatus::Failed),
+        );
+        assert_eq!(serde_json::to_value(&retry).unwrap()["status"], json!("retryable_failure"));
+        assert_eq!(serde_json::to_value(&retry).unwrap()["failure"]["retryable"], json!(true));
+
+        let terminal = ProviderModelResponse::failure(
+            ProviderModelStatus::TerminalFailure,
+            ProviderModelFailure::terminal("bad request", Some(400)),
+            ExtensionReceipt::new("provider", "complete", ExtensionStatus::Failed),
+        );
+        assert_eq!(serde_json::to_value(&terminal).unwrap()["status"], json!("terminal_failure"));
+        assert_eq!(serde_json::to_value(&terminal).unwrap()["failure"]["retryable"], json!(false));
+    }
+
+    #[test]
     fn extension_receipts_and_descriptors_redact_secret_like_metadata() {
         let receipt =
             ExtensionReceipt::new("bearer token provider", "authorization header call", ExtensionStatus::Failed)
@@ -472,10 +604,11 @@ mod tests {
             "host_provider_router"
         }
 
-        fn execute(&self, request: ProviderExecutionRequest) -> Result<ExtensionReceipt, RuntimeError> {
-            Ok(ExtensionReceipt::new("host_provider_router", "execute", ExtensionStatus::Succeeded)
+        fn complete(&self, request: ProviderModelRequest) -> Result<ProviderModelResponse, RuntimeError> {
+            let receipt = ExtensionReceipt::new("host_provider_router", "complete", ExtensionStatus::Succeeded)
                 .with_metadata("provider", request.provider)
-                .with_metadata("route_source", request.route_source))
+                .with_metadata("route_source", request.route_source);
+            Ok(ProviderModelResponse::completed(Vec::new(), Vec::new(), None, None, receipt))
         }
     }
 
@@ -1131,7 +1264,7 @@ mod tests {
     fn runtime_extension_service_matrix_default_safe_fails_closed_independently() {
         let extensions = ExtensionServices::disabled();
         assert!(matches!(
-            extensions.provider_router.execute(provider_request()),
+            extensions.provider_router.complete(provider_request()),
             Err(RuntimeError::ExtensionUnavailable(_))
         ));
         assert!(matches!(extensions.auth_store.access(auth_request()), Err(RuntimeError::ExtensionUnavailable(_))));
@@ -1145,17 +1278,13 @@ mod tests {
         assert!(matches!(extensions.runtime.execute(runtime_request()), Err(RuntimeError::ExtensionUnavailable(_))));
     }
 
-    fn provider_request() -> ProviderExecutionRequest {
-        ProviderExecutionRequest {
-            provider: "anthropic".to_string(),
-            model: Some("test".to_string()),
-            account_label: Some("primary".to_string()),
-            route_source: "embedded".to_string(),
-            prompt: Some("hello".to_string()),
-            system_prompt: None,
-            max_tokens: Some(8),
-            session_id: Some("session".to_string()),
-        }
+    fn provider_request() -> ProviderModelRequest {
+        let mut request = ProviderModelRequest::user_prompt("anthropic", Some("test".to_string()), "hello");
+        request.account_label = Some("primary".to_string());
+        request.route_source = "embedded".to_string();
+        request.session_id = Some("session".to_string());
+        request.max_tokens = Some(8);
+        request
     }
 
     fn auth_request() -> AuthStoreAccessRequest {
@@ -1193,11 +1322,12 @@ mod tests {
         fn capability(&self) -> &'static str {
             "injected_provider_router"
         }
-        fn execute(&self, request: ProviderExecutionRequest) -> Result<ExtensionReceipt, RuntimeError> {
+        fn complete(&self, request: ProviderModelRequest) -> Result<ProviderModelResponse, RuntimeError> {
             self.0.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
-            Ok(ExtensionReceipt::new("injected_provider_router", "execute", ExtensionStatus::Succeeded)
+            let receipt = ExtensionReceipt::new("injected_provider_router", "complete", ExtensionStatus::Succeeded)
                 .with_metadata("provider", request.provider)
-                .with_metadata("route_source", request.route_source))
+                .with_metadata("route_source", request.route_source);
+            Ok(ProviderModelResponse::completed(Vec::new(), Vec::new(), None, None, receipt))
         }
     }
 
@@ -1210,8 +1340,9 @@ mod tests {
             credential_pool: Arc::new(DisabledExtensionService),
             runtime: Arc::new(DisabledExtensionService),
         };
-        let receipt = extensions.provider_router.execute(provider_request()).unwrap();
-        assert_eq!(receipt.status, ExtensionStatus::Succeeded);
+        let response = extensions.provider_router.complete(provider_request()).unwrap();
+        assert_eq!(response.status, ProviderModelStatus::Completed);
+        assert_eq!(response.receipt.status, ExtensionStatus::Succeeded);
         assert!(matches!(extensions.auth_store.access(auth_request()), Err(RuntimeError::ExtensionUnavailable(_))));
         assert!(matches!(
             extensions.credential_pool.select(pool_request()),
@@ -1408,10 +1539,7 @@ mod tests {
 
     impl ModelAdapter for RecordingHistoryModel {
         fn complete(&self, request: ModelRequest) -> Result<ModelResponse, RuntimeError> {
-            self.requests
-                .lock()
-                .unwrap_or_else(|poisoned| poisoned.into_inner())
-                .push(history_lines(&request));
+            self.requests.lock().unwrap_or_else(|poisoned| poisoned.into_inner()).push(history_lines(&request));
             Ok(ModelResponse {
                 events: vec![SessionEvent::AssistantDelta {
                     prompt_id: request.prompt_id,
@@ -1488,10 +1616,7 @@ mod tests {
                 SessionLedgerRole::Assistant,
                 "Stored: launch code name Orchard.",
             )),
-            SessionLedgerEntry::message(SessionLedgerMessage::text(
-                SessionLedgerRole::Tool,
-                "lookup: Orchard",
-            )),
+            SessionLedgerEntry::message(SessionLedgerMessage::text(SessionLedgerRole::Tool, "lookup: Orchard")),
             SessionLedgerEntry::receipt(
                 PromptId::from_host("prompt-seed"),
                 "completed",
@@ -1512,20 +1637,14 @@ mod tests {
         let model_adapter: Arc<dyn ModelAdapter> = model.clone();
         let runtime = RuntimeBuilder::new().services(services).model_adapter(model_adapter).build().unwrap();
         let session = runtime
-            .resume_session(
-                session_id,
-                SessionOptions {
-                    session_id: None,
-                    model: Some("resume-model".to_string()),
-                },
-            )
+            .resume_session(session_id, SessionOptions {
+                session_id: None,
+                model: Some("resume-model".to_string()),
+            })
             .await
             .unwrap();
 
-        session
-            .submit_prompt(PromptInput::new("What launch code name did I give you?"))
-            .await
-            .unwrap();
+        session.submit_prompt(PromptInput::new("What launch code name did I give you?")).await.unwrap();
 
         model.locked_requests().pop().unwrap()
     }
@@ -1582,10 +1701,7 @@ mod tests {
             Ok(_) => panic!("unsupported session store unexpectedly resumed"),
             Err(error) => error,
         };
-        assert_eq!(
-            unsupported_error,
-            RuntimeError::SessionUnsupported("session store disabled".to_string())
-        );
+        assert_eq!(unsupported_error, RuntimeError::SessionUnsupported("session store disabled".to_string()));
         assert!(unsupported_model.locked_requests().is_empty());
     }
 

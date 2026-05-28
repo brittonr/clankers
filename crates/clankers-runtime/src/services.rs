@@ -5,6 +5,11 @@ use std::sync::Arc;
 
 use chrono::DateTime;
 use chrono::Utc;
+use clanker_message::Content;
+use clanker_message::StopReason;
+use clanker_message::ThinkingConfig;
+use clanker_message::ToolDefinition;
+use clanker_message::Usage;
 use serde::Deserialize;
 use serde::Serialize;
 use serde_json::Value;
@@ -154,7 +159,7 @@ pub trait CheckpointStore: Send + Sync {
 
 pub trait ProviderRouterService: Send + Sync {
     fn capability(&self) -> &'static str;
-    fn execute(&self, request: ProviderExecutionRequest) -> Result<ExtensionReceipt, RuntimeError>;
+    fn complete(&self, request: ProviderModelRequest) -> Result<ProviderModelResponse, RuntimeError>;
 }
 
 pub trait ExtensionAuthStoreService: Send + Sync {
@@ -173,16 +178,245 @@ pub trait ExtensionRuntimeService: Send + Sync {
     fn execute(&self, request: ExtensionRuntimeRequest) -> Result<ExtensionReceipt, RuntimeError>;
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct ProviderExecutionRequest {
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ProviderModelRequest {
     pub provider: String,
     pub model: Option<String>,
     pub account_label: Option<String>,
     pub route_source: String,
-    pub prompt: Option<String>,
-    pub system_prompt: Option<String>,
-    pub max_tokens: Option<usize>,
     pub session_id: Option<String>,
+    pub system_prompt: Option<String>,
+    pub messages: Vec<ProviderMessage>,
+    pub tools: Vec<ToolDefinition>,
+    pub thinking: Option<ThinkingConfig>,
+    pub max_tokens: Option<usize>,
+    pub temperature: Option<f64>,
+    pub no_cache: bool,
+    pub cache_ttl: Option<String>,
+    pub metadata: EventMetadata,
+}
+
+impl ProviderModelRequest {
+    #[must_use]
+    pub fn user_prompt(provider: impl Into<String>, model: Option<String>, prompt: impl Into<String>) -> Self {
+        Self {
+            provider: sanitize_metadata_value(provider.into()),
+            model: model.map(sanitize_metadata_value),
+            account_label: None,
+            route_source: "runtime".to_string(),
+            session_id: None,
+            system_prompt: None,
+            messages: vec![ProviderMessage::user_text(prompt)],
+            tools: Vec::new(),
+            thinking: None,
+            max_tokens: None,
+            temperature: None,
+            no_cache: false,
+            cache_ttl: None,
+            metadata: EventMetadata::empty(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ProviderMessageRole {
+    User,
+    Assistant,
+    Tool,
+    System,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ProviderMessage {
+    pub role: ProviderMessageRole,
+    pub content: Vec<Content>,
+    pub id: Option<String>,
+    pub model: Option<String>,
+    pub call_id: Option<String>,
+    pub tool_name: Option<String>,
+    pub is_error: bool,
+}
+
+impl ProviderMessage {
+    #[must_use]
+    pub fn user_text(prompt: impl Into<String>) -> Self {
+        Self {
+            role: ProviderMessageRole::User,
+            content: vec![Content::Text { text: prompt.into() }],
+            id: None,
+            model: None,
+            call_id: None,
+            tool_name: None,
+            is_error: false,
+        }
+    }
+
+    #[must_use]
+    pub fn assistant(content: Vec<Content>, model: Option<String>) -> Self {
+        Self {
+            role: ProviderMessageRole::Assistant,
+            content,
+            id: None,
+            model,
+            call_id: None,
+            tool_name: None,
+            is_error: false,
+        }
+    }
+
+    #[must_use]
+    pub fn tool_result(
+        call_id: impl Into<String>,
+        tool_name: impl Into<String>,
+        content: Vec<Content>,
+        is_error: bool,
+    ) -> Self {
+        Self {
+            role: ProviderMessageRole::Tool,
+            content,
+            id: None,
+            model: None,
+            call_id: Some(call_id.into()),
+            tool_name: Some(tool_name.into()),
+            is_error,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(tag = "type", rename_all = "snake_case")]
+pub enum ProviderStreamEvent {
+    MessageStart {
+        model: String,
+        role: String,
+    },
+    ContentBlockStart {
+        index: usize,
+        content: Content,
+    },
+    TextDelta {
+        index: usize,
+        text: String,
+    },
+    ThinkingDelta {
+        index: usize,
+        thinking: String,
+    },
+    ToolInputJsonDelta {
+        index: usize,
+        partial_json: String,
+    },
+    SignatureDelta {
+        index: usize,
+        signature: String,
+    },
+    ContentBlockStop {
+        index: usize,
+    },
+    Usage {
+        stop_reason: Option<StopReason>,
+        usage: Usage,
+    },
+    MessageStop,
+    Error {
+        message: String,
+    },
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ProviderModelStatus {
+    Completed,
+    RetryableFailure,
+    TerminalFailure,
+    Cancelled,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ProviderModelFailure {
+    pub message: String,
+    pub status: Option<u16>,
+    pub retryable: bool,
+}
+
+impl ProviderModelFailure {
+    #[must_use]
+    pub fn retryable(message: impl Into<String>, status: Option<u16>) -> Self {
+        Self {
+            message: sanitize_metadata_value(message.into()),
+            status,
+            retryable: true,
+        }
+    }
+
+    #[must_use]
+    pub fn terminal(message: impl Into<String>, status: Option<u16>) -> Self {
+        Self {
+            message: sanitize_metadata_value(message.into()),
+            status,
+            retryable: false,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ProviderModelResponse {
+    pub status: ProviderModelStatus,
+    pub stream_events: Vec<ProviderStreamEvent>,
+    pub content: Vec<Content>,
+    pub usage: Option<Usage>,
+    pub stop_reason: Option<StopReason>,
+    pub failure: Option<ProviderModelFailure>,
+    pub receipt: ExtensionReceipt,
+}
+
+impl ProviderModelResponse {
+    #[must_use]
+    pub fn completed(
+        stream_events: Vec<ProviderStreamEvent>,
+        content: Vec<Content>,
+        usage: Option<Usage>,
+        stop_reason: Option<StopReason>,
+        receipt: ExtensionReceipt,
+    ) -> Self {
+        Self {
+            status: ProviderModelStatus::Completed,
+            stream_events,
+            content,
+            usage,
+            stop_reason,
+            failure: None,
+            receipt,
+        }
+    }
+
+    #[must_use]
+    pub fn failure(status: ProviderModelStatus, failure: ProviderModelFailure, receipt: ExtensionReceipt) -> Self {
+        assert!(matches!(status, ProviderModelStatus::RetryableFailure | ProviderModelStatus::TerminalFailure));
+        Self {
+            status,
+            stream_events: Vec::new(),
+            content: Vec::new(),
+            usage: None,
+            stop_reason: None,
+            failure: Some(failure),
+            receipt,
+        }
+    }
+
+    #[must_use]
+    pub fn cancelled(reason: impl Into<String>, receipt: ExtensionReceipt) -> Self {
+        Self {
+            status: ProviderModelStatus::Cancelled,
+            stream_events: Vec::new(),
+            content: Vec::new(),
+            usage: None,
+            stop_reason: None,
+            failure: Some(ProviderModelFailure::terminal(reason, None)),
+            receipt,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -393,7 +627,7 @@ impl ProviderRouterService for DisabledExtensionService {
         "disabled"
     }
 
-    fn execute(&self, request: ProviderExecutionRequest) -> Result<ExtensionReceipt, RuntimeError> {
+    fn complete(&self, request: ProviderModelRequest) -> Result<ProviderModelResponse, RuntimeError> {
         let _ = request;
         Err(RuntimeError::ExtensionUnavailable("provider router disabled".to_string()))
     }

@@ -60,7 +60,7 @@ pub use clanker_router::registry;
 /// Retry logic — re-exported from `clanker-router`.
 pub use clanker_router::retry;
 pub mod router;
-pub(crate) mod router_request_bridge;
+pub mod router_request_bridge;
 pub mod rpc_provider;
 pub mod streaming;
 

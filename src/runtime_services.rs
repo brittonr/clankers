@@ -23,8 +23,13 @@ use clankers_runtime::ExtensionServices;
 use clankers_runtime::ExtensionToolDescriptor;
 use clankers_runtime::PluginStore;
 use clankers_runtime::ProjectContextService;
-use clankers_runtime::ProviderExecutionRequest;
+use clankers_runtime::ProviderMessageRole;
+use clankers_runtime::ProviderModelFailure;
+use clankers_runtime::ProviderModelRequest;
+use clankers_runtime::ProviderModelResponse;
+use clankers_runtime::ProviderModelStatus;
 use clankers_runtime::ProviderRouterService;
+use clankers_runtime::ProviderStreamEvent;
 use clankers_runtime::RuntimeError;
 use clankers_runtime::RuntimeServices;
 use clankers_runtime::SessionId;
@@ -244,7 +249,7 @@ impl ProviderRouterService for DesktopProviderRouterService {
         "desktop_provider_router"
     }
 
-    fn execute(&self, request: ProviderExecutionRequest) -> Result<ExtensionReceipt, RuntimeError> {
+    fn complete(&self, request: ProviderModelRequest) -> Result<ProviderModelResponse, RuntimeError> {
         let Some(provider_router) = &self.provider_router else {
             return Err(RuntimeError::ExtensionUnavailable("desktop provider router not injected".to_string()));
         };
@@ -254,8 +259,8 @@ impl ProviderRouterService for DesktopProviderRouterService {
 
 fn execute_injected_provider_router(
     provider_router: Arc<dyn clankers_provider::Provider>,
-    request: ProviderExecutionRequest,
-) -> Result<ExtensionReceipt, RuntimeError> {
+    request: ProviderModelRequest,
+) -> Result<ProviderModelResponse, RuntimeError> {
     let provider_name = request.provider.clone();
     let route_source = request.route_source.clone();
     let model = request.model.clone().unwrap_or_else(|| {
@@ -268,30 +273,75 @@ fn execute_injected_provider_router(
     let session_id = request.session_id.clone();
     let request_model = model.clone();
     let provider_request = build_provider_completion_request(request, request_model)?;
-    let stats = block_on_provider_execution(provider_router, provider_request)?;
-
-    let mut receipt =
-        ExtensionReceipt::new("desktop_provider_router", "execute", clankers_runtime::ExtensionStatus::Succeeded)
+    match block_on_provider_execution(provider_router, provider_request)? {
+        Ok(stats) => {
+            let mut receipt = ExtensionReceipt::new(
+                "desktop_provider_router",
+                "complete",
+                clankers_runtime::ExtensionStatus::Succeeded,
+            )
             .with_metadata("provider", provider_name)
             .with_metadata("model", model)
             .with_metadata("route_source", route_source)
-            .with_metadata("stream_events", stats.stream_events.to_string())
+            .with_metadata("stream_events", stats.stream_events.len().to_string())
             .with_metadata("text_delta_bytes", stats.text_delta_bytes.to_string())
             .with_metadata("thinking_delta_bytes", stats.thinking_delta_bytes.to_string());
+            if let Some(session_id) = session_id {
+                receipt = receipt.with_metadata("session_id", session_id);
+            }
+            Ok(ProviderModelResponse::completed(
+                stats.stream_events,
+                stats.content,
+                stats.usage,
+                stats.stop_reason,
+                receipt,
+            ))
+        }
+        Err(error) => Ok(provider_failure_response(provider_name, model, route_source, session_id, error)),
+    }
+}
+
+fn provider_failure_response(
+    provider_name: String,
+    model: String,
+    route_source: String,
+    session_id: Option<String>,
+    error: clankers_provider::error::ProviderError,
+) -> ProviderModelResponse {
+    let retryable = error.is_retryable();
+    let failure = if retryable {
+        ProviderModelFailure::retryable(error.to_string(), error.status_code())
+    } else {
+        ProviderModelFailure::terminal(error.to_string(), error.status_code())
+    };
+    let mut receipt =
+        ExtensionReceipt::new("desktop_provider_router", "complete", clankers_runtime::ExtensionStatus::Failed)
+            .with_error_class(clankers_runtime::ErrorClass::Model)
+            .with_metadata("provider", provider_name)
+            .with_metadata("model", model)
+            .with_metadata("route_source", route_source)
+            .with_metadata("retryable", retryable.to_string());
+    if let Some(status) = error.status_code() {
+        receipt = receipt.with_metadata("status", status.to_string());
+    }
     if let Some(session_id) = session_id {
         receipt = receipt.with_metadata("session_id", session_id);
     }
-    Ok(receipt)
+    let status = if retryable {
+        ProviderModelStatus::RetryableFailure
+    } else {
+        ProviderModelStatus::TerminalFailure
+    };
+    ProviderModelResponse::failure(status, failure, receipt)
 }
 
 fn build_provider_completion_request(
-    request: ProviderExecutionRequest,
+    request: ProviderModelRequest,
     model: String,
 ) -> Result<clankers_provider::CompletionRequest, RuntimeError> {
-    let prompt = request
-        .prompt
-        .filter(|prompt| !prompt.trim().is_empty())
-        .ok_or_else(|| RuntimeError::InvalidPrompt("provider execution request missing prompt".to_string()))?;
+    if request.messages.is_empty() {
+        return Err(RuntimeError::InvalidPrompt("provider model request missing messages".to_string()));
+    }
     let mut extra_params = HashMap::new();
     if let Some(session_id) = request.session_id {
         extra_params.insert("_session_id".to_string(), serde_json::json!(session_id));
@@ -299,29 +349,55 @@ fn build_provider_completion_request(
     if let Some(account_label) = request.account_label {
         extra_params.insert("_account_label".to_string(), serde_json::json!(account_label));
     }
-    Ok(clankers_provider::CompletionRequest {
-        model,
-        messages: vec![clankers_provider::message::AgentMessage::User(
-            clankers_provider::message::UserMessage {
-                id: clankers_provider::message::MessageId::new("runtime-provider-user"),
-                content: vec![clankers_provider::message::Content::Text { text: prompt }],
-                timestamp: chrono::Utc::now(),
-            },
-        )],
-        system_prompt: request.system_prompt,
-        max_tokens: request.max_tokens,
-        temperature: None,
-        tools: Vec::new(),
-        thinking: None,
-        no_cache: false,
-        cache_ttl: None,
-        extra_params,
-    })
+    Ok(clankers_provider::router_request_bridge::completion_request_from_bridge_input(
+        clankers_provider::router_request_bridge::CompletionRequestBridgeInput {
+            model,
+            messages: request.messages.into_iter().map(runtime_message_to_bridge_message).collect(),
+            system_prompt: request.system_prompt,
+            max_tokens: request.max_tokens,
+            temperature: request.temperature,
+            tools: request.tools,
+            thinking: request.thinking,
+            no_cache: request.no_cache,
+            cache_ttl: request.cache_ttl,
+            extra_params,
+        },
+    ))
+}
+
+fn runtime_message_to_bridge_message(
+    message: clankers_runtime::ProviderMessage,
+) -> clankers_provider::router_request_bridge::CompletionRequestBridgeMessage {
+    clankers_provider::router_request_bridge::CompletionRequestBridgeMessage {
+        role: match message.role {
+            ProviderMessageRole::User => {
+                clankers_provider::router_request_bridge::CompletionRequestBridgeMessageRole::User
+            }
+            ProviderMessageRole::Assistant => {
+                clankers_provider::router_request_bridge::CompletionRequestBridgeMessageRole::Assistant
+            }
+            ProviderMessageRole::Tool => {
+                clankers_provider::router_request_bridge::CompletionRequestBridgeMessageRole::Tool
+            }
+            ProviderMessageRole::System => {
+                clankers_provider::router_request_bridge::CompletionRequestBridgeMessageRole::System
+            }
+        },
+        content: message.content,
+        id: message.id,
+        model: message.model,
+        call_id: message.call_id,
+        tool_name: message.tool_name,
+        is_error: message.is_error,
+    }
 }
 
 #[derive(Default)]
 struct ProviderExecutionStats {
-    stream_events: usize,
+    stream_events: Vec<ProviderStreamEvent>,
+    content: Vec<clanker_message::Content>,
+    usage: Option<clanker_message::Usage>,
+    stop_reason: Option<clanker_message::StopReason>,
     text_delta_bytes: usize,
     thinking_delta_bytes: usize,
 }
@@ -329,10 +405,10 @@ struct ProviderExecutionStats {
 fn block_on_provider_execution(
     provider_router: Arc<dyn clankers_provider::Provider>,
     request: clankers_provider::CompletionRequest,
-) -> Result<ProviderExecutionStats, RuntimeError> {
+) -> Result<Result<ProviderExecutionStats, clankers_provider::error::ProviderError>, RuntimeError> {
     match tokio::runtime::Handle::try_current() {
         Ok(handle) if matches!(handle.runtime_flavor(), tokio::runtime::RuntimeFlavor::MultiThread) => {
-            tokio::task::block_in_place(|| handle.block_on(run_provider_completion(provider_router, request)))
+            Ok(tokio::task::block_in_place(|| handle.block_on(run_provider_completion(provider_router, request))))
         }
         Ok(_) => std::thread::spawn(move || run_provider_completion_on_new_runtime(provider_router, request))
             .join()
@@ -344,25 +420,25 @@ fn block_on_provider_execution(
 fn run_provider_completion_on_new_runtime(
     provider_router: Arc<dyn clankers_provider::Provider>,
     request: clankers_provider::CompletionRequest,
-) -> Result<ProviderExecutionStats, RuntimeError> {
-    tokio::runtime::Builder::new_current_thread()
+) -> Result<Result<ProviderExecutionStats, clankers_provider::error::ProviderError>, RuntimeError> {
+    Ok(tokio::runtime::Builder::new_current_thread()
         .enable_all()
         .build()
         .map_err(|error| RuntimeError::ExtensionUnavailable(format!("provider runtime unavailable: {error}")))?
-        .block_on(run_provider_completion(provider_router, request))
+        .block_on(run_provider_completion(provider_router, request)))
 }
 
 async fn run_provider_completion(
     provider_router: Arc<dyn clankers_provider::Provider>,
     request: clankers_provider::CompletionRequest,
-) -> Result<ProviderExecutionStats, RuntimeError> {
+) -> Result<ProviderExecutionStats, clankers_provider::error::ProviderError> {
     let (tx, mut rx) = tokio::sync::mpsc::channel(64);
     let mut completion = Box::pin(provider_router.complete(request, tx));
     let mut stats = ProviderExecutionStats::default();
     loop {
         tokio::select! {
             result = &mut completion => {
-                result.map_err(|error| RuntimeError::Model(error.to_string()))?;
+                result?;
                 break;
             }
             event = rx.recv() => {
@@ -379,18 +455,77 @@ async fn run_provider_completion(
 }
 
 fn record_provider_stream_event(stats: &mut ProviderExecutionStats, event: &clankers_provider::streaming::StreamEvent) {
-    stats.stream_events += 1;
-    if let clankers_provider::streaming::StreamEvent::ContentBlockDelta { delta, .. } = event {
-        match delta {
+    match event {
+        clankers_provider::streaming::StreamEvent::MessageStart { message } => {
+            stats.stream_events.push(ProviderStreamEvent::MessageStart {
+                model: message.model.clone(),
+                role: message.role.clone(),
+            });
+        }
+        clankers_provider::streaming::StreamEvent::ContentBlockStart { index, content_block } => {
+            stats.content.push(content_block.clone());
+            stats.stream_events.push(ProviderStreamEvent::ContentBlockStart {
+                index: *index,
+                content: content_block.clone(),
+            });
+        }
+        clankers_provider::streaming::StreamEvent::ContentBlockDelta { index, delta } => match delta {
             clankers_provider::streaming::ContentDelta::TextDelta { text } => {
                 stats.text_delta_bytes += text.len();
+                stats.stream_events.push(ProviderStreamEvent::TextDelta {
+                    index: *index,
+                    text: text.clone(),
+                });
             }
             clankers_provider::streaming::ContentDelta::ThinkingDelta { thinking } => {
                 stats.thinking_delta_bytes += thinking.len();
+                stats.stream_events.push(ProviderStreamEvent::ThinkingDelta {
+                    index: *index,
+                    thinking: thinking.clone(),
+                });
             }
-            clankers_provider::streaming::ContentDelta::InputJsonDelta { .. }
-            | clankers_provider::streaming::ContentDelta::SignatureDelta { .. } => {}
+            clankers_provider::streaming::ContentDelta::InputJsonDelta { partial_json } => {
+                stats.stream_events.push(ProviderStreamEvent::ToolInputJsonDelta {
+                    index: *index,
+                    partial_json: partial_json.clone(),
+                });
+            }
+            clankers_provider::streaming::ContentDelta::SignatureDelta { signature } => {
+                stats.stream_events.push(ProviderStreamEvent::SignatureDelta {
+                    index: *index,
+                    signature: signature.clone(),
+                });
+            }
+        },
+        clankers_provider::streaming::StreamEvent::ContentBlockStop { index } => {
+            stats.stream_events.push(ProviderStreamEvent::ContentBlockStop { index: *index });
         }
+        clankers_provider::streaming::StreamEvent::MessageDelta { stop_reason, usage } => {
+            let stop_reason = parse_provider_stop_reason(stop_reason.as_deref());
+            stats.usage = Some(usage.clone());
+            stats.stop_reason = stop_reason.clone();
+            stats.stream_events.push(ProviderStreamEvent::Usage {
+                stop_reason,
+                usage: usage.clone(),
+            });
+        }
+        clankers_provider::streaming::StreamEvent::MessageStop => {
+            stats.stream_events.push(ProviderStreamEvent::MessageStop);
+        }
+        clankers_provider::streaming::StreamEvent::Error { error } => {
+            stats.stream_events.push(ProviderStreamEvent::Error {
+                message: clankers_runtime::EventMetadata::empty().with("error", error).fields["error"].clone(),
+            });
+        }
+    }
+}
+
+fn parse_provider_stop_reason(stop_reason: Option<&str>) -> Option<clanker_message::StopReason> {
+    match stop_reason {
+        Some("tool_use") => Some(clanker_message::StopReason::ToolUse),
+        Some("max_tokens") => Some(clanker_message::StopReason::MaxTokens),
+        Some("stop") | Some("end_turn") => Some(clanker_message::StopReason::Stop),
+        Some(_) | None => None,
     }
 }
 
@@ -621,7 +756,9 @@ mod tests {
     use clankers_runtime::ExtensionRuntimeKind;
     use clankers_runtime::ExtensionRuntimeRequest;
     use clankers_runtime::ExtensionStatus;
-    use clankers_runtime::ProviderExecutionRequest;
+    use clankers_runtime::ProviderModelRequest;
+    use clankers_runtime::ProviderModelStatus;
+    use clankers_runtime::ProviderStreamEvent;
     use clankers_runtime::RuntimeError;
 
     use super::DesktopRuntimeServiceAdapters;
@@ -632,6 +769,11 @@ mod tests {
         models: Vec<clankers_provider::Model>,
     }
 
+    struct FailingProvider {
+        status: u16,
+        message: &'static str,
+    }
+
     #[async_trait::async_trait]
     impl clankers_provider::Provider for RecordingProvider {
         async fn complete(
@@ -640,10 +782,29 @@ mod tests {
             tx: tokio::sync::mpsc::Sender<clankers_provider::streaming::StreamEvent>,
         ) -> clankers_provider::error::Result<()> {
             self.requests.lock().unwrap().push(request);
+            tx.send(clankers_provider::streaming::StreamEvent::ContentBlockStart {
+                index: 0,
+                content_block: clanker_message::Content::Text {
+                    text: "model output that must not appear in receipt".to_string(),
+                },
+            })
+            .await
+            .ok();
             tx.send(clankers_provider::streaming::StreamEvent::ContentBlockDelta {
                 index: 0,
                 delta: clankers_provider::streaming::ContentDelta::TextDelta {
                     text: "model output that must not appear in receipt".to_string(),
+                },
+            })
+            .await
+            .ok();
+            tx.send(clankers_provider::streaming::StreamEvent::MessageDelta {
+                stop_reason: Some("stop".to_string()),
+                usage: clanker_message::Usage {
+                    input_tokens: 3,
+                    output_tokens: 5,
+                    cache_creation_input_tokens: 0,
+                    cache_read_input_tokens: 1,
                 },
             })
             .await
@@ -660,17 +821,49 @@ mod tests {
         }
     }
 
-    fn test_provider_execution_request() -> ProviderExecutionRequest {
-        ProviderExecutionRequest {
-            provider: "recording-provider".to_string(),
-            model: Some("recording-model".to_string()),
-            account_label: Some("desktop-account".to_string()),
-            route_source: "runtime-test".to_string(),
-            prompt: Some("prompt secret text must not appear in receipt".to_string()),
-            system_prompt: Some("system secret text must not appear in receipt".to_string()),
-            max_tokens: Some(32),
-            session_id: Some("session-provider-runtime".to_string()),
+    #[async_trait::async_trait]
+    impl clankers_provider::Provider for FailingProvider {
+        async fn complete(
+            &self,
+            _request: clankers_provider::CompletionRequest,
+            _tx: tokio::sync::mpsc::Sender<clankers_provider::streaming::StreamEvent>,
+        ) -> clankers_provider::error::Result<()> {
+            Err(clankers_provider::error::provider_err_with_status_for_provider(
+                self.status,
+                self.message,
+                "failing-provider",
+            ))
         }
+
+        fn models(&self) -> &[clankers_provider::Model] {
+            &[]
+        }
+
+        fn name(&self) -> &str {
+            "failing-provider"
+        }
+    }
+
+    fn test_provider_execution_request() -> ProviderModelRequest {
+        let mut request = ProviderModelRequest::user_prompt(
+            "recording-provider",
+            Some("recording-model".to_string()),
+            "prompt secret text must not appear in receipt",
+        );
+        request.account_label = Some("desktop-account".to_string());
+        request.route_source = "runtime-test".to_string();
+        request.system_prompt = Some("system secret text must not appear in receipt".to_string());
+        request.max_tokens = Some(32);
+        request.session_id = Some("session-provider-runtime".to_string());
+        request
+    }
+
+    fn provider_request_for(provider: &str, model: &str, account: &str) -> ProviderModelRequest {
+        let mut request = ProviderModelRequest::user_prompt(provider, Some(model.to_string()), "hello");
+        request.account_label = Some(account.to_string());
+        request.route_source = "prefix-parity".to_string();
+        request.session_id = Some(format!("session-{account}"));
+        request
     }
 
     fn injected_auth_store() -> Arc<Mutex<clankers_provider::auth::AuthStore>> {
@@ -711,7 +904,7 @@ mod tests {
         let project_paths = crate::config::ProjectPaths::resolve(temp.path());
         let services = DesktopRuntimeServiceAdapters::from_paths(&paths, &project_paths);
 
-        let error = services.extensions.provider_router.execute(test_provider_execution_request()).unwrap_err();
+        let error = services.extensions.provider_router.complete(test_provider_execution_request()).unwrap_err();
 
         assert_eq!(error, RuntimeError::ExtensionUnavailable("desktop provider router not injected".to_string()));
     }
@@ -725,24 +918,28 @@ mod tests {
         let provider_for_assert = Arc::clone(&provider);
         let services = DesktopRuntimeServiceAdapters::from_paths_with_provider_router(&paths, &project_paths, provider);
 
-        let receipt = services
+        let response = services
             .extensions
             .provider_router
-            .execute(test_provider_execution_request())
-            .expect("provider receipt");
+            .complete(test_provider_execution_request())
+            .expect("provider response");
+        let receipt = &response.receipt;
 
+        assert_eq!(response.status, ProviderModelStatus::Completed);
         assert_eq!(receipt.status, ExtensionStatus::Succeeded);
         assert_eq!(receipt.source, "desktop_provider_router");
         assert_eq!(receipt.metadata.fields.get("provider").unwrap(), "recording-provider");
         assert_eq!(receipt.metadata.fields.get("model").unwrap(), "recording-model");
         assert_eq!(receipt.metadata.fields.get("route_source").unwrap(), "runtime-test");
         assert_eq!(receipt.metadata.fields.get("session_id").unwrap(), "session-provider-runtime");
-        assert_eq!(receipt.metadata.fields.get("stream_events").unwrap(), "1");
+        assert_eq!(receipt.metadata.fields.get("stream_events").unwrap(), "3");
         assert!(receipt.metadata.fields.contains_key("text_delta_bytes"));
         assert!(!receipt.metadata.fields.values().any(|value| value.contains("prompt secret")));
         assert!(!receipt.metadata.fields.values().any(|value| value.contains("system secret")));
         assert!(!receipt.metadata.fields.values().any(|value| value.contains("model output")));
         assert!(!receipt.contains_secret_markers());
+        assert_eq!(response.usage.as_ref().unwrap().output_tokens, 5);
+        assert!(response.stream_events.iter().any(|event| matches!(event, ProviderStreamEvent::TextDelta { .. })));
 
         let requests = provider_for_assert.requests.lock().unwrap();
         assert_eq!(requests.len(), 1);
@@ -754,7 +951,92 @@ mod tests {
     }
 
     #[test]
-    fn desktop_runtime_provider_router_rejects_missing_prompt_before_provider_call() {
+    fn desktop_runtime_provider_router_projects_retryable_and_terminal_failures() {
+        let paths = crate::config::ClankersPaths::resolve();
+        let temp = tempfile::tempdir().expect("temp project root");
+        let project_paths = crate::config::ProjectPaths::resolve(temp.path());
+
+        let retryable = DesktopRuntimeServiceAdapters::from_paths_with_provider_router(
+            &paths,
+            &project_paths,
+            Arc::new(FailingProvider {
+                status: 429,
+                message: "rate limit secret-token should redact",
+            }),
+        )
+        .extensions
+        .provider_router
+        .complete(test_provider_execution_request())
+        .expect("retryable provider failure response");
+        assert_eq!(retryable.status, ProviderModelStatus::RetryableFailure);
+        assert_eq!(retryable.failure.as_ref().unwrap().status, Some(429));
+        assert!(retryable.failure.as_ref().unwrap().retryable);
+        assert_eq!(retryable.receipt.status, ExtensionStatus::Failed);
+        assert!(!serde_json::to_string(&retryable).unwrap().contains("secret-token"));
+
+        let terminal = DesktopRuntimeServiceAdapters::from_paths_with_provider_router(
+            &paths,
+            &project_paths,
+            Arc::new(FailingProvider {
+                status: 400,
+                message: "bad request",
+            }),
+        )
+        .extensions
+        .provider_router
+        .complete(test_provider_execution_request())
+        .expect("terminal provider failure response");
+        assert_eq!(terminal.status, ProviderModelStatus::TerminalFailure);
+        assert_eq!(terminal.failure.as_ref().unwrap().status, Some(400));
+        assert!(!terminal.failure.as_ref().unwrap().retryable);
+        assert_eq!(terminal.receipt.metadata.fields.get("status").unwrap(), "400");
+    }
+
+    #[test]
+    fn desktop_runtime_provider_router_preserves_codex_and_openai_model_prefixes() {
+        let paths = crate::config::ClankersPaths::resolve();
+        let temp = tempfile::tempdir().expect("temp project root");
+        let project_paths = crate::config::ProjectPaths::resolve(temp.path());
+        let provider = Arc::new(RecordingProvider::default());
+        let provider_for_assert = Arc::clone(&provider);
+        let services = DesktopRuntimeServiceAdapters::from_paths_with_provider_router(&paths, &project_paths, provider);
+
+        services
+            .extensions
+            .provider_router
+            .complete(provider_request_for("openai-codex", "openai-codex/gpt-5.3-codex", "codex-account"))
+            .expect("codex response");
+        services
+            .extensions
+            .provider_router
+            .complete(provider_request_for("openai", "openai/gpt-5.3", "openai-account"))
+            .expect("openai response");
+
+        let requests = provider_for_assert.requests.lock().unwrap();
+        assert_eq!(requests[0].model, "openai-codex/gpt-5.3-codex");
+        assert_eq!(requests[0].extra_params.get("_account_label"), Some(&serde_json::json!("codex-account")));
+        assert_eq!(requests[1].model, "openai/gpt-5.3");
+        assert_eq!(requests[1].extra_params.get("_account_label"), Some(&serde_json::json!("openai-account")));
+    }
+
+    #[test]
+    fn desktop_runtime_known_provider_prefix_fails_closed_without_adapter() {
+        let paths = crate::config::ClankersPaths::resolve();
+        let temp = tempfile::tempdir().expect("temp project root");
+        let project_paths = crate::config::ProjectPaths::resolve(temp.path());
+        let services = DesktopRuntimeServiceAdapters::from_paths(&paths, &project_paths);
+
+        let error = services
+            .extensions
+            .provider_router
+            .complete(provider_request_for("openai-codex", "openai-codex/gpt-5.3-codex", "codex-account"))
+            .unwrap_err();
+
+        assert_eq!(error, RuntimeError::ExtensionUnavailable("desktop provider router not injected".to_string()));
+    }
+
+    #[test]
+    fn desktop_runtime_provider_router_rejects_missing_messages_before_provider_call() {
         let paths = crate::config::ClankersPaths::resolve();
         let temp = tempfile::tempdir().expect("temp project root");
         let project_paths = crate::config::ProjectPaths::resolve(temp.path());
@@ -762,11 +1044,11 @@ mod tests {
         let provider_for_assert = Arc::clone(&provider);
         let services = DesktopRuntimeServiceAdapters::from_paths_with_provider_router(&paths, &project_paths, provider);
         let mut request = test_provider_execution_request();
-        request.prompt = Some("   ".to_string());
+        request.messages.clear();
 
-        let error = services.extensions.provider_router.execute(request).unwrap_err();
+        let error = services.extensions.provider_router.complete(request).unwrap_err();
 
-        assert_eq!(error, RuntimeError::InvalidPrompt("provider execution request missing prompt".to_string()),);
+        assert_eq!(error, RuntimeError::InvalidPrompt("provider model request missing messages".to_string()),);
         assert!(provider_for_assert.requests.lock().unwrap().is_empty());
     }
 
@@ -863,11 +1145,11 @@ mod tests {
         let provider_for_assert = Arc::clone(&provider);
         let services = DesktopRuntimeServiceAdapters::from_paths_with_provider_router(&paths, &project_paths, provider);
 
-        let receipt = services
+        let response = services
             .extensions
             .provider_router
-            .execute(test_provider_execution_request())
-            .expect("injected provider receipt");
+            .complete(test_provider_execution_request())
+            .expect("injected provider response");
         let auth_error = services.extensions.auth_store.access(lookup_request(Some("primary"))).unwrap_err();
         let pool_error = services.extensions.credential_pool.select(pool_request(Some("primary"))).unwrap_err();
         let runtime_error = services
@@ -884,7 +1166,8 @@ mod tests {
             })
             .unwrap_err();
 
-        assert_eq!(receipt.status, ExtensionStatus::Succeeded);
+        assert_eq!(response.status, ProviderModelStatus::Completed);
+        assert_eq!(response.receipt.status, ExtensionStatus::Succeeded);
         assert_eq!(provider_for_assert.requests.lock().unwrap().len(), 1);
         assert_eq!(auth_error, RuntimeError::ExtensionUnavailable("desktop auth store not injected".to_string()));
         assert_eq!(pool_error, RuntimeError::ExtensionUnavailable("desktop credential pool not injected".to_string()));
