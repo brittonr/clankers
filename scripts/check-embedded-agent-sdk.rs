@@ -19,6 +19,7 @@ const RUST_CHECKS: &[&str] = &[
     "scripts/check-embedded-lego-contracts.rs",
     "scripts/check-real-product-dogfood.rs",
     "scripts/check-provider-adapter-kit.rs",
+    "scripts/check-config-prompt-skill-services.rs",
     "scripts/check-session-resume-brick.rs",
     "scripts/check-tool-catalog-manifest.rs",
     "scripts/check-capability-pack-composition.rs",

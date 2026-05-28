@@ -50,6 +50,7 @@ use crate::PromptId;
 use crate::PromptInput;
 use crate::PromptReceipt;
 use crate::PromptReplayEntry;
+use crate::PromptSourceRequest;
 use crate::RuntimeCancellationAdapter;
 use crate::RuntimeError;
 use crate::RuntimeEventObserver;
@@ -590,8 +591,11 @@ impl SessionHandle {
             )
         };
 
-        let assembled =
-            PromptAssembler::assemble(&self.runtime.prompt_policy, &self.runtime.prompt_sources, input.text)?;
+        let sources = self.runtime.prompt_source_service.resolve_sources(PromptSourceRequest {
+            user_prompt: input.text.clone(),
+            policy: self.runtime.prompt_policy.clone(),
+        })?;
+        let assembled = PromptAssembler::assemble(&self.runtime.prompt_policy, &sources, input.text)?;
         let mut history = if resume_required {
             let record = self
                 .runtime

@@ -10,6 +10,11 @@ use serde::Deserialize;
 use serde::Serialize;
 use serde_json;
 
+use crate::core::NeutralKeymapConfig;
+use crate::core::NeutralSettingsSummary;
+use crate::core::PromptServiceConfig;
+use crate::core::SkillServiceConfig;
+use crate::core::ThemeSelection;
 use crate::keybindings::KeymapConfig;
 use crate::model_roles::ModelRoles;
 
@@ -1191,6 +1196,30 @@ impl Settings {
     /// Parsed thinking level for provider requests and TUI state.
     pub fn parsed_thinking_level(&self) -> ThinkingLevel {
         ThinkingLevel::from_str_or_budget(&self.thinking_level).unwrap_or(ThinkingLevel::Max)
+    }
+
+    /// Display-neutral projection for embeddable/runtime service adapters.
+    #[must_use]
+    pub fn neutral_summary(&self) -> NeutralSettingsSummary {
+        NeutralSettingsSummary {
+            model: self.model.clone(),
+            thinking_level: self.thinking_level.clone(),
+            theme: self.theme.clone().map(ThemeSelection::named),
+            keymap: NeutralKeymapConfig {
+                preset: format!("{:?}", self.keymap.preset).to_ascii_lowercase(),
+                normal: self.keymap.normal.iter().map(|(key, value)| (key.clone(), value.clone())).collect(),
+                insert: self.keymap.insert.iter().map(|(key, value)| (key.clone(), value.clone())).collect(),
+            },
+            skills: SkillServiceConfig {
+                enabled: self.skills.creation_nudge_interval > 0,
+                requested: Vec::new(),
+            },
+            prompt: PromptServiceConfig {
+                allow_filesystem_context: true,
+                allow_context_references: true,
+                skill_service_required: self.skills.creation_nudge_interval > 0,
+            },
+        }
     }
 
     /// Load settings by merging pi fallback, global, and project files.

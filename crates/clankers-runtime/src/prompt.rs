@@ -173,7 +173,9 @@ impl PromptAssembler {
         if user_prompt.trim().is_empty() {
             return Err(RuntimeError::InvalidPrompt("prompt cannot be blank".to_string()));
         }
-        if !policy.allow_filesystem_discovery && sources.filesystem_context_requested {
+        if !policy.allow_filesystem_discovery
+            && (sources.filesystem_context_requested || !sources.filesystem_context.is_empty())
+        {
             return Err(RuntimeError::FilesystemDiscoveryDisabled);
         }
         let mut sections = Vec::new();
@@ -188,6 +190,30 @@ impl PromptAssembler {
                 label: entry.label.clone(),
                 source: PromptSourceKind::Host,
                 safe_summary: format!("host:{}:{}chars", entry.label, entry.content.chars().count()),
+            });
+        }
+        for entry in &sources.filesystem_context {
+            let rendered = sanitize_prompt_context(&entry.content);
+            sections.push(PromptSection {
+                label: entry.label.clone(),
+                content: rendered,
+            });
+            provenance.push(PromptProvenance {
+                label: entry.label.clone(),
+                source: PromptSourceKind::Filesystem,
+                safe_summary: format!("filesystem:{}:{}chars", entry.label, entry.content.chars().count()),
+            });
+        }
+        for skill in &sources.skill_snippets {
+            let rendered = sanitize_prompt_context(&skill.content);
+            sections.push(PromptSection {
+                label: format!("skill:{}", skill.name),
+                content: rendered,
+            });
+            provenance.push(PromptProvenance {
+                label: sanitize_metadata_value(skill.name.clone()),
+                source: PromptSourceKind::Skill,
+                safe_summary: format!("skill:{}:{}chars", skill.source, skill.content.chars().count()),
             });
         }
         if let Some(system) = &sources.system_prompt {
@@ -237,6 +263,63 @@ fn sanitize_prompt_context(content: &str) -> String {
     }
 }
 
+pub trait PromptSourceService: Send + Sync + 'static {
+    fn capability(&self) -> &'static str;
+    fn resolve_sources(&self, request: PromptSourceRequest) -> Result<PromptSources, RuntimeError>;
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PromptSourceRequest {
+    pub user_prompt: String,
+    pub policy: PromptAssemblyPolicy,
+}
+
+#[derive(Debug, Clone)]
+pub struct StaticPromptSourceService {
+    sources: PromptSources,
+    capability: &'static str,
+}
+
+impl StaticPromptSourceService {
+    #[must_use]
+    pub fn new(sources: PromptSources) -> Self {
+        Self {
+            sources,
+            capability: "static_prompt_sources",
+        }
+    }
+
+    #[must_use]
+    pub fn with_capability(mut self, capability: &'static str) -> Self {
+        self.capability = capability;
+        self
+    }
+}
+
+impl PromptSourceService for StaticPromptSourceService {
+    fn capability(&self) -> &'static str {
+        self.capability
+    }
+
+    fn resolve_sources(&self, request: PromptSourceRequest) -> Result<PromptSources, RuntimeError> {
+        let _ = request;
+        Ok(self.sources.clone())
+    }
+}
+
+pub struct DisabledPromptSourceService;
+
+impl PromptSourceService for DisabledPromptSourceService {
+    fn capability(&self) -> &'static str {
+        "disabled"
+    }
+
+    fn resolve_sources(&self, request: PromptSourceRequest) -> Result<PromptSources, RuntimeError> {
+        let _ = request;
+        Ok(PromptSources::default())
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PromptAssemblyPolicy {
     pub allow_filesystem_discovery: bool,
@@ -265,14 +348,25 @@ impl PromptAssemblyPolicy {
 pub struct PromptSources {
     pub system_prompt: Option<String>,
     pub host_context: Vec<HostContext>,
+    #[serde(default)]
+    pub filesystem_context: Vec<HostContext>,
     pub filesystem_context_requested: bool,
     pub context_references: Vec<ContextReferenceRequest>,
+    #[serde(default)]
+    pub skill_snippets: Vec<SkillSnippet>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct HostContext {
     pub label: String,
     pub content: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SkillSnippet {
+    pub name: String,
+    pub content: String,
+    pub source: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -302,6 +396,7 @@ pub struct PromptProvenance {
 pub enum PromptSourceKind {
     Host,
     Filesystem,
+    Skill,
     Generated,
 }
 

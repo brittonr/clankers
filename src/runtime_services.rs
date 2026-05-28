@@ -30,6 +30,7 @@ use clankers_runtime::ProviderModelResponse;
 use clankers_runtime::ProviderModelStatus;
 use clankers_runtime::ProviderRouterService;
 use clankers_runtime::ProviderStreamEvent;
+use clankers_runtime::ResolvedSkillSnippet;
 use clankers_runtime::RuntimeError;
 use clankers_runtime::RuntimeServices;
 use clankers_runtime::SessionId;
@@ -37,6 +38,8 @@ use clankers_runtime::SessionRecord;
 use clankers_runtime::SessionStore;
 use clankers_runtime::SettingsService;
 use clankers_runtime::SideEffectLevel;
+use clankers_runtime::SkillResolution;
+use clankers_runtime::SkillResolutionRequest;
 use clankers_runtime::SkillStore;
 
 /// Explicit adapter bundle for the normal desktop Clankers path layout.
@@ -216,6 +219,26 @@ impl SkillStore for DesktopSkillStore {
     fn capability(&self) -> &'static str {
         let _ = (&self.global_skills_dir, &self.project_skills_dir);
         "desktop_skills"
+    }
+
+    fn resolve(&self, request: SkillResolutionRequest) -> Result<SkillResolution, RuntimeError> {
+        let skills = clankers_skills::discover_skills(&self.global_skills_dir, Some(&self.project_skills_dir));
+        let snippets = skills
+            .into_iter()
+            .filter(|skill| request.requested.is_empty() || request.requested.iter().any(|name| name == &skill.name))
+            .map(|skill| ResolvedSkillSnippet {
+                name: skill.name,
+                description: skill.description,
+                content: skill.content,
+                source: "desktop_skill_roots".to_string(),
+            })
+            .collect::<Vec<_>>();
+        let receipt = ExtensionReceipt::new("desktop_skills", "resolve", clankers_runtime::ExtensionStatus::Succeeded)
+            .with_metadata("global_root_configured", self.global_skills_dir.is_dir().to_string())
+            .with_metadata("project_root_configured", self.project_skills_dir.is_dir().to_string())
+            .with_metadata("snippet_count", snippets.len().to_string())
+            .with_metadata("requested_count", request.requested.len().to_string());
+        Ok(SkillResolution { snippets, receipt })
     }
 }
 impl PluginStore for DesktopPluginStore {
@@ -895,6 +918,36 @@ mod tests {
             strategy: "round_robin".to_string(),
             account_label: account_label.map(ToString::to_string),
         }
+    }
+
+    #[test]
+    fn desktop_runtime_skill_service_resolves_explicit_roots_without_content_leaks() {
+        let paths = crate::config::ClankersPaths::resolve();
+        let temp = tempfile::tempdir().expect("temp project root");
+        let project_paths = crate::config::ProjectPaths::resolve(temp.path());
+        let skill_dir = project_paths.skills_dir.join("review");
+        std::fs::create_dir_all(&skill_dir).expect("skill dir");
+        std::fs::write(
+            skill_dir.join("SKILL.md"),
+            "---\nname: review\ndescription: Review code\n---\nUse safe review steps.",
+        )
+        .expect("skill file");
+        let services = DesktopRuntimeServiceAdapters::from_paths(&paths, &project_paths);
+
+        let resolution = services
+            .skills
+            .resolve(clankers_runtime::SkillResolutionRequest {
+                requested: vec!["review".to_string()],
+            })
+            .expect("skill resolution");
+
+        assert_eq!(resolution.snippets.len(), 1);
+        assert_eq!(resolution.snippets[0].name, "review");
+        assert!(resolution.snippets[0].content.contains("Use safe review steps."));
+        assert_eq!(resolution.receipt.source, "desktop_skills");
+        assert_eq!(resolution.receipt.metadata.fields.get("snippet_count").unwrap(), "1");
+        assert!(!serde_json::to_string(&resolution.receipt).unwrap().contains("Use safe review steps"));
+        assert!(!resolution.receipt.contains_secret_markers());
     }
 
     #[test]

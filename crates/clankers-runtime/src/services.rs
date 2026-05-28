@@ -149,6 +149,30 @@ pub trait ProjectContextService: Send + Sync {
 }
 pub trait SkillStore: Send + Sync {
     fn capability(&self) -> &'static str;
+
+    fn resolve(&self, request: SkillResolutionRequest) -> Result<SkillResolution, RuntimeError> {
+        let _ = request;
+        Err(RuntimeError::ExtensionUnavailable("skill service unavailable".to_string()))
+    }
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SkillResolutionRequest {
+    pub requested: Vec<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SkillResolution {
+    pub snippets: Vec<ResolvedSkillSnippet>,
+    pub receipt: ExtensionReceipt,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ResolvedSkillSnippet {
+    pub name: String,
+    pub description: String,
+    pub content: String,
+    pub source: String,
 }
 pub trait PluginStore: Send + Sync {
     fn capability(&self) -> &'static str;

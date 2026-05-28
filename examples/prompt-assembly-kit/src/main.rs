@@ -57,6 +57,7 @@ fn assemble_host_context_only_prompt() -> clankers_runtime::AssembledPrompt {
         ],
         filesystem_context_requested: false,
         context_references: vec![ContextReferenceRequest::new("fixture.txt", ContextReferenceKind::File)],
+        ..PromptSources::default()
     };
     PromptAssembler::assemble(&policy, &sources, "Summarize product policy.".to_string())
         .expect("host-context-only prompt assembles")
@@ -83,6 +84,7 @@ fn assert_runtime_facade_uses_engine_host_path() {
         }],
         filesystem_context_requested: false,
         context_references: Vec::new(),
+        ..PromptSources::default()
     };
     let kinds = block_on(async move {
         let runtime = RuntimeBuilder::new().prompt_assembly(policy, sources).build().expect("runtime builds");

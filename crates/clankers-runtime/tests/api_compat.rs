@@ -74,8 +74,10 @@ fn prompt_module_and_root_reexports_are_source_compatible() {
                 label: "root".to_string(),
                 content: "context".to_string(),
             }],
+            filesystem_context: Vec::new(),
             filesystem_context_requested: false,
             context_references: vec![ContextReferenceRequest::new("file", ContextReferenceKind::File)],
+            skill_snippets: Vec::new(),
         },
         prompt::PromptSources {
             system_prompt: None,
@@ -83,11 +85,13 @@ fn prompt_module_and_root_reexports_are_source_compatible() {
                 label: "module".to_string(),
                 content: "context".to_string(),
             }],
+            filesystem_context: Vec::new(),
             filesystem_context_requested: false,
             context_references: vec![prompt::ContextReferenceRequest::new(
                 "url",
                 prompt::ContextReferenceKind::Url,
             )],
+            skill_snippets: Vec::new(),
         },
     );
 }

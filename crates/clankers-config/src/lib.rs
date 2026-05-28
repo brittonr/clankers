@@ -13,6 +13,7 @@
     )
 )]
 
+pub mod core;
 pub mod keybindings;
 pub mod model_roles;
 #[cfg(feature = "nickel")]
@@ -20,6 +21,12 @@ pub mod nickel;
 pub mod paths;
 pub mod settings;
 pub mod theme;
+
+pub use core::NeutralKeymapConfig;
+pub use core::NeutralSettingsSummary;
+pub use core::PromptServiceConfig;
+pub use core::SkillServiceConfig;
+pub use core::ThemeSelection;
 
 pub use paths::ClankersPaths;
 pub use paths::ProjectPaths;

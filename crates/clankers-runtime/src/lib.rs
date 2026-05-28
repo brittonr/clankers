@@ -148,6 +148,7 @@ pub use ledger::replay_ledger_entries;
 pub use prompt::AssembledPrompt;
 pub use prompt::ContextReferenceKind;
 pub use prompt::ContextReferenceRequest;
+pub use prompt::DisabledPromptSourceService;
 pub use prompt::EchoModelAdapter;
 pub use prompt::HostContext;
 pub use prompt::ModelAdapter;
@@ -163,7 +164,11 @@ pub use prompt::PromptProvenance;
 pub use prompt::PromptReceipt;
 pub use prompt::PromptSection;
 pub use prompt::PromptSourceKind;
+pub use prompt::PromptSourceRequest;
+pub use prompt::PromptSourceService;
 pub use prompt::PromptSources;
+pub use prompt::SkillSnippet;
+pub use prompt::StaticPromptSourceService;
 pub use prompt::UnsupportedContextReference;
 pub use runtime::Runtime;
 pub use runtime::RuntimeBuilder;
@@ -198,10 +203,13 @@ pub use services::ProviderModelResponse;
 pub use services::ProviderModelStatus;
 pub use services::ProviderRouterService;
 pub use services::ProviderStreamEvent;
+pub use services::ResolvedSkillSnippet;
 pub use services::RuntimeServices;
 pub use services::SessionRecord;
 pub use services::SessionStore;
 pub use services::SettingsService;
+pub use services::SkillResolution;
+pub use services::SkillResolutionRequest;
 pub use services::SkillStore;
 pub use session::SessionHandle;
 pub use session::SessionId;
@@ -1381,6 +1389,88 @@ mod tests {
             assert!(serialized.contains("42"));
             assert!(!serialized.contains("secret"));
         }
+    }
+
+    #[test]
+    fn config_prompt_skill_service_fixtures_cover_host_desktop_missing_and_redaction() {
+        let host_sources = PromptSources {
+            system_prompt: Some("system safe".to_string()),
+            host_context: vec![HostContext {
+                label: "app".to_string(),
+                content: "host context".to_string(),
+            }],
+            skill_snippets: vec![SkillSnippet {
+                name: "review".to_string(),
+                content: "skill content".to_string(),
+                source: "injected".to_string(),
+            }],
+            ..PromptSources::default()
+        };
+        let host =
+            PromptAssembler::assemble(&PromptAssemblyPolicy::host_context_only(), &host_sources, "hello".to_string())
+                .expect("host-only prompt assembles");
+        assert_eq!(host.sections.iter().map(|section| section.label.as_str()).collect::<Vec<_>>(), vec![
+            "app",
+            "skill:review",
+            "system"
+        ]);
+        assert!(host.provenance.iter().any(|item| item.source == PromptSourceKind::Skill));
+
+        let mut filesystem_sources = host_sources.clone();
+        filesystem_sources.filesystem_context_requested = true;
+        filesystem_sources.filesystem_context = vec![HostContext {
+            label: "file:README.md".to_string(),
+            content: "desktop file context".to_string(),
+        }];
+        let disabled = PromptAssembler::assemble(
+            &PromptAssemblyPolicy::host_context_only(),
+            &filesystem_sources,
+            "hello".to_string(),
+        )
+        .unwrap_err();
+        assert_eq!(disabled, RuntimeError::FilesystemDiscoveryDisabled);
+
+        let desktop = PromptAssembler::assemble(
+            &PromptAssemblyPolicy::desktop_default(),
+            &filesystem_sources,
+            "hello".to_string(),
+        )
+        .expect("desktop-enabled context assembles");
+        assert!(desktop.provenance.iter().any(|item| item.source == PromptSourceKind::Filesystem));
+
+        let mut secret_sources = host_sources.clone();
+        secret_sources.skill_snippets[0].content = "api_key secret-token".to_string();
+        let redacted =
+            PromptAssembler::assemble(&PromptAssemblyPolicy::host_context_only(), &secret_sources, "hello".to_string())
+                .expect("redacted skill prompt assembles");
+        assert!(redacted.sections.iter().any(|section| section.content == "[REDACTED]"));
+        assert!(redacted.provenance.iter().all(|item| !contains_secret_marker(&item.safe_summary)));
+
+        let missing_skill = RuntimeServices::stateless()
+            .skills
+            .resolve(SkillResolutionRequest {
+                requested: vec!["review".to_string()],
+            })
+            .unwrap_err();
+        assert_eq!(missing_skill, RuntimeError::ExtensionUnavailable("skill service unavailable".to_string()));
+    }
+
+    #[test]
+    fn prompt_source_service_injection_is_used_by_runtime_assembly() {
+        let sources = PromptSources {
+            host_context: vec![HostContext {
+                label: "service".to_string(),
+                content: "resolved by service".to_string(),
+            }],
+            ..PromptSources::default()
+        };
+        let service = Arc::new(StaticPromptSourceService::new(sources).with_capability("test_prompt_service"));
+        let runtime = RuntimeBuilder::new().prompt_source_service(service).build().unwrap();
+
+        let assembled = runtime.assemble_prompt("hello").unwrap();
+
+        assert_eq!(assembled.sections[0].label, "service");
+        assert_eq!(assembled.sections[0].content, "resolved by service");
     }
 
     #[test]

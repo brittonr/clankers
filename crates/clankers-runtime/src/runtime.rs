@@ -15,6 +15,8 @@ use crate::NoopRuntimeRetryAdapter;
 use crate::NoopRuntimeUsageAdapter;
 use crate::PromptAssembler;
 use crate::PromptAssemblyPolicy;
+use crate::PromptSourceRequest;
+use crate::PromptSourceService;
 use crate::PromptSources;
 use crate::RuntimeCancellationAdapter;
 use crate::RuntimeError;
@@ -26,6 +28,7 @@ use crate::RuntimeUsageAdapter;
 use crate::SessionHandle;
 use crate::SessionId;
 use crate::SessionOptions;
+use crate::StaticPromptSourceService;
 use crate::ToolCatalog;
 use crate::UnavailableRuntimeToolAdapter;
 use crate::boundary::validate_public_runtime_boundary;
@@ -36,7 +39,7 @@ pub struct RuntimeBuilder {
     model: Arc<dyn ModelAdapter>,
     pub(crate) services: RuntimeServices,
     pub(crate) prompt_policy: PromptAssemblyPolicy,
-    pub(crate) prompt_sources: PromptSources,
+    pub(crate) prompt_source_service: Arc<dyn PromptSourceService>,
     pub(crate) tool_catalog: ToolCatalog,
     pub(crate) tool_adapter: Arc<dyn RuntimeToolAdapter>,
     pub(crate) retry_adapter: Arc<dyn RuntimeRetryAdapter>,
@@ -55,7 +58,7 @@ impl RuntimeBuilder {
             model: Arc::new(EchoModelAdapter),
             services: RuntimeServices::in_memory(),
             prompt_policy: PromptAssemblyPolicy::host_context_only(),
-            prompt_sources: PromptSources::default(),
+            prompt_source_service: Arc::new(StaticPromptSourceService::new(PromptSources::default())),
             tool_catalog: ToolCatalog::embedding_safe(),
             tool_adapter: Arc::new(UnavailableRuntimeToolAdapter),
             retry_adapter: Arc::new(NoopRuntimeRetryAdapter),
@@ -85,7 +88,14 @@ impl RuntimeBuilder {
     #[must_use]
     pub fn prompt_assembly(mut self, policy: PromptAssemblyPolicy, sources: PromptSources) -> Self {
         self.prompt_policy = policy;
-        self.prompt_sources = sources;
+        self.prompt_source_service = Arc::new(StaticPromptSourceService::new(sources));
+        self
+    }
+
+    /// Use a host-supplied prompt-source service.
+    #[must_use]
+    pub fn prompt_source_service(mut self, service: Arc<dyn PromptSourceService>) -> Self {
+        self.prompt_source_service = service;
         self
     }
 
@@ -153,7 +163,7 @@ impl RuntimeBuilder {
                 model: self.model,
                 services: self.services,
                 prompt_policy: self.prompt_policy,
-                prompt_sources: self.prompt_sources,
+                prompt_source_service: self.prompt_source_service,
                 tool_catalog: self.tool_catalog,
                 tool_adapter: self.tool_adapter,
                 retry_adapter: self.retry_adapter,
@@ -183,7 +193,7 @@ pub(crate) struct RuntimeInner {
     pub(crate) model: Arc<dyn ModelAdapter>,
     pub(crate) services: RuntimeServices,
     pub(crate) prompt_policy: PromptAssemblyPolicy,
-    pub(crate) prompt_sources: PromptSources,
+    pub(crate) prompt_source_service: Arc<dyn PromptSourceService>,
     pub(crate) tool_catalog: ToolCatalog,
     pub(crate) tool_adapter: Arc<dyn RuntimeToolAdapter>,
     pub(crate) retry_adapter: Arc<dyn RuntimeRetryAdapter>,
@@ -219,7 +229,12 @@ impl Runtime {
 
     /// Assemble a prompt with the runtime policy.
     pub fn assemble_prompt(&self, user_prompt: impl Into<String>) -> Result<AssembledPrompt, RuntimeError> {
-        PromptAssembler::assemble(&self.inner.prompt_policy, &self.inner.prompt_sources, user_prompt.into())
+        let user_prompt = user_prompt.into();
+        let sources = self.inner.prompt_source_service.resolve_sources(PromptSourceRequest {
+            user_prompt: user_prompt.clone(),
+            policy: self.inner.prompt_policy.clone(),
+        })?;
+        PromptAssembler::assemble(&self.inner.prompt_policy, &sources, user_prompt)
     }
 
     /// Ask the confirmation broker through the same fail-closed substrate used by sessions.

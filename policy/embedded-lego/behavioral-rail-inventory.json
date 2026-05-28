@@ -216,6 +216,22 @@
       ]
     },
     {
+      "script": "scripts/check-config-prompt-skill-services.rs",
+      "class": "executable_fixture",
+      "owner": "embedded-sdk",
+      "requirement_ids": [
+        "config-prompt-skill-services.verification",
+        "behavioral-lego-parity-rails.receipts.schema"
+      ],
+      "source_artifacts": [
+        "scripts/check-config-prompt-skill-services.rs",
+        "crates/clankers-config/src/core.rs",
+        "crates/clankers-runtime/src/prompt.rs",
+        "crates/clankers-runtime/src/services.rs",
+        "src/runtime_services.rs"
+      ]
+    },
+    {
       "script": "scripts/check-session-resume-brick.rs",
       "class": "executable_fixture",
       "owner": "embedded-sdk",

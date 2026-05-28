@@ -20,8 +20,10 @@ pub fn assemble_system_sections_with_runtime_service(
                 content: content.clone(),
             })
             .collect(),
+        filesystem_context: Vec::new(),
         filesystem_context_requested: false,
         context_references: Vec::new(),
+        skill_snippets: Vec::new(),
     };
     clankers_runtime::PromptAssembler::assemble(
         &clankers_runtime::PromptAssemblyPolicy::host_context_only(),
