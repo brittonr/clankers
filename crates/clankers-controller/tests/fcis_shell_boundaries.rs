@@ -1709,6 +1709,7 @@ fn agent_turn_runtime_defers_retry_and_budget_policy_to_engine() {
         AGENT_TURN_ENGINE_MODEL_COMPLETION_FILE,
         "crates/clankers-agent/src/turn/adapters.rs",
         "crates/clankers-agent/src/turn/execution.rs",
+        "crates/clankers-agent/src/turn/ports.rs",
     ];
     let mut shell_concern_paths = collect_non_test_paths_from_files(&shell_concern_files);
     shell_concern_paths.extend(collect_non_test_function_names_from_files(&shell_concern_files));

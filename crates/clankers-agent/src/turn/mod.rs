@@ -10,8 +10,8 @@ mod steel_planning;
 mod transcript;
 mod usage;
 
+#[cfg(test)]
 use std::collections::HashMap;
-use std::sync::Arc;
 
 use adapters::AgentCancellationSource;
 use adapters::AgentEngineEventSink;
@@ -49,7 +49,11 @@ use clankers_engine_host::HostAdapters;
 use clankers_engine_host::run_engine_turn;
 #[cfg(test)]
 use clankers_engine_host::runtime::cancel_turn_input;
+#[cfg(test)]
 use clankers_model_selection::cost_tracker::CostTracker;
+#[cfg(test)]
+use clankers_provider::CompletionRequest;
+#[cfg(test)]
 use clankers_provider::Provider;
 use clankers_provider::ThinkingConfig;
 #[cfg(test)]
@@ -81,8 +85,25 @@ pub(crate) use policy::decide_model_completion;
 pub(crate) use policy::emit_engine_notice_effects;
 use policy::engine_failure_from_agent_error;
 use policy::engine_outcome_or_error;
-use ports::ControllerToolPort;
-use ports::ProviderModelPort;
+#[cfg(test)]
+pub(crate) use ports::AgentCancellationPort;
+#[cfg(test)]
+pub(crate) use ports::AgentCostPort;
+#[cfg(test)]
+pub(crate) use ports::AgentModelPort;
+pub(crate) use ports::AgentRuntimeServiceKind;
+#[cfg(test)]
+pub(crate) use ports::AgentRuntimeServiceOwner;
+#[cfg(test)]
+pub(crate) use ports::AgentRuntimeServiceReceipt;
+pub(crate) use ports::AgentRuntimeServices;
+#[cfg(test)]
+pub(crate) use ports::AgentToolPort;
+pub(crate) use ports::ControllerToolPort;
+pub(crate) use ports::CostTrackerPort;
+pub(crate) use ports::DESKTOP_AGENT_SERVICE_RECEIPTS;
+pub(crate) use ports::ProviderModelPort;
+pub(crate) use ports::TokenCancellationPort;
 #[cfg(test)]
 use serde_json::Value;
 use steel_planning::AgentTurnExecutionPlanner;
@@ -91,7 +112,9 @@ pub use steel_planning::AgentTurnSteelPlanningConfig;
 use steel_planning::emit_agent_turn_planning_receipt;
 use steel_planning::plan_agent_turn;
 pub use steel_planning::steel_turn_planning_config_from_settings;
+#[cfg(test)]
 use tokio::sync::broadcast;
+#[cfg(test)]
 use tokio_util::sync::CancellationToken;
 use transcript::TurnTranscript;
 use transcript::TurnTranscriptWriter;
@@ -99,8 +122,11 @@ use usage::update_usage_tracking;
 
 use crate::error::AgentError;
 use crate::error::Result;
+#[cfg(test)]
 use crate::events::AgentEvent;
+#[cfg(test)]
 use crate::tool::ModelSwitchSlot;
+#[cfg(test)]
 use crate::tool::Tool;
 
 /// Configuration for a turn loop run
@@ -118,26 +144,23 @@ pub struct TurnConfig {
     pub steel_turn_planning: Option<AgentTurnSteelPlanningConfig>,
 }
 
-pub struct TurnLoopContext<'a> {
-    pub provider: &'a dyn Provider,
-    pub controller_tools: &'a HashMap<String, Arc<dyn Tool>>,
-    pub event_tx: &'a broadcast::Sender<AgentEvent>,
-    pub cancel: CancellationToken,
-    pub cost_tracker: Option<&'a Arc<CostTracker>>,
-    pub model_switch_slot: Option<&'a ModelSwitchSlot>,
-    pub hook_pipeline: Option<Arc<clankers_hooks::HookPipeline>>,
-    pub session_id: &'a str,
-    pub db: Option<clankers_db::Db>,
-    pub capability_gate: Option<Arc<dyn crate::tool::CapabilityGate>>,
-    pub user_tool_filter: Option<Vec<String>>,
+pub(crate) struct TurnLoopContext<'a> {
+    pub(crate) services: AgentRuntimeServices<'a>,
+    pub(crate) session_id: &'a str,
 }
 
-pub async fn run_turn_loop(
+pub(crate) async fn run_turn_loop(
     config: &TurnConfig,
     ctx: TurnLoopContext<'_>,
     messages: &mut Vec<AgentMessage>,
 ) -> Result<()> {
-    let tool_defs = tool_definitions_from_tool_catalog(ctx.controller_tools);
+    let services = &ctx.services;
+    debug_assert!(services.has_service_kind(AgentRuntimeServiceKind::ModelExecution));
+    debug_assert!(services.has_service_kind(AgentRuntimeServiceKind::ToolRegistry));
+    debug_assert!(services.has_service_kind(AgentRuntimeServiceKind::Cost));
+    debug_assert!(services.has_service_kind(AgentRuntimeServiceKind::Cancellation));
+
+    let tool_defs = services.tools.tool_definitions();
     if let Some(steel_turn_planning) = config.steel_turn_planning.as_ref() {
         let planning = plan_agent_turn(AgentTurnPlanningRequest {
             config: steel_turn_planning,
@@ -145,9 +168,9 @@ pub async fn run_turn_loop(
             model: &config.model,
             system_prompt: &config.system_prompt,
             messages,
-            tools: ctx.controller_tools,
+            tool_names: services.tools.sorted_tool_names(),
         });
-        emit_agent_turn_planning_receipt(ctx.event_tx, &planning);
+        emit_agent_turn_planning_receipt(services.events, &planning);
         if planning.execution_planner == AgentTurnExecutionPlanner::Blocked {
             return Err(AgentError::Agent {
                 message: "steel.host.plan_turn blocked agent turn before provider request".to_string(),
@@ -174,44 +197,30 @@ pub async fn run_turn_loop(
     let submit_outcome = engine_outcome_or_error(submit_result.outcome, "prompt submission")?;
 
     let transcript = TurnTranscript::new(std::mem::take(messages), config.model.clone());
-    let model_port = ProviderModelPort::new(ctx.provider);
-    let tool_port = ControllerToolPort {
-        controller_tools: ctx.controller_tools,
-        event_tx: ctx.event_tx,
-        cancel: ctx.cancel.clone(),
-        hook_pipeline: ctx.hook_pipeline.clone(),
-        session_id: ctx.session_id,
-        db: ctx.db.clone(),
-        capability_gate: ctx.capability_gate.clone(),
-        user_tool_filter: ctx.user_tool_filter.clone(),
-    };
+    let cancel = services.cancellation.token();
 
     let mut model_host = AgentModelHost {
-        model_port: &model_port,
-        event_tx: ctx.event_tx,
-        cancel: ctx.cancel.clone(),
-        model_switch_slot: ctx.model_switch_slot,
+        model_port: services.model,
+        event_tx: services.events,
+        cancel: cancel.clone(),
+        model_switch_slot: services.model_switch_slot,
         transcript: transcript.writer(),
     };
     let mut tool_host = AgentToolHost {
-        tool_port: &tool_port,
-        event_tx: ctx.event_tx,
+        tool_port: services.tools,
+        event_tx: services.events,
         output_truncation: config.output_truncation.clone(),
         transcript: transcript.writer(),
     };
-    let mut retry_sleeper = AgentRetrySleeper {
-        cancel: ctx.cancel.clone(),
-    };
+    let mut retry_sleeper = AgentRetrySleeper { cancel: cancel.clone() };
     let mut event_sink = AgentEngineEventSink {
-        event_tx: ctx.event_tx,
+        event_tx: services.events,
         transcript: transcript.writer(),
     };
-    let mut cancellation = AgentCancellationSource {
-        cancel: ctx.cancel.clone(),
-    };
+    let mut cancellation = AgentCancellationSource { cancel: cancel.clone() };
     let mut usage_observer = AgentUsageObserver {
-        cost_tracker: ctx.cost_tracker,
-        event_tx: ctx.event_tx,
+        cost: services.cost,
+        event_tx: services.events,
         transcript: transcript.writer(),
     };
 
@@ -227,7 +236,7 @@ pub async fn run_turn_loop(
 
     *messages = transcript.into_messages();
 
-    if ctx.cancel.is_cancelled() {
+    if services.cancellation.is_cancelled() {
         return Err(AgentError::Cancelled);
     }
     if let Some(error) = agent_error_from_report(&report) {
@@ -286,20 +295,32 @@ mod tests {
         capability_gate: Option<Arc<dyn crate::tool::CapabilityGate>>,
         user_tool_filter: Option<Vec<String>>,
     ) -> Result<()> {
+        let model_port = ProviderModelPort::new(provider);
+        let tool_port = ControllerToolPort {
+            controller_tools: tools,
+            event_tx,
+            cancel: cancel.clone(),
+            hook_pipeline,
+            session_id,
+            db,
+            capability_gate,
+            user_tool_filter,
+        };
+        let cost_port = CostTrackerPort::new(cost_tracker);
+        let cancellation = TokenCancellationPort::new(cancel);
         run_turn_loop(
             config,
             TurnLoopContext {
-                provider,
-                controller_tools: tools,
-                event_tx,
-                cancel,
-                cost_tracker,
-                model_switch_slot,
-                hook_pipeline,
+                services: AgentRuntimeServices {
+                    model: &model_port,
+                    tools: &tool_port,
+                    cost: &cost_port,
+                    cancellation: &cancellation,
+                    events: event_tx,
+                    model_switch_slot,
+                    service_receipts: DESKTOP_AGENT_SERVICE_RECEIPTS,
+                },
                 session_id,
-                db,
-                capability_gate,
-                user_tool_filter,
             },
             messages,
         )
@@ -492,6 +513,196 @@ mod tests {
         ] {
             assert!(SHELL_ADAPTER_PARITY_CASES.iter().any(|case| case.event_translation == event_translation));
         }
+    }
+
+    #[tokio::test]
+    async fn fake_runtime_service_bundle_turn_runs_without_desktop_systems() {
+        use std::sync::atomic::AtomicUsize;
+        use std::sync::atomic::Ordering;
+
+        struct FakeModelPort;
+
+        #[async_trait]
+        impl AgentModelPort for FakeModelPort {
+            async fn stream_model_request(
+                &self,
+                request: CompletionRequest,
+                _event_tx: &broadcast::Sender<AgentEvent>,
+                _cancel: &CancellationToken,
+            ) -> Result<CollectedResponse> {
+                assert_eq!(request.model, "fake-service-model");
+                assert_eq!(request.extra_params.get("_session_id"), Some(&json!("fake-service-session")));
+                assert_eq!(request.messages.len(), 1);
+                Ok(CollectedResponse {
+                    content: vec![Content::Text {
+                        text: "fake service turn complete".to_string(),
+                    }],
+                    model: request.model,
+                    usage: Usage {
+                        input_tokens: 3,
+                        output_tokens: 4,
+                        cache_creation_input_tokens: 0,
+                        cache_read_input_tokens: 0,
+                    },
+                    stop_reason: StopReason::Stop,
+                })
+            }
+        }
+
+        struct FakeToolPort;
+
+        #[async_trait]
+        impl AgentToolPort for FakeToolPort {
+            fn tool_definitions(&self) -> Vec<ToolDefinition> {
+                Vec::new()
+            }
+
+            fn sorted_tool_names(&self) -> Vec<String> {
+                Vec::new()
+            }
+
+            async fn execute_tools(&self, _tool_calls: &[(String, String, Value)]) -> Vec<ToolResultMessage> {
+                panic!("fake service model does not request tools")
+            }
+        }
+
+        struct RecordingCostPort {
+            calls: AtomicUsize,
+        }
+
+        impl AgentCostPort for RecordingCostPort {
+            fn observe_turn_usage(
+                &self,
+                cumulative_usage: &mut Usage,
+                turn_usage: &Usage,
+                _active_model: &str,
+                event_tx: &broadcast::Sender<AgentEvent>,
+            ) {
+                self.calls.fetch_add(1, Ordering::SeqCst);
+                cumulative_usage.input_tokens += turn_usage.input_tokens;
+                cumulative_usage.output_tokens += turn_usage.output_tokens;
+                event_tx
+                    .send(AgentEvent::UsageUpdate {
+                        turn_usage: turn_usage.clone(),
+                        cumulative_usage: cumulative_usage.clone(),
+                    })
+                    .ok();
+            }
+        }
+
+        struct NeverCancelledPort;
+
+        impl AgentCancellationPort for NeverCancelledPort {
+            fn token(&self) -> CancellationToken {
+                CancellationToken::new()
+            }
+        }
+
+        const FAKE_RECEIPTS: &[AgentRuntimeServiceReceipt] = &[
+            AgentRuntimeServiceReceipt {
+                kind: AgentRuntimeServiceKind::ModelExecution,
+                owner: AgentRuntimeServiceOwner::RuntimePort,
+                adapter: "FakeModelPort",
+                reason: "test-owned fake model service",
+                convergence: "proves no live provider/router/auth dependency",
+            },
+            AgentRuntimeServiceReceipt {
+                kind: AgentRuntimeServiceKind::ToolRegistry,
+                owner: AgentRuntimeServiceOwner::RuntimePort,
+                adapter: "FakeToolPort",
+                reason: "test-owned fake tool inventory",
+                convergence: "proves no database or plugin tool registry dependency",
+            },
+            AgentRuntimeServiceReceipt {
+                kind: AgentRuntimeServiceKind::Storage,
+                owner: AgentRuntimeServiceOwner::SafeDefault,
+                adapter: "FakeToolPort",
+                reason: "no storage service is required for this fake turn",
+                convergence: "replace desktop storage with optional neutral service",
+            },
+            AgentRuntimeServiceReceipt {
+                kind: AgentRuntimeServiceKind::PromptContext,
+                owner: AgentRuntimeServiceOwner::NeutralDto,
+                adapter: "TurnConfig",
+                reason: "prompt context is pre-assembled test data",
+                convergence: "prompt assembly service owns richer context",
+            },
+            AgentRuntimeServiceReceipt {
+                kind: AgentRuntimeServiceKind::Hooks,
+                owner: AgentRuntimeServiceOwner::SafeDefault,
+                adapter: "FakeToolPort",
+                reason: "no hook service is required for this fake turn",
+                convergence: "hook service becomes neutral receipt port",
+            },
+            AgentRuntimeServiceReceipt {
+                kind: AgentRuntimeServiceKind::Skills,
+                owner: AgentRuntimeServiceOwner::SafeDefault,
+                adapter: "TurnConfig",
+                reason: "no skill directory is consulted by the fake turn",
+                convergence: "skill resolver becomes explicit prompt service",
+            },
+            AgentRuntimeServiceReceipt {
+                kind: AgentRuntimeServiceKind::Cost,
+                owner: AgentRuntimeServiceOwner::RuntimePort,
+                adapter: "RecordingCostPort",
+                reason: "test-owned usage observer",
+                convergence: "cost receipt service owns budget effects",
+            },
+            AgentRuntimeServiceReceipt {
+                kind: AgentRuntimeServiceKind::Cancellation,
+                owner: AgentRuntimeServiceOwner::EngineHostAdapter,
+                adapter: "NeverCancelledPort",
+                reason: "test-owned cancellation port",
+                convergence: "engine-host cancellation seam remains explicit",
+            },
+        ];
+
+        let model = FakeModelPort;
+        let tools = FakeToolPort;
+        let cost = RecordingCostPort {
+            calls: AtomicUsize::new(0),
+        };
+        let cancellation = NeverCancelledPort;
+        let (event_tx, mut event_rx) = broadcast::channel(16);
+        let mut messages = vec![AgentMessage::User(UserMessage {
+            id: MessageId::new("fake-service-user"),
+            content: vec![Content::Text {
+                text: "hello fake services".to_string(),
+            }],
+            timestamp: Utc::now(),
+        })];
+        let mut config = make_turn_config();
+        config.model = "fake-service-model".to_string();
+        config.system_prompt = "fake service system".to_string();
+
+        run_turn_loop(
+            &config,
+            TurnLoopContext {
+                services: AgentRuntimeServices {
+                    model: &model,
+                    tools: &tools,
+                    cost: &cost,
+                    cancellation: &cancellation,
+                    events: &event_tx,
+                    model_switch_slot: None,
+                    service_receipts: FAKE_RECEIPTS,
+                },
+                session_id: "fake-service-session",
+            },
+            &mut messages,
+        )
+        .await
+        .expect("fake service turn should complete");
+
+        assert_eq!(cost.calls.load(Ordering::SeqCst), 1);
+        assert!(
+            matches!(messages.last(), Some(AgentMessage::Assistant(message)) if message.model == "fake-service-model")
+        );
+        let mut saw_usage = false;
+        while let Ok(event) = event_rx.try_recv() {
+            saw_usage |= matches!(event, AgentEvent::UsageUpdate { .. });
+        }
+        assert!(saw_usage, "fake cost port should emit usage through semantic event channel");
     }
 
     #[tokio::test]

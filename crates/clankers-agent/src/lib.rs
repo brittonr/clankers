@@ -350,20 +350,32 @@ impl Agent {
             steel_turn_planning: self.steel_turn_planning_config()?,
         };
 
+        let model_port = turn::ProviderModelPort::new(self.provider.as_ref());
+        let tool_port = turn::ControllerToolPort {
+            controller_tools: &self.tools,
+            event_tx: &self.event_tx,
+            cancel: self.cancel.clone(),
+            hook_pipeline: self.hook_pipeline.clone(),
+            session_id: &self.session_id,
+            db: self.db.clone(),
+            capability_gate: self.capability_gate.clone(),
+            user_tool_filter: self.user_tool_filter.clone(),
+        };
+        let cost_port = turn::CostTrackerPort::new(self.cost_tracker.as_ref());
+        let cancellation = turn::TokenCancellationPort::new(self.cancel.clone());
         let result = turn::run_turn_loop(
             &config,
             turn::TurnLoopContext {
-                provider: self.provider.as_ref(),
-                controller_tools: &self.tools,
-                event_tx: &self.event_tx,
-                cancel: self.cancel.clone(),
-                cost_tracker: self.cost_tracker.as_ref(),
-                model_switch_slot: self.model_switch_slot.as_ref(),
-                hook_pipeline: self.hook_pipeline.clone(),
+                services: turn::AgentRuntimeServices {
+                    model: &model_port,
+                    tools: &tool_port,
+                    cost: &cost_port,
+                    cancellation: &cancellation,
+                    events: &self.event_tx,
+                    model_switch_slot: self.model_switch_slot.as_ref(),
+                    service_receipts: turn::DESKTOP_AGENT_SERVICE_RECEIPTS,
+                },
                 session_id: &self.session_id,
-                db: self.db.clone(),
-                capability_gate: self.capability_gate.clone(),
-                user_tool_filter: self.user_tool_filter.clone(),
             },
             &mut self.messages,
         )
@@ -738,20 +750,32 @@ impl Agent {
                 steel_turn_planning: self.steel_turn_planning_config()?,
             };
 
+            let model_port = turn::ProviderModelPort::new(self.provider.as_ref());
+            let tool_port = turn::ControllerToolPort {
+                controller_tools: &self.tools,
+                event_tx: &self.event_tx,
+                cancel: self.cancel.clone(),
+                hook_pipeline: self.hook_pipeline.clone(),
+                session_id: &self.session_id,
+                db: self.db.clone(),
+                capability_gate: self.capability_gate.clone(),
+                user_tool_filter: self.user_tool_filter.clone(),
+            };
+            let cost_port = turn::CostTrackerPort::new(self.cost_tracker.as_ref());
+            let cancellation = turn::TokenCancellationPort::new(self.cancel.clone());
             let result = turn::run_turn_loop(
                 &config,
                 turn::TurnLoopContext {
-                    provider: self.provider.as_ref(),
-                    controller_tools: &self.tools,
-                    event_tx: &self.event_tx,
-                    cancel: self.cancel.clone(),
-                    cost_tracker: self.cost_tracker.as_ref(),
-                    model_switch_slot: self.model_switch_slot.as_ref(),
-                    hook_pipeline: self.hook_pipeline.clone(),
+                    services: turn::AgentRuntimeServices {
+                        model: &model_port,
+                        tools: &tool_port,
+                        cost: &cost_port,
+                        cancellation: &cancellation,
+                        events: &self.event_tx,
+                        model_switch_slot: self.model_switch_slot.as_ref(),
+                        service_receipts: turn::DESKTOP_AGENT_SERVICE_RECEIPTS,
+                    },
                     session_id: &self.session_id,
-                    db: self.db.clone(),
-                    capability_gate: self.capability_gate.clone(),
-                    user_tool_filter: self.user_tool_filter.clone(),
                 },
                 &mut self.messages,
             )

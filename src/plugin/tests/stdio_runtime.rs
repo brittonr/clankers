@@ -1917,7 +1917,6 @@ async fn unsubscribed_stdio_plugin_does_not_receive_tool_call_event() {
 
 #[tokio::test]
 async fn capability_gate_blocks_stdio_tool_calls_in_turn_loop() {
-    use std::collections::HashMap;
     use std::sync::Arc;
     use std::sync::atomic::AtomicUsize;
     use std::sync::atomic::Ordering;
@@ -1927,8 +1926,6 @@ async fn capability_gate_blocks_stdio_tool_calls_in_turn_loop() {
 
     use crate::message::AgentMessage;
     use crate::message::Content;
-    use crate::message::MessageId;
-    use crate::message::UserMessage;
     use crate::provider::Usage;
     use crate::provider::streaming::MessageMetadata;
     use crate::provider::streaming::StreamEvent;
@@ -2031,54 +2028,35 @@ async fn capability_gate_blocks_stdio_tool_calls_in_turn_loop() {
     wait_for_live_tool(&manager, "stdio-capability", "stdio_capability_tool", Duration::from_secs(2)).await;
 
     let tools = crate::modes::common::build_plugin_tools(&[], &manager, None);
-    let tools: HashMap<String, Arc<dyn crate::tools::Tool>> =
-        tools.into_iter().map(|tool| (tool.definition().name.clone(), tool)).collect();
-    let mut messages = vec![AgentMessage::User(UserMessage {
-        id: MessageId::new("user-stdio-capability"),
-        content: vec![Content::Text { text: "hi".into() }],
-        timestamp: chrono::Utc::now(),
-    })];
-    let config = crate::agent::turn::TurnConfig {
-        model: "test-model".into(),
-        system_prompt: "You are a test assistant.".into(),
-        max_tokens: Some(100),
-        temperature: None,
-        thinking: None,
-        model_request_slot_budget: 2,
-        output_truncation: clanker_loop::OutputTruncationConfig::default(),
+    let settings = crate::config::Settings {
+        steel_turn_planning: crate::config::SteelTurnPlanningSettings {
+            enabled: false,
+            ..crate::config::SteelTurnPlanningSettings::default()
+        },
         no_cache: true,
-        cache_ttl: None,
-        steel_turn_planning: None,
+        max_tokens: 100,
+        ..crate::config::Settings::default()
     };
-    let (event_tx, _event_rx) = broadcast::channel(64);
     let gate: Arc<dyn crate::agent::CapabilityGate> =
         Arc::new(crate::capability_gate::UcanCapabilityGate::new(vec![Capability::ToolUse {
             tool_pattern: "read,bash".to_string(),
         }]));
-
-    crate::agent::turn::run_turn_loop(
-        &config,
-        crate::agent::turn::TurnLoopContext {
-            provider: &ToolUseProvider {
-                calls: AtomicUsize::new(0),
-            },
-            controller_tools: &tools,
-            event_tx: &event_tx,
-            cancel: CancellationToken::new(),
-            cost_tracker: None,
-            model_switch_slot: None,
-            hook_pipeline: None,
-            session_id: "session-stdio-capability",
-            db: None,
-            capability_gate: Some(gate.clone()),
-            user_tool_filter: None,
-        },
-        &mut messages,
+    let mut agent = crate::agent::Agent::new(
+        Arc::new(ToolUseProvider {
+            calls: AtomicUsize::new(0),
+        }),
+        tools,
+        settings,
+        "test-model".to_string(),
+        "You are a test assistant.".to_string(),
     )
-    .await
-    .unwrap();
+    .with_capability_gate(gate.clone());
+    agent.set_session_id("session-stdio-capability".to_string());
 
-    let tool_result = messages
+    agent.prompt("hi").await.unwrap();
+
+    let tool_result = agent
+        .messages()
         .iter()
         .find_map(|message| match message {
             AgentMessage::ToolResult(result) => Some(result),
@@ -2096,7 +2074,6 @@ async fn capability_gate_blocks_stdio_tool_calls_in_turn_loop() {
 
 #[tokio::test]
 async fn capability_gate_allows_stdio_tool_calls_in_turn_loop() {
-    use std::collections::HashMap;
     use std::sync::Arc;
     use std::sync::atomic::AtomicUsize;
     use std::sync::atomic::Ordering;
@@ -2106,8 +2083,6 @@ async fn capability_gate_allows_stdio_tool_calls_in_turn_loop() {
 
     use crate::message::AgentMessage;
     use crate::message::Content;
-    use crate::message::MessageId;
-    use crate::message::UserMessage;
     use crate::provider::Usage;
     use crate::provider::streaming::MessageMetadata;
     use crate::provider::streaming::StreamEvent;
@@ -2210,54 +2185,35 @@ async fn capability_gate_allows_stdio_tool_calls_in_turn_loop() {
     wait_for_live_tool(&manager, "stdio-capability", "stdio_capability_tool", Duration::from_secs(2)).await;
 
     let tools = crate::modes::common::build_plugin_tools(&[], &manager, None);
-    let tools: HashMap<String, Arc<dyn crate::tools::Tool>> =
-        tools.into_iter().map(|tool| (tool.definition().name.clone(), tool)).collect();
-    let mut messages = vec![AgentMessage::User(UserMessage {
-        id: MessageId::new("user-stdio-capability-allow"),
-        content: vec![Content::Text { text: "hi".into() }],
-        timestamp: chrono::Utc::now(),
-    })];
-    let config = crate::agent::turn::TurnConfig {
-        model: "test-model".into(),
-        system_prompt: "You are a test assistant.".into(),
-        max_tokens: Some(100),
-        temperature: None,
-        thinking: None,
-        model_request_slot_budget: 2,
-        output_truncation: clanker_loop::OutputTruncationConfig::default(),
+    let settings = crate::config::Settings {
+        steel_turn_planning: crate::config::SteelTurnPlanningSettings {
+            enabled: false,
+            ..crate::config::SteelTurnPlanningSettings::default()
+        },
         no_cache: true,
-        cache_ttl: None,
-        steel_turn_planning: None,
+        max_tokens: 100,
+        ..crate::config::Settings::default()
     };
-    let (event_tx, _event_rx) = broadcast::channel(64);
     let gate: Arc<dyn crate::agent::CapabilityGate> =
         Arc::new(crate::capability_gate::UcanCapabilityGate::new(vec![Capability::ToolUse {
             tool_pattern: "stdio_capability_tool".to_string(),
         }]));
-
-    crate::agent::turn::run_turn_loop(
-        &config,
-        crate::agent::turn::TurnLoopContext {
-            provider: &ToolUseProvider {
-                calls: AtomicUsize::new(0),
-            },
-            controller_tools: &tools,
-            event_tx: &event_tx,
-            cancel: CancellationToken::new(),
-            cost_tracker: None,
-            model_switch_slot: None,
-            hook_pipeline: None,
-            session_id: "session-stdio-capability-allow",
-            db: None,
-            capability_gate: Some(gate.clone()),
-            user_tool_filter: None,
-        },
-        &mut messages,
+    let mut agent = crate::agent::Agent::new(
+        Arc::new(ToolUseProvider {
+            calls: AtomicUsize::new(0),
+        }),
+        tools,
+        settings,
+        "test-model".to_string(),
+        "You are a test assistant.".to_string(),
     )
-    .await
-    .unwrap();
+    .with_capability_gate(gate.clone());
+    agent.set_session_id("session-stdio-capability-allow".to_string());
 
-    let tool_result = messages
+    agent.prompt("hi").await.unwrap();
+
+    let tool_result = agent
+        .messages()
         .iter()
         .find_map(|message| match message {
             AgentMessage::ToolResult(result) => Some(result),

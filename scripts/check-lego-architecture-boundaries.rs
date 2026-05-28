@@ -35,6 +35,7 @@ const CHANGE_SPEC_ARCHIVE: &str =
 const ACCEPTED_SPEC: &str = "cairn/specs/lego-architecture-boundaries/spec.md";
 const PROCESS_TOOL: &str = "src/tools/process.rs";
 const PROCESS_TOOL_ADAPTER: &str = "src/tools/process/adapter.rs";
+const AGENT_LIB: &str = "crates/clankers-agent/src/lib.rs";
 const AGENT_TURN_MOD: &str = "crates/clankers-agent/src/turn/mod.rs";
 const AGENT_TURN_ADAPTERS: &str = "crates/clankers-agent/src/turn/adapters.rs";
 const AGENT_TURN_PORTS: &str = "crates/clankers-agent/src/turn/ports.rs";
@@ -170,6 +171,7 @@ fn run() -> Result<PathBuf, String> {
             hash_artifact(Path::new(ACCEPTED_SPEC))?,
             hash_artifact(Path::new(PROCESS_TOOL))?,
             hash_artifact(Path::new(PROCESS_TOOL_ADAPTER))?,
+            hash_artifact(Path::new(AGENT_LIB))?,
             hash_artifact(Path::new(AGENT_TURN_MOD))?,
             hash_artifact(Path::new(AGENT_TURN_ADAPTERS))?,
             hash_artifact(Path::new(AGENT_TURN_PORTS))?,
@@ -379,31 +381,106 @@ fn process_tool_adapter_signature() -> Result<Value, String> {
 }
 
 fn agent_turn_ports_signature() -> Result<Value, String> {
+    let agent_lib_file = read_rust_file(AGENT_LIB)?;
     let turn_mod_file = read_rust_file(AGENT_TURN_MOD)?;
     let adapters_file = read_rust_file(AGENT_TURN_ADAPTERS)?;
     let ports_file = read_rust_file(AGENT_TURN_PORTS)?;
+    let agent_lib = &agent_lib_file.source;
     let turn_mod = &turn_mod_file.source;
     let adapters = &adapters_file.source;
     let ports = &ports_file.source;
 
     require_rust_mod(&turn_mod_file, "ports", "agent turn ports module")?;
     require_contains(&turn_mod, "mod ports;", "agent turn ports module")?;
-    require_contains(&turn_mod, "ProviderModelPort::new(ctx.provider)", "provider adapter construction")?;
-    require_contains(&turn_mod, "ControllerToolPort", "tool adapter construction")?;
-    require_struct_field_type_path(&adapters_file, "AgentModelHost", "model_port", "AgentModelPort", "agent model host port field")?;
-    require_struct_field_type_path(&adapters_file, "AgentToolHost", "tool_port", "AgentToolPort", "agent tool host port field")?;
+    require_contains(
+        &agent_lib,
+        "ProviderModelPort::new(self.provider.as_ref())",
+        "provider adapter construction at agent shell edge",
+    )?;
+    require_contains(&agent_lib, "AgentRuntimeServices", "agent shell runtime service bundle construction")?;
+    forbid_contains(&turn_mod, "ProviderModelPort::new(ctx.provider)", "turn loop concrete provider construction")?;
+    require_contains(
+        &turn_mod,
+        "services.tools.tool_definitions()",
+        "turn loop reads tool definitions through service bundle",
+    )?;
+    require_contains(&turn_mod, "services.cost", "turn loop reads cost service through service bundle")?;
+    require_contains(
+        &turn_mod,
+        "services.cancellation",
+        "turn loop reads cancellation service through service bundle",
+    )?;
+    require_struct_field_type_path(
+        &adapters_file,
+        "AgentModelHost",
+        "model_port",
+        "AgentModelPort",
+        "agent model host port field",
+    )?;
+    require_struct_field_type_path(
+        &adapters_file,
+        "AgentToolHost",
+        "tool_port",
+        "AgentToolPort",
+        "agent tool host port field",
+    )?;
+    require_struct_field_type_path(
+        &adapters_file,
+        "AgentUsageObserver",
+        "cost",
+        "AgentCostPort",
+        "agent usage observer cost port field",
+    )?;
     require_contains(&adapters, "model_port: &'a dyn AgentModelPort", "agent model host port field")?;
     require_contains(&adapters, "tool_port: &'a dyn AgentToolPort", "agent tool host port field")?;
-    forbid_struct_field_type_path(&adapters_file, "AgentModelHost", "provider", "Provider", "agent model host concrete provider field")?;
-    forbid_struct_field_type_path(&adapters_file, "AgentToolHost", "controller_tools", "HashMap", "agent tool host concrete tool map field")?;
+    require_contains(&adapters, "cost: &'a dyn AgentCostPort", "agent usage observer cost port field")?;
+    forbid_struct_field_type_path(
+        &adapters_file,
+        "AgentModelHost",
+        "provider",
+        "Provider",
+        "agent model host concrete provider field",
+    )?;
+    forbid_struct_field_type_path(
+        &adapters_file,
+        "AgentToolHost",
+        "controller_tools",
+        "HashMap",
+        "agent tool host concrete tool map field",
+    )?;
     forbid_contains(&adapters, "provider: &'a dyn Provider", "agent model host concrete provider field")?;
     forbid_contains(&adapters, "controller_tools: &'a HashMap", "agent tool host concrete tool map field")?;
     require_rust_trait(&ports_file, "AgentModelPort", "agent model port trait")?;
     require_rust_trait(&ports_file, "AgentToolPort", "agent tool port trait")?;
+    require_rust_trait(&ports_file, "AgentCostPort", "agent cost port trait")?;
+    require_rust_trait(&ports_file, "AgentCancellationPort", "agent cancellation port trait")?;
     require_rust_impl(&ports_file, "AgentModelPort", "ProviderModelPort", "provider model port adapter")?;
     require_rust_impl(&ports_file, "AgentToolPort", "ControllerToolPort", "controller tool port adapter")?;
+    require_rust_impl(&ports_file, "AgentCostPort", "CostTrackerPort", "cost tracker port adapter")?;
+    require_rust_impl(
+        &ports_file,
+        "AgentCancellationPort",
+        "TokenCancellationPort",
+        "cancellation token port adapter",
+    )?;
     require_contains(&ports, "trait AgentModelPort", "agent model port trait")?;
     require_contains(&ports, "trait AgentToolPort", "agent tool port trait")?;
+    require_contains(&ports, "trait AgentCostPort", "agent cost port trait")?;
+    require_contains(&ports, "trait AgentCancellationPort", "agent cancellation port trait")?;
+    require_contains(&ports, "struct AgentRuntimeServices", "agent runtime service bundle")?;
+    require_contains(&ports, "DESKTOP_AGENT_SERVICE_RECEIPTS", "agent runtime service owner receipts")?;
+    for marker in [
+        "ModelExecution",
+        "ToolRegistry",
+        "Storage",
+        "PromptContext",
+        "Hooks",
+        "Skills",
+        "Cost",
+        "Cancellation",
+    ] {
+        require_contains(&ports, marker, "agent runtime service receipt kind")?;
+    }
     require_contains(&ports, "impl AgentModelPort for ProviderModelPort", "provider model port adapter")?;
     require_contains(&ports, "impl AgentToolPort for ControllerToolPort", "controller tool port adapter")?;
 
@@ -411,11 +488,18 @@ fn agent_turn_ports_signature() -> Result<Value, String> {
         "ports_module": AGENT_TURN_PORTS,
         "model_port_trait": "AgentModelPort",
         "tool_port_trait": "AgentToolPort",
+        "cost_port_trait": "AgentCostPort",
+        "cancellation_port_trait": "AgentCancellationPort",
+        "runtime_service_bundle": "AgentRuntimeServices",
+        "service_receipt_kinds": ["model", "tools", "storage", "prompt_context", "hooks", "skills", "cost", "cancellation"],
         "model_host_concrete_provider_fields": 0,
         "tool_host_concrete_tool_map_fields": 0,
         "provider_adapter": "ProviderModelPort",
         "tool_adapter": "ControllerToolPort",
-        "typed_rail_kind": "Rust AST module, trait, impl, and struct-field checks"
+        "cost_adapter": "CostTrackerPort",
+        "cancellation_adapter": "TokenCancellationPort",
+        "provider_adapter_owner": "crates/clankers-agent/src/lib.rs app-edge shell",
+        "typed_rail_kind": "Rust AST module, trait, impl, struct-field, and service-receipt checks"
     }))
 }
 
@@ -425,9 +509,21 @@ fn controller_effect_interpretation_signature() -> Result<Value, String> {
     let core_effects = &core_effects_file.source;
     let interpretation = &interpretation_file.source;
 
-    require_rust_path(&core_effects_file, "effect_interpretation::interpret_prompt_request", "controller prompt effect interpretation seam")?;
-    require_rust_path(&core_effects_file, "effect_interpretation::interpret_thinking_change", "controller thinking effect interpretation seam")?;
-    require_rust_path(&core_effects_file, "effect_interpretation::interpret_tool_filter_application", "controller tool filter effect interpretation seam")?;
+    require_rust_path(
+        &core_effects_file,
+        "effect_interpretation::interpret_prompt_request",
+        "controller prompt effect interpretation seam",
+    )?;
+    require_rust_path(
+        &core_effects_file,
+        "effect_interpretation::interpret_thinking_change",
+        "controller thinking effect interpretation seam",
+    )?;
+    require_rust_path(
+        &core_effects_file,
+        "effect_interpretation::interpret_tool_filter_application",
+        "controller tool filter effect interpretation seam",
+    )?;
     require_contains(
         &core_effects,
         "effect_interpretation::interpret_prompt_request",
@@ -485,8 +581,16 @@ fn provider_router_bridge_signature() -> Result<Value, String> {
 
     require_rust_fn(&bridge_file, "build_router_request", "provider/router bridge entrypoint")?;
     require_rust_fn(&bridge_file, "messages_to_router_json", "provider/router message projection owner")?;
-    require_rust_path(&router_adapter_file, "crate::router_request_bridge::build_router_request", "local router adapter delegates request projection")?;
-    require_rust_path(&rpc_adapter_file, "crate::router_request_bridge::build_router_request", "rpc router adapter delegates request projection")?;
+    require_rust_path(
+        &router_adapter_file,
+        "crate::router_request_bridge::build_router_request",
+        "local router adapter delegates request projection",
+    )?;
+    require_rust_path(
+        &rpc_adapter_file,
+        "crate::router_request_bridge::build_router_request",
+        "rpc router adapter delegates request projection",
+    )?;
     require_contains(
         &bridge,
         "Single clankers-provider owned bridge into `clanker_router::CompletionRequest`",
@@ -506,7 +610,11 @@ fn provider_router_bridge_signature() -> Result<Value, String> {
         "crate::router_request_bridge::build_router_request(request)",
         "rpc router adapter delegates request projection",
     )?;
-    forbid_rust_fn(&router_adapter_file, "messages_to_router_json", "local router adapter duplicate message projection")?;
+    forbid_rust_fn(
+        &router_adapter_file,
+        "messages_to_router_json",
+        "local router adapter duplicate message projection",
+    )?;
     forbid_rust_fn(&rpc_adapter_file, "convert_messages_to_api", "rpc router adapter duplicate message projection")?;
     forbid_rust_fn(&rpc_adapter_file, "content_to_json", "rpc router adapter duplicate content projection")?;
     forbid_contains(
@@ -537,14 +645,26 @@ fn controller_domain_event_signature() -> Result<Value, String> {
 
     require_rust_enum(&domain_event_file, "ControllerDomainEvent", "neutral controller event enum")?;
     require_rust_struct(&domain_event_file, "DomainImage", "neutral image receipt DTO")?;
-    require_rust_fn(&domain_event_file, "agent_event_to_domain_event", "agent/runtime event to neutral domain event projection")?;
+    require_rust_fn(
+        &domain_event_file,
+        "agent_event_to_domain_event",
+        "agent/runtime event to neutral domain event projection",
+    )?;
     require_rust_fn(&domain_event_file, "tool_content_to_domain_parts", "neutral tool receipt projection")?;
     forbid_rust_path(&domain_event_file, "DaemonEvent", "domain event protocol DTO leakage")?;
     forbid_rust_path(&domain_event_file, "TuiEvent", "domain event TUI DTO leakage")?;
     forbid_rust_path(&domain_event_file, "clankers_protocol", "domain event protocol crate dependency")?;
     forbid_rust_path(&domain_event_file, "clanker_tui_types", "domain event TUI crate dependency")?;
-    require_rust_path(&convert_file, "agent_event_to_domain_event", "protocol projection delegates through neutral domain event seam")?;
-    require_rust_path(&convert_file, "domain_event_to_daemon_event", "protocol projection delegates through neutral domain event seam")?;
+    require_rust_path(
+        &convert_file,
+        "agent_event_to_domain_event",
+        "protocol projection delegates through neutral domain event seam",
+    )?;
+    require_rust_path(
+        &convert_file,
+        "domain_event_to_daemon_event",
+        "protocol projection delegates through neutral domain event seam",
+    )?;
 
     require_contains(
         &domain_event,
@@ -602,18 +722,32 @@ fn session_command_policy_signature() -> Result<Value, String> {
     require_rust_enum(&policy_file, "LocalSessionEffect", "typed local session effect DTO")?;
     require_rust_enum(&policy_file, "SessionAckPolicy", "typed session ack policy DTO")?;
     require_rust_struct(&policy_file, "SessionCommandEffect", "typed session command effect DTO")?;
-    for function in ["set_thinking_level_effect", "cycle_thinking_level_effect", "disabled_tools_effect", "manual_compaction_effect", "ack_matches"] {
+    for function in [
+        "set_thinking_level_effect",
+        "cycle_thinking_level_effect",
+        "disabled_tools_effect",
+        "manual_compaction_effect",
+        "ack_matches",
+    ] {
         require_rust_fn(&policy_file, function, "shared session command policy function")?;
     }
-    require_rust_path(&attach_file, "session_command_policy::cycle_thinking_level_effect", "attach cycle thinking delegates to shared policy")?;
-    require_rust_path(&attach_file, "session_command_policy::ack_matches", "attach ack suppression delegates to shared policy")?;
-    require_rust_path(&agent_task_file, "session_command_policy::thinking_level_message", "standalone thinking message delegates to shared policy")?;
-
-    require_contains(
-        &policy,
-        "Shared session command/effect/ack policy",
-        "session command policy module purpose",
+    require_rust_path(
+        &attach_file,
+        "session_command_policy::cycle_thinking_level_effect",
+        "attach cycle thinking delegates to shared policy",
     )?;
+    require_rust_path(
+        &attach_file,
+        "session_command_policy::ack_matches",
+        "attach ack suppression delegates to shared policy",
+    )?;
+    require_rust_path(
+        &agent_task_file,
+        "session_command_policy::thinking_level_message",
+        "standalone thinking message delegates to shared policy",
+    )?;
+
+    require_contains(&policy, "Shared session command/effect/ack policy", "session command policy module purpose")?;
     require_contains(&policy, "enum LocalSessionEffect", "typed local session effect DTO")?;
     require_contains(&policy, "enum SessionAckPolicy", "typed session ack policy DTO")?;
     require_contains(&policy, "struct SessionCommandEffect", "typed session command effect DTO")?;
@@ -669,7 +803,6 @@ fn session_command_policy_signature() -> Result<Value, String> {
     }))
 }
 
-
 struct RustFile {
     source: String,
     ast: syn::File,
@@ -705,7 +838,11 @@ fn forbid_rust_fn(file: &RustFile, name: &str, label: &str) -> Result<(), String
 fn require_rust_method(file: &RustFile, name: &str, label: &str) -> Result<(), String> {
     for item in &file.ast.items {
         let syn::Item::Impl(item_impl) = item else { continue };
-        if item_impl.items.iter().any(|item| matches!(item, syn::ImplItem::Fn(function) if function.sig.ident == name)) {
+        if item_impl
+            .items
+            .iter()
+            .any(|item| matches!(item, syn::ImplItem::Fn(function) if function.sig.ident == name))
+        {
             return Ok(());
         }
     }
@@ -736,7 +873,9 @@ fn require_rust_trait(file: &RustFile, name: &str, label: &str) -> Result<(), St
 fn require_rust_impl(file: &RustFile, trait_name: &str, type_name: &str, label: &str) -> Result<(), String> {
     for item in &file.ast.items {
         let syn::Item::Impl(item_impl) = item else { continue };
-        let Some((_, trait_path, _)) = &item_impl.trait_ else { continue };
+        let Some((_, trait_path, _)) = &item_impl.trait_ else {
+            continue;
+        };
         if path_ends_with(trait_path, trait_name) && type_mentions_path(&item_impl.self_ty, type_name) {
             return Ok(());
         }
@@ -753,7 +892,9 @@ fn require_struct_field_type_path(
 ) -> Result<(), String> {
     match struct_field_type_mentions(file, struct_name, field_name, type_path) {
         Some(true) => Ok(()),
-        Some(false) => Err(format!("missing {label}: field `{struct_name}.{field_name}` does not reference `{type_path}`")),
+        Some(false) => {
+            Err(format!("missing {label}: field `{struct_name}.{field_name}` does not reference `{type_path}`"))
+        }
         None => Err(format!("missing {label}: field `{struct_name}.{field_name}`")),
     }
 }
@@ -777,7 +918,9 @@ fn struct_field_type_mentions(file: &RustFile, struct_name: &str, field_name: &s
         if item_struct.ident != struct_name {
             continue;
         }
-        let syn::Fields::Named(fields) = &item_struct.fields else { return None };
+        let syn::Fields::Named(fields) = &item_struct.fields else {
+            return None;
+        };
         for field in &fields.named {
             if field.ident.as_ref().is_some_and(|ident| ident == field_name) {
                 return Some(type_mentions_path(&field.ty, type_path));
@@ -830,11 +973,7 @@ fn path_ends_with(path: &syn::Path, expected: &str) -> bool {
 }
 
 fn path_to_string(path: &syn::Path) -> String {
-    path.segments
-        .iter()
-        .map(|segment| segment.ident.to_string())
-        .collect::<Vec<_>>()
-        .join("::")
+    path.segments.iter().map(|segment| segment.ident.to_string()).collect::<Vec<_>>().join("::")
 }
 
 fn path_matches(actual: &str, expected: &str) -> bool {

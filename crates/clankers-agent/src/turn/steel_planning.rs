@@ -1,8 +1,6 @@
 use std::collections::BTreeSet;
-use std::collections::HashMap;
 use std::path::Path;
 use std::path::PathBuf;
-use std::sync::Arc;
 
 use clankers_artifacts::ArtifactHash;
 use clankers_config::SteelTurnPlanningFallbackMode;
@@ -26,8 +24,6 @@ use serde::Serialize;
 use tokio::sync::broadcast;
 
 use crate::events::AgentEvent;
-use crate::tool::Tool;
-
 const AGENT_TURN_DECISION_ID: &str = "agent-turn-model-request";
 const AGENT_TURN_DECISION_CLASS: &str = "agent-turn-plan";
 const DEFAULT_STEEL_SOURCE: &str = "(host \"steel.host.plan_turn\")";
@@ -440,7 +436,7 @@ pub(crate) struct AgentTurnPlanningRequest<'a> {
     pub model: &'a str,
     pub system_prompt: &'a str,
     pub messages: &'a [AgentMessage],
-    pub tools: &'a HashMap<String, Arc<dyn Tool>>,
+    pub tool_names: Vec<String>,
 }
 
 #[must_use]
@@ -500,7 +496,7 @@ fn turn_planning_input(request: &AgentTurnPlanningRequest<'_>) -> TurnPlanningIn
         model: request.model,
         system_prompt_bytes: request.system_prompt.len(),
         message_count: request.messages.len(),
-        tool_names: sorted_tool_names(request.tools),
+        tool_names: request.tool_names.clone(),
     };
     let turn_bytes = stable_json_bytes(&turn_material);
     let prompt_hash = ArtifactHash::digest(&turn_bytes);
@@ -534,12 +530,6 @@ fn steel_plan_payload_for_session(request: &AgentTurnPlanningRequest<'_>) -> Str
     request.config.steel_plan_payload.replace(expected_fixture_target, &session_target)
 }
 
-fn sorted_tool_names(tools: &HashMap<String, Arc<dyn Tool>>) -> Vec<&str> {
-    let mut names = tools.keys().map(String::as_str).collect::<Vec<_>>();
-    names.sort_unstable();
-    names
-}
-
 fn stable_json_bytes<T: Serialize>(value: &T) -> Vec<u8> {
     serde_json::to_vec(value).unwrap_or_else(|_| b"serialization-failed".to_vec())
 }
@@ -563,7 +553,7 @@ struct TurnPlanningHashMaterial<'a> {
     model: &'a str,
     system_prompt_bytes: usize,
     message_count: usize,
-    tool_names: Vec<&'a str>,
+    tool_names: Vec<String>,
 }
 
 #[cfg(test)]
@@ -572,8 +562,6 @@ struct TurnPlanningHashMaterial<'a> {
     allow(no_panic, no_unwrap, reason = "test code — panics are assertions")
 )]
 mod tests {
-    use std::collections::HashMap;
-
     use clankers_artifacts::ArtifactHash;
     use clankers_config::SteelTurnPlanningAuthorityGrantSettings;
     use clankers_config::SteelTurnPlanningFallbackMode;
@@ -774,23 +762,19 @@ mod tests {
         );
     }
 
-    fn request<'a>(
-        config: &'a AgentTurnSteelPlanningConfig,
-        tools: &'a HashMap<String, Arc<dyn Tool>>,
-    ) -> AgentTurnPlanningRequest<'a> {
+    fn request(config: &AgentTurnSteelPlanningConfig, tool_names: Vec<String>) -> AgentTurnPlanningRequest<'_> {
         AgentTurnPlanningRequest {
             config,
             session_id: "session-fixture",
             model: "model-fixture",
             system_prompt: "secret prompt body is not emitted",
             messages: &[],
-            tools,
+            tool_names,
         }
     }
 
     fn plan(config: &AgentTurnSteelPlanningConfig) -> AgentTurnPlanningOutcome {
-        let tools = HashMap::new();
-        plan_agent_turn(request(config, &tools))
+        plan_agent_turn(request(config, Vec::new()))
     }
 
     #[test]

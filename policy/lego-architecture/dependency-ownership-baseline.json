@@ -1,7 +1,7 @@
 {
   "artifact_hashes": [
     {
-      "blake3": "9480b4a447a38dfd89c05a328c5eef1bce324a7b139004c4a37a56bf0e1ae6fe",
+      "blake3": "d12b02e349d9bcc925a960e83a3b1113a1895948a27fdeae433dc943f0c2c5db",
       "path": "policy/lego-architecture/dependency-ownership-baseline.json"
     },
     {
@@ -17,7 +17,7 @@
       "path": "cairn/specs/lego-architecture-boundaries/spec.md"
     },
     {
-      "blake3": "6fc6b9c00fa01de8ed924660c905b8c4e29f7710e6ad7e830fed3626c0bb394a",
+      "blake3": "a53498aa8e68932f7b271e9078f51768fcf0191c92bfdbcfde21587f15f73c73",
       "path": "src/tools/process.rs"
     },
     {
@@ -25,19 +25,23 @@
       "path": "src/tools/process/adapter.rs"
     },
     {
-      "blake3": "182756bf047fd1800228eb83414ac6f053ee3c646367bac46e64bfde94fc6612",
+      "blake3": "d8fe9fe74c2f16e49b28b2ff2deaa8533d427a8f4b9de08f3e67c6046647eb4b",
+      "path": "crates/clankers-agent/src/lib.rs"
+    },
+    {
+      "blake3": "854b8ac622953ff3c57e13b08bf7a9aa9302b6955a607a33e68e09a2ba7e8285",
       "path": "crates/clankers-agent/src/turn/mod.rs"
     },
     {
-      "blake3": "10f8ef249fe40c908f5507014c435c91cc24a7bcaebd9ba8c7465e3ed18b5741",
+      "blake3": "8f3c06a523f5fefa270918572af2e8d7d12a487e7770878c5217774dbee07350",
       "path": "crates/clankers-agent/src/turn/adapters.rs"
     },
     {
-      "blake3": "46491f3f4d4d64ddff7a95eb0feb907e9065eff4f12e8d02b93b603b53a417e0",
+      "blake3": "3e2140f665c310b8880f7ca6cc230f51ffde4a1b4c7afa75450c0c0f2f50dfbd",
       "path": "crates/clankers-agent/src/turn/ports.rs"
     },
     {
-      "blake3": "18a037b3946e21f38e7a4bd7ace9abf0050d03c19c5c3ad7cf30e016f1b05404",
+      "blake3": "6070591e3a0c39db1c84332cef800263c706079ba3d7953c3e3b92c7e63469d0",
       "path": "crates/clankers-controller/src/core_effects.rs"
     },
     {
@@ -69,7 +73,7 @@
       "path": "src/modes/session_command_policy.rs"
     },
     {
-      "blake3": "bf2bc01c241fee3c0e28563924760f63a24c60a49f07d0aab4da065d6ea8933c",
+      "blake3": "4457712cbd8068ec894722116ba4b2aa67e2a0734a1a8af01b569f9232f9e21a",
       "path": "src/modes/attach/commands.rs"
     },
     {
@@ -95,19 +99,35 @@
         "clankers-util"
       ],
       "concrete_dependency_count": 11,
-      "internal_dependency_count": 18,
+      "internal_dependency_count": 19,
       "owner": "turn orchestration shell; concrete systems should migrate behind model/tool/config/storage/hook/prompt/skill/cost ports",
       "package": "clankers-agent"
     },
     "agent_turn_ports": {
+      "cancellation_adapter": "TokenCancellationPort",
+      "cancellation_port_trait": "AgentCancellationPort",
+      "cost_adapter": "CostTrackerPort",
+      "cost_port_trait": "AgentCostPort",
       "model_host_concrete_provider_fields": 0,
       "model_port_trait": "AgentModelPort",
       "ports_module": "crates/clankers-agent/src/turn/ports.rs",
       "provider_adapter": "ProviderModelPort",
+      "provider_adapter_owner": "crates/clankers-agent/src/lib.rs app-edge shell",
+      "runtime_service_bundle": "AgentRuntimeServices",
+      "service_receipt_kinds": [
+        "model",
+        "tools",
+        "storage",
+        "prompt_context",
+        "hooks",
+        "skills",
+        "cost",
+        "cancellation"
+      ],
       "tool_adapter": "ControllerToolPort",
       "tool_host_concrete_tool_map_fields": 0,
       "tool_port_trait": "AgentToolPort",
-      "typed_rail_kind": "Rust AST module, trait, impl, and struct-field checks"
+      "typed_rail_kind": "Rust AST module, trait, impl, struct-field, and service-receipt checks"
     },
     "controller_crate": {
       "concrete_dependencies": [
@@ -147,7 +167,7 @@
     },
     "most_shared_dto_crates": [
       {
-        "dependent_count": 11,
+        "dependent_count": 12,
         "dependents": [
           "clanker-router",
           "clankers",
@@ -157,6 +177,7 @@
           "clankers-engine",
           "clankers-engine-host",
           "clankers-provider",
+          "clankers-runtime",
           "clankers-session",
           "clankers-tool-host",
           "clankers-util"

@@ -1,5 +1,3 @@
-use std::sync::Arc;
-
 use clankers_engine::EngineCorrelationId;
 use clankers_engine::EngineEvent;
 use clankers_engine::EngineModelRequest;
@@ -13,7 +11,6 @@ use clankers_engine_host::RetrySleeper;
 use clankers_engine_host::UsageObservation;
 use clankers_engine_host::UsageObservationKind;
 use clankers_engine_host::UsageObserver;
-use clankers_model_selection::cost_tracker::CostTracker;
 use clankers_tool_host::ToolExecutor;
 use clankers_tool_host::ToolHostOutcome;
 use tokio::sync::broadcast;
@@ -26,11 +23,11 @@ use super::check_model_switch;
 use super::completion_request_from_engine_request;
 use super::create_error_result;
 use super::engine_failure_from_agent_error;
+use super::ports::AgentCostPort;
 use super::ports::AgentModelPort;
 use super::ports::AgentToolPort;
 use super::tool_result_message_to_host_outcome;
 use super::tool_use_count;
-use super::update_usage_tracking;
 use crate::events::AgentEvent;
 use crate::tool::ModelSwitchSlot;
 
@@ -176,7 +173,7 @@ impl CancellationSource for AgentCancellationSource {
 }
 
 pub(crate) struct AgentUsageObserver<'a> {
-    pub(crate) cost_tracker: Option<&'a Arc<CostTracker>>,
+    pub(crate) cost: &'a dyn AgentCostPort,
     pub(crate) event_tx: &'a broadcast::Sender<AgentEvent>,
     pub(crate) transcript: TurnTranscriptWriter,
 }
@@ -188,7 +185,7 @@ impl UsageObserver for AgentUsageObserver<'_> {
         }
         let active_model = self.transcript.active_model();
         self.transcript.update_cumulative_usage(|cumulative| {
-            update_usage_tracking(cumulative, &observation.usage, &active_model, self.cost_tracker, self.event_tx);
+            self.cost.observe_turn_usage(cumulative, &observation.usage, &active_model, self.event_tx);
         });
         Ok(())
     }
