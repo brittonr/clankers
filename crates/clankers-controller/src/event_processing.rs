@@ -62,7 +62,7 @@ impl SessionController {
     }
 
     /// Process a single agent event into zero or more daemon events.
-    fn process_agent_event(&mut self, event: &AgentEvent) {
+    pub(crate) fn process_agent_event(&mut self, event: &AgentEvent) {
         // 1. Audit tracking
         self.audit.process_event(event);
 

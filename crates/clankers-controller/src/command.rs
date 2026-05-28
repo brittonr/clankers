@@ -237,6 +237,36 @@ impl SessionController {
         }
     }
 
+    /// Process a command and synchronously flush controller events while a prompt is running.
+    ///
+    /// The normal `handle_command` API preserves accumulated events until callers drain them.
+    /// Daemon actors use this variant so text deltas are broadcast while `Agent::prompt` is
+    /// still awaiting the provider stream instead of after the whole turn completes.
+    pub async fn handle_command_with_streaming_events(
+        &mut self,
+        cmd: SessionCommand,
+        on_events: &mut (dyn FnMut(Vec<DaemonEvent>) + Send),
+    ) {
+        match cmd {
+            SessionCommand::Prompt { text, images } => {
+                self.handle_prompt_inner(text, images, Some(on_events)).await;
+            }
+            SessionCommand::RewriteAndPrompt { text } => {
+                if let Some(ref mut agent) = self.agent {
+                    agent.pop_last_exchange();
+                }
+                self.handle_prompt_inner(text, vec![], Some(on_events)).await;
+            }
+            other => {
+                self.handle_command(other).await;
+                let events = self.drain_events();
+                if !events.is_empty() {
+                    on_events(events);
+                }
+            }
+        }
+    }
+
     fn handle_set_thinking_level(&mut self, level: String) {
         let input = CoreInput::SetThinkingLevel {
             requested: Self::parse_core_thinking_level_input(&level),
@@ -531,7 +561,8 @@ impl SessionController {
         match clankers_core::reduce(&self.core_state, &input) {
             CoreOutcome::Transitioned { next_state, effects } => {
                 self.apply_core_state(next_state);
-                let applied_levels = crate::effect_interpretation::applied_thinking_levels(&effects).collect::<Vec<_>>();
+                let applied_levels =
+                    crate::effect_interpretation::applied_thinking_levels(&effects).collect::<Vec<_>>();
                 let thinking_change = crate::effect_interpretation::interpret_thinking_change(&effects)
                     .expect("thinking level change must emit a logical event");
                 for level in applied_levels {
@@ -551,11 +582,7 @@ impl SessionController {
         }
     }
 
-    fn apply_adapter_disabled_tools(
-        &mut self,
-        adapter: &mut dyn ControllerRuntimeAdapter,
-        tools: Vec<String>,
-    ) -> bool {
+    fn apply_adapter_disabled_tools(&mut self, adapter: &mut dyn ControllerRuntimeAdapter, tools: Vec<String>) -> bool {
         let input = CoreInput::SetDisabledTools(DisabledToolsUpdate {
             requested_disabled_tools: tools.clone(),
         });
@@ -589,6 +616,15 @@ impl SessionController {
         allow(no_unwrap, reason = "agent is always Some when handle_prompt is called")
     )]
     async fn handle_prompt(&mut self, text: String, images: Vec<ImageData>) {
+        self.handle_prompt_inner(text, images, None).await;
+    }
+
+    async fn handle_prompt_inner(
+        &mut self,
+        text: String,
+        images: Vec<ImageData>,
+        mut on_events: Option<&mut (dyn FnMut(Vec<DaemonEvent>) + Send)>,
+    ) {
         if self.agent.is_none() {
             warn!("handle_prompt called in embedded mode");
             return;
@@ -628,27 +664,72 @@ impl SessionController {
         );
 
         self.outgoing.push(DaemonEvent::AgentStart);
+        self.flush_outgoing_for_streaming(&mut on_events);
 
-        // Take the agent out to avoid borrow conflicts with self.
-        let mut agent = self.agent.take().unwrap();
-        let result = if images.is_empty() {
-            agent.prompt(&text).await
+        let image_content = if images.is_empty() {
+            None
         } else {
-            let image_content: Vec<ProviderContent> = images
-                .into_iter()
-                .map(|img| ProviderContent::Image {
-                    source: clankers_provider::message::ImageSource::Base64 {
-                        media_type: img.media_type,
-                        data: img.data,
-                    },
-                })
-                .collect();
-            agent.prompt_with_images(&text, image_content).await
+            Some(
+                images
+                    .into_iter()
+                    .map(|img| ProviderContent::Image {
+                        source: clankers_provider::message::ImageSource::Base64 {
+                            media_type: img.media_type,
+                            data: img.data,
+                        },
+                    })
+                    .collect::<Vec<_>>(),
+            )
         };
+
+        // Take the agent and event receiver out to avoid borrow conflicts while
+        // the prompt future is alive and we keep draining broadcast events.
+        let mut agent = self.agent.take().unwrap();
+        let mut event_rx = self.event_rx.take();
+        let result = {
+            let prompt_future = async {
+                if let Some(image_content) = image_content {
+                    agent.prompt_with_images(&text, image_content).await
+                } else {
+                    agent.prompt(&text).await
+                }
+            };
+            tokio::pin!(prompt_future);
+
+            if on_events.is_some() {
+                if let Some(rx) = event_rx.as_mut() {
+                    loop {
+                        tokio::select! {
+                            result = &mut prompt_future => break result,
+                            event = rx.recv() => {
+                                match event {
+                                    Ok(event) => {
+                                        self.process_agent_event(&event);
+                                        self.flush_outgoing_for_streaming(&mut on_events);
+                                    }
+                                    Err(tokio::sync::broadcast::error::RecvError::Lagged(n)) => {
+                                        warn!("agent event stream lagged while prompt was running, skipped {n} events");
+                                    }
+                                    Err(tokio::sync::broadcast::error::RecvError::Closed) => {
+                                        break (&mut prompt_future).await;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                } else {
+                    prompt_future.await
+                }
+            } else {
+                prompt_future.await
+            }
+        };
+        self.event_rx = event_rx;
         self.agent = Some(agent);
         // Drain model stream events before terminal PromptDone so daemon clients
         // never observe a stale completion before the accepted turn's output.
         self.drain_agent_events_to_outgoing();
+        self.flush_outgoing_for_streaming(&mut on_events);
 
         let (completion_status, prompt_error) = match result {
             Ok(()) => (CompletionStatus::Succeeded, None),
@@ -668,6 +749,17 @@ impl SessionController {
         debug_assert!(applied, "prompt completion should match the pending prompt");
 
         self.emit(DaemonEvent::PromptDone { error: prompt_error });
+        self.flush_outgoing_for_streaming(&mut on_events);
+    }
+
+    fn flush_outgoing_for_streaming(&mut self, on_events: &mut Option<&mut (dyn FnMut(Vec<DaemonEvent>) + Send)>) {
+        let Some(callback) = on_events.as_deref_mut() else {
+            return;
+        };
+        let events = std::mem::take(&mut self.outgoing);
+        if !events.is_empty() {
+            callback(events);
+        }
     }
 
     pub(crate) fn apply_prompt_completion(&mut self, completed: clankers_core::PromptCompleted) -> bool {
@@ -847,6 +939,9 @@ impl SessionController {
 mod tests {
     use std::sync::Arc;
     use std::sync::Mutex;
+    use std::sync::atomic::AtomicBool;
+    use std::sync::atomic::Ordering;
+    use std::time::Duration;
 
     use clankers_core::CoreEffect;
     use clankers_core::CoreLogicalEvent;
@@ -915,6 +1010,13 @@ mod tests {
         requests: Arc<Mutex<Vec<RecordedPromptRequest>>>,
     }
 
+    struct DelayedStreamingPromptProvider {
+        requests: Arc<Mutex<Vec<RecordedPromptRequest>>>,
+        streamed: Arc<tokio::sync::Notify>,
+        release: Arc<tokio::sync::Notify>,
+        returned: Arc<AtomicBool>,
+    }
+
     #[async_trait::async_trait]
     impl clankers_provider::Provider for StreamingPromptProvider {
         async fn complete(
@@ -962,6 +1064,60 @@ mod tests {
 
         fn name(&self) -> &str {
             "streaming-recording"
+        }
+    }
+
+    #[async_trait::async_trait]
+    impl clankers_provider::Provider for DelayedStreamingPromptProvider {
+        async fn complete(
+            &self,
+            request: clankers_provider::CompletionRequest,
+            tx: tokio::sync::mpsc::Sender<clankers_provider::streaming::StreamEvent>,
+        ) -> clankers_provider::error::Result<()> {
+            let recorded = record_prompt_request(&self.requests, request);
+            tx.send(clankers_provider::streaming::StreamEvent::MessageStart {
+                message: clankers_provider::streaming::MessageMetadata {
+                    id: format!("msg-{}", recorded.prompt_text),
+                    model: recorded.model,
+                    role: "assistant".to_string(),
+                },
+            })
+            .await
+            .ok();
+            tx.send(clankers_provider::streaming::StreamEvent::ContentBlockStart {
+                index: 0,
+                content_block: clanker_message::Content::Text { text: String::new() },
+            })
+            .await
+            .ok();
+            tx.send(clankers_provider::streaming::StreamEvent::ContentBlockDelta {
+                index: 0,
+                delta: clankers_provider::streaming::ContentDelta::TextDelta {
+                    text: "stream:delayed".to_string(),
+                },
+            })
+            .await
+            .ok();
+            self.streamed.notify_waiters();
+            self.release.notified().await;
+            self.returned.store(true, Ordering::SeqCst);
+            tx.send(clankers_provider::streaming::StreamEvent::ContentBlockStop { index: 0 }).await.ok();
+            tx.send(clankers_provider::streaming::StreamEvent::MessageDelta {
+                stop_reason: Some("end_turn".to_string()),
+                usage: clanker_message::Usage::default(),
+            })
+            .await
+            .ok();
+            tx.send(clankers_provider::streaming::StreamEvent::MessageStop).await.ok();
+            Ok(())
+        }
+
+        fn models(&self) -> &[clankers_provider::Model] {
+            &[]
+        }
+
+        fn name(&self) -> &str {
+            "delayed-streaming-recording"
         }
     }
 
@@ -1155,43 +1311,31 @@ mod tests {
         assert!(ctrl.core_state.pending_prompt.is_none());
         let prompt_events = ctrl.drain_events();
         assert!(matches!(prompt_events.first(), Some(DaemonEvent::TextDelta { text }) if text == "runtime answer"));
-        assert!(prompt_events.iter().any(|event| matches!(
-            event,
-            DaemonEvent::UsageUpdate {
-                input_tokens: 11,
-                output_tokens: 7,
-                cache_read: 3,
-                ..
-            }
-        )));
+        assert!(prompt_events.iter().any(|event| matches!(event, DaemonEvent::UsageUpdate {
+            input_tokens: 11,
+            output_tokens: 7,
+            cache_read: 3,
+            ..
+        })));
         assert!(matches!(prompt_events.last(), Some(DaemonEvent::PromptDone { error: None })));
 
-        assert!(ctrl.apply_control_with_runtime_adapter(
-            &mut adapter,
+        assert!(ctrl.apply_control_with_runtime_adapter(&mut adapter, RuntimeControlRequest::SetThinkingLevel {
+            level: CoreThinkingLevel::High,
+        },));
+        assert!(ctrl.apply_control_with_runtime_adapter(&mut adapter, RuntimeControlRequest::SetDisabledTools {
+            tools: vec!["bash".to_string()],
+        },));
+        assert!(ctrl.start_embedded_prompt("cancel me", 0));
+        assert!(ctrl.apply_control_with_runtime_adapter(&mut adapter, RuntimeControlRequest::Abort));
+        assert_eq!(adapter.controls, vec![
             RuntimeControlRequest::SetThinkingLevel {
                 level: CoreThinkingLevel::High,
             },
-        ));
-        assert!(ctrl.apply_control_with_runtime_adapter(
-            &mut adapter,
             RuntimeControlRequest::SetDisabledTools {
                 tools: vec!["bash".to_string()],
             },
-        ));
-        assert!(ctrl.start_embedded_prompt("cancel me", 0));
-        assert!(ctrl.apply_control_with_runtime_adapter(&mut adapter, RuntimeControlRequest::Abort));
-        assert_eq!(
-            adapter.controls,
-            vec![
-                RuntimeControlRequest::SetThinkingLevel {
-                    level: CoreThinkingLevel::High,
-                },
-                RuntimeControlRequest::SetDisabledTools {
-                    tools: vec!["bash".to_string()],
-                },
-                RuntimeControlRequest::Abort,
-            ]
-        );
+            RuntimeControlRequest::Abort,
+        ]);
         assert!(!ctrl.busy);
         assert!(!ctrl.core_state.busy);
         assert!(ctrl.core_state.pending_prompt.is_none());
@@ -1346,6 +1490,70 @@ mod tests {
                 session_id: Some("test-session".to_string()),
             },
         ]);
+    }
+
+    #[tokio::test]
+    async fn streaming_command_callback_receives_delta_before_provider_returns() {
+        let recorded_requests = Arc::new(Mutex::new(Vec::new()));
+        let streamed = Arc::new(tokio::sync::Notify::new());
+        let release = Arc::new(tokio::sync::Notify::new());
+        let returned = Arc::new(AtomicBool::new(false));
+        let provider = Arc::new(DelayedStreamingPromptProvider {
+            requests: Arc::clone(&recorded_requests),
+            streamed: Arc::clone(&streamed),
+            release: Arc::clone(&release),
+            returned: Arc::clone(&returned),
+        });
+        let mut ctrl = make_test_controller_with_provider(provider);
+        let observed_events: Arc<Mutex<Vec<DaemonEvent>>> = Arc::new(Mutex::new(Vec::new()));
+        let callback_events = Arc::clone(&observed_events);
+
+        let task = tokio::spawn(async move {
+            let mut callback = move |events: Vec<DaemonEvent>| {
+                callback_events.lock().unwrap_or_else(|poisoned| poisoned.into_inner()).extend(events);
+            };
+            ctrl.handle_command_with_streaming_events(
+                SessionCommand::Prompt {
+                    text: "delayed".to_string(),
+                    images: vec![],
+                },
+                &mut callback,
+            )
+            .await;
+            ctrl
+        });
+
+        tokio::time::timeout(Duration::from_secs(1), streamed.notified())
+            .await
+            .expect("provider should stream a delta before waiting");
+        for _ in 0..100 {
+            let saw_delta = observed_events
+                .lock()
+                .unwrap_or_else(|poisoned| poisoned.into_inner())
+                .iter()
+                .any(|event| matches!(event, DaemonEvent::TextDelta { text } if text == "stream:delayed"));
+            if saw_delta {
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+
+        let before_release = observed_events.lock().unwrap_or_else(|poisoned| poisoned.into_inner()).clone();
+        assert!(
+            before_release
+                .iter()
+                .any(|event| matches!(event, DaemonEvent::TextDelta { text } if text == "stream:delayed")),
+            "stream delta should be delivered before provider completion: {before_release:?}"
+        );
+        assert!(!returned.load(Ordering::SeqCst), "provider must still be blocked when the delta is delivered");
+
+        release.notify_waiters();
+        let mut ctrl = task.await.expect("streaming command task should finish");
+        let trailing_events = ctrl.drain_events();
+        assert!(trailing_events.is_empty(), "streaming path should not leave undrained events: {trailing_events:?}");
+        let all_events = observed_events.lock().unwrap_or_else(|poisoned| poisoned.into_inner()).clone();
+        assert_prompt_stream_completed_after_delta(&all_events, "stream:delayed");
+        assert_eq!(recorded_requests.lock().unwrap_or_else(|poisoned| poisoned.into_inner()).len(), 1);
     }
 
     #[tokio::test]

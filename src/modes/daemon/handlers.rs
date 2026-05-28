@@ -210,7 +210,27 @@ async fn run_chat_prompt(
                 let bytes = serde_json::to_vec(&frame).unwrap_or_default();
                 write_frame(&mut send, &bytes).await.ok();
             }
-            Ok(DaemonEvent::AgentEnd | DaemonEvent::PromptDone { .. }) => break,
+            Ok(DaemonEvent::AgentEnd) => {}
+            Ok(DaemonEvent::PromptDone { error: None }) => break,
+            Ok(DaemonEvent::PromptDone {
+                error: Some(ref message),
+            }) => {
+                let frame = json!({ "type": "error", "message": message });
+                let bytes = serde_json::to_vec(&frame).unwrap_or_default();
+                write_frame(&mut send, &bytes).await.ok();
+                send.finish().ok();
+                return;
+            }
+            Ok(DaemonEvent::SystemMessage {
+                ref text,
+                is_error: true,
+            }) if text == "A prompt is already in progress" => {
+                let frame = json!({ "type": "error", "message": text });
+                let bytes = serde_json::to_vec(&frame).unwrap_or_default();
+                write_frame(&mut send, &bytes).await.ok();
+                send.finish().ok();
+                return;
+            }
             Err(tokio::sync::broadcast::error::RecvError::Closed) => break,
             Err(tokio::sync::broadcast::error::RecvError::Lagged(n)) => {
                 warn!("[{}] chat/1 client lagged, skipped {n} events", key);

@@ -246,7 +246,19 @@ async fn run_agent_actor(
                 }
 
                 let tools_before = controller.current_tool_infos();
-                controller.handle_command(cmd).await;
+                {
+                    let mut broadcast_stream_events = |events| {
+                        super::socket_bridge::broadcast_events(
+                            events,
+                            &event_tx,
+                            &mut panel_rx,
+                            plugin_manager.as_ref(),
+                        );
+                    };
+                    controller
+                        .handle_command_with_streaming_events(cmd, &mut broadcast_stream_events)
+                        .await;
+                }
                 super::socket_bridge::drain_and_broadcast(
                     &mut controller, &event_tx, &mut panel_rx,
                     plugin_manager.as_ref(),
@@ -260,12 +272,25 @@ async fn run_agent_actor(
                 // Post-prompt actions (auto-test, loop continuation)
                 if !controller.is_busy() {
                     if let Some(auto_prompt) = controller.maybe_auto_test() {
-                        controller
-                            .handle_command(SessionCommand::Prompt {
-                                text: auto_prompt,
-                                images: vec![],
-                            })
-                            .await;
+                        {
+                            let mut broadcast_stream_events = |events| {
+                                super::socket_bridge::broadcast_events(
+                                    events,
+                                    &event_tx,
+                                    &mut panel_rx,
+                                    plugin_manager.as_ref(),
+                                );
+                            };
+                            controller
+                                .handle_command_with_streaming_events(
+                                    SessionCommand::Prompt {
+                                        text: auto_prompt,
+                                        images: vec![],
+                                    },
+                                    &mut broadcast_stream_events,
+                                )
+                                .await;
+                        }
                         super::socket_bridge::drain_and_broadcast(
                             &mut controller, &event_tx, &mut panel_rx,
                             plugin_manager.as_ref(),
@@ -450,9 +475,10 @@ const MAX_PROMPT_COLLECT_BYTES: usize = 512 * 1024;
 /// Send a prompt to an actor session and collect the full text response.
 ///
 /// Subscribes to the session's broadcast channel, sends the prompt via
-/// `cmd_tx`, and collects `DaemonEvent::TextDelta` until `AgentEnd` or
-/// `PromptDone`. Used by chat/1 and Matrix bridge instead of the old
-/// clone-seed-prompt pattern.
+/// `cmd_tx`, and collects `DaemonEvent::TextDelta` until `PromptDone`.
+/// Waiting for controller-level completion avoids returning a reply while the
+/// session is still busy between `AgentEnd` and `PromptDone`. Used by chat/1 and Matrix bridge
+/// instead of the old clone-seed-prompt pattern.
 ///
 /// If `update_last_active` is false (proactive prompts like heartbeats),
 /// the session handle's timestamp is not updated, so idle reaping still
@@ -483,8 +509,20 @@ pub async fn prompt_and_collect(
                     collected.push_str(&text);
                 }
             }
-            Ok(DaemonEvent::AgentEnd) => break,
-            Ok(DaemonEvent::PromptDone { .. }) => break,
+            Ok(DaemonEvent::AgentEnd) => {}
+            Ok(DaemonEvent::PromptDone { error: Some(message) }) => {
+                if collected.is_empty() {
+                    collected.push_str(&message);
+                }
+                break;
+            }
+            Ok(DaemonEvent::PromptDone { error: None }) => break,
+            Ok(DaemonEvent::SystemMessage { text, is_error: true }) if text == "A prompt is already in progress" => {
+                if collected.is_empty() {
+                    collected.push_str(&text);
+                }
+                break;
+            }
             Err(broadcast::error::RecvError::Closed) => break,
             Err(broadcast::error::RecvError::Lagged(n)) => {
                 warn!("prompt_and_collect: skipped {n} events");
@@ -926,6 +964,8 @@ mod factory_plugin_tests {
     use std::path::PathBuf;
     use std::sync::Arc;
     use std::sync::Mutex;
+    use std::sync::atomic::AtomicBool;
+    use std::sync::atomic::Ordering;
     use std::time::Duration;
 
     use clanker_actor::ProcessRegistry;
@@ -937,6 +977,12 @@ mod factory_plugin_tests {
     use super::SessionFactory;
 
     struct StubProvider;
+
+    struct DelayedStreamingProvider {
+        streamed: Arc<tokio::sync::Notify>,
+        release: Arc<tokio::sync::Notify>,
+        returned: Arc<AtomicBool>,
+    }
 
     #[async_trait::async_trait]
     impl crate::provider::Provider for StubProvider {
@@ -955,9 +1001,69 @@ mod factory_plugin_tests {
         }
     }
 
+    #[async_trait::async_trait]
+    impl crate::provider::Provider for DelayedStreamingProvider {
+        async fn complete(
+            &self,
+            _req: crate::provider::CompletionRequest,
+            tx: tokio::sync::mpsc::Sender<crate::provider::streaming::StreamEvent>,
+        ) -> std::result::Result<(), crate::provider::error::ProviderError> {
+            tx.send(crate::provider::streaming::StreamEvent::MessageStart {
+                message: crate::provider::streaming::MessageMetadata {
+                    id: "delayed-message".to_string(),
+                    model: "test".to_string(),
+                    role: "assistant".to_string(),
+                },
+            })
+            .await
+            .ok();
+            tx.send(crate::provider::streaming::StreamEvent::ContentBlockStart {
+                index: 0,
+                content_block: clanker_message::Content::Text { text: String::new() },
+            })
+            .await
+            .ok();
+            tx.send(crate::provider::streaming::StreamEvent::ContentBlockDelta {
+                index: 0,
+                delta: crate::provider::streaming::ContentDelta::TextDelta {
+                    text: "actor stream".to_string(),
+                },
+            })
+            .await
+            .ok();
+            self.streamed.notify_waiters();
+            self.release.notified().await;
+            self.returned.store(true, Ordering::SeqCst);
+            tx.send(crate::provider::streaming::StreamEvent::ContentBlockStop { index: 0 }).await.ok();
+            tx.send(crate::provider::streaming::StreamEvent::MessageDelta {
+                stop_reason: Some("end_turn".to_string()),
+                usage: clanker_message::Usage::default(),
+            })
+            .await
+            .ok();
+            tx.send(crate::provider::streaming::StreamEvent::MessageStop).await.ok();
+            Ok(())
+        }
+
+        fn models(&self) -> &[crate::provider::Model] {
+            &[]
+        }
+
+        fn name(&self) -> &str {
+            "delayed-streaming"
+        }
+    }
+
     fn make_factory(plugin_manager: Option<Arc<Mutex<crate::plugin::PluginManager>>>) -> SessionFactory {
+        make_factory_with_provider(Arc::new(StubProvider), plugin_manager)
+    }
+
+    fn make_factory_with_provider(
+        provider: Arc<dyn crate::provider::Provider>,
+        plugin_manager: Option<Arc<Mutex<crate::plugin::PluginManager>>>,
+    ) -> SessionFactory {
         SessionFactory {
-            provider: Arc::new(StubProvider),
+            provider,
             tools: vec![],
             settings: crate::config::settings::Settings::default(),
             default_model: "test".to_string(),
@@ -1020,6 +1126,138 @@ mod factory_plugin_tests {
         })
         .await
         .expect("timed out waiting for matching ToolList")
+    }
+
+    #[tokio::test]
+    async fn daemon_actor_broadcasts_text_delta_before_provider_returns() {
+        let streamed = Arc::new(tokio::sync::Notify::new());
+        let release = Arc::new(tokio::sync::Notify::new());
+        let returned = Arc::new(AtomicBool::new(false));
+        let provider = Arc::new(DelayedStreamingProvider {
+            streamed: Arc::clone(&streamed),
+            release: Arc::clone(&release),
+            returned: Arc::clone(&returned),
+        });
+        let registry = ProcessRegistry::new();
+        let factory = make_factory_with_provider(provider, None);
+        let spawned = super::spawn_agent_process(
+            &registry,
+            &factory,
+            "daemon-streaming-test".to_string(),
+            None,
+            None,
+            None,
+            None,
+        );
+        let mut event_rx = spawned.event_tx.subscribe();
+
+        spawned
+            .cmd_tx
+            .send(clankers_protocol::SessionCommand::Prompt {
+                text: "stream before done".to_string(),
+                images: vec![],
+            })
+            .expect("session command should be accepted");
+        tokio::time::timeout(Duration::from_secs(1), streamed.notified())
+            .await
+            .expect("provider should stream before waiting for release");
+
+        let delta_before_release = tokio::time::timeout(Duration::from_secs(1), async {
+            loop {
+                match event_rx.recv().await {
+                    Ok(clankers_protocol::DaemonEvent::TextDelta { text }) if text == "actor stream" => break true,
+                    Ok(clankers_protocol::DaemonEvent::PromptDone { .. }) => break false,
+                    Ok(_) | Err(broadcast::error::RecvError::Lagged(_)) => {}
+                    Err(error) => panic!("event stream closed before delta: {error}"),
+                }
+            }
+        })
+        .await
+        .unwrap_or(false);
+        let returned_before_release = returned.load(Ordering::SeqCst);
+
+        release.notify_waiters();
+        tokio::time::timeout(Duration::from_secs(1), async {
+            loop {
+                match event_rx.recv().await {
+                    Ok(clankers_protocol::DaemonEvent::PromptDone { error: None }) => break,
+                    Ok(_) | Err(broadcast::error::RecvError::Lagged(_)) => {}
+                    Err(error) => panic!("event stream closed before prompt completion: {error}"),
+                }
+            }
+        })
+        .await
+        .expect("prompt should complete after provider release");
+        shutdown_spawned_session(&registry, &spawned);
+
+        assert!(delta_before_release, "daemon actor should broadcast TextDelta before PromptDone/provider return");
+        assert!(!returned_before_release, "provider should still be blocked when TextDelta is broadcast");
+    }
+
+    #[tokio::test]
+    async fn prompt_and_collect_waits_for_prompt_done_after_agent_end() {
+        let (cmd_tx, mut cmd_rx) = mpsc::unbounded_channel();
+        let (event_tx, _) = broadcast::channel(8);
+        let cmd_tx_for_task = cmd_tx.clone();
+        let event_tx_for_task = event_tx.clone();
+        let mut task = tokio::spawn(async move {
+            super::prompt_and_collect(&cmd_tx_for_task, &event_tx_for_task, "followup".to_string(), vec![]).await
+        });
+
+        let cmd = tokio::time::timeout(Duration::from_secs(1), cmd_rx.recv())
+            .await
+            .expect("prompt command should be sent")
+            .expect("command channel should stay open");
+        assert!(matches!(cmd, clankers_protocol::SessionCommand::Prompt { text, .. } if text == "followup"));
+        event_tx
+            .send(clankers_protocol::DaemonEvent::TextDelta {
+                text: "first reply".to_string(),
+            })
+            .expect("text delta should broadcast");
+        event_tx.send(clankers_protocol::DaemonEvent::AgentEnd).expect("agent end should broadcast");
+
+        assert!(
+            tokio::time::timeout(Duration::from_millis(50), &mut task).await.is_err(),
+            "collector returned at AgentEnd before the session was ready for another prompt"
+        );
+
+        event_tx
+            .send(clankers_protocol::DaemonEvent::PromptDone { error: None })
+            .expect("prompt completion should broadcast");
+        let response = tokio::time::timeout(Duration::from_secs(1), task)
+            .await
+            .expect("collector should finish after PromptDone")
+            .expect("collector task should not panic");
+        assert_eq!(response, "first reply");
+    }
+
+    #[tokio::test]
+    async fn prompt_and_collect_returns_busy_rejection_as_message() {
+        let (cmd_tx, mut cmd_rx) = mpsc::unbounded_channel();
+        let (event_tx, _) = broadcast::channel(8);
+        let cmd_tx_for_task = cmd_tx.clone();
+        let event_tx_for_task = event_tx.clone();
+        let task = tokio::spawn(async move {
+            super::prompt_and_collect(&cmd_tx_for_task, &event_tx_for_task, "next".to_string(), vec![]).await
+        });
+
+        let cmd = tokio::time::timeout(Duration::from_secs(1), cmd_rx.recv())
+            .await
+            .expect("prompt command should be sent")
+            .expect("command channel should stay open");
+        assert!(matches!(cmd, clankers_protocol::SessionCommand::Prompt { text, .. } if text == "next"));
+        event_tx
+            .send(clankers_protocol::DaemonEvent::SystemMessage {
+                text: "A prompt is already in progress".to_string(),
+                is_error: true,
+            })
+            .expect("busy rejection should broadcast");
+
+        let response = tokio::time::timeout(Duration::from_secs(1), task)
+            .await
+            .expect("collector should not hang on busy rejection")
+            .expect("collector task should not panic");
+        assert_eq!(response, "A prompt is already in progress");
     }
 
     fn shutdown_spawned_session(registry: &ProcessRegistry, spawned: &super::SpawnedSession) {

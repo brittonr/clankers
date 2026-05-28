@@ -380,9 +380,17 @@ pub fn drain_and_broadcast(
     panel_rx: &mut mpsc::UnboundedReceiver<SubagentEvent>,
     plugin_manager: Option<&std::sync::Arc<std::sync::Mutex<crate::plugin::PluginManager>>>,
 ) {
-    // Drain controller events
     let events = controller.drain_events();
+    broadcast_events(events, event_tx, panel_rx, plugin_manager);
+}
 
+/// Broadcast an already-drained batch of controller events and panel events.
+pub fn broadcast_events(
+    events: Vec<DaemonEvent>,
+    event_tx: &broadcast::Sender<DaemonEvent>,
+    panel_rx: &mut mpsc::UnboundedReceiver<SubagentEvent>,
+    plugin_manager: Option<&std::sync::Arc<std::sync::Mutex<crate::plugin::PluginManager>>>,
+) {
     // Dispatch to plugins before broadcasting (plugins may produce UI actions)
     if let Some(pm) = plugin_manager.filter(|_| !events.is_empty()) {
         let result = crate::modes::plugin_dispatch::dispatch_daemon_events_to_plugins(pm, &events);
