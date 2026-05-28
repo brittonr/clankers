@@ -24,6 +24,7 @@ use crate::RuntimeServices;
 use crate::RuntimeToolAdapter;
 use crate::RuntimeUsageAdapter;
 use crate::SessionHandle;
+use crate::SessionId;
 use crate::SessionOptions;
 use crate::ToolCatalog;
 use crate::UnavailableRuntimeToolAdapter;
@@ -194,9 +195,20 @@ pub(crate) struct RuntimeInner {
 }
 
 impl Runtime {
-    /// Create a new host-facing session.
+    /// Create a new host-facing stateless session.
     pub async fn create_session(&self, options: SessionOptions) -> Result<SessionHandle, RuntimeError> {
         SessionHandle::new(Arc::clone(&self.inner), options)
+    }
+
+    /// Resume a host-facing session from the configured session store.
+    ///
+    /// Missing or unsupported stores fail before model or tool execution.
+    pub async fn resume_session(
+        &self,
+        session_id: SessionId,
+        options: SessionOptions,
+    ) -> Result<SessionHandle, RuntimeError> {
+        SessionHandle::resume(Arc::clone(&self.inner), session_id, options)
     }
 
     /// Return the catalog published to embedded hosts.

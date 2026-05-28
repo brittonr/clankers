@@ -27,7 +27,7 @@ The provider-adapter kit SHALL use checked fixtures and product-owned model capa
 
 ### Requirement: Session/resume brick convergence
 
-The session-resume-brick SHALL demonstrate product-owned session/message DTOs that can restore context across more than one product-shaped store without depending on shell session storage.
+The session-resume-brick SHALL demonstrate reusable neutral session-ledger DTOs plus product-owned session/message stores that can restore context across more than one product-shaped store without depending on shell session storage.
 
 #### Scenario: Multiple product-shaped stores prove restored context
 - GIVEN multiple product-shaped stores replay a saved session fixture
@@ -39,10 +39,10 @@ The session-resume-brick SHALL demonstrate product-owned session/message DTOs th
 - WHEN the resume kit validates the store
 - THEN it MUST fail closed before fabricating context.
 
-#### Scenario: Reusable API promotion waits for convergence
-- GIVEN the resume behavior is still kit-level
-- WHEN a reusable API is proposed
-- THEN promotion MUST wait until the fixture evidence converges across product-shaped stores.
+#### Scenario: Reusable session ledger API is promoted
+- GIVEN the resume behavior has converged across product-shaped stores
+- WHEN a reusable runtime API is used
+- THEN `SessionLedgerEntry` history and `Runtime::resume_session` MUST restore ordered context while missing or unsupported stores fail closed before model/tool execution.
 
 ### Requirement: Tool catalog manifests are runtime neutral
 

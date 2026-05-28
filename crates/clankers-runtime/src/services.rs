@@ -15,6 +15,7 @@ use crate::EventMetadata;
 use crate::PromptId;
 use crate::RuntimeError;
 use crate::SessionId;
+use crate::SessionLedgerEntry;
 use crate::SideEffectLevel;
 use crate::events::contains_secret_marker;
 use crate::events::sanitize_metadata_value;
@@ -41,6 +42,22 @@ impl RuntimeServices {
             settings: noop.clone(),
             auth: noop.clone(),
             sessions: Arc::new(InMemorySessionStore::default()),
+            cache: noop.clone(),
+            project_context: noop.clone(),
+            skills: noop.clone(),
+            plugins: noop.clone(),
+            checkpoints: noop,
+            extensions: ExtensionServices::disabled(),
+        }
+    }
+
+    #[must_use]
+    pub fn stateless() -> Self {
+        let noop = Arc::new(NoopService);
+        Self {
+            settings: noop.clone(),
+            auth: noop.clone(),
+            sessions: Arc::new(DisabledSessionStore),
             cache: noop.clone(),
             project_context: noop.clone(),
             skills: noop.clone(),
@@ -311,12 +328,14 @@ pub trait SessionStore: Send + Sync {
     fn load(&self, session_id: &SessionId) -> Result<Option<SessionRecord>, RuntimeError>;
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SessionRecord {
     pub session_id: SessionId,
     pub created_at: DateTime<Utc>,
     pub last_prompt: Option<PromptId>,
     pub prompts: Vec<PromptReplayEntry>,
+    #[serde(default)]
+    pub ledger_entries: Vec<SessionLedgerEntry>,
 }
 
 impl SessionRecord {
@@ -327,12 +346,17 @@ impl SessionRecord {
             created_at: Utc::now(),
             last_prompt: None,
             prompts: Vec::new(),
+            ledger_entries: Vec::new(),
         }
     }
 
     #[must_use]
     pub fn replay_context(&self) -> Vec<PromptReplayEntry> {
         self.prompts.clone()
+    }
+
+    pub fn replay(&self) -> Result<crate::SessionLedgerReplay, RuntimeError> {
+        crate::replay_ledger_entries(&self.ledger_entries)
     }
 }
 
@@ -342,6 +366,24 @@ pub struct PromptReplayEntry {
     pub user_prompt: String,
     pub assembled_prompt: AssembledPrompt,
     pub completed_at: DateTime<Utc>,
+}
+
+pub struct DisabledSessionStore;
+
+impl SessionStore for DisabledSessionStore {
+    fn capability(&self) -> &'static str {
+        "unsupported"
+    }
+
+    fn save(&self, record: SessionRecord) -> Result<(), RuntimeError> {
+        let _ = record;
+        Err(RuntimeError::SessionUnsupported("session store disabled".to_string()))
+    }
+
+    fn load(&self, session_id: &SessionId) -> Result<Option<SessionRecord>, RuntimeError> {
+        let _ = session_id;
+        Err(RuntimeError::SessionUnsupported("session store disabled".to_string()))
+    }
 }
 
 pub struct DisabledExtensionService;

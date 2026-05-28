@@ -436,3 +436,14 @@ fn block_on<F: Future>(future: F) -> F::Output {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn embedded_session_store_smoke() {
+        positive_restore_scenario();
+        missing_session_fails_closed();
+    }
+}

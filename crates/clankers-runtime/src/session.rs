@@ -63,9 +63,12 @@ use crate::RuntimeUsageAdapter;
 use crate::RuntimeUsageObservation;
 use crate::RuntimeUsageObservationKind;
 use crate::SessionEvent;
+use crate::SessionLedgerEntry;
 use crate::SessionRecord;
 use crate::StopReason;
 use crate::ToolCatalog;
+use crate::ledger_entries_from_engine_messages;
+use crate::ledger_messages_from_engine_messages;
 use crate::runtime::RuntimeInner;
 
 /// Stable identifier for a host-facing runtime session.
@@ -128,6 +131,8 @@ struct SessionState {
     model: Option<String>,
     disabled_tools: BTreeSet<String>,
     is_shutdown: bool,
+    resume_required: bool,
+    persist_session: bool,
 }
 
 struct RuntimeModelHost {
@@ -150,6 +155,7 @@ impl ModelHost for RuntimeModelHost {
     async fn execute_model(&mut self, request: EngineModelRequest) -> ModelHostOutcome {
         let mut model_request = self.request.clone();
         model_request.model = Some(request.model.clone());
+        model_request.history = ledger_messages_from_engine_messages(&request.messages);
         model_request.metadata = model_request_metadata(&request);
         match self.model.complete(model_request) {
             Ok(response) => {
@@ -483,22 +489,73 @@ fn model_request_metadata(request: &EngineModelRequest) -> ModelRequestMetadata 
     }
 }
 
+fn save_initial_session_record(runtime: &RuntimeInner, session_id: &SessionId) -> Result<bool, RuntimeError> {
+    match runtime.services.sessions.save(SessionRecord::new(session_id.clone())) {
+        Ok(()) => Ok(true),
+        Err(RuntimeError::SessionUnsupported(_)) => Ok(false),
+        Err(error) => Err(error),
+    }
+}
+
+fn replace_record_replay_messages(
+    record: &mut SessionRecord,
+    messages: &[EngineMessage],
+    prompt_id: PromptId,
+    usage: Option<Usage>,
+) {
+    let mut entries = record
+        .ledger_entries
+        .iter()
+        .filter(|entry| !matches!(entry, SessionLedgerEntry::Message { .. } | SessionLedgerEntry::Summary { .. }))
+        .cloned()
+        .collect::<Vec<_>>();
+    entries.splice(0..0, ledger_entries_from_engine_messages(messages));
+    if let Some(usage) = usage {
+        entries.push(SessionLedgerEntry::usage(prompt_id.clone(), usage));
+    }
+    entries.push(SessionLedgerEntry::receipt(
+        prompt_id,
+        "completed",
+        EventMetadata::new(record.session_id.clone()).with("source", "runtime_session"),
+    ));
+    record.ledger_entries = entries;
+}
+
 impl SessionHandle {
     pub(crate) fn new(runtime: Arc<RuntimeInner>, options: SessionOptions) -> Result<Self, RuntimeError> {
         let session_id = options.session_id.unwrap_or_default();
+        let persist_session = save_initial_session_record(&runtime, &session_id)?;
+        Self::from_parts(runtime, session_id, options.model, false, persist_session)
+    }
+
+    pub(crate) fn resume(
+        runtime: Arc<RuntimeInner>,
+        session_id: SessionId,
+        options: SessionOptions,
+    ) -> Result<Self, RuntimeError> {
+        let loaded = runtime.services.sessions.load(&session_id)?;
+        if loaded.is_none() {
+            return Err(RuntimeError::SessionMissing(session_id.to_string()));
+        }
+        Self::from_parts(runtime, session_id, options.model, true, true)
+    }
+
+    fn from_parts(
+        runtime: Arc<RuntimeInner>,
+        session_id: SessionId,
+        model: Option<String>,
+        resume_required: bool,
+        persist_session: bool,
+    ) -> Result<Self, RuntimeError> {
         let (tx, rx) = mpsc::channel(runtime.event_buffer);
         let state = SessionState {
-            session_id: session_id.clone(),
-            model: options.model,
+            session_id,
+            model,
             disabled_tools: BTreeSet::new(),
             is_shutdown: false,
+            resume_required,
+            persist_session,
         };
-        runtime.services.sessions.save(SessionRecord {
-            session_id: session_id.clone(),
-            created_at: Utc::now(),
-            last_prompt: None,
-            prompts: Vec::new(),
-        })?;
         Ok(Self {
             runtime,
             state: Arc::new(Mutex::new(state)),
@@ -519,22 +576,40 @@ impl SessionHandle {
 
     /// Submit one prompt and emit typed semantic events in causal order.
     pub async fn submit_prompt(&self, input: PromptInput) -> Result<PromptReceipt, RuntimeError> {
-        let (session_id, model, disabled_tools) = {
+        let (session_id, model, disabled_tools, resume_required, persist_session) = {
             let state = self.state.lock().await;
             if state.is_shutdown {
                 return Err(RuntimeError::SessionShutdown);
             }
-            (state.session_id.clone(), state.model.clone(), state.disabled_tools.clone())
+            (
+                state.session_id.clone(),
+                state.model.clone(),
+                state.disabled_tools.clone(),
+                state.resume_required,
+                state.persist_session,
+            )
         };
 
         let assembled =
             PromptAssembler::assemble(&self.runtime.prompt_policy, &self.runtime.prompt_sources, input.text)?;
+        let mut history = if resume_required {
+            let record = self
+                .runtime
+                .services
+                .sessions
+                .load(&session_id)?
+                .ok_or_else(|| RuntimeError::SessionMissing(session_id.to_string()))?;
+            record.replay()?.messages
+        } else {
+            Vec::new()
+        };
         let prompt_id = PromptId::new();
         let safe_metadata = EventMetadata::new(session_id.clone())
             .with("prompt_id", prompt_id.as_str())
             .with("model", model.clone().unwrap_or_else(|| "default".to_string()))
             .with("prompt_chars", assembled.user_prompt.chars().count().to_string())
-            .with("disabled_tool_count", disabled_tools.len().to_string());
+            .with("disabled_tool_count", disabled_tools.len().to_string())
+            .with("restored_message_count", history.len().to_string());
 
         self.emit(SessionEvent::PromptAccepted {
             prompt_id: prompt_id.clone(),
@@ -542,13 +617,14 @@ impl SessionHandle {
         })
         .await?;
 
-        let submission = EnginePromptSubmission {
-            messages: vec![EngineMessage {
-                role: EngineMessageRole::User,
-                content: vec![Content::Text {
-                    text: assembled.user_prompt.clone(),
-                }],
+        history.push(EngineMessage {
+            role: EngineMessageRole::User,
+            content: vec![Content::Text {
+                text: assembled.user_prompt.clone(),
             }],
+        });
+        let submission = EnginePromptSubmission {
+            messages: history,
             model: model.clone().unwrap_or_else(|| "default".to_string()),
             system_prompt: system_prompt_from_assembled(&assembled),
             max_tokens: None,
@@ -571,6 +647,7 @@ impl SessionHandle {
                 model,
                 prompt: assembled.clone(),
                 disabled_tools,
+                history: Vec::new(),
                 metadata: ModelRequestMetadata::default(),
             },
             Arc::clone(&event_log),
@@ -627,23 +704,27 @@ impl SessionHandle {
             return Err(error);
         }
 
-        let mut record = self
-            .runtime
-            .services
-            .sessions
-            .load(&session_id)?
-            .unwrap_or_else(|| SessionRecord::new(session_id.clone()));
-        record.last_prompt = Some(prompt_id.clone());
-        record.prompts.push(PromptReplayEntry {
-            prompt_id: prompt_id.clone(),
-            user_prompt: assembled.user_prompt.clone(),
-            assembled_prompt: assembled.clone(),
-            completed_at: Utc::now(),
-        });
-        self.runtime.services.sessions.save(SessionRecord {
-            session_id: session_id.clone(),
-            ..record
-        })?;
+        if persist_session {
+            let mut record = self
+                .runtime
+                .services
+                .sessions
+                .load(&session_id)?
+                .unwrap_or_else(|| SessionRecord::new(session_id.clone()));
+            record.last_prompt = Some(prompt_id.clone());
+            record.prompts.push(PromptReplayEntry {
+                prompt_id: prompt_id.clone(),
+                user_prompt: assembled.user_prompt.clone(),
+                assembled_prompt: assembled.clone(),
+                completed_at: Utc::now(),
+            });
+            let usage = report.usage_observations.last().map(|observation| observation.usage.clone());
+            replace_record_replay_messages(&mut record, &report.final_state.messages, prompt_id.clone(), usage);
+            self.runtime.services.sessions.save(SessionRecord {
+                session_id: session_id.clone(),
+                ..record
+            })?;
+        }
         let stop_reason = if self.runtime.cancellation.is_cancelled() {
             StopReason::Cancelled
         } else {

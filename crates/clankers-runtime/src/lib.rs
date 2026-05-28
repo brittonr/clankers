@@ -39,6 +39,7 @@ pub mod dynamic_runtime;
 pub mod effects;
 mod event_summary;
 pub mod events;
+pub mod ledger;
 pub mod process_jobs;
 pub mod prompt;
 pub mod runtime;
@@ -131,6 +132,19 @@ pub use events::ToolStatus;
 #[cfg(test)]
 use events::contains_secret_marker;
 use events::sanitize_metadata_value;
+pub use ledger::SessionLedgerEntry;
+pub use ledger::SessionLedgerMessage;
+pub use ledger::SessionLedgerReceipt;
+pub use ledger::SessionLedgerRecord;
+pub use ledger::SessionLedgerReplay;
+pub use ledger::SessionLedgerReplayMetadata;
+pub use ledger::SessionLedgerRole;
+pub use ledger::SessionLedgerSummary;
+pub use ledger::SessionLedgerUnsupported;
+pub use ledger::SessionLedgerUsage;
+pub use ledger::ledger_entries_from_engine_messages;
+pub use ledger::ledger_messages_from_engine_messages;
+pub use ledger::replay_ledger_entries;
 pub use prompt::AssembledPrompt;
 pub use prompt::ContextReferenceKind;
 pub use prompt::ContextReferenceRequest;
@@ -170,6 +184,7 @@ pub use services::ExtensionRuntimeService;
 pub use services::ExtensionServices;
 pub use services::ExtensionStatus;
 pub use services::ExtensionToolDescriptor;
+pub use services::DisabledSessionStore;
 pub use services::InMemorySessionStore;
 pub use services::NoopService;
 pub use services::PluginStore;
@@ -246,6 +261,10 @@ pub enum RuntimeError {
     ToolNameCollision(String),
     #[error("store unavailable: {0}")]
     StoreUnavailable(String),
+    #[error("session missing: {0}")]
+    SessionMissing(String),
+    #[error("session unsupported: {0}")]
+    SessionUnsupported(String),
     #[error("confirmation unavailable: {0}")]
     ConfirmationUnavailable(String),
     #[error("confirmation timed out")]
@@ -276,6 +295,7 @@ impl RuntimeError {
             Self::FilesystemDiscoveryDisabled => ErrorClass::Policy,
             Self::InvalidTool(_) | Self::ToolNameCollision(_) => ErrorClass::Tooling,
             Self::StoreUnavailable(_) => ErrorClass::Storage,
+            Self::SessionMissing(_) | Self::SessionUnsupported(_) => ErrorClass::Session,
             Self::ConfirmationUnavailable(_)
             | Self::ConfirmationTimedOut
             | Self::ConfirmationCancelled
@@ -1379,6 +1399,209 @@ mod tests {
             .await
             .unwrap();
         assert!(approved_executed);
+    }
+
+    #[derive(Default)]
+    struct RecordingHistoryModel {
+        requests: std::sync::Mutex<Vec<Vec<String>>>,
+    }
+
+    impl ModelAdapter for RecordingHistoryModel {
+        fn complete(&self, request: ModelRequest) -> Result<ModelResponse, RuntimeError> {
+            self.requests
+                .lock()
+                .unwrap_or_else(|poisoned| poisoned.into_inner())
+                .push(history_lines(&request));
+            Ok(ModelResponse {
+                events: vec![SessionEvent::AssistantDelta {
+                    prompt_id: request.prompt_id,
+                    text: "resumed".to_string(),
+                    metadata: EventMetadata::empty().with("source", "recording_history"),
+                }],
+                engine_content: Vec::new(),
+                usage: Some(clanker_message::Usage {
+                    input_tokens: 4,
+                    output_tokens: 2,
+                    cache_creation_input_tokens: 0,
+                    cache_read_input_tokens: 0,
+                }),
+                stop_reason: None,
+                failure: None,
+            })
+        }
+    }
+
+    #[derive(Default)]
+    struct ProductOwnedSessionStore {
+        records: std::sync::Mutex<std::collections::BTreeMap<SessionId, SessionRecord>>,
+    }
+
+    impl SessionStore for ProductOwnedSessionStore {
+        fn capability(&self) -> &'static str {
+            "product_owned"
+        }
+
+        fn save(&self, record: SessionRecord) -> Result<(), RuntimeError> {
+            self.records
+                .lock()
+                .map_err(|_| RuntimeError::StoreUnavailable("product sessions".to_string()))?
+                .insert(record.session_id.clone(), record);
+            Ok(())
+        }
+
+        fn load(&self, session_id: &SessionId) -> Result<Option<SessionRecord>, RuntimeError> {
+            Ok(self
+                .records
+                .lock()
+                .map_err(|_| RuntimeError::StoreUnavailable("product sessions".to_string()))?
+                .get(session_id)
+                .cloned())
+        }
+    }
+
+    fn history_lines(request: &ModelRequest) -> Vec<String> {
+        request
+            .history
+            .iter()
+            .map(|message| format!("{}: {}", ledger_role_name(message.role), message.text_summary()))
+            .collect()
+    }
+
+    fn ledger_role_name(role: SessionLedgerRole) -> &'static str {
+        match role {
+            SessionLedgerRole::User => "user",
+            SessionLedgerRole::Assistant => "assistant",
+            SessionLedgerRole::Tool => "tool",
+        }
+    }
+
+    fn seed_resume_record(session_id: SessionId) -> SessionRecord {
+        let mut record = SessionRecord::new(session_id.clone());
+        record.last_prompt = Some(PromptId::from_host("prompt-seed"));
+        record.ledger_entries = vec![
+            SessionLedgerEntry::summary("The user previously supplied launch-code context."),
+            SessionLedgerEntry::message(SessionLedgerMessage::text(
+                SessionLedgerRole::User,
+                "Remember the launch code name is Orchard.",
+            )),
+            SessionLedgerEntry::message(SessionLedgerMessage::text(
+                SessionLedgerRole::Assistant,
+                "Stored: launch code name Orchard.",
+            )),
+            SessionLedgerEntry::message(SessionLedgerMessage::text(
+                SessionLedgerRole::Tool,
+                "lookup: Orchard",
+            )),
+            SessionLedgerEntry::receipt(
+                PromptId::from_host("prompt-seed"),
+                "completed",
+                EventMetadata::new(session_id).with("store", "seed"),
+            ),
+        ];
+        record
+    }
+
+    async fn run_resume_backend_fixture(store: Arc<dyn SessionStore>) -> Vec<String> {
+        let session_id = SessionId::from_host("resume-ledger-session");
+        store.save(seed_resume_record(session_id.clone())).unwrap();
+        let services = RuntimeServices {
+            sessions: store,
+            ..RuntimeServices::in_memory()
+        };
+        let model = Arc::new(RecordingHistoryModel::default());
+        let model_adapter: Arc<dyn ModelAdapter> = model.clone();
+        let runtime = RuntimeBuilder::new().services(services).model_adapter(model_adapter).build().unwrap();
+        let session = runtime
+            .resume_session(
+                session_id,
+                SessionOptions {
+                    session_id: None,
+                    model: Some("resume-model".to_string()),
+                },
+            )
+            .await
+            .unwrap();
+
+        session
+            .submit_prompt(PromptInput::new("What launch code name did I give you?"))
+            .await
+            .unwrap();
+
+        model.locked_requests().pop().unwrap()
+    }
+
+    impl RecordingHistoryModel {
+        fn locked_requests(&self) -> std::sync::MutexGuard<'_, Vec<Vec<String>>> {
+            self.requests.lock().unwrap_or_else(|poisoned| poisoned.into_inner())
+        }
+    }
+
+    #[tokio::test]
+    async fn session_resume_two_backends_restore_ordered_ledger_context() {
+        let expected = vec![
+            "user: Session summary:\nThe user previously supplied launch-code context.".to_string(),
+            "user: Remember the launch code name is Orchard.".to_string(),
+            "assistant: Stored: launch code name Orchard.".to_string(),
+            "tool: lookup: Orchard".to_string(),
+            "user: What launch code name did I give you?".to_string(),
+        ];
+
+        let in_memory = run_resume_backend_fixture(Arc::new(InMemorySessionStore::default())).await;
+        let product_owned = run_resume_backend_fixture(Arc::new(ProductOwnedSessionStore::default())).await;
+
+        assert_eq!(in_memory, expected);
+        assert_eq!(product_owned, expected);
+    }
+
+    #[tokio::test]
+    async fn session_resume_missing_or_unsupported_store_fails_before_model() {
+        let missing_model = Arc::new(RecordingHistoryModel::default());
+        let missing_model_adapter: Arc<dyn ModelAdapter> = missing_model.clone();
+        let missing_runtime = RuntimeBuilder::new().model_adapter(missing_model_adapter).build().unwrap();
+        let missing_error = match missing_runtime
+            .resume_session(SessionId::from_host("missing-session"), SessionOptions::default())
+            .await
+        {
+            Ok(_) => panic!("missing session unexpectedly resumed"),
+            Err(error) => error,
+        };
+        assert_eq!(missing_error, RuntimeError::SessionMissing("missing-session".to_string()));
+        assert!(missing_model.locked_requests().is_empty());
+
+        let unsupported_model = Arc::new(RecordingHistoryModel::default());
+        let unsupported_model_adapter: Arc<dyn ModelAdapter> = unsupported_model.clone();
+        let unsupported_runtime = RuntimeBuilder::new()
+            .services(RuntimeServices::stateless())
+            .model_adapter(unsupported_model_adapter)
+            .build()
+            .unwrap();
+        let unsupported_error = match unsupported_runtime
+            .resume_session(SessionId::from_host("unsupported-session"), SessionOptions::default())
+            .await
+        {
+            Ok(_) => panic!("unsupported session store unexpectedly resumed"),
+            Err(error) => error,
+        };
+        assert_eq!(
+            unsupported_error,
+            RuntimeError::SessionUnsupported("session store disabled".to_string())
+        );
+        assert!(unsupported_model.locked_requests().is_empty());
+    }
+
+    #[tokio::test]
+    async fn stateless_runtime_with_disabled_store_can_run_without_resume() {
+        let model = Arc::new(RecordingHistoryModel::default());
+        let model_adapter: Arc<dyn ModelAdapter> = model.clone();
+        let runtime = RuntimeBuilder::new()
+            .services(RuntimeServices::stateless())
+            .model_adapter(model_adapter)
+            .build()
+            .unwrap();
+        let session = runtime.create_session(SessionOptions::default()).await.unwrap();
+        session.submit_prompt(PromptInput::new("stateless prompt")).await.unwrap();
+        assert_eq!(model.locked_requests().len(), 1);
+        assert_eq!(model.locked_requests()[0], vec!["user: stateless prompt".to_string()]);
     }
 
     #[tokio::test]

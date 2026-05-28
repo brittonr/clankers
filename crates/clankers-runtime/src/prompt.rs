@@ -12,6 +12,7 @@ use crate::EventMetadata;
 use crate::RuntimeError;
 use crate::SessionEvent;
 use crate::SessionId;
+use crate::SessionLedgerMessage;
 use crate::events::contains_secret_marker;
 use crate::events::sanitize_metadata_value;
 
@@ -74,6 +75,8 @@ pub struct ModelRequest {
     pub model: Option<String>,
     pub prompt: AssembledPrompt,
     pub disabled_tools: BTreeSet<String>,
+    #[serde(default)]
+    pub history: Vec<SessionLedgerMessage>,
     #[serde(default)]
     pub metadata: ModelRequestMetadata,
 }

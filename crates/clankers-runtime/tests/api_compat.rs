@@ -21,6 +21,9 @@ use clankers_runtime::RuntimeBuilder;
 use clankers_runtime::RuntimeServices;
 use clankers_runtime::SessionEvent;
 use clankers_runtime::SessionId;
+use clankers_runtime::SessionLedgerEntry;
+use clankers_runtime::SessionLedgerMessage;
+use clankers_runtime::SessionLedgerRole;
 use clankers_runtime::SessionOptions;
 use clankers_runtime::SideEffectLevel;
 use clankers_runtime::StopReason;
@@ -29,6 +32,7 @@ use clankers_runtime::ToolDescriptor;
 use clankers_runtime::ToolStatus;
 use clankers_runtime::confirmation;
 use clankers_runtime::events;
+use clankers_runtime::ledger;
 use clankers_runtime::prompt;
 use clankers_runtime::runtime;
 use clankers_runtime::services;
@@ -125,6 +129,7 @@ fn session_module_and_root_reexports_are_source_compatible() {
 #[test]
 fn services_module_and_root_reexports_are_source_compatible() {
     assert_same_type::<RuntimeServices>(RuntimeServices::in_memory(), services::RuntimeServices::in_memory());
+    assert_same_type::<RuntimeServices>(RuntimeServices::stateless(), services::RuntimeServices::stateless());
     assert_same_type::<ExtensionServices>(ExtensionServices::disabled(), services::ExtensionServices::disabled());
     assert_same_type::<ExtensionReceipt>(
         ExtensionReceipt::new("root", "action", ExtensionStatus::Disabled),
@@ -149,6 +154,17 @@ fn services_module_and_root_reexports_are_source_compatible() {
             runtime_entrypoint: None,
             arguments: serde_json::json!({}),
         },
+    );
+}
+
+#[test]
+fn ledger_module_and_root_reexports_are_source_compatible() {
+    assert_same_type::<SessionLedgerEntry>(
+        SessionLedgerEntry::message(SessionLedgerMessage::text(SessionLedgerRole::User, "root")),
+        ledger::SessionLedgerEntry::message(ledger::SessionLedgerMessage::text(
+            ledger::SessionLedgerRole::Assistant,
+            "module",
+        )),
     );
 }
 
