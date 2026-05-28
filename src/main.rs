@@ -281,9 +281,6 @@ async fn dispatch(
         Some(Commands::Daemon { action }) => {
             clankers::commands::daemon::dispatch(&ctx, action).await?;
         }
-        Some(Commands::Matrix { action }) => {
-            clankers::commands::matrix::run(&ctx, action).await?;
-        }
         Some(Commands::MergeDaemon { interval, once }) => {
             clankers::commands::daemon::run_merge_daemon(&ctx, interval, once).await?;
         }

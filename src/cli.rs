@@ -351,11 +351,6 @@ pub enum Commands {
         #[command(subcommand)]
         action: DaemonAction,
     },
-    /// Configure Matrix bridge credentials
-    Matrix {
-        #[command(subcommand)]
-        action: MatrixAction,
-    },
     /// Evaluate constrained Steel Scheme snippets through the Clankers runtime wrapper
     Steel {
         #[command(subcommand)]
@@ -1331,66 +1326,6 @@ pub enum TokenAction {
 }
 
 #[derive(Subcommand, Debug)]
-pub enum MatrixAction {
-    /// Show Matrix bridge configuration status without printing secrets
-    Status,
-    /// Save an existing Matrix access token and device ID
-    ConfigureToken {
-        /// Homeserver URL (for example https://matrix.org)
-        #[arg(long)]
-        homeserver: String,
-        /// Full Matrix user ID (for example @bot:matrix.org)
-        #[arg(long)]
-        user_id: String,
-        /// Device ID associated with the access token
-        #[arg(long)]
-        device_id: String,
-        /// Read access token from this environment variable
-        #[arg(long, default_value = "CLANKERS_MATRIX_ACCESS_TOKEN")]
-        access_token_env: String,
-        /// Read access token from stdin instead of the environment
-        #[arg(long)]
-        access_token_stdin: bool,
-        /// Rooms to auto-join on daemon startup
-        #[arg(long = "room")]
-        rooms: Vec<String>,
-        /// Users allowed to talk to the Matrix bridge (empty allows all)
-        #[arg(long = "allowed-user")]
-        allowed_users: Vec<String>,
-        /// Do not announce clankers capabilities on startup
-        #[arg(long)]
-        no_announce: bool,
-    },
-    /// Log in with username/password and save the resulting session
-    Login {
-        /// Homeserver URL (for example https://matrix.org)
-        #[arg(long)]
-        homeserver: String,
-        /// Matrix username or full user ID accepted by the homeserver
-        #[arg(long)]
-        username: String,
-        /// Read password from this environment variable
-        #[arg(long, default_value = "CLANKERS_MATRIX_PASSWORD")]
-        password_env: String,
-        /// Read password from stdin instead of the environment
-        #[arg(long)]
-        password_stdin: bool,
-        /// Device display name for the Matrix session
-        #[arg(long)]
-        device_name: Option<String>,
-        /// Rooms to auto-join on daemon startup
-        #[arg(long = "room")]
-        rooms: Vec<String>,
-        /// Users allowed to talk to the Matrix bridge (empty allows all)
-        #[arg(long = "allowed-user")]
-        allowed_users: Vec<String>,
-        /// Do not announce clankers capabilities on startup
-        #[arg(long)]
-        no_announce: bool,
-    },
-}
-
-#[derive(Subcommand, Debug)]
 pub enum DaemonAction {
     /// Start the daemon (foreground by default, -d to background)
     Start {
@@ -1456,86 +1391,6 @@ mod tests {
     use clap::Parser;
 
     use super::*;
-
-    #[test]
-    fn matrix_configure_token_cli_parses_secret_source_and_bridge_options() {
-        let cli = Cli::parse_from([
-            "clankers",
-            "matrix",
-            "configure-token",
-            "--homeserver",
-            "https://matrix.example.org",
-            "--user-id",
-            "@bot:example.org",
-            "--device-id",
-            "DEVICEID",
-            "--access-token-stdin",
-            "--room",
-            "!room:example.org",
-            "--allowed-user",
-            "@alice:example.org",
-            "--no-announce",
-        ]);
-        match cli.command.expect("command should parse") {
-            Commands::Matrix {
-                action:
-                    MatrixAction::ConfigureToken {
-                        homeserver,
-                        user_id,
-                        device_id,
-                        access_token_stdin,
-                        rooms,
-                        allowed_users,
-                        no_announce,
-                        ..
-                    },
-            } => {
-                assert_eq!(homeserver, "https://matrix.example.org");
-                assert_eq!(user_id, "@bot:example.org");
-                assert_eq!(device_id, "DEVICEID");
-                assert!(access_token_stdin);
-                assert_eq!(rooms, vec!["!room:example.org"]);
-                assert_eq!(allowed_users, vec!["@alice:example.org"]);
-                assert!(no_announce);
-            }
-            other => panic!("unexpected command: {other:?}"),
-        }
-    }
-
-    #[test]
-    fn matrix_login_cli_parses_password_env() {
-        let cli = Cli::parse_from([
-            "clankers",
-            "matrix",
-            "login",
-            "--homeserver",
-            "https://matrix.example.org",
-            "--username",
-            "bot",
-            "--password-env",
-            "MATRIX_PASSWORD",
-            "--device-name",
-            "clankers-ci",
-        ]);
-        match cli.command.expect("command should parse") {
-            Commands::Matrix {
-                action:
-                    MatrixAction::Login {
-                        homeserver,
-                        username,
-                        password_env,
-                        device_name,
-                        ..
-                    },
-            } => {
-                assert_eq!(homeserver, "https://matrix.example.org");
-                assert_eq!(username, "bot");
-                assert_eq!(password_env, "MATRIX_PASSWORD");
-                assert_eq!(device_name.as_deref(), Some("clankers-ci"));
-            }
-            other => panic!("unexpected command: {other:?}"),
-        }
-    }
 
     #[test]
     fn acp_serve_cli_parses_stdio_session_options() {
