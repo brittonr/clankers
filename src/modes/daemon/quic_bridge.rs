@@ -152,6 +152,7 @@ async fn handle_control_stream(
             model,
             system_prompt,
             token,
+            thinking_level,
             ..
         } => {
             if !should_skip_token_check && token.is_none() {
@@ -184,7 +185,17 @@ async fn handle_control_stream(
                     None // should_skip_token_check or no auth layer = full access
                 };
 
-                create_session_over_quic(model, system_prompt, state, factory, registry, shutdown, capabilities).await
+                create_session_over_quic(
+                    model,
+                    system_prompt,
+                    thinking_level,
+                    state,
+                    factory,
+                    registry,
+                    shutdown,
+                    capabilities,
+                )
+                .await
             }
         }
         other => {
@@ -250,6 +261,7 @@ fn dispatch_readonly_control(
 async fn create_session_over_quic(
     model: Option<String>,
     system_prompt: Option<String>,
+    thinking_level: Option<String>,
     state: &Arc<Mutex<DaemonState>>,
     factory: &Arc<SessionFactory>,
     registry: &clanker_actor::ProcessRegistry,
@@ -274,6 +286,10 @@ async fn create_session_over_quic(
     );
     let cmd_tx = spawned.cmd_tx;
     let event_tx = spawned.event_tx;
+
+    if let Some(level) = thinking_level.filter(|level| !level.trim().is_empty()) {
+        cmd_tx.send(SessionCommand::SetThinkingLevel { level }).ok();
+    }
 
     let socket_path = session_socket_path(&session_id);
 

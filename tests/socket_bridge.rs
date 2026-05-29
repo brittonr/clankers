@@ -169,6 +169,7 @@ async fn test_control_socket_create_session() {
         resume_id: None,
         continue_last: false,
         cwd: None,
+        thinking_level: None,
     })
     .await
     .unwrap();

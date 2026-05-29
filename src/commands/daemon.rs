@@ -13,6 +13,14 @@ use crate::cli::DaemonAction;
 use crate::commands::CommandContext;
 use crate::error::Result;
 
+#[derive(Debug, Clone, Default)]
+pub struct DaemonStartupOptions {
+    pub model: Option<String>,
+    pub api_key: Option<String>,
+    pub api_base: Option<String>,
+    pub account: Option<String>,
+}
+
 /// Dispatch a daemon subcommand.
 pub async fn dispatch(ctx: &CommandContext, action: DaemonAction) -> Result<()> {
     match action {
@@ -175,8 +183,17 @@ fn start_background(
     let exe = std::env::current_exe().map_err(|e| crate::error::Error::Io { source: e })?;
     let mut cmd = std::process::Command::new(exe);
 
-    // Forward model and logging as top-level flags (before subcommand)
+    // Forward model/provider options and logging as top-level flags (before subcommand).
     cmd.args(["--model", &ctx.model]);
+    if let Some(api_key) = ctx.api_key.as_deref() {
+        cmd.env("CLANKERS_API_KEY", api_key);
+    }
+    if let Some(api_base) = ctx.api_base.as_deref() {
+        cmd.arg("--api-base").arg(api_base);
+    }
+    if let Some(account) = ctx.account.as_deref() {
+        cmd.arg("--account").arg(account);
+    }
     cmd.arg("--log-file").arg(&log_path);
     cmd.arg("--log-level").arg("info");
 
@@ -232,13 +249,25 @@ fn start_background(
 /// Ensure a daemon is running. If not, start one in background with defaults.
 /// Used by `--auto-daemon` on attach and the default interactive mode.
 pub async fn ensure_daemon_running() -> Result<()> {
-    if transport::running_daemon_pid().is_some() {
+    ensure_daemon_running_with_options(DaemonStartupOptions::default()).await
+}
+
+/// Ensure a daemon is running, forwarding startup-only CLI options when a new
+/// daemon process must be spawned.
+pub async fn ensure_daemon_running_with_options(options: DaemonStartupOptions) -> Result<()> {
+    if let Some(pid) = transport::running_daemon_pid() {
         // Already running — verify socket responds
         if send_control(ControlCommand::Status).await.is_ok() {
-            return Ok(());
+            if daemon_executable_matches_current(pid) {
+                return Ok(());
+            }
+            tracing::warn!("Daemon PID {pid} was started from a different executable; restarting for this client...");
+            send_control(ControlCommand::Shutdown).await.ok();
+            wait_for_daemon_exit(pid).await?;
+        } else {
+            // PID alive but socket dead — stale, try starting fresh
+            tracing::warn!("Stale daemon detected (PID file exists but socket unresponsive), starting fresh...");
         }
-        // PID alive but socket dead — stale, try starting fresh
-        tracing::warn!("Stale daemon detected (PID file exists but socket unresponsive), starting fresh...");
     }
 
     let sock_dir = transport::socket_dir();
@@ -270,6 +299,18 @@ pub async fn ensure_daemon_running() -> Result<()> {
         let log_err = log_file.try_clone().map_err(|e| crate::error::Error::Io { source: e })?;
 
         let mut cmd = std::process::Command::new(exe);
+        if let Some(model) = options.model.as_deref() {
+            cmd.arg("--model").arg(model);
+        }
+        if let Some(api_key) = options.api_key.as_deref() {
+            cmd.env("CLANKERS_API_KEY", api_key);
+        }
+        if let Some(api_base) = options.api_base.as_deref() {
+            cmd.arg("--api-base").arg(api_base);
+        }
+        if let Some(account) = options.account.as_deref() {
+            cmd.arg("--account").arg(account);
+        }
         cmd.arg("--log-file").arg(&log_path);
         cmd.arg("--log-level").arg("info");
         cmd.args(["daemon", "start"]);
@@ -299,6 +340,39 @@ pub async fn ensure_daemon_running() -> Result<()> {
     Err(crate::error::Error::Provider {
         message: format!("Daemon control socket not responsive after 5s. Check logs: {}", log_path.display()),
     })
+}
+
+async fn wait_for_daemon_exit(pid: u32) -> Result<()> {
+    for _ in 0..40 {
+        if transport::running_daemon_pid() != Some(pid) {
+            return Ok(());
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+    }
+
+    Err(crate::error::Error::Provider {
+        message: format!("Daemon PID {pid} did not exit after restart request"),
+    })
+}
+
+fn daemon_executable_matches_current(pid: u32) -> bool {
+    let Ok(current) = std::env::current_exe() else {
+        return true;
+    };
+    let Some(running) = daemon_executable_path(pid) else {
+        return true;
+    };
+    running == current
+}
+
+#[cfg(target_os = "linux")]
+fn daemon_executable_path(pid: u32) -> Option<std::path::PathBuf> {
+    std::fs::read_link(format!("/proc/{pid}/exe")).ok()
+}
+
+#[cfg(not(target_os = "linux"))]
+fn daemon_executable_path(_pid: u32) -> Option<std::path::PathBuf> {
+    None
 }
 
 /// Try to acquire an exclusive `flock` on the file. Returns `true` if acquired,
@@ -501,6 +575,7 @@ async fn create(model: Option<String>, system_prompt: Option<String>) -> Result<
         resume_id: None,
         continue_last: false,
         cwd: None,
+        thinking_level: None,
     })
     .await?;
     match resp {

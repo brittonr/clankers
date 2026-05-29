@@ -7,7 +7,6 @@ use std::time::Duration;
 
 use clankers_controller::client::ClientAdapter;
 use clankers_protocol::DaemonEvent;
-use clankers_protocol::SessionCommand;
 use clankers_protocol::control::ControlCommand;
 use clankers_protocol::control::ControlResponse;
 use tracing::info;
@@ -35,6 +34,12 @@ pub struct AutoDaemonOptions {
     pub continue_last: bool,
     pub no_session: bool,
     pub cwd: String,
+    /// CLI-level API key override forwarded when auto-starting the daemon.
+    pub api_key: Option<String>,
+    /// CLI-level API base override forwarded when auto-starting the daemon.
+    pub api_base: Option<String>,
+    /// CLI-level account override forwarded when auto-starting the daemon.
+    pub account: Option<String>,
     /// Enable extended thinking (from --thinking CLI flag).
     pub thinking: bool,
 }
@@ -55,7 +60,19 @@ pub struct AutoDaemonOptions {
 )]
 pub async fn run_auto_daemon_attach(opts: AutoDaemonOptions) -> Result<()> {
     // 1. Ensure a daemon is running (starts one in the background if needed)
-    crate::commands::daemon::ensure_daemon_running().await?;
+    crate::commands::daemon::ensure_daemon_running_with_options(crate::commands::daemon::DaemonStartupOptions {
+        model: Some(opts.model.clone()),
+        api_key: opts.api_key.clone(),
+        api_base: opts.api_base.clone(),
+        account: opts.account.clone(),
+    })
+    .await?;
+
+    let initial_thinking_level = if opts.thinking {
+        "max".to_string()
+    } else {
+        opts.settings.parsed_thinking_level().label().to_string()
+    };
 
     // 2. Create or resume a session on the daemon
     let create_cmd = ControlCommand::CreateSession {
@@ -65,6 +82,7 @@ pub async fn run_auto_daemon_attach(opts: AutoDaemonOptions) -> Result<()> {
         resume_id: if opts.no_session { None } else { opts.resume_id.clone() },
         continue_last: if opts.no_session { false } else { opts.continue_last },
         cwd: Some(opts.cwd.clone()),
+        thinking_level: Some(initial_thinking_level),
     };
 
     let resp = send_control(create_cmd).await?;
@@ -117,13 +135,6 @@ pub async fn run_auto_daemon_attach(opts: AutoDaemonOptions) -> Result<()> {
     };
 
     client.replay_history();
-
-    // Forward CLI flags that translate to session commands
-    if opts.thinking {
-        client.send(SessionCommand::SetThinkingLevel {
-            level: "max".to_string(),
-        });
-    }
 
     // 4. Set up the terminal and run the attach event loop
     let mut term = super::common::init_terminal()?;

@@ -495,6 +495,7 @@ async fn create_remote_session(conn: &::iroh::endpoint::Connection, model: Optio
             resume_id: None,
             continue_last: false,
             cwd: None,
+            thinking_level: None,
         },
     };
     quic_write_frame(&mut send, &request).await?;

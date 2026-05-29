@@ -65,6 +65,7 @@ pub(crate) async fn resolve_session(
             resume_id: None,
             continue_last: false,
             cwd: None,
+            thinking_level: None,
         })
         .await?;
         return match resp {
@@ -339,6 +340,7 @@ pub(crate) async fn try_recover_daemon(
             resume_id: Some(session_id.to_string()),
             continue_last: false,
             cwd: Some(cwd.to_string()),
+            thinking_level: None,
         };
 
         match send_control(create_cmd).await {
@@ -356,6 +358,7 @@ pub(crate) async fn try_recover_daemon(
                     resume_id: None,
                     continue_last: false,
                     cwd: Some(cwd.to_string()),
+                    thinking_level: None,
                 };
                 match send_control(fresh_cmd).await {
                     Ok(ControlResponse::Created {

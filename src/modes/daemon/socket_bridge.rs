@@ -182,6 +182,7 @@ async fn handle_control(
             resume_id,
             continue_last,
             cwd,
+            thinking_level,
         } => {
             // If resuming, try to load seed messages from the session file.
             let (session_id, seed_messages) =
@@ -200,6 +201,10 @@ async fn handle_control(
             );
             let cmd_tx = spawned.cmd_tx;
             let event_tx = spawned.event_tx;
+
+            if let Some(level) = thinking_level.filter(|level| !level.trim().is_empty()) {
+                cmd_tx.send(SessionCommand::SetThinkingLevel { level }).ok();
+            }
 
             let socket_path = session_socket_path(&session_id);
 

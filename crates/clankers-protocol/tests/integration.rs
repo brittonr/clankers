@@ -187,6 +187,7 @@ async fn control_create_session() {
         resume_id: None,
         continue_last: false,
         cwd: None,
+        thinking_level: None,
     };
     write_frame(&mut client, &cmd).await.unwrap();
 
@@ -513,6 +514,7 @@ async fn daemon_request_create_session_round_trip() {
             resume_id: None,
             continue_last: false,
             cwd: None,
+            thinking_level: None,
         },
     };
     write_frame(&mut client, &req).await.unwrap();

@@ -32,6 +32,9 @@ pub enum ControlCommand {
         /// Working directory for session context.
         #[serde(default = "default_none_string")]
         cwd: Option<String>,
+        /// Initial thinking/reasoning level for the session.
+        #[serde(default = "default_none_string")]
+        thinking_level: Option<String>,
     },
     /// Attach to an existing session (returns the session socket path).
     AttachSession { session_id: String },

@@ -252,6 +252,7 @@ mod tests {
             resume_id: None,
             continue_last: false,
             cwd: None,
+            thinking_level: None,
         };
 
         let mut buf = Vec::new();
@@ -635,6 +636,7 @@ mod tests {
                 resume_id: Some("sess-123".to_string()),
                 continue_last: false,
                 cwd: Some("/home/user/project".to_string()),
+                thinking_level: Some("max".to_string()),
             },
             ControlCommand::CreateSession {
                 model: None,
@@ -643,6 +645,7 @@ mod tests {
                 resume_id: None,
                 continue_last: true,
                 cwd: None,
+                thinking_level: None,
             },
             ControlCommand::AttachSession {
                 session_id: "sess-456".to_string(),
@@ -945,11 +948,13 @@ mod tests {
                 resume_id,
                 continue_last,
                 cwd,
+                thinking_level,
                 ..
             } => {
                 assert!(resume_id.is_none());
                 assert!(!continue_last);
                 assert!(cwd.is_none());
+                assert!(thinking_level.is_none());
             }
             _ => panic!("expected CreateSession"),
         }
