@@ -1,23 +1,18 @@
-//! Daemon mode — headless agent that listens on iroh and Matrix.
+//! Daemon mode — headless agent that listens on local sockets and iroh.
 //!
-//! Runs as a long-lived background process. Incoming messages from either
-//! transport are routed to per-sender agent sessions. Responses are sent
-//! back through the originating channel.
+//! Runs as a long-lived background process. Incoming transport messages are
+//! routed to per-sender agent sessions. Responses are sent back through the
+//! originating channel.
 //!
 //! ## Transport: iroh
 //!
 //! Uses ALPN negotiation on the iroh QUIC endpoint:
 //! - `clankers/rpc/1` — existing JSON-RPC protocol (ping, status, prompt, file)
 //! - `clankers/chat/1` — conversational channel with persistent sessions
-//!
-//! ## Transport: Matrix
-//!
-//! Listens for `ClankersEvent::Text` (human messages) and `ClankersEvent::Request`
-//! in joined rooms. Responses are sent back as `matrix_send`.
-
 use std::sync::Arc;
 
 use tokio_util::sync::CancellationToken;
+#[cfg(feature = "matrix-bridge")]
 use tracing::error;
 use tracing::info;
 use tracing::warn;
@@ -38,6 +33,7 @@ pub mod socket_bridge;
 // Re-export public types
 pub(crate) use config::ALPN_CHAT;
 pub use config::DaemonConfig;
+#[cfg(feature = "matrix-bridge")]
 pub(crate) use config::ProactiveConfig;
 use session_store::create_auth_layer;
 
@@ -623,6 +619,7 @@ async fn handle_iroh_connection_from_conn(
     Ok(())
 }
 
+#[cfg(feature = "matrix-bridge")]
 fn spawn_matrix_bridge(
     config: &DaemonConfig,
     daemon_state: &Arc<tokio::sync::Mutex<clankers_controller::transport::DaemonState>>,
@@ -664,6 +661,22 @@ fn spawn_matrix_bridge(
             error!("Matrix bridge error: {e}");
         }
     }))
+}
+
+#[cfg(not(feature = "matrix-bridge"))]
+fn spawn_matrix_bridge(
+    config: &DaemonConfig,
+    _daemon_state: &Arc<tokio::sync::Mutex<clankers_controller::transport::DaemonState>>,
+    _session_factory: &Arc<socket_bridge::SessionFactory>,
+    _registry: &clanker_actor::ProcessRegistry,
+    _auth: &Option<Arc<session_store::AuthLayer>>,
+    _paths: &ClankersPaths,
+    _cancel: CancellationToken,
+) -> Option<tokio::task::JoinHandle<()>> {
+    if config.enable_matrix {
+        warn!("Matrix bridge is not built into this clankers binary; use the Matrix plugin instead");
+    }
+    None
 }
 
 async fn spawn_heartbeat(

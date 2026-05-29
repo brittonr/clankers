@@ -74,6 +74,7 @@ pub mod grep;
 pub mod image_gen;
 pub mod loop_tool;
 pub mod ls;
+#[cfg(feature = "matrix-bridge")]
 pub mod matrix;
 pub mod mcp;
 pub mod memory;

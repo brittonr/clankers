@@ -110,7 +110,7 @@ clankers-procmon = { version = "0.1.0", path = "crates/clankers-procmon" }
 clankers-prompts = { version = "0.1.0", path = "crates/clankers-prompts" }
 clankers-provider = { version = "0.1.0", path = "crates/clankers-provider" }
 clankers-runtime = { version = "0.1.0", path = "crates/clankers-runtime" }
-clankers-matrix = { version = "0.1.0", path = "crates/clankers-matrix" }
+clankers-matrix = { version = "0.1.0", path = "crates/clankers-matrix", optional = true }
 clanker-router = { workspace = true, features = ["rpc"] }
 clanker-scheduler = { workspace = true }
 clankers-skills = { version = "0.1.0", path = "crates/clankers-skills" }
@@ -198,6 +198,7 @@ workspace = true
 default = ["tui-validate", "zellij-share"]
 tui-validate = ["dep:portable-pty", "dep:vt100"]
 zellij-share = ["dep:clankers-zellij"]
+matrix-bridge = ["dep:clankers-matrix"]
 simulation = ["dep:madsim"]
 property-testing = ["dep:bolero", "dep:bolero-generator", "dep:proptest"]
 nickel = ["clankers-config/nickel"]

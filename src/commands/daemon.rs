@@ -24,6 +24,7 @@ pub async fn dispatch(ctx: &CommandContext, action: DaemonAction) -> Result<()> 
             heartbeat,
             max_sessions,
         } => {
+            reject_builtin_matrix_bridge(has_matrix)?;
             if background {
                 start_background(ctx, tags, is_allow_all, has_matrix, heartbeat, max_sessions)?;
             } else {
@@ -42,6 +43,25 @@ pub async fn dispatch(ctx: &CommandContext, action: DaemonAction) -> Result<()> 
 }
 
 // ── Start ───────────────────────────────────────────────────────────────────
+
+fn reject_builtin_matrix_bridge(has_matrix: bool) -> Result<()> {
+    if !has_matrix {
+        return Ok(());
+    }
+
+    #[cfg(feature = "matrix-bridge")]
+    {
+        return Ok(());
+    }
+
+    #[cfg(not(feature = "matrix-bridge"))]
+    {
+        Err(crate::error::Error::Config {
+            message: "Matrix bridge is no longer built into clankers; install/run the Matrix plugin instead"
+                .to_string(),
+        })
+    }
+}
 
 /// Run the daemon in the foreground (blocks until Ctrl+C).
 async fn start_foreground(

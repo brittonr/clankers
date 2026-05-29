@@ -75,6 +75,7 @@ impl Default for DaemonConfig {
 }
 
 /// Config subset passed to the Matrix bridge for proactive agent features.
+#[cfg(feature = "matrix-bridge")]
 #[derive(Debug, Clone)]
 pub(crate) struct ProactiveConfig {
     pub(crate) session_heartbeat_secs: u64,

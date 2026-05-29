@@ -368,11 +368,17 @@ pub fn build_tiered_tools(env: &ToolEnv) -> Vec<(ToolTier, Arc<dyn Tool>)> {
             )),
         ),
         // ── Matrix (daemon only) ────────────────────────────────────
+        #[cfg(feature = "matrix-bridge")]
         (ToolTier::Matrix, Arc::new(crate::tools::matrix::MatrixSendTool::new())),
+        #[cfg(feature = "matrix-bridge")]
         (ToolTier::Matrix, Arc::new(crate::tools::matrix::MatrixReadTool::new())),
+        #[cfg(feature = "matrix-bridge")]
         (ToolTier::Matrix, Arc::new(crate::tools::matrix::MatrixRoomsTool::new())),
+        #[cfg(feature = "matrix-bridge")]
         (ToolTier::Matrix, Arc::new(crate::tools::matrix::MatrixPeersTool::new())),
+        #[cfg(feature = "matrix-bridge")]
         (ToolTier::Matrix, Arc::new(crate::tools::matrix::MatrixJoinTool::new())),
+        #[cfg(feature = "matrix-bridge")]
         (ToolTier::Matrix, Arc::new(crate::tools::matrix::MatrixRpcTool::new())),
     ];
 

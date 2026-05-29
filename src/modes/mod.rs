@@ -17,6 +17,7 @@ pub(crate) mod extended_actions;
 pub mod inline;
 pub mod interactive;
 pub mod json;
+#[cfg(feature = "matrix-bridge")]
 pub(crate) mod matrix_bridge;
 pub mod mcp_control;
 pub(crate) mod peers_background;
