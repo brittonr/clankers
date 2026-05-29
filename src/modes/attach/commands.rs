@@ -153,7 +153,9 @@ pub(super) fn submit_input_attach(
 ) {
     if app.state != AppState::Idle {
         app.queued_prompt = Some(text.to_string());
-        client.abort();
+        if app.conversation.active_block.is_some() {
+            client.abort();
+        }
         return;
     }
 

@@ -1380,6 +1380,7 @@ mod tests {
     fn attach_busy_prompt_queues_and_aborts_current_stream() {
         let mut app = test_app();
         app.state = clanker_tui_types::AppState::Streaming;
+        app.start_block("streaming prompt".to_string(), 0);
         let (client, mut cmd_rx) = capturing_client();
         let registry = super::build_client_slash_registry();
         let mut parity_tracker = super::AttachParityTracker::default();

@@ -220,6 +220,22 @@ mod tests {
     }
 
     #[test]
+    fn attached_agent_end_waits_for_prompt_done_before_idle() {
+        let mut app = test_app();
+        app.state = AppState::Streaming;
+        let mut is_replaying_history = false;
+        let mut parity_tracker = AttachParityTracker::default();
+
+        let mut client = client_with_events(vec![DaemonEvent::AgentEnd]);
+        drain_daemon_events(&mut app, &mut client, &mut is_replaying_history, 0, &mut parity_tracker);
+        assert_eq!(app.state, AppState::Streaming);
+
+        let mut client = client_with_events(vec![DaemonEvent::PromptDone { error: None }]);
+        drain_daemon_events(&mut app, &mut client, &mut is_replaying_history, 0, &mut parity_tracker);
+        assert_eq!(app.state, AppState::Idle);
+    }
+
+    #[test]
     fn local_reconnect_resets_parity_tracker_before_new_events_arrive() {
         let mut app = test_app();
         app.connection_mode = ConnectionMode::Reconnecting;

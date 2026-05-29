@@ -43,6 +43,13 @@ pub(crate) fn process_daemon_event(
         return;
     }
 
+    if matches!(event, DaemonEvent::AgentEnd) {
+        app.finalize_active_block();
+        app.state = AppState::Streaming;
+        app.conversation.scroll.scroll_to_bottom();
+        return;
+    }
+
     // First, try the TuiEvent conversion for all streaming/tool/session events.
     if let Some(tui_event) = daemon_event_to_tui_event(event) {
         app.handle_tui_event(&tui_event);
@@ -81,6 +88,7 @@ pub(crate) fn process_daemon_event(
             } else {
                 app.finalize_active_block();
             }
+            app.state = AppState::Idle;
             // If the user typed something while the agent was busy, send it now.
             if let Some(text) = app.queued_prompt.take() {
                 client.send(SessionCommand::ResetCancel);
