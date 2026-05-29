@@ -296,27 +296,36 @@ impl RouterProvider {
         cache_key: Option<&str>,
     ) -> Result<()> {
         if cache_key.is_some() {
-            // Intercept the stream to collect events for cache write-back
+            // Intercept the stream to collect events for cache write-back, but
+            // keep forwarding while the provider is still running. Awaiting the
+            // provider before draining this channel would buffer all text and
+            // thinking deltas until the turn completed.
             let (inner_tx, mut inner_rx) = mpsc::channel::<StreamEvent>(256);
 
             let provider_name = provider.name().to_string();
             let model_id = request.model.clone();
-            let result = provider.complete(request.clone(), inner_tx).await;
+            let forward_tx = tx.clone();
+            let collect_fut = async move {
+                let mut collected = Vec::new();
+                let mut input_tokens = 0u64;
+                let mut output_tokens = 0u64;
+                let mut downstream_open = true;
 
-            let mut collected = Vec::new();
-            let mut input_tokens = 0u64;
-            let mut output_tokens = 0u64;
+                while let Some(event) = inner_rx.recv().await {
+                    if let StreamEvent::MessageDelta { usage, .. } = &event {
+                        input_tokens += usage.input_tokens as u64;
+                        output_tokens += usage.output_tokens as u64;
+                    }
+                    collected.push(event.clone());
+                    if downstream_open && forward_tx.send(event).await.is_err() {
+                        downstream_open = false;
+                    }
+                }
 
-            while let Some(event) = inner_rx.recv().await {
-                if let StreamEvent::MessageDelta { usage, .. } = &event {
-                    input_tokens += usage.input_tokens as u64;
-                    output_tokens += usage.output_tokens as u64;
-                }
-                collected.push(event.clone());
-                if tx.send(event).await.is_err() {
-                    break;
-                }
-            }
+                (collected, input_tokens, output_tokens)
+            };
+            let complete_fut = provider.complete(request.clone(), inner_tx);
+            let (result, (collected, input_tokens, output_tokens)) = tokio::join!(complete_fut, collect_fut);
 
             // Write to cache on success
             if result.is_ok()
@@ -804,6 +813,87 @@ mod tests {
         )
     }
 
+    struct GatedStreamingProvider {
+        name_str: String,
+        models_list: Vec<Model>,
+        release_rx: tokio::sync::Mutex<Option<tokio::sync::oneshot::Receiver<()>>>,
+    }
+
+    #[async_trait]
+    impl Provider for GatedStreamingProvider {
+        async fn complete(&self, _request: CompletionRequest, tx: mpsc::Sender<StreamEvent>) -> Result<()> {
+            tx.send(StreamEvent::MessageStart {
+                message: crate::streaming::MessageMetadata {
+                    id: "msg-gated".into(),
+                    model: "test-model".into(),
+                    role: "assistant".into(),
+                },
+            })
+            .await
+            .ok();
+            tx.send(StreamEvent::ContentBlockStart {
+                index: 0,
+                content_block: clanker_message::message::Content::Thinking {
+                    thinking: String::new(),
+                    signature: String::new(),
+                },
+            })
+            .await
+            .ok();
+            tx.send(StreamEvent::ContentBlockDelta {
+                index: 0,
+                delta: crate::streaming::ContentDelta::ThinkingDelta {
+                    thinking: "planning".into(),
+                },
+            })
+            .await
+            .ok();
+
+            if let Some(release_rx) = self.release_rx.lock().await.take() {
+                release_rx.await.ok();
+            }
+
+            tx.send(StreamEvent::ContentBlockStop { index: 0 }).await.ok();
+            tx.send(StreamEvent::MessageStop).await.ok();
+            Ok(())
+        }
+
+        fn models(&self) -> &[Model] {
+            &self.models_list
+        }
+
+        fn name(&self) -> &str {
+            &self.name_str
+        }
+    }
+
+    fn gated_streaming_mock(
+        name: &str,
+        model_id: &str,
+        release_rx: tokio::sync::oneshot::Receiver<()>,
+    ) -> (String, Arc<dyn Provider>) {
+        let model = Model {
+            id: model_id.to_string(),
+            name: model_id.to_string(),
+            provider: name.to_string(),
+            max_input_tokens: 200_000,
+            max_output_tokens: 16_384,
+            supports_thinking: true,
+            supports_images: true,
+            supports_tools: true,
+            input_cost_per_mtok: None,
+            output_cost_per_mtok: None,
+        };
+        (
+            name.to_string(),
+            Arc::new(GatedStreamingProvider {
+                name_str: name.to_string(),
+                models_list: vec![model],
+                release_rx: tokio::sync::Mutex::new(Some(release_rx)),
+            }),
+        )
+    }
+
     fn make_user_msg(text: &str) -> clanker_message::message::AgentMessage {
         use clanker_message::message::*;
         AgentMessage::User(UserMessage {
@@ -855,6 +945,37 @@ mod tests {
         }
         assert_eq!(call_count.load(Ordering::SeqCst), 1); // still 1
         assert_eq!(events1.len(), events2.len());
+    }
+
+    #[tokio::test]
+    async fn cache_writeback_forwards_stream_events_before_provider_finishes() {
+        let db = test_db();
+        let (release_tx, release_rx) = tokio::sync::oneshot::channel();
+        let (name, provider) = gated_streaming_mock("test", "test-model", release_rx);
+        let router = Arc::new(RouterProvider::with_db(vec![(name, provider)], db));
+        let request = test_request("test-model");
+        let (tx, mut rx) = mpsc::channel(64);
+
+        let task = {
+            let router = Arc::clone(&router);
+            tokio::spawn(async move { router.complete(request, tx).await })
+        };
+
+        let mut saw_thinking = false;
+        for _ in 0..3 {
+            let event = tokio::time::timeout(Duration::from_secs(1), rx.recv())
+                .await
+                .expect("cache write-back path should forward before provider completion")
+                .expect("stream should stay open before provider completion");
+            if matches!(event, StreamEvent::ContentBlockDelta { delta: crate::streaming::ContentDelta::ThinkingDelta { .. }, .. }) {
+                saw_thinking = true;
+                break;
+            }
+        }
+        assert!(saw_thinking, "thinking delta should stream before the gated provider is released");
+
+        release_tx.send(()).expect("release should reach gated provider");
+        task.await.expect("router task should join").expect("router completion should succeed");
     }
 
     #[tokio::test]
