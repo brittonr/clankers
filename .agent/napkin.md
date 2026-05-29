@@ -3,6 +3,7 @@
 ## Corrections
 | Date | Source | What Went Wrong | What To Do Instead |
 |------|--------|----------------|-------------------|
+| 2026-05-29 | self | Passed the raw `(Ok child)` result from `spawn-process` into Steel `wait`, causing a type mismatch even though the child streamed output | Wrap `spawn-process` with `unwrap-ok` before `wait` when using `steel/process`; keep command result handling explicit. |
 | 2026-05-29 | self | Printed a Steel command label claiming `RUSTFLAGS='-C link-arg=-fuse-ld=bfd'` but forgot to set that env in the command builder; had to rerun focused tests with the real env | Keep Steel process-command labels mechanically aligned with `with-env-var` wrappers, especially for validation evidence. |
 | 2026-05-29 | self | Tried to run shell-like commands in Steel with `(system ...)` and a varargs helper after requiring process/result; `system` is absent and local varargs hit a Steel hygiene/free-identifier failure | For command execution through pi's Steel tool, use `(require-builtin steel/process)` + `(require "steel/result")` with `command`/`spawn-process`/`wait`, and keep helper functions fixed-arity. |
 | 2026-05-29 | self | Added a required `ControlCommand::CreateSession` field and fixed only runtime call sites; root integration test literals failed afterward | After changing protocol enum variants, grep all non-checkpoint `CreateSession {` sites including `tests/` and protocol crate tests before waiting for auto-test. |
@@ -153,6 +154,7 @@
 
 ## User Preferences
 - Don't care about backwards compat — fix the implementation properly
+- For UCAN Auth roadmap work, switch daemon/remote auth toward OnixResearch `ucan` plus Basalt policy/receipts rather than extending the custom `clanker-auth` verifier.
 - Uses Fastmail, not third-party email services
 - Prefers direct solutions over abstraction layers
 - Git library: stick with git2. gix too immature for writes.
