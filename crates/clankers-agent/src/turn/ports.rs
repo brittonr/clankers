@@ -11,8 +11,9 @@ use serde_json::Value;
 use tokio::sync::broadcast;
 use tokio_util::sync::CancellationToken;
 
+use super::AgentToolSteelSubstrateConfig;
 use super::CollectedResponse;
-use super::execute_tools_parallel;
+use super::execute_tools_parallel_with_substrate;
 use super::stream_model_request;
 use super::tool_definitions_from_tool_catalog;
 use super::update_usage_tracking;
@@ -162,6 +163,7 @@ pub(crate) struct ControllerToolPort<'a> {
     pub(crate) db: Option<clankers_db::Db>,
     pub(crate) capability_gate: Option<Arc<dyn CapabilityGate>>,
     pub(crate) user_tool_filter: Option<Vec<String>>,
+    pub(crate) steel_tool_substrate: Option<AgentToolSteelSubstrateConfig>,
 }
 
 #[async_trait]
@@ -177,7 +179,7 @@ impl AgentToolPort for ControllerToolPort<'_> {
     }
 
     async fn execute_tools(&self, tool_calls: &[(String, String, Value)]) -> Vec<ToolResultMessage> {
-        execute_tools_parallel(
+        execute_tools_parallel_with_substrate(
             self.controller_tools,
             tool_calls,
             self.event_tx,
@@ -187,6 +189,7 @@ impl AgentToolPort for ControllerToolPort<'_> {
             self.db.clone(),
             self.capability_gate.clone(),
             self.user_tool_filter.clone(),
+            self.steel_tool_substrate.clone(),
         )
         .await
     }

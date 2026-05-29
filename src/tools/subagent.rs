@@ -12,6 +12,7 @@ use tokio_util::sync::CancellationToken;
 use crate::tools::Tool;
 use crate::tools::ToolContext;
 use crate::tools::ToolDefinition;
+use crate::tools::ToolExecutionBackend;
 use crate::tools::ToolResult;
 
 type PanelTx = tokio::sync::mpsc::UnboundedSender<SubagentEvent>;
@@ -117,6 +118,10 @@ impl SubagentTool {
 impl Tool for SubagentTool {
     fn definition(&self) -> &ToolDefinition {
         &self.definition
+    }
+
+    fn execution_backend(&self) -> ToolExecutionBackend {
+        ToolExecutionBackend::Subagent
     }
 
     async fn execute(&self, ctx: &ToolContext, params: Value) -> ToolResult {
@@ -524,4 +529,14 @@ async fn read_stderr(stderr_handle: Option<tokio::process::ChildStderr>) -> Stri
     let mut reader = BufReader::new(stderr);
     tokio::io::AsyncReadExt::read_to_string(&mut reader, &mut buf).await.ok();
     buf
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn subagent_tool_reports_subagent_backend_for_steel_substrate() {
+        assert_eq!(SubagentTool::new().execution_backend(), ToolExecutionBackend::Subagent);
+    }
 }

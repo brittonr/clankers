@@ -11,6 +11,7 @@ use crate::plugin::StdioToolCallEvent;
 use crate::tools::Tool;
 use crate::tools::ToolContext;
 use crate::tools::ToolDefinition;
+use crate::tools::ToolExecutionBackend;
 use crate::tools::ToolResult;
 
 const DEFAULT_STDIO_TOOL_TIMEOUT_SECS: u64 = 300;
@@ -227,6 +228,13 @@ impl Tool for PluginTool {
         &self.plugin_name
     }
 
+    fn execution_backend(&self) -> ToolExecutionBackend {
+        match self.backend {
+            PluginToolBackend::Wasm { .. } => ToolExecutionBackend::WasmPlugin,
+            PluginToolBackend::Stdio => ToolExecutionBackend::StdioPlugin,
+        }
+    }
+
     async fn execute(&self, ctx: &ToolContext, params: Value) -> ToolResult {
         match &self.backend {
             PluginToolBackend::Wasm { function_name } => self.execute_wasm(ctx, function_name, params),
@@ -243,6 +251,26 @@ mod tests {
     use tokio_util::sync::CancellationToken;
 
     use super::*;
+
+    #[test]
+    fn plugin_tool_reports_wasm_and_stdio_backends_for_steel_substrate() {
+        let manager = Arc::new(Mutex::new(PluginManager::new(PathBuf::from("plugins"), None)));
+        let definition = ToolDefinition {
+            name: "plugin_echo".to_string(),
+            description: "plugin echo".to_string(),
+            input_schema: serde_json::json!({"type":"object"}),
+        };
+        let wasm = PluginTool::new(
+            definition.clone(),
+            "example".to_string(),
+            "handle_tool_call".to_string(),
+            Arc::clone(&manager),
+        );
+        let stdio = PluginTool::new_stdio(definition, "example".to_string(), manager);
+
+        assert_eq!(wasm.execution_backend(), ToolExecutionBackend::WasmPlugin);
+        assert_eq!(stdio.execution_backend(), ToolExecutionBackend::StdioPlugin);
+    }
 
     /// Build a PluginTool backed by the real test plugin WASM.
     fn build_test_tool(tool_name: &str) -> PluginTool {

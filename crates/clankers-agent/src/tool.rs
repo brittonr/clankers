@@ -224,6 +224,14 @@ pub trait CapabilityGate: Send + Sync {
     fn check_tool_call(&self, tool_name: &str, input: &Value) -> std::result::Result<(), String>;
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ToolExecutionBackend {
+    RustBuiltin,
+    WasmPlugin,
+    StdioPlugin,
+    Subagent,
+}
+
 #[async_trait]
 pub trait Tool: Send + Sync {
     /// Returns the tool's definition (name, description, parameters schema)
@@ -235,6 +243,11 @@ pub trait Tool: Send + Sync {
     /// Source label: "built-in" for core tools, plugin name for plugin tools.
     fn source(&self) -> &str {
         "built-in"
+    }
+
+    /// Backend kind used by the Steel tool/plugin/subagent substrate.
+    fn execution_backend(&self) -> ToolExecutionBackend {
+        ToolExecutionBackend::RustBuiltin
     }
 }
 

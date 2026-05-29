@@ -7,6 +7,7 @@ mod model_switch;
 mod policy;
 mod ports;
 mod steel_planning;
+mod steel_tool_substrate;
 mod transcript;
 mod usage;
 
@@ -64,7 +65,9 @@ use clankers_provider::streaming::*;
 use execution::completion_request_from_engine_request;
 use execution::create_error_result;
 use execution::engine_messages_from_agent_messages;
+#[cfg(test)]
 use execution::execute_tools_parallel;
+use execution::execute_tools_parallel_with_substrate;
 use execution::stream_model_request;
 use execution::tool_definitions_from_tool_catalog;
 use execution::tool_result_message_to_host_outcome;
@@ -112,6 +115,8 @@ pub use steel_planning::AgentTurnSteelPlanningConfig;
 use steel_planning::emit_agent_turn_planning_receipt;
 use steel_planning::plan_agent_turn;
 pub use steel_planning::steel_turn_planning_config_from_settings;
+pub use steel_tool_substrate::AgentToolSteelSubstrateConfig;
+pub use steel_tool_substrate::steel_tool_substrate_config_from_settings;
 #[cfg(test)]
 use tokio::sync::broadcast;
 #[cfg(test)]
@@ -142,6 +147,7 @@ pub struct TurnConfig {
     pub no_cache: bool,
     pub cache_ttl: Option<String>,
     pub steel_turn_planning: Option<AgentTurnSteelPlanningConfig>,
+    pub steel_tool_substrate: Option<AgentToolSteelSubstrateConfig>,
 }
 
 pub(crate) struct TurnLoopContext<'a> {
@@ -305,6 +311,7 @@ mod tests {
             db,
             capability_gate,
             user_tool_filter,
+            steel_tool_substrate: config.steel_tool_substrate.clone(),
         };
         let cost_port = CostTrackerPort::new(cost_tracker);
         let cancellation = TokenCancellationPort::new(cancel);
@@ -1823,6 +1830,7 @@ mod tests {
             no_cache: true,
             cache_ttl: None,
             steel_turn_planning: None,
+            steel_tool_substrate: None,
         }
     }
 

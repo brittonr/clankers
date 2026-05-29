@@ -137,9 +137,9 @@ pub struct Settings {
 
     /// Optional Steel Scheme turn-planning activation profile.
     ///
-    /// Missing config remains disabled. Enabling only selects a reviewed
-    /// profile/script binding; Rust still validates hashes and session/UCAN
-    /// authority before constructing the turn adapter.
+    /// Missing config uses the reviewed bundled profile by default. Explicit
+    /// disable remains the Rust-native kill switch; Rust still validates hashes
+    /// and session/UCAN authority before constructing the turn adapter.
     #[serde(default, rename = "steelTurnPlanning", alias = "steel_turn_planning")]
     pub steel_turn_planning: SteelTurnPlanningSettings,
 
@@ -149,6 +149,10 @@ pub struct Settings {
     /// `steelEval.enabled = false` to omit the tool explicitly.
     #[serde(default, rename = "steelEval", alias = "steel_eval")]
     pub steel_eval: SteelEvalSettings,
+
+    /// Steel-mediated substrate for built-in tools, plugins, and subagents.
+    #[serde(default, rename = "steelToolSubstrate", alias = "steel_tool_substrate")]
+    pub steel_tool_substrate: SteelToolSubstrateSettings,
 
     /// Hook system configuration.
     #[serde(default)]
@@ -930,6 +934,158 @@ fn default_steel_turn_planning_max_source_bytes() -> u64 {
 }
 
 // ---------------------------------------------------------------------------
+// Steel tool/plugin/subagent substrate activation settings
+// ---------------------------------------------------------------------------
+
+/// Optional settings for activating Steel-mediated tool/plugin/subagent dispatch.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SteelToolSubstrateSettings {
+    /// Enable substrate planning. Defaults on; set false as the Rust-native kill switch.
+    #[serde(default = "default_steel_tool_substrate_enabled")]
+    pub enabled: bool,
+    /// Rollout stage for substrate dispatch.
+    #[serde(default)]
+    pub rollout_stage: Option<SteelToolSubstrateRolloutStage>,
+    /// Fallback behavior when Steel does not authorize a typed plan.
+    #[serde(default)]
+    pub fallback_mode: Option<SteelToolSubstrateFallbackMode>,
+    /// Session capabilities available to Steel host functions.
+    #[serde(default = "default_steel_tool_substrate_session_capabilities")]
+    pub session_capabilities: Vec<String>,
+    /// UCAN-style abilities granted to the substrate context.
+    #[serde(default = "default_steel_tool_substrate_ucan_abilities")]
+    pub granted_ucan_abilities: Vec<String>,
+    /// Executor kinds disabled for substrate authorization.
+    #[serde(default)]
+    pub disabled_executors: Vec<String>,
+    /// Host actions disabled by user/session policy.
+    #[serde(default)]
+    pub disabled_actions: Vec<String>,
+    /// Optional receipt destination prefix. Must remain under `target/`.
+    #[serde(default)]
+    pub receipt_prefix: Option<String>,
+    /// Optional max input bytes override.
+    #[serde(default)]
+    pub max_input_bytes: Option<u64>,
+    /// Optional max script bytes guard.
+    #[serde(default = "default_steel_tool_substrate_max_source_bytes")]
+    pub max_source_bytes: u64,
+}
+
+impl Default for SteelToolSubstrateSettings {
+    fn default() -> Self {
+        Self {
+            enabled: default_steel_tool_substrate_enabled(),
+            rollout_stage: Some(SteelToolSubstrateRolloutStage::Default),
+            fallback_mode: Some(SteelToolSubstrateFallbackMode::RustNative),
+            session_capabilities: default_steel_tool_substrate_session_capabilities(),
+            granted_ucan_abilities: default_steel_tool_substrate_ucan_abilities(),
+            disabled_executors: Vec::new(),
+            disabled_actions: Vec::new(),
+            receipt_prefix: None,
+            max_input_bytes: Some(200_000),
+            max_source_bytes: default_steel_tool_substrate_max_source_bytes(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum SteelToolSubstrateRolloutStage {
+    Disabled,
+    Comparison,
+    Default,
+    Block,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum SteelToolSubstrateFallbackMode {
+    RustNative,
+    Block,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum SteelToolSubstrateConfigError {
+    BlankCapability,
+    BlankUcanAbility,
+    BlankDisabledExecutor,
+    BlankDisabledAction,
+    NonPositiveMaxInputBytes,
+    NonPositiveMaxSourceBytes,
+    ReceiptOutsideTarget,
+}
+
+impl std::fmt::Display for SteelToolSubstrateConfigError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::BlankCapability => f.write_str("Steel tool substrate session capabilities cannot be blank"),
+            Self::BlankUcanAbility => f.write_str("Steel tool substrate UCAN abilities cannot be blank"),
+            Self::BlankDisabledExecutor => f.write_str("Steel tool substrate disabled executors cannot be blank"),
+            Self::BlankDisabledAction => f.write_str("Steel tool substrate disabled actions cannot be blank"),
+            Self::NonPositiveMaxInputBytes => {
+                f.write_str("Steel tool substrate `maxInputBytes` must be greater than zero")
+            }
+            Self::NonPositiveMaxSourceBytes => {
+                f.write_str("Steel tool substrate `maxSourceBytes` must be greater than zero")
+            }
+            Self::ReceiptOutsideTarget => f.write_str("Steel tool substrate `receiptPrefix` must stay under target/"),
+        }
+    }
+}
+
+impl std::error::Error for SteelToolSubstrateConfigError {}
+
+impl SteelToolSubstrateSettings {
+    pub fn validate(&self) -> Result<(), SteelToolSubstrateConfigError> {
+        if !self.enabled {
+            return Ok(());
+        }
+        if self.session_capabilities.iter().any(|capability| capability.trim().is_empty()) {
+            return Err(SteelToolSubstrateConfigError::BlankCapability);
+        }
+        if self.granted_ucan_abilities.iter().any(|ability| ability.trim().is_empty()) {
+            return Err(SteelToolSubstrateConfigError::BlankUcanAbility);
+        }
+        if self.disabled_executors.iter().any(|executor| executor.trim().is_empty()) {
+            return Err(SteelToolSubstrateConfigError::BlankDisabledExecutor);
+        }
+        if self.disabled_actions.iter().any(|action| action.trim().is_empty()) {
+            return Err(SteelToolSubstrateConfigError::BlankDisabledAction);
+        }
+        if matches!(self.max_input_bytes, Some(0)) {
+            return Err(SteelToolSubstrateConfigError::NonPositiveMaxInputBytes);
+        }
+        if self.max_source_bytes == 0 {
+            return Err(SteelToolSubstrateConfigError::NonPositiveMaxSourceBytes);
+        }
+        if let Some(prefix) = &self.receipt_prefix
+            && !prefix.starts_with("target/")
+        {
+            return Err(SteelToolSubstrateConfigError::ReceiptOutsideTarget);
+        }
+        Ok(())
+    }
+}
+
+fn default_steel_tool_substrate_enabled() -> bool {
+    true
+}
+
+fn default_steel_tool_substrate_session_capabilities() -> Vec<String> {
+    vec!["steel-tool-substrate".to_string(), "tool-dispatch".to_string()]
+}
+
+fn default_steel_tool_substrate_ucan_abilities() -> Vec<String> {
+    vec!["clankers/steel/tool.call".to_string()]
+}
+
+fn default_steel_tool_substrate_max_source_bytes() -> u64 {
+    4096
+}
+
+// ---------------------------------------------------------------------------
 // Leader menu user config
 // ---------------------------------------------------------------------------
 
@@ -1180,6 +1336,7 @@ impl Default for Settings {
             external_memory: ExternalMemorySettings::default(),
             steel_turn_planning: SteelTurnPlanningSettings::default(),
             steel_eval: SteelEvalSettings::default(),
+            steel_tool_substrate: SteelToolSubstrateSettings::default(),
             hooks: clankers_hooks::HooksConfig::default(),
             auto_test_command: None,
             no_cache: false,
@@ -1400,6 +1557,29 @@ mod tests {
         assert_eq!(settings.steel_eval.profile.max_source_bytes, 128);
         assert_eq!(settings.steel_eval.profiles[0].id, "echo");
         assert_eq!(settings.steel_eval.profiles[0].host_functions[0].output, "ok");
+    }
+
+    #[test]
+    fn steel_tool_substrate_from_json_defaults_enabled_and_validates() {
+        let defaults: Settings = serde_json::from_str(r"{}").unwrap();
+        assert!(defaults.steel_tool_substrate.enabled);
+        assert_eq!(defaults.steel_tool_substrate.rollout_stage, Some(SteelToolSubstrateRolloutStage::Default));
+        assert_eq!(defaults.steel_tool_substrate.fallback_mode, Some(SteelToolSubstrateFallbackMode::RustNative));
+        assert_eq!(defaults.steel_tool_substrate.session_capabilities, vec!["steel-tool-substrate", "tool-dispatch"]);
+        assert_eq!(defaults.steel_tool_substrate.granted_ucan_abilities, vec!["clankers/steel/tool.call"]);
+        defaults.steel_tool_substrate.validate().expect("default Steel tool substrate settings are valid");
+
+        let disabled: Settings = serde_json::from_str(r#"{"steelToolSubstrate":{"enabled":false}}"#).unwrap();
+        assert!(!disabled.steel_tool_substrate.enabled);
+
+        let custom: Settings = serde_json::from_str(
+            r#"{"steelToolSubstrate":{"rolloutStage":"block","fallbackMode":"block","disabledExecutors":["subagent"],"receiptPrefix":"target/steel-tool-plugin-substrate"}}"#,
+        )
+        .unwrap();
+        assert_eq!(custom.steel_tool_substrate.rollout_stage, Some(SteelToolSubstrateRolloutStage::Block));
+        assert_eq!(custom.steel_tool_substrate.fallback_mode, Some(SteelToolSubstrateFallbackMode::Block));
+        assert_eq!(custom.steel_tool_substrate.disabled_executors, vec!["subagent"]);
+        custom.steel_tool_substrate.validate().expect("custom Steel tool substrate settings are valid");
     }
 
     #[test]

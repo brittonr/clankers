@@ -62,6 +62,7 @@ pub use self::tool::ToolResult;
 pub use self::tool::ToolResultContent;
 pub use self::tool::model_switch_slot;
 use self::turn::TurnConfig;
+use self::turn::steel_tool_substrate_config_from_settings;
 use self::turn::steel_turn_planning_config_from_settings;
 
 /// The main agent that manages the conversation loop
@@ -348,6 +349,7 @@ impl Agent {
             no_cache: self.settings.no_cache,
             cache_ttl: self.settings.cache_ttl.clone(),
             steel_turn_planning: self.steel_turn_planning_config()?,
+            steel_tool_substrate: self.steel_tool_substrate_config()?,
         };
 
         let model_port = turn::ProviderModelPort::new(self.provider.as_ref());
@@ -360,6 +362,7 @@ impl Agent {
             db: self.db.clone(),
             capability_gate: self.capability_gate.clone(),
             user_tool_filter: self.user_tool_filter.clone(),
+            steel_tool_substrate: config.steel_tool_substrate.clone(),
         };
         let cost_port = turn::CostTrackerPort::new(self.cost_tracker.as_ref());
         let cancellation = turn::TokenCancellationPort::new(self.cancel.clone());
@@ -748,6 +751,7 @@ impl Agent {
                 no_cache: self.settings.no_cache,
                 cache_ttl: self.settings.cache_ttl.clone(),
                 steel_turn_planning: self.steel_turn_planning_config()?,
+                steel_tool_substrate: self.steel_tool_substrate_config()?,
             };
 
             let model_port = turn::ProviderModelPort::new(self.provider.as_ref());
@@ -760,6 +764,7 @@ impl Agent {
                 db: self.db.clone(),
                 capability_gate: self.capability_gate.clone(),
                 user_tool_filter: self.user_tool_filter.clone(),
+                steel_tool_substrate: config.steel_tool_substrate.clone(),
             };
             let cost_port = turn::CostTrackerPort::new(self.cost_tracker.as_ref());
             let cancellation = turn::TokenCancellationPort::new(self.cancel.clone());
@@ -809,6 +814,14 @@ impl Agent {
         steel_turn_planning_config_from_settings(&self.settings.steel_turn_planning, &base_dir).map_err(|error| {
             AgentError::Agent {
                 message: format!("Steel turn planning activation failed closed: {error}"),
+            }
+        })
+    }
+
+    fn steel_tool_substrate_config(&self) -> Result<Option<turn::AgentToolSteelSubstrateConfig>> {
+        steel_tool_substrate_config_from_settings(&self.settings.steel_tool_substrate).map_err(|error| {
+            AgentError::Agent {
+                message: format!("Steel tool substrate activation failed closed: {error}"),
             }
         })
     }

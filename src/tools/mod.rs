@@ -8,6 +8,7 @@ pub use clankers_agent::tool::ModelSwitchSlot;
 pub use clankers_agent::tool::Tool;
 pub use clankers_agent::tool::ToolContext;
 pub use clankers_agent::tool::ToolDefinition;
+pub use clankers_agent::tool::ToolExecutionBackend;
 pub use clankers_agent::tool::ToolResult;
 pub use clankers_agent::tool::ToolResultContent;
 pub use clankers_agent::tool::model_switch_slot;

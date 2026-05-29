@@ -27,6 +27,9 @@ use tokio_util::sync::CancellationToken;
 
 use super::CollectedResponse;
 use super::ContentBlockBuilder;
+use super::steel_tool_substrate::AgentToolSteelSubstrateConfig;
+use super::steel_tool_substrate::authorize_tool_invocation;
+use super::steel_tool_substrate::blocked_receipt_to_tool_result;
 use crate::error::AgentError;
 use crate::error::Result;
 use crate::events::AgentEvent;
@@ -171,6 +174,7 @@ struct AgentSingleToolExecutor {
     db: Option<clankers_db::Db>,
     capability_gate: Option<Arc<dyn crate::tool::CapabilityGate>>,
     user_tool_filter: Option<Vec<String>>,
+    steel_tool_substrate: Option<AgentToolSteelSubstrateConfig>,
 }
 
 impl ToolExecutor for AgentSingleToolExecutor {
@@ -187,6 +191,7 @@ impl ToolExecutor for AgentSingleToolExecutor {
             self.db.clone(),
             self.capability_gate.clone(),
             self.user_tool_filter.clone(),
+            self.steel_tool_substrate.as_ref(),
         )
         .await;
         tool_result_message_to_host_outcome(&message)
@@ -495,6 +500,7 @@ pub(super) async fn collect_stream_events(
 }
 
 /// Execute tools in parallel and return their results
+#[cfg(test)]
 pub(super) async fn execute_tools_parallel(
     controller_tools: &HashMap<String, Arc<dyn Tool>>,
     tool_calls: &[(String, String, Value)],
@@ -505,6 +511,34 @@ pub(super) async fn execute_tools_parallel(
     db: Option<clankers_db::Db>,
     capability_gate: Option<Arc<dyn crate::tool::CapabilityGate>>,
     user_tool_filter: Option<Vec<String>>,
+) -> Vec<ToolResultMessage> {
+    execute_tools_parallel_with_substrate(
+        controller_tools,
+        tool_calls,
+        event_tx,
+        cancel,
+        hook_pipeline,
+        session_id,
+        db,
+        capability_gate,
+        user_tool_filter,
+        None,
+    )
+    .await
+}
+
+#[allow(clippy::too_many_arguments)]
+pub(super) async fn execute_tools_parallel_with_substrate(
+    controller_tools: &HashMap<String, Arc<dyn Tool>>,
+    tool_calls: &[(String, String, Value)],
+    event_tx: &broadcast::Sender<AgentEvent>,
+    cancel: CancellationToken,
+    hook_pipeline: Option<Arc<clankers_hooks::HookPipeline>>,
+    session_id: &str,
+    db: Option<clankers_db::Db>,
+    capability_gate: Option<Arc<dyn crate::tool::CapabilityGate>>,
+    user_tool_filter: Option<Vec<String>>,
+    steel_tool_substrate: Option<AgentToolSteelSubstrateConfig>,
 ) -> Vec<ToolResultMessage> {
     use futures::future::BoxFuture;
     use futures::future::FutureExt;
@@ -526,6 +560,7 @@ pub(super) async fn execute_tools_parallel(
                 db: db.clone(),
                 capability_gate: capability_gate.clone(),
                 user_tool_filter: user_tool_filter.clone(),
+                steel_tool_substrate: steel_tool_substrate.clone(),
             };
             let call_id = call_id.clone();
             let tool_name = tool_name.clone();
@@ -554,6 +589,7 @@ async fn execute_single_tool(
     db: Option<clankers_db::Db>,
     capability_gate: Option<Arc<dyn crate::tool::CapabilityGate>>,
     user_tool_filter: Option<Vec<String>>,
+    steel_tool_substrate: Option<&AgentToolSteelSubstrateConfig>,
 ) -> ToolResultMessage {
     // Emit ToolCall event
     event_tx
@@ -610,6 +646,17 @@ async fn execute_single_tool(
     } else {
         input
     };
+
+    if let Err(receipt) = authorize_tool_invocation(
+        steel_tool_substrate,
+        tool.as_ref(),
+        &call_id,
+        &tool_name,
+        &effective_input,
+        &event_tx,
+    ) {
+        return blocked_receipt_to_tool_result(call_id, tool_name, receipt);
+    }
 
     event_tx
         .send(AgentEvent::ToolExecutionStart {
@@ -818,12 +865,28 @@ mod tests {
         definition: crate::tool::ToolDefinition,
     }
 
+    struct PanicTool {
+        definition: crate::tool::ToolDefinition,
+    }
+
     impl FakeTool {
         fn new() -> Self {
             Self {
                 definition: crate::tool::ToolDefinition {
                     name: TEST_TOOL_NAME.to_string(),
                     description: TEST_TOOL_DESCRIPTION.to_string(),
+                    input_schema: json!({"type": "object"}),
+                },
+            }
+        }
+    }
+
+    impl PanicTool {
+        fn new() -> Self {
+            Self {
+                definition: crate::tool::ToolDefinition {
+                    name: "panic_tool".to_string(),
+                    description: "panics if executed".to_string(),
                     input_schema: json!({"type": "object"}),
                 },
             }
@@ -871,6 +934,17 @@ mod tests {
 
         async fn execute(&self, _ctx: &ToolContext, _params: Value) -> AgentToolResult {
             AgentToolResult::text("ok")
+        }
+    }
+
+    #[async_trait]
+    impl Tool for PanicTool {
+        fn definition(&self) -> &crate::tool::ToolDefinition {
+            &self.definition
+        }
+
+        async fn execute(&self, _ctx: &ToolContext, _params: Value) -> AgentToolResult {
+            panic!("blocked Steel substrate calls must not execute direct tool path")
         }
     }
 
@@ -1012,6 +1086,46 @@ mod tests {
         assert_eq!(folded.stop_reason, Some(StopReason::Stop));
         assert_eq!(folded.usage.expect("usage should exist").output_tokens, 2);
         assert!(matches!(&folded.content[0], Content::Text { text } if text == "hello"));
+    }
+
+    #[tokio::test]
+    async fn steel_tool_substrate_blocks_before_direct_tool_execution() {
+        let mut tools: HashMap<String, Arc<dyn Tool>> = HashMap::new();
+        tools.insert("panic_tool".to_string(), Arc::new(PanicTool::new()));
+        let tool_calls = vec![("call-blocked".to_string(), "panic_tool".to_string(), json!({}))];
+        let (event_tx, _rx) = broadcast::channel(16);
+        let mut profile = clankers_runtime::SteelToolSubstrateProfile::default_enabled();
+        profile.fallback_mode = clankers_runtime::SteelToolSubstrateFallbackMode::Block;
+        profile.allowed_executor_kinds.remove(&clankers_runtime::SteelToolExecutorKind::RustBuiltin);
+        let config = AgentToolSteelSubstrateConfig {
+            profile,
+            steel_source: "(host \"steel.host.tool.call\")".to_string(),
+            session_capabilities: vec!["steel-tool-substrate".to_string(), "tool-dispatch".to_string()],
+            granted_ucan_abilities: vec!["clankers/steel/tool.call".to_string()],
+            disabled_actions: Vec::new(),
+        };
+
+        let results = execute_tools_parallel_with_substrate(
+            &tools,
+            &tool_calls,
+            &event_tx,
+            CancellationToken::new(),
+            None,
+            "session",
+            None,
+            None,
+            None,
+            Some(config),
+        )
+        .await;
+
+        assert_eq!(results.len(), 1);
+        assert!(results[0].is_error);
+        assert!(
+            first_text_block(&results[0].content)
+                .expect("blocked result text")
+                .contains("Steel tool substrate blocked")
+        );
     }
 
     #[test]

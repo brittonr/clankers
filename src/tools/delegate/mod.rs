@@ -34,6 +34,7 @@ use tokio::sync::Mutex;
 use crate::tools::Tool;
 use crate::tools::ToolContext;
 use crate::tools::ToolDefinition;
+use crate::tools::ToolExecutionBackend;
 use crate::tools::ToolResult;
 
 type PanelTx = tokio::sync::mpsc::UnboundedSender<SubagentEvent>;
@@ -184,6 +185,10 @@ impl Tool for DelegateTool {
         &self.definition
     }
 
+    fn execution_backend(&self) -> ToolExecutionBackend {
+        ToolExecutionBackend::Subagent
+    }
+
     async fn execute(&self, ctx: &ToolContext, params: Value) -> ToolResult {
         let worker_name = match params.get("worker").and_then(|v| v.as_str()) {
             Some(n) => n.to_string(),
@@ -276,5 +281,15 @@ impl Tool for DelegateTool {
                 .await
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn delegate_tool_reports_subagent_backend_for_steel_substrate() {
+        assert_eq!(DelegateTool::new().execution_backend(), ToolExecutionBackend::Subagent);
     }
 }
