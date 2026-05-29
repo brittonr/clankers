@@ -424,6 +424,7 @@ fn render_messages(frame: &mut Frame, app: &mut App, messages_area: Rect) {
         app.conversation.focused_block,
         app.conversation.active_block.as_ref(),
         &app.streaming.thinking,
+        app.streaming.thinking_active,
         &app.streaming.text,
         app.show_thinking,
         &app.theme,

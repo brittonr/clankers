@@ -188,36 +188,54 @@ async fn handle_prompt(identity: &crate::modes::rpc::iroh::Identity, node_id: &s
     }
 }
 
-/// Process a streaming prompt notification (text delta, tool call, or tool result).
+/// Process a streaming prompt notification (thinking/text delta, tool call, or tool result).
 fn handle_prompt_notification(notification: &serde_json::Value) {
-    let method = match notification.get("method").and_then(|v| v.as_str()) {
-        Some(m) => m,
-        None => return,
-    };
-    match method {
-        "agent.text_delta" => {
-            if let Some(text) = notification.get("params").and_then(|p| p.get("text")).and_then(|v| v.as_str()) {
+    let kind = notification_kind(notification);
+    match kind {
+        Some("agent.text_delta" | "text_delta") => {
+            if let Some(text) = notification_text(notification, "text") {
                 print!("{}", text);
                 use std::io::Write;
                 std::io::stdout().flush().ok();
             }
         }
-        "agent.tool_call" => {
-            if let Some(params) = notification.get("params") {
-                let tool = params.get("tool_name").and_then(|v| v.as_str()).unwrap_or("?");
-                eprintln!("\n[tool: {}]", tool);
+        Some("agent.thinking_delta" | "thinking_delta") => {
+            if let Some(text) = notification_text(notification, "thinking") {
+                eprint!("\x1b[2m{}\x1b[0m", text);
+                use std::io::Write;
+                std::io::stderr().flush().ok();
             }
         }
-        "agent.tool_result" => {
-            if let Some(params) = notification.get("params") {
-                let is_error = params.get("is_error").and_then(|v| v.as_bool()).unwrap_or(false);
-                if is_error {
-                    eprintln!("[tool error]");
-                }
+        Some("agent.tool_call" | "tool_call") => {
+            let params = notification.get("params").unwrap_or(notification);
+            let tool = params.get("tool_name").and_then(|v| v.as_str()).unwrap_or("?");
+            eprintln!("\n[tool: {}]", tool);
+        }
+        Some("agent.tool_result" | "tool_result") => {
+            let params = notification.get("params").unwrap_or(notification);
+            let is_error = params.get("is_error").and_then(|v| v.as_bool()).unwrap_or(false);
+            if is_error {
+                eprintln!("[tool error]");
             }
         }
         _ => {}
     }
+}
+
+fn notification_kind(notification: &serde_json::Value) -> Option<&str> {
+    notification
+        .get("method")
+        .and_then(|v| v.as_str())
+        .or_else(|| notification.get("type").and_then(|v| v.as_str()))
+}
+
+fn notification_text<'a>(notification: &'a serde_json::Value, fallback_key: &str) -> Option<&'a str> {
+    notification
+        .get("params")
+        .and_then(|params| params.get("text").or_else(|| params.get(fallback_key)))
+        .and_then(|v| v.as_str())
+        .or_else(|| notification.get("text").and_then(|v| v.as_str()))
+        .or_else(|| notification.get(fallback_key).and_then(|v| v.as_str()))
 }
 
 // ── Peer management ─────────────────────────────────────────────────────────

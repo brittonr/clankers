@@ -71,6 +71,7 @@ pub fn render_blocks(
     focused_block: Option<usize>,
     active_block: Option<&ConversationBlock>,
     streaming_thinking: &str,
+    streaming_thinking_active: bool,
     streaming_text: &str,
     show_thinking: bool,
     theme: &Theme,
@@ -139,6 +140,7 @@ pub fn render_blocks(
         let block_lines = render_active_block(
             active,
             streaming_thinking,
+            streaming_thinking_active,
             streaming_text,
             show_thinking,
             theme,

@@ -372,6 +372,7 @@ pub fn render_system_message<'a>(msg: &DisplayMessage, theme: &Theme) -> Vec<Lin
 pub fn render_active_block<'a>(
     block: &ConversationBlock,
     streaming_thinking: &str,
+    streaming_thinking_active: bool,
     streaming_text: &str,
     show_thinking: bool,
     theme: &Theme,
@@ -434,14 +435,18 @@ pub fn render_active_block<'a>(
     }
 
     // ── Streaming thinking ───────────────────────────
-    if !streaming_thinking.is_empty() && show_thinking {
+    if (streaming_thinking_active || !streaming_thinking.is_empty()) && show_thinking {
         let style = Style::default().fg(theme.thinking_msg).add_modifier(Modifier::DIM);
-        for (i, line) in streaming_thinking.lines().enumerate() {
-            let prefix = if i == 0 { "  thinking: " } else { "            " };
-            lines.push(Line::from(vec![
-                Span::styled("│ ", border_style),
-                Span::styled(format!("{}{}", prefix, line), style),
-            ]));
+        if streaming_thinking.is_empty() {
+            lines.push(Line::from(vec![Span::styled("│ ", border_style), Span::styled("  thinking…", style)]));
+        } else {
+            for (i, line) in streaming_thinking.lines().enumerate() {
+                let prefix = if i == 0 { "  thinking: " } else { "            " };
+                lines.push(Line::from(vec![
+                    Span::styled("│ ", border_style),
+                    Span::styled(format!("{}{}", prefix, line), style),
+                ]));
+            }
         }
     }
 
@@ -507,6 +512,7 @@ mod tests {
         let lines = render_active_block(
             &streaming_block(),
             "first thought",
+            true,
             "partial answer",
             true,
             &Theme::dark(),
@@ -525,11 +531,34 @@ mod tests {
     }
 
     #[test]
+    fn active_block_renders_thinking_placeholder_before_first_delta() {
+        let mut streaming_outputs = StreamingOutputManager::new();
+        let lines = render_active_block(
+            &streaming_block(),
+            "",
+            true,
+            "",
+            true,
+            &Theme::dark(),
+            80,
+            &HashMap::new(),
+            &ProgressRenderer::new(),
+            &mut streaming_outputs,
+            0,
+            &PlainHighlighter,
+        );
+
+        let rendered = plain_text(&lines);
+        assert!(rendered.contains("thinking…"), "rendered output:\n{rendered}");
+    }
+
+    #[test]
     fn active_block_respects_show_thinking_while_still_streaming_text() {
         let mut streaming_outputs = StreamingOutputManager::new();
         let lines = render_active_block(
             &streaming_block(),
             "hidden thought",
+            true,
             "visible answer",
             false,
             &Theme::dark(),

@@ -1019,12 +1019,30 @@ mod factory_plugin_tests {
             .ok();
             tx.send(crate::provider::streaming::StreamEvent::ContentBlockStart {
                 index: 0,
-                content_block: clanker_message::Content::Text { text: String::new() },
+                content_block: clanker_message::Content::Thinking {
+                    thinking: String::new(),
+                    signature: String::new(),
+                },
             })
             .await
             .ok();
             tx.send(crate::provider::streaming::StreamEvent::ContentBlockDelta {
                 index: 0,
+                delta: crate::provider::streaming::ContentDelta::ThinkingDelta {
+                    thinking: "actor thought".to_string(),
+                },
+            })
+            .await
+            .ok();
+            tx.send(crate::provider::streaming::StreamEvent::ContentBlockStop { index: 0 }).await.ok();
+            tx.send(crate::provider::streaming::StreamEvent::ContentBlockStart {
+                index: 1,
+                content_block: clanker_message::Content::Text { text: String::new() },
+            })
+            .await
+            .ok();
+            tx.send(crate::provider::streaming::StreamEvent::ContentBlockDelta {
+                index: 1,
                 delta: crate::provider::streaming::ContentDelta::TextDelta {
                     text: "actor stream".to_string(),
                 },
@@ -1034,7 +1052,7 @@ mod factory_plugin_tests {
             self.streamed.notify_waiters();
             self.release.notified().await;
             self.returned.store(true, Ordering::SeqCst);
-            tx.send(crate::provider::streaming::StreamEvent::ContentBlockStop { index: 0 }).await.ok();
+            tx.send(crate::provider::streaming::StreamEvent::ContentBlockStop { index: 1 }).await.ok();
             tx.send(crate::provider::streaming::StreamEvent::MessageDelta {
                 stop_reason: Some("end_turn".to_string()),
                 usage: clanker_message::Usage::default(),
@@ -1129,7 +1147,7 @@ mod factory_plugin_tests {
     }
 
     #[tokio::test]
-    async fn daemon_actor_broadcasts_text_delta_before_provider_returns() {
+    async fn daemon_actor_broadcasts_thinking_and_text_delta_before_provider_returns() {
         let streamed = Arc::new(tokio::sync::Notify::new());
         let release = Arc::new(tokio::sync::Notify::new());
         let returned = Arc::new(AtomicBool::new(false));
@@ -1162,18 +1180,29 @@ mod factory_plugin_tests {
             .await
             .expect("provider should stream before waiting for release");
 
-        let delta_before_release = tokio::time::timeout(Duration::from_secs(1), async {
+        let (thinking_before_release, text_before_release) = tokio::time::timeout(Duration::from_secs(1), async {
+            let mut saw_thinking = false;
+            let mut saw_text = false;
             loop {
                 match event_rx.recv().await {
-                    Ok(clankers_protocol::DaemonEvent::TextDelta { text }) if text == "actor stream" => break true,
-                    Ok(clankers_protocol::DaemonEvent::PromptDone { .. }) => break false,
+                    Ok(clankers_protocol::DaemonEvent::ThinkingDelta { text }) if text == "actor thought" => {
+                        saw_thinking = true;
+                    }
+                    Ok(clankers_protocol::DaemonEvent::TextDelta { text }) if text == "actor stream" => {
+                        saw_text = true;
+                    }
+                    Ok(clankers_protocol::DaemonEvent::PromptDone { .. }) => break (saw_thinking, saw_text),
                     Ok(_) | Err(broadcast::error::RecvError::Lagged(_)) => {}
                     Err(error) => panic!("event stream closed before delta: {error}"),
+                }
+
+                if saw_thinking && saw_text {
+                    break (true, true);
                 }
             }
         })
         .await
-        .unwrap_or(false);
+        .unwrap_or((false, false));
         let returned_before_release = returned.load(Ordering::SeqCst);
 
         release.notify_waiters();
@@ -1190,8 +1219,12 @@ mod factory_plugin_tests {
         .expect("prompt should complete after provider release");
         shutdown_spawned_session(&registry, &spawned);
 
-        assert!(delta_before_release, "daemon actor should broadcast TextDelta before PromptDone/provider return");
-        assert!(!returned_before_release, "provider should still be blocked when TextDelta is broadcast");
+        assert!(
+            thinking_before_release,
+            "daemon actor should broadcast ThinkingDelta before PromptDone/provider return"
+        );
+        assert!(text_before_release, "daemon actor should broadcast TextDelta before PromptDone/provider return");
+        assert!(!returned_before_release, "provider should still be blocked when deltas are broadcast");
     }
 
     #[tokio::test]

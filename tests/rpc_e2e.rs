@@ -71,6 +71,25 @@ mod tests {
             let _ = tx
                 .send(StreamEvent::ContentBlockStart {
                     index: 0,
+                    content_block: Content::Thinking {
+                        thinking: String::new(),
+                        signature: String::new(),
+                    },
+                })
+                .await;
+            let _ = tx
+                .send(StreamEvent::ContentBlockDelta {
+                    index: 0,
+                    delta: ContentDelta::ThinkingDelta {
+                        thinking: "planning echo".to_string(),
+                    },
+                })
+                .await;
+            let _ = tx.send(StreamEvent::ContentBlockStop { index: 0 }).await;
+
+            let _ = tx
+                .send(StreamEvent::ContentBlockStart {
+                    index: 1,
                     content_block: Content::Text { text: String::new() },
                 })
                 .await;
@@ -80,13 +99,13 @@ mod tests {
                 let chunk = if i == 0 { word.to_string() } else { format!(" {}", word) };
                 let _ = tx
                     .send(StreamEvent::ContentBlockDelta {
-                        index: 0,
+                        index: 1,
                         delta: ContentDelta::TextDelta { text: chunk },
                     })
                     .await;
             }
 
-            let _ = tx.send(StreamEvent::ContentBlockStop { index: 0 }).await;
+            let _ = tx.send(StreamEvent::ContentBlockStop { index: 1 }).await;
 
             let _ = tx
                 .send(StreamEvent::MessageDelta {
@@ -246,20 +265,36 @@ mod tests {
         let client_ep = start_endpoint_no_mdns(&client_id).await.unwrap();
         let request = Request::new("prompt", json!({ "text": "hello world" }));
 
-        let mut deltas = Vec::new();
+        let mut text_deltas = Vec::new();
+        let mut thinking_deltas = Vec::new();
         let (notifications, response) = send_rpc_streaming(&client_ep, server_addr.clone(), &request, |notification| {
-            if let Some(method) = notification.get("method").and_then(|v| v.as_str())
-                && method == "agent.text_delta"
-                && let Some(text) = notification.get("params").and_then(|p| p.get("text")).and_then(|v| v.as_str())
-            {
-                deltas.push(text.to_string());
+            if let Some(method) = notification.get("method").and_then(|v| v.as_str()) {
+                match method {
+                    "agent.text_delta" => {
+                        if let Some(text) =
+                            notification.get("params").and_then(|p| p.get("text")).and_then(|v| v.as_str())
+                        {
+                            text_deltas.push(text.to_string());
+                        }
+                    }
+                    "agent.thinking_delta" => {
+                        if let Some(text) =
+                            notification.get("params").and_then(|p| p.get("text")).and_then(|v| v.as_str())
+                        {
+                            thinking_deltas.push(text.to_string());
+                        }
+                    }
+                    _ => {}
+                }
             }
         })
         .await
         .unwrap();
 
-        // Should have received text delta notifications
+        // Should have received text and thinking delta notifications.
         assert!(!notifications.is_empty(), "Expected streaming notifications");
+        assert!(!text_deltas.is_empty(), "Expected text delta notifications: {notifications:?}");
+        assert_eq!(thinking_deltas, vec!["planning echo".to_string()]);
 
         // Final response should be successful
         let result = response.ok.unwrap();

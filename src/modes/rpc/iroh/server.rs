@@ -313,8 +313,8 @@ async fn stream_file_to_send(file_path: &Path, send: &mut iroh::endpoint::SendSt
 // ── Streaming prompt handler ────────────────────────────────────────────────
 
 /// Handle a prompt request with streaming notifications over the QUIC stream.
-/// Sends text_delta / tool_call / tool_result notifications as they happen,
-/// then sends the final Response.
+/// Sends text_delta / thinking_delta / tool_call / tool_result notifications
+/// as they happen, then sends the final Response.
 async fn handle_prompt_streaming(request: &Request, state: &ServerState, send: iroh::endpoint::SendStream) {
     handle_prompt_streaming_pub(request, state, send).await;
 }
@@ -419,10 +419,21 @@ fn spawn_event_streamer(
                     ..
                 } => {
                     collected.push_str(text);
-                    let notification = json!({
-                        "type": "text_delta",
-                        "text": text,
-                    });
+                    let notification = prompt_notification("text_delta", "agent.text_delta", json!({ "text": text }));
+                    let bytes = serde_json::to_vec(&notification).unwrap_or_default();
+                    if write_frame(&mut send, &bytes).await.is_err() {
+                        break;
+                    }
+                }
+                AgentEvent::MessageUpdate {
+                    delta: ContentDelta::ThinkingDelta { ref thinking },
+                    ..
+                } => {
+                    let notification = prompt_notification(
+                        "thinking_delta",
+                        "agent.thinking_delta",
+                        json!({ "text": thinking, "thinking": thinking }),
+                    );
                     let bytes = serde_json::to_vec(&notification).unwrap_or_default();
                     if write_frame(&mut send, &bytes).await.is_err() {
                         break;
@@ -433,12 +444,15 @@ fn spawn_event_streamer(
                     ref call_id,
                     ref input,
                 } => {
-                    let notification = json!({
-                        "type": "tool_call",
-                        "tool_name": tool_name,
-                        "call_id": call_id,
-                        "input": input,
-                    });
+                    let notification = prompt_notification(
+                        "tool_call",
+                        "agent.tool_call",
+                        json!({
+                            "tool_name": tool_name,
+                            "call_id": call_id,
+                            "input": input,
+                        }),
+                    );
                     let bytes = serde_json::to_vec(&notification).unwrap_or_default();
                     write_frame(&mut send, &bytes).await.ok();
                 }
@@ -447,12 +461,15 @@ fn spawn_event_streamer(
                     ref result,
                     is_error,
                 } => {
-                    let notification = json!({
-                        "type": "tool_result",
-                        "call_id": call_id,
-                        "content": format!("{:?}", result),
-                        "is_error": is_error,
-                    });
+                    let notification = prompt_notification(
+                        "tool_result",
+                        "agent.tool_result",
+                        json!({
+                            "call_id": call_id,
+                            "content": format!("{:?}", result),
+                            "is_error": is_error,
+                        }),
+                    );
                     let bytes = serde_json::to_vec(&notification).unwrap_or_default();
                     write_frame(&mut send, &bytes).await.ok();
                 }
@@ -463,6 +480,24 @@ fn spawn_event_streamer(
 
         (send, collected)
     })
+}
+
+fn prompt_notification(legacy_type: &str, method: &str, params: serde_json::Value) -> serde_json::Value {
+    let mut notification = json!({
+        "type": legacy_type,
+        "method": method,
+        "params": params.clone(),
+    });
+
+    if let Some(object) = params.as_object()
+        && let Some(target) = notification.as_object_mut()
+    {
+        for (key, value) in object {
+            target.entry(key.clone()).or_insert_with(|| value.clone());
+        }
+    }
+
+    notification
 }
 
 /// Wait for the event streamer to finish and send the final response.

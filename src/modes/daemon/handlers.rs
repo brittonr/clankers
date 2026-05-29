@@ -28,7 +28,7 @@ use crate::modes::rpc::protocol::Response;
 ///
 /// Each prompt creates or reuses an actor session keyed by the peer's public
 /// key. Responses are streamed back as JSON frames compatible with the legacy
-/// protocol (`text_delta`, `tool_call`, `tool_result`, `done`/`error`).
+/// protocol (`thinking_delta`, `text_delta`, `tool_call`, `tool_result`, `done`/`error`).
 #[cfg_attr(
     dylint_lib = "tigerstyle",
     allow(unbounded_loop, reason = "event loop; bounded by connection close")
@@ -173,42 +173,24 @@ async fn run_chat_prompt(
     let mut collected = String::new();
     loop {
         match event_rx.recv().await {
-            Ok(DaemonEvent::TextDelta { ref text, .. }) => {
-                collected.push_str(text);
-                let frame = json!({ "type": "text_delta", "text": text });
-                let bytes = serde_json::to_vec(&frame).unwrap_or_default();
-                if write_frame(&mut send, &bytes).await.is_err() {
-                    break;
+            Ok(event @ DaemonEvent::TextDelta { .. }) => {
+                if let DaemonEvent::TextDelta { text } = &event {
+                    collected.push_str(text);
+                }
+                if let Some(frame) = chat_stream_frame(&event) {
+                    let bytes = serde_json::to_vec(&frame).unwrap_or_default();
+                    if write_frame(&mut send, &bytes).await.is_err() {
+                        break;
+                    }
                 }
             }
-            Ok(DaemonEvent::ToolCall {
-                ref tool_name,
-                ref call_id,
-                ref input,
-            }) => {
-                let frame = json!({
-                    "type": "tool_call",
-                    "tool_name": tool_name,
-                    "call_id": call_id,
-                    "input": input,
-                });
-                let bytes = serde_json::to_vec(&frame).unwrap_or_default();
-                write_frame(&mut send, &bytes).await.ok();
-            }
-            Ok(DaemonEvent::ToolDone {
-                ref call_id,
-                ref text,
-                is_error,
-                ..
-            }) => {
-                let frame = json!({
-                    "type": "tool_result",
-                    "call_id": call_id,
-                    "is_error": is_error,
-                    "content": text,
-                });
-                let bytes = serde_json::to_vec(&frame).unwrap_or_default();
-                write_frame(&mut send, &bytes).await.ok();
+            Ok(event @ DaemonEvent::ThinkingDelta { .. })
+            | Ok(event @ DaemonEvent::ToolCall { .. })
+            | Ok(event @ DaemonEvent::ToolDone { .. }) => {
+                if let Some(frame) = chat_stream_frame(&event) {
+                    let bytes = serde_json::to_vec(&frame).unwrap_or_default();
+                    write_frame(&mut send, &bytes).await.ok();
+                }
             }
             Ok(DaemonEvent::AgentEnd) => {}
             Ok(DaemonEvent::PromptDone { error: None }) => break,
@@ -256,6 +238,37 @@ async fn run_chat_prompt(
     }
 
     info!("[{}] prompt complete", key);
+}
+
+fn chat_stream_frame(event: &DaemonEvent) -> Option<serde_json::Value> {
+    match event {
+        DaemonEvent::TextDelta { text } => Some(json!({ "type": "text_delta", "text": text })),
+        DaemonEvent::ThinkingDelta { text } => {
+            Some(json!({ "type": "thinking_delta", "text": text, "thinking": text }))
+        }
+        DaemonEvent::ToolCall {
+            tool_name,
+            call_id,
+            input,
+        } => Some(json!({
+            "type": "tool_call",
+            "tool_name": tool_name,
+            "call_id": call_id,
+            "input": input,
+        })),
+        DaemonEvent::ToolDone {
+            call_id,
+            text,
+            is_error,
+            ..
+        } => Some(json!({
+            "type": "tool_result",
+            "call_id": call_id,
+            "is_error": is_error,
+            "content": text,
+        })),
+        _ => None,
+    }
 }
 
 // ── RPC/1 handler (unchanged) ───────────────────────────────────────────────
@@ -393,5 +406,33 @@ pub(crate) fn dispatch_rpc(request: &Request, state: &iroh::ServerState) -> Resp
             Response::success(result)
         }
         _ => Response::error(format!("Method not found: {}", request.method)),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use clankers_protocol::DaemonEvent;
+    use serde_json::json;
+
+    #[test]
+    fn chat_stream_frame_preserves_thinking_delta() {
+        let frame = super::chat_stream_frame(&DaemonEvent::ThinkingDelta {
+            text: "visible reasoning".to_string(),
+        })
+        .expect("thinking should produce a chat frame");
+
+        assert_eq!(frame["type"], json!("thinking_delta"));
+        assert_eq!(frame["text"], json!("visible reasoning"));
+        assert_eq!(frame["thinking"], json!("visible reasoning"));
+    }
+
+    #[test]
+    fn chat_stream_frame_keeps_text_delta_separate_from_thinking() {
+        let frame = super::chat_stream_frame(&DaemonEvent::TextDelta {
+            text: "answer".to_string(),
+        })
+        .expect("text should produce a chat frame");
+
+        assert_eq!(frame, json!({ "type": "text_delta", "text": "answer" }));
     }
 }

@@ -135,6 +135,7 @@ impl App {
         self.state = AppState::Streaming;
         self.streaming.text.clear();
         self.streaming.thinking.clear();
+        self.streaming.thinking_active = false;
         self.streaming.block_index = None;
     }
 
@@ -150,12 +151,14 @@ impl App {
         } else {
             self.flush_streaming_thinking();
         }
+        self.streaming.thinking_active = is_thinking;
         // block_index is no longer tracked since TuiEvent doesn't carry it
     }
 
     fn on_content_block_stop(&mut self) {
         self.flush_streaming_thinking();
         self.flush_streaming_text();
+        self.streaming.thinking_active = false;
         self.streaming.block_index = None;
     }
 
@@ -167,6 +170,7 @@ impl App {
     }
 
     fn on_thinking_delta(&mut self, thinking: &str) {
+        self.streaming.thinking_active = true;
         self.streaming.thinking.push_str(thinking);
         if self.conversation.scroll.auto_scroll {
             self.conversation.scroll.scroll_to_bottom();

@@ -67,6 +67,8 @@ pub struct StreamingState {
     pub text: String,
     /// Accumulated streaming thinking (flushed into active block on boundaries)
     pub thinking: String,
+    /// Whether the current provider content block is a thinking block.
+    pub thinking_active: bool,
     /// Current streaming content block index
     pub block_index: Option<usize>,
     /// Active tool executions keyed by call_id
@@ -291,6 +293,7 @@ impl App {
             streaming: StreamingState {
                 text: String::new(),
                 thinking: String::new(),
+                thinking_active: false,
                 block_index: None,
                 active_tools: HashMap::new(),
                 progress_renderer: super::components::progress_renderer::ProgressRenderer::new(),
@@ -669,6 +672,7 @@ impl App {
         // Flush any in-progress streaming content first
         self.flush_streaming_thinking();
         self.flush_streaming_text();
+        self.streaming.thinking_active = false;
 
         if let Some(mut block) = self.conversation.active_block.take() {
             block.streaming = false;

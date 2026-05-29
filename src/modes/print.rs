@@ -93,8 +93,10 @@ pub async fn run_print_with_options(
                             is_in_thinking = true;
                         }
                         write!(writer, "{}", thinking).ok();
+                    } else {
+                        eprint!("\x1b[2m{}\x1b[0m", thinking);
+                        std::io::stderr().flush().ok();
                     }
-                    // In plain text mode, thinking is suppressed by default
                 }
                 AgentEvent::MessageUpdate {
                     delta: ContentDelta::TextDelta { text },

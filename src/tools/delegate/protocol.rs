@@ -238,30 +238,25 @@ async fn try_remote_call(
     }
 }
 
-/// Handle streaming RPC notifications (text deltas, tool calls, etc.)
+/// Handle streaming RPC notifications (thinking/text deltas, tool calls, etc.)
 fn handle_streaming_notification(notification: &Value, sub_id: &str, panel_tx: Option<&PanelTx>) {
-    let method = notification.get("method").and_then(|v| v.as_str());
+    let kind = notification_kind(notification);
 
-    match method {
-        Some("agent.text_delta") => {
-            if let Some(text) = notification.get("params").and_then(|p| p.get("text")).and_then(|v| v.as_str())
-                && let Some(tx) = panel_tx
-            {
-                for line in text.split('\n') {
-                    if !line.is_empty() {
-                        tx.send(SubagentEvent::Output {
-                            id: sub_id.to_string(),
-                            line: line.to_string(),
-                        })
-                        .ok();
-                    }
-                }
+    match kind {
+        Some("agent.text_delta" | "text_delta") => {
+            if let Some(text) = notification_text(notification, "text") {
+                send_panel_lines(sub_id, text, panel_tx, None);
             }
         }
-        Some("agent.tool_call") => {
+        Some("agent.thinking_delta" | "thinking_delta") => {
+            if let Some(text) = notification_text(notification, "thinking") {
+                send_panel_lines(sub_id, text, panel_tx, Some("[thinking] "));
+            }
+        }
+        Some("agent.tool_call" | "tool_call") => {
             if let Some(tx) = panel_tx {
-                let tool =
-                    notification.get("params").and_then(|p| p.get("tool_name")).and_then(|v| v.as_str()).unwrap_or("?");
+                let params = notification.get("params").unwrap_or(notification);
+                let tool = params.get("tool_name").and_then(|v| v.as_str()).unwrap_or("?");
                 tx.send(SubagentEvent::Output {
                     id: sub_id.to_string(),
                     line: format!("[tool: {}]", tool),
@@ -269,13 +264,10 @@ fn handle_streaming_notification(notification: &Value, sub_id: &str, panel_tx: O
                 .ok();
             }
         }
-        Some("agent.tool_result") => {
+        Some("agent.tool_result" | "tool_result") => {
             if let Some(tx) = panel_tx {
-                let is_error = notification
-                    .get("params")
-                    .and_then(|p| p.get("is_error"))
-                    .and_then(|v| v.as_bool())
-                    .unwrap_or(false);
+                let params = notification.get("params").unwrap_or(notification);
+                let is_error = params.get("is_error").and_then(|v| v.as_bool()).unwrap_or(false);
                 if is_error {
                     tx.send(SubagentEvent::Output {
                         id: sub_id.to_string(),
@@ -286,6 +278,39 @@ fn handle_streaming_notification(notification: &Value, sub_id: &str, panel_tx: O
             }
         }
         _ => {}
+    }
+}
+
+fn notification_kind(notification: &Value) -> Option<&str> {
+    notification
+        .get("method")
+        .and_then(|v| v.as_str())
+        .or_else(|| notification.get("type").and_then(|v| v.as_str()))
+}
+
+fn notification_text<'a>(notification: &'a Value, fallback_key: &str) -> Option<&'a str> {
+    notification
+        .get("params")
+        .and_then(|params| params.get("text").or_else(|| params.get(fallback_key)))
+        .and_then(|v| v.as_str())
+        .or_else(|| notification.get("text").and_then(|v| v.as_str()))
+        .or_else(|| notification.get(fallback_key).and_then(|v| v.as_str()))
+}
+
+fn send_panel_lines(sub_id: &str, text: &str, panel_tx: Option<&PanelTx>, prefix: Option<&str>) {
+    let Some(tx) = panel_tx else {
+        return;
+    };
+
+    for line in text.split('\n') {
+        if line.is_empty() {
+            continue;
+        }
+        tx.send(SubagentEvent::Output {
+            id: sub_id.to_string(),
+            line: format!("{}{}", prefix.unwrap_or(""), line),
+        })
+        .ok();
     }
 }
 
