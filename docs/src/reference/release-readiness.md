@@ -67,7 +67,33 @@ The full harness also runs the maintained real-TUI background-process dogfood ra
 
 Use the focused form when debugging only the process-panel/operator seam. It launches a deterministic local provider stub plus a real Clankers TUI in tmux, sends `/layout toggle bg`, starts a bounded background process through the `process` tool, and writes a dogfood receipt under `target/dogfood/bg-process-tui-*/receipt.json`. Before claiming the background-process TUI path is ready, require `result: pass`, `layout_toggle_bg_visible: true`, `active_processes_observed > 0`, `command_visible: true`, and `sentinel_processes_cleaned_up: true`.
 
+Use the streaming-token recording form when debugging incremental assistant/thinking rendering:
+
+```bash
+./scripts/test-harness.sh dogfood streaming-tokens
+```
+
+It launches the real Clankers TUI in tmux against a local SSE provider stub that delays thinking and text deltas, then writes timestamped screen-frame artifacts plus a receipt under `target/dogfood/streaming-tokens-*/receipt.json`. It also submits a follow-up prompt while a synthetic stream is still active to prove terminal input is serviced before the prior response returns. Before claiming token streaming is intact, require `result: pass`, `observed_incremental_text: true`, `observed_incremental_thinking: true`, `provider_requests >= 3`, `mid_stream_input_sent_before_response_returned: true`, and screen frames where earlier deltas are visible before later deltas.
+
+Use the daemon/attach streaming-abort form when debugging attached TUI input while the daemon is streaming:
+
+```bash
+./scripts/test-harness.sh dogfood daemon-attach-streaming-abort
+```
+
+It starts an isolated local daemon, creates one session, attaches a real TUI in tmux, drives a long synthetic SSE stream, then submits a follow-up prompt before that stream can naturally complete. The receipt lives under `target/dogfood/daemon-attach-streaming-abort-*/receipt.json` with schema `clankers.daemon_attach_streaming_abort_dogfood.receipt.v1`. Before claiming daemon/attach mid-stream input is intact, require `result: pass`, `mid_stream_abort_processed_before_provider_returned: true`, `followup_request_started_before_stream_completed: true`, `provider_requests >= 2`, `busy_rejection_visible: false`, `daemon_cleaned_up: true`, and screen frames showing the active streaming state before the follow-up ack.
+
 The `internal-readiness-2026-05-26-dogfood-full` checkpoint evidence page records the first pushed readiness tag whose normal full harness included this dogfood rail: `docs/src/reference/internal-readiness-2026-05-26-dogfood-full.md`.
+
+The soak profile repeats dogfood rails to hunt intermittent input, daemon, rendering, and cleanup failures:
+
+```bash
+./scripts/test-harness.sh soak all 3
+./scripts/test-harness.sh soak streaming 2
+./scripts/test-harness.sh soak daemon-attach 3
+```
+
+`soak all` repeats bg-process TUI, streaming-token, daemon/attach streaming-abort, and daemon attach/reconnect rails. `soak streaming` repeats both standalone streaming-token and daemon/attach streaming-abort rails. `soak daemon-attach` repeats the daemon/attach streaming-abort and reconnect rails. The default repeat count comes from `CLANKERS_SOAK_ITERATIONS` or 3. Treat soak as flake-hunting evidence: require every repeated harness step to pass, then inspect the generated dogfood receipts for `result: pass` and the receipt-specific fields above before declaring the interaction surface stable.
 
 A second focused local daemon attach/reconnect dogfood rail remains opt-in until it has enough soak time for full-readiness promotion:
 
@@ -110,11 +136,13 @@ CLANKERS_RUN_FLAKE_READINESS=1 \
 4. Run `nix build .#checks.$(nix eval --raw --impure --expr builtins.currentSystem).embedded-sdk-release-receipt` to verify the embedded SDK receipt rail remains wired into the routine Nix check surface.
 5. Run `./scripts/test-harness.sh live aspen2-qwen36` when you need a focused Lemonade/Qwen3.6 receipt outside the full harness.
 6. Run `./scripts/test-harness.sh dogfood bg-process-tui` when you need a focused operator-visible background-process TUI receipt outside the full harness.
-7. Run `./scripts/test-harness.sh dogfood daemon-attach-reconnect` when you need focused local daemon attach/reconnect evidence outside the full harness.
-8. Run `./scripts/test-harness.sh vm all` and `./scripts/test-harness.sh ci` on machines authorized for NixOS VM and flake-heavy checks.
-9. Run `./scripts/test-harness.sh evidence-index` after the selected profiles complete, then inspect `target/release-evidence/current-head/index.md` for selected receipts, missing modes, dirty status, and non-claims.
-10. Confirm OAuth login commands print authorization URLs instead of opening a browser automatically.
-11. Inspect `git diff --check`, commit the verified changes, push, and verify `main`/`origin/main` match.
-12. Include the evidence index plus the full harness summary and any opt-in nextest live/VM/flake summaries in the release/readiness note, clearly separating pure readiness from optional host-dependent coverage.
+7. Run `./scripts/test-harness.sh dogfood daemon-attach-streaming-abort` when you need focused evidence that attach-mode follow-up input aborts a running daemon stream before the provider returns.
+8. Run `./scripts/test-harness.sh dogfood daemon-attach-reconnect` when you need focused local daemon attach/reconnect evidence outside the full harness.
+9. Run `./scripts/test-harness.sh soak streaming 2` or `./scripts/test-harness.sh soak daemon-attach 3` when you need repeated local dogfood evidence for streaming/attach flake hunting.
+10. Run `./scripts/test-harness.sh vm all` and `./scripts/test-harness.sh ci` on machines authorized for NixOS VM and flake-heavy checks.
+11. Run `./scripts/test-harness.sh evidence-index` after the selected profiles complete, then inspect `target/release-evidence/current-head/index.md` for selected receipts, missing modes, dirty status, and non-claims.
+12. Confirm OAuth login commands print authorization URLs instead of opening a browser automatically.
+13. Inspect `git diff --check`, commit the verified changes, push, and verify `main`/`origin/main` match.
+14. Include the evidence index plus the full harness summary and any opt-in nextest live/VM/flake summaries in the release/readiness note, clearly separating pure readiness from optional host-dependent coverage.
 
 Do not make a general external-production claim from these gates alone. They support trusted/internal dogfooding and release-candidate hygiene; public unattended production readiness still depends on the active roadmap, security boundary review, packaging/deployment surface, and operator documentation.

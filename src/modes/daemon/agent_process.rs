@@ -9,6 +9,7 @@
 //! - SubagentTool (in-process subagents instead of `clankers -p`)
 //! - DelegateTool (in-process workers instead of `clankers -p`)
 
+use std::collections::VecDeque;
 use std::sync::Arc;
 
 use clanker_actor::DeathReason;
@@ -196,6 +197,8 @@ async fn run_agent_actor(
 ) -> DeathReason {
     info!("agent process started: {session_id}");
 
+    let mut pending_commands = VecDeque::new();
+
     // Fire plugin_init so plugins can set up initial UI state
     if let Some(ref pm) = plugin_manager {
         for action in crate::modes::common::fire_plugin_init(pm) {
@@ -205,6 +208,23 @@ async fn run_agent_actor(
     }
 
     loop {
+        if let Some(cmd) = pending_commands.pop_front() {
+            if handle_actor_session_command(
+                &mut controller,
+                cmd,
+                &mut cmd_rx,
+                &event_tx,
+                &mut panel_rx,
+                plugin_manager.as_ref(),
+                &mut pending_commands,
+            )
+            .await
+            {
+                break;
+            }
+            continue;
+        }
+
         tokio::select! {
             // Actor signals (Kill, Shutdown, LinkDied, etc.)
             signal = signal_rx.recv() => {
@@ -235,71 +255,19 @@ async fn run_agent_actor(
             // Session commands from clients
             cmd = cmd_rx.recv() => {
                 let Some(cmd) = cmd else { break };
-                let is_disconnect = matches!(cmd, SessionCommand::Disconnect);
-
-                // Handle plugin queries locally (controller doesn't know about plugins)
-                if matches!(cmd, SessionCommand::GetPlugins) {
-                    let summaries = build_plugin_summaries(plugin_manager.as_ref());
-                    event_tx.send(DaemonEvent::PluginList { plugins: summaries }).ok();
-                    if is_disconnect { break; }
-                    continue;
-                }
-
-                let tools_before = controller.current_tool_infos();
-                {
-                    let mut broadcast_stream_events = |events| {
-                        super::socket_bridge::broadcast_events(
-                            events,
-                            &event_tx,
-                            &mut panel_rx,
-                            plugin_manager.as_ref(),
-                        );
-                    };
-                    controller
-                        .handle_command_with_streaming_events(cmd, &mut broadcast_stream_events)
-                        .await;
-                }
-                super::socket_bridge::drain_and_broadcast(
-                    &mut controller, &event_tx, &mut panel_rx,
+                if handle_actor_session_command(
+                    &mut controller,
+                    cmd,
+                    &mut cmd_rx,
+                    &event_tx,
+                    &mut panel_rx,
                     plugin_manager.as_ref(),
-                );
-                let tools_after = controller.current_tool_infos();
-                if tools_after != tools_before {
-                    event_tx.send(DaemonEvent::ToolList { tools: tools_after }).ok();
+                    &mut pending_commands,
+                )
+                .await
+                {
+                    break;
                 }
-                drain_plugin_runtime_events(&event_tx, plugin_manager.as_ref());
-
-                // Post-prompt actions (auto-test, loop continuation)
-                if !controller.is_busy() {
-                    if let Some(auto_prompt) = controller.maybe_auto_test() {
-                        {
-                            let mut broadcast_stream_events = |events| {
-                                super::socket_bridge::broadcast_events(
-                                    events,
-                                    &event_tx,
-                                    &mut panel_rx,
-                                    plugin_manager.as_ref(),
-                                );
-                            };
-                            controller
-                                .handle_command_with_streaming_events(
-                                    SessionCommand::Prompt {
-                                        text: auto_prompt,
-                                        images: vec![],
-                                    },
-                                    &mut broadcast_stream_events,
-                                )
-                                .await;
-                        }
-                        super::socket_bridge::drain_and_broadcast(
-                            &mut controller, &event_tx, &mut panel_rx,
-                            plugin_manager.as_ref(),
-                        );
-                    }
-                    controller.clear_auto_test();
-                }
-
-                if is_disconnect { break; }
             }
 
             // Bash tool requesting confirmation for a dangerous command.
@@ -353,6 +321,113 @@ async fn run_agent_actor(
     controller.shutdown().await;
     info!("agent process stopped: {session_id}");
     DeathReason::Normal
+}
+
+async fn handle_actor_session_command(
+    controller: &mut SessionController,
+    cmd: SessionCommand,
+    cmd_rx: &mut mpsc::UnboundedReceiver<SessionCommand>,
+    event_tx: &broadcast::Sender<DaemonEvent>,
+    panel_rx: &mut mpsc::UnboundedReceiver<SubagentEvent>,
+    plugin_manager: Option<&Arc<std::sync::Mutex<crate::plugin::PluginManager>>>,
+    pending_commands: &mut VecDeque<SessionCommand>,
+) -> bool {
+    let is_disconnect = matches!(cmd, SessionCommand::Disconnect);
+
+    // Handle plugin queries locally (controller doesn't know about plugins).
+    if matches!(cmd, SessionCommand::GetPlugins) {
+        let summaries = build_plugin_summaries(plugin_manager);
+        event_tx.send(DaemonEvent::PluginList { plugins: summaries }).ok();
+        return is_disconnect;
+    }
+
+    let tools_before = controller.current_tool_infos();
+    handle_controller_command_with_interrupts(
+        controller,
+        cmd,
+        cmd_rx,
+        event_tx,
+        panel_rx,
+        plugin_manager,
+        pending_commands,
+    )
+    .await;
+    super::socket_bridge::drain_and_broadcast(controller, event_tx, panel_rx, plugin_manager);
+    let tools_after = controller.current_tool_infos();
+    if tools_after != tools_before {
+        event_tx.send(DaemonEvent::ToolList { tools: tools_after }).ok();
+    }
+    drain_plugin_runtime_events(event_tx, plugin_manager);
+
+    // Post-prompt actions (auto-test, loop continuation).
+    if !controller.is_busy() {
+        if let Some(auto_prompt) = controller.maybe_auto_test() {
+            handle_controller_command_with_interrupts(
+                controller,
+                SessionCommand::Prompt {
+                    text: auto_prompt,
+                    images: vec![],
+                },
+                cmd_rx,
+                event_tx,
+                panel_rx,
+                plugin_manager,
+                pending_commands,
+            )
+            .await;
+            super::socket_bridge::drain_and_broadcast(controller, event_tx, panel_rx, plugin_manager);
+        }
+        controller.clear_auto_test();
+    }
+
+    is_disconnect
+}
+
+async fn handle_controller_command_with_interrupts(
+    controller: &mut SessionController,
+    cmd: SessionCommand,
+    cmd_rx: &mut mpsc::UnboundedReceiver<SessionCommand>,
+    event_tx: &broadcast::Sender<DaemonEvent>,
+    panel_rx: &mut mpsc::UnboundedReceiver<SubagentEvent>,
+    plugin_manager: Option<&Arc<std::sync::Mutex<crate::plugin::PluginManager>>>,
+    pending_commands: &mut VecDeque<SessionCommand>,
+) {
+    let cancel_token = if is_prompt_command(&cmd) {
+        controller.current_cancel_token()
+    } else {
+        None
+    };
+
+    let mut broadcast_stream_events = |events| {
+        super::socket_bridge::broadcast_events(events, event_tx, panel_rx, plugin_manager);
+    };
+    let command_future = controller.handle_command_with_streaming_events(cmd, &mut broadcast_stream_events);
+    tokio::pin!(command_future);
+
+    loop {
+        tokio::select! {
+            () = &mut command_future => break,
+            maybe_cmd = cmd_rx.recv(), if cancel_token.is_some() => {
+                let Some(next_cmd) = maybe_cmd else {
+                    if let Some(cancel) = &cancel_token {
+                        cancel.cancel();
+                    }
+                    break;
+                };
+                if matches!(next_cmd, SessionCommand::Abort) {
+                    if let Some(cancel) = &cancel_token {
+                        cancel.cancel();
+                    }
+                } else {
+                    pending_commands.push_back(next_cmd);
+                }
+            }
+        }
+    }
+}
+
+fn is_prompt_command(cmd: &SessionCommand) -> bool {
+    matches!(cmd, SessionCommand::Prompt { .. } | SessionCommand::RewriteAndPrompt { .. })
 }
 
 // ── Ephemeral agent runner ──────────────────────────────────────────────────
@@ -1225,6 +1300,66 @@ mod factory_plugin_tests {
         );
         assert!(text_before_release, "daemon actor should broadcast TextDelta before PromptDone/provider return");
         assert!(!returned_before_release, "provider should still be blocked when deltas are broadcast");
+    }
+
+    #[tokio::test]
+    async fn daemon_actor_processes_abort_while_prompt_is_streaming() {
+        let streamed = Arc::new(tokio::sync::Notify::new());
+        let release = Arc::new(tokio::sync::Notify::new());
+        let returned = Arc::new(AtomicBool::new(false));
+        let provider = Arc::new(DelayedStreamingProvider {
+            streamed: Arc::clone(&streamed),
+            release,
+            returned: Arc::clone(&returned),
+        });
+        let registry = ProcessRegistry::new();
+        let factory = make_factory_with_provider(provider, None);
+        let spawned = super::spawn_agent_process(
+            &registry,
+            &factory,
+            "daemon-abort-streaming-test".to_string(),
+            None,
+            None,
+            None,
+            None,
+        );
+        let mut event_rx = spawned.event_tx.subscribe();
+
+        spawned
+            .cmd_tx
+            .send(clankers_protocol::SessionCommand::Prompt {
+                text: "stream until aborted".to_string(),
+                images: vec![],
+            })
+            .expect("prompt command should be accepted");
+        tokio::time::timeout(Duration::from_secs(1), streamed.notified())
+            .await
+            .expect("provider should reach streaming wait point");
+
+        spawned
+            .cmd_tx
+            .send(clankers_protocol::SessionCommand::Abort)
+            .expect("abort command should be accepted while prompt runs");
+
+        tokio::time::timeout(Duration::from_secs(1), async {
+            loop {
+                match event_rx.recv().await {
+                    Ok(clankers_protocol::DaemonEvent::PromptDone { error: Some(error) }) if error == "cancelled" => {
+                        break;
+                    }
+                    Ok(_) | Err(broadcast::error::RecvError::Lagged(_)) => {}
+                    Err(error) => panic!("event stream closed before prompt cancellation: {error}"),
+                }
+            }
+        })
+        .await
+        .expect("abort should finish the prompt before provider release");
+        shutdown_spawned_session(&registry, &spawned);
+
+        assert!(
+            !returned.load(Ordering::SeqCst),
+            "abort should cancel the running provider future rather than waiting for normal provider return"
+        );
     }
 
     #[tokio::test]

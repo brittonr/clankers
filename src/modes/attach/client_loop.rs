@@ -150,7 +150,9 @@ mod tests {
     use clankers_controller::client::ClientAdapter;
     use clankers_protocol::DaemonEvent;
     use clankers_tui::app::App;
+    use clankers_tui::app::AppState;
 
+    use super::super::events::MAX_DAEMON_EVENTS_PER_DRAIN;
     use super::finish_local_reconnect;
     use crate::modes::attach::AttachParityTracker;
     use crate::modes::attach::drain_daemon_events;
@@ -177,6 +179,44 @@ mod tests {
                 BlockEntry::Conversation(_) => None,
             })
             .collect()
+    }
+
+    #[test]
+    fn daemon_event_drain_is_bounded_so_attached_terminal_input_gets_a_turn() {
+        let mut app = test_app();
+        let events = (0..=MAX_DAEMON_EVENTS_PER_DRAIN)
+            .map(|index| DaemonEvent::TextDelta {
+                text: format!("token-{index} "),
+            })
+            .collect();
+        let mut client = client_with_events(events);
+        let mut is_replaying_history = false;
+        let mut parity_tracker = AttachParityTracker::default();
+
+        drain_daemon_events(&mut app, &mut client, &mut is_replaying_history, 0, &mut parity_tracker);
+        assert!(app.streaming.text.contains("token-0 "));
+        assert!(app.streaming.text.contains(&format!("token-{} ", MAX_DAEMON_EVENTS_PER_DRAIN - 1)));
+        assert!(
+            !app.streaming.text.contains(&format!("token-{MAX_DAEMON_EVENTS_PER_DRAIN} ")),
+            "daemon draining must return to terminal polling before consuming every queued stream event"
+        );
+
+        drain_daemon_events(&mut app, &mut client, &mut is_replaying_history, 0, &mut parity_tracker);
+        assert!(app.streaming.text.contains(&format!("token-{MAX_DAEMON_EVENTS_PER_DRAIN} ")));
+    }
+
+    #[test]
+    fn history_end_returns_attached_replay_to_idle() {
+        let mut app = test_app();
+        app.state = AppState::Streaming;
+        let mut client = client_with_events(vec![DaemonEvent::HistoryEnd]);
+        let mut is_replaying_history = true;
+        let mut parity_tracker = AttachParityTracker::default();
+
+        drain_daemon_events(&mut app, &mut client, &mut is_replaying_history, 0, &mut parity_tracker);
+
+        assert_eq!(app.state, AppState::Idle);
+        assert!(!is_replaying_history);
     }
 
     #[test]

@@ -84,6 +84,7 @@ fn run() -> Result<PathBuf, String> {
     send_prompt(&first, "Record the daemon attach reconnect dogfood replay sentinel.")?;
     let first_replay_screen =
         wait_screen(&first, |s| s.contains(REPLAY_SENTINEL), Duration::from_secs(25), "first prompt response")?;
+    wait_screen(&first, is_idle_screen, Duration::from_secs(10), "first attach idle after prompt")?;
     slash(&first, "/think high")?;
     let first_think_screen =
         wait_screen(&first, |s| s.contains("Thinking:"), Duration::from_secs(8), "first local thinking parity")?;
@@ -98,6 +99,7 @@ fn run() -> Result<PathBuf, String> {
         Duration::from_secs(20),
         "history replay after reattach",
     )?;
+    wait_screen(&second, is_idle_screen, Duration::from_secs(10), "second attach idle after replay")?;
     slash(&second, "/think low")?;
     let second_think_screen = wait_screen(
         &second,
@@ -259,6 +261,10 @@ fn capture(session: &str) -> Result<String, String> {
     tmux(["capture-pane", "-t", session, "-p"])
 }
 
+fn is_idle_screen(screen: &str) -> bool {
+    screen.contains(" idle |") || screen.contains(" idle ")
+}
+
 fn wait_screen(
     session: &str,
     predicate: impl Fn(&str) -> bool,
@@ -399,9 +405,6 @@ fn clankers_binary() -> Result<PathBuf, String> {
     }
     let target_dir = env::var("CARGO_TARGET_DIR").unwrap_or_else(|_| "target".to_string());
     let default = PathBuf::from(target_dir).join("debug/clankers");
-    if default.exists() {
-        return Ok(default);
-    }
     let status = Command::new("cargo")
         .args(["build", "--bin", "clankers"])
         .status()

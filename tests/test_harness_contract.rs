@@ -71,6 +71,34 @@ fn test_harness_dry_run_receipts_cover_representative_modes() {
             expected_commands: &["./scripts/check-daemon-attach-reconnect-dogfood.rs"],
         },
         HarnessCase {
+            name: "dogfood-streaming-tokens",
+            args: &["dogfood", "streaming-tokens"],
+            expected_steps: &["dogfood streaming-tokens"],
+            expected_commands: &["./scripts/check-streaming-tokens-recording.rs"],
+        },
+        HarnessCase {
+            name: "dogfood-daemon-attach-streaming-abort",
+            args: &["dogfood", "daemon-attach-streaming-abort"],
+            expected_steps: &["dogfood daemon-attach-streaming-abort"],
+            expected_commands: &["./scripts/check-daemon-attach-streaming-abort-dogfood.rs"],
+        },
+        HarnessCase {
+            name: "soak-streaming-two-iterations",
+            args: &["soak", "streaming", "2"],
+            expected_steps: &[
+                "soak streaming 1/2 streaming-tokens",
+                "soak streaming 1/2 daemon-attach-streaming-abort",
+                "soak streaming 2/2 streaming-tokens",
+                "soak streaming 2/2 daemon-attach-streaming-abort",
+            ],
+            expected_commands: &[
+                "./scripts/check-streaming-tokens-recording.rs",
+                "./scripts/check-daemon-attach-streaming-abort-dogfood.rs",
+                "./scripts/check-streaming-tokens-recording.rs",
+                "./scripts/check-daemon-attach-streaming-abort-dogfood.rs",
+            ],
+        },
+        HarnessCase {
             name: "vm-smoke",
             args: &["vm", "smoke"],
             expected_steps: &["vm readiness smoke"],
@@ -129,7 +157,8 @@ fn test_harness_list_mode_documents_profiles_selectors_env_and_receipts() {
         "`deterministic`",
         "`e2e [fake|deterministic|fast|api|all|test-name]`",
         "`live [local-model|aspen2-qwen36|all]`",
-        "`dogfood [bg-process-tui|daemon-attach-reconnect]`",
+        "`dogfood [bg-process-tui|daemon-attach-reconnect|streaming-tokens|daemon-attach-streaming-abort]`",
+        "`soak [all|tui|daemon-attach|streaming] [iterations]`",
         "`vm [all|core|module|smoke|check-name]`",
         "`ci [extra nix args...]`",
         "`evidence-index`",
@@ -146,6 +175,11 @@ fn test_harness_list_mode_documents_profiles_selectors_env_and_receipts() {
         "Dogfood selectors",
         "bg-process-tui",
         "daemon-attach-reconnect",
+        "streaming-tokens",
+        "daemon-attach-streaming-abort",
+        "Soak selectors",
+        "all` runs bg-process TUI, streaming tokens, daemon attach streaming abort, and daemon attach reconnect",
+        "CLANKERS_SOAK_ITERATIONS=<n>",
         "VM selectors",
         "vm-smoke",
         "vm-module-daemon",
@@ -166,6 +200,21 @@ fn test_harness_list_mode_documents_profiles_selectors_env_and_receipts() {
     ] {
         assert!(stdout.contains(expected), "list output should contain {expected:?}\n{stdout}");
     }
+}
+
+#[test]
+fn test_harness_soak_rejects_invalid_inputs_before_running_steps() {
+    let invalid_iterations = run_harness_failure(&["soak", "streaming", "0"], "soak-invalid-iterations");
+    assert!(
+        invalid_iterations.contains("soak iterations must be between 1 and 50"),
+        "stderr should name iteration bounds, got {invalid_iterations:?}"
+    );
+
+    let unknown_selector = run_harness_failure(&["soak", "unknown", "1"], "soak-unknown-selector");
+    assert!(
+        unknown_selector.contains("known soak selectors: all, tui, daemon-attach, streaming"),
+        "stderr should name known selectors, got {unknown_selector:?}"
+    );
 }
 
 #[test]
@@ -199,6 +248,22 @@ fn run_harness_dry_run(case: &HarnessCase, run_id: &str) -> tempfile::TempDir {
     let receipt_dir = tempfile::tempdir().expect("receipt tempdir should be creatable");
     run_harness_dry_run_in(case, receipt_dir.path(), run_id);
     receipt_dir
+}
+
+fn run_harness_failure(args: &[&str], run_id: &str) -> String {
+    let receipt_dir = tempfile::tempdir().expect("receipt tempdir should be creatable");
+    let output = Command::new("bash")
+        .current_dir(repo_root())
+        .env("CLANKERS_TEST_DRY_RUN", "1")
+        .env("CLANKERS_TEST_RESULT_DIR", receipt_dir.path())
+        .env("CLANKERS_TEST_RUN_ID", run_id)
+        .args(["scripts/test-harness.sh"])
+        .args(args)
+        .output()
+        .expect("test harness should spawn");
+
+    assert!(!output.status.success(), "harness args {args:?} should fail");
+    String::from_utf8_lossy(&output.stderr).into_owned()
 }
 
 fn run_harness_dry_run_in(case: &HarnessCase, receipt_dir: &Path, run_id: &str) {

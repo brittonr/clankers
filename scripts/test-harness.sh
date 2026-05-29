@@ -8,7 +8,8 @@
 #   ./scripts/test-harness.sh deterministic
 #   ./scripts/test-harness.sh e2e [fake|deterministic|fast|api|all|test-name]
 #   ./scripts/test-harness.sh live [local-model|aspen2-qwen36|all]
-#   ./scripts/test-harness.sh dogfood [bg-process-tui|daemon-attach-reconnect]
+#   ./scripts/test-harness.sh dogfood [bg-process-tui|daemon-attach-reconnect|streaming-tokens|daemon-attach-streaming-abort]
+#   ./scripts/test-harness.sh soak [all|tui|daemon-attach|streaming] [iterations]
 #   ./scripts/test-harness.sh vm [all|core|module|smoke|check-name]
 #   ./scripts/test-harness.sh ci [extra nix args...]
 #   ./scripts/test-harness.sh evidence-index
@@ -104,7 +105,8 @@ list_profiles() {
 - `deterministic`: credential-free deterministic engine, controller, and session-resume replay fixtures.
 - `e2e [fake|deterministic|fast|api|all|test-name]`: readiness E2E gates or legacy E2E selector.
 - `live [local-model|aspen2-qwen36|all]`: opt-in live local-model readiness.
-- `dogfood [bg-process-tui|daemon-attach-reconnect]`: local operator dogfood receipts that drive the real TUI with deterministic local stubs.
+- `dogfood [bg-process-tui|daemon-attach-reconnect|streaming-tokens|daemon-attach-streaming-abort]`: local operator dogfood receipts that drive the real TUI with deterministic local stubs.
+- `soak [all|tui|daemon-attach|streaming] [iterations]`: repeated dogfood rails for flake hunting; default iterations come from `CLANKERS_SOAK_ITERATIONS` or 3.
 - `vm [all|core|module|smoke|check-name]`: opt-in NixOS VM readiness.
 - `ci [extra nix args...]`: opt-in flake readiness adapter.
 - `evidence-index`: compose Git/lifecycle state with existing local harness receipts; does not run missing readiness profiles.
@@ -116,7 +118,8 @@ list_profiles() {
 - E2E selectors: `fake`, `deterministic`, `fast`, `api`, `all`, or a legacy test name.
 - Deterministic profile: `clankers-engine` replay equivalence tests plus controller/agent replay tests and persisted session-resume replay tests with scripted provider/tool fixtures and no live credentials.
 - Live selectors: `local-model`, `aspen2-qwen36`, `all`.
-- Dogfood selectors: `bg-process-tui`, `daemon-attach-reconnect`.
+- Dogfood selectors: `bg-process-tui`, `daemon-attach-reconnect`, `streaming-tokens`, `daemon-attach-streaming-abort`.
+- Soak selectors: `all` runs bg-process TUI, streaming tokens, daemon attach streaming abort, and daemon attach reconnect; `tui` runs the TUI-only dogfood rails; `daemon-attach` runs daemon attach streaming abort plus reconnect; `streaming` runs streaming tokens plus daemon attach streaming abort.
 - VM selectors: `all`, `core`, `module`, `smoke`.
 - VM checks: `vm-smoke`, `vm-remote-daemon`, `vm-session-recovery`, `vm-plugin-runtime`, `vm-module-daemon`, `vm-module-router`, `vm-module-integration`.
 
@@ -127,6 +130,7 @@ list_profiles() {
 - `CLANKERS_TEST_RUN_ID=<id>`: set a deterministic run id; allowed characters are `A-Z`, `a-z`, `0-9`, `.`, `_`, and `-`.
 - `CARGO_TARGET_DIR=<dir>`: cargo target directory, default `target`.
 - `CLANKERS_NO_DAEMON=1`: default harness setting for predictable local runs.
+- `CLANKERS_SOAK_ITERATIONS=<n>`: default repeat count for `soak` mode when no iteration argument is supplied.
 
 ## Receipts
 
@@ -280,22 +284,99 @@ run_live_selector() {
     esac
 }
 
-run_dogfood_selector() {
-    local selector="${1:-bg-process-tui}"
+dogfood_command_for_selector() {
+    local selector="$1"
 
     case "$selector" in
         bg-process-tui)
-            run_step "dogfood bg-process-tui" ./scripts/check-bg-process-tui-dogfood.rs
+            printf '%s\n' "./scripts/check-bg-process-tui-dogfood.rs"
             ;;
         daemon-attach-reconnect)
-            run_step "dogfood daemon-attach-reconnect" ./scripts/check-daemon-attach-reconnect-dogfood.rs
+            printf '%s\n' "./scripts/check-daemon-attach-reconnect-dogfood.rs"
+            ;;
+        streaming-tokens)
+            printf '%s\n' "./scripts/check-streaming-tokens-recording.rs"
+            ;;
+        daemon-attach-streaming-abort)
+            printf '%s\n' "./scripts/check-daemon-attach-streaming-abort-dogfood.rs"
             ;;
         *)
-            echo "error: unknown dogfood selector: $selector" >&2
-            echo "known dogfood selectors: bg-process-tui, daemon-attach-reconnect" >&2
             return 2
             ;;
     esac
+}
+
+run_dogfood_selector() {
+    local selector="${1:-bg-process-tui}"
+    local command
+
+    if ! command="$(dogfood_command_for_selector "$selector")"; then
+        echo "error: unknown dogfood selector: $selector" >&2
+        echo "known dogfood selectors: bg-process-tui, daemon-attach-reconnect, streaming-tokens, daemon-attach-streaming-abort" >&2
+        return 2
+    fi
+    run_step "dogfood $selector" "$command"
+}
+
+soak_selectors_for() {
+    local selector="$1"
+
+    case "$selector" in
+        all)
+            printf '%s\n' bg-process-tui streaming-tokens daemon-attach-streaming-abort daemon-attach-reconnect
+            ;;
+        tui)
+            printf '%s\n' bg-process-tui streaming-tokens
+            ;;
+        daemon-attach)
+            printf '%s\n' daemon-attach-streaming-abort daemon-attach-reconnect
+            ;;
+        streaming)
+            printf '%s\n' streaming-tokens daemon-attach-streaming-abort
+            ;;
+        *)
+            return 2
+            ;;
+    esac
+}
+
+validate_soak_iterations() {
+    local iterations="$1"
+    local iterations_num
+    case "$iterations" in
+        ''|*[!0-9]*)
+            echo "error: soak iterations must be a positive integer" >&2
+            return 2
+            ;;
+    esac
+    iterations_num=$((10#$iterations))
+    if [[ "$iterations_num" -lt 1 || "$iterations_num" -gt 50 ]]; then
+        echo "error: soak iterations must be between 1 and 50" >&2
+        return 2
+    fi
+}
+
+run_soak_selector() {
+    local selector="${1:-all}"
+    local iterations="${2:-${CLANKERS_SOAK_ITERATIONS:-3}}"
+    local dogfood_selectors=()
+    local dogfood_selector iteration command selectors_text
+
+    validate_soak_iterations "$iterations"
+    iterations=$((10#$iterations))
+    if ! selectors_text="$(soak_selectors_for "$selector")"; then
+        echo "error: unknown soak selector: $selector" >&2
+        echo "known soak selectors: all, tui, daemon-attach, streaming" >&2
+        return 2
+    fi
+    mapfile -t dogfood_selectors <<< "$selectors_text"
+
+    for ((iteration = 1; iteration <= iterations; iteration++)); do
+        for dogfood_selector in "${dogfood_selectors[@]}"; do
+            command="$(dogfood_command_for_selector "$dogfood_selector")"
+            run_step "soak $selector $iteration/$iterations $dogfood_selector" "$command"
+        done
+    done
 }
 
 write_reports() {
@@ -474,6 +555,9 @@ main() {
             ;;
         dogfood)
             run_dogfood_selector "${1:-bg-process-tui}"
+            ;;
+        soak)
+            run_soak_selector "${1:-all}" "${2:-${CLANKERS_SOAK_ITERATIONS:-3}}"
             ;;
         vm)
             run_step "vm readiness ${1:-all}" env CLANKERS_RUN_VM_READINESS=1 CLANKERS_VM_READINESS_SELECTOR="${1:-all}" cargo nextest run -p clankers --test readiness_opt_in --no-fail-fast -E 'test(readiness_vm_required_nixos_checks_nextest_opt_in)'

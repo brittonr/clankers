@@ -225,6 +225,10 @@ async fn stream_to_file(recv: &mut iroh::endpoint::RecvStream, file: &mut tokio:
         total += n as u64;
     }
 
+    tokio::io::AsyncWriteExt::shutdown(file)
+        .await
+        .map_err(|e| format!("File flush error: {}", e))?;
+
     Ok(total)
 }
 

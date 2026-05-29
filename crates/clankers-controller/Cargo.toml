@@ -21,6 +21,7 @@ clankers-db = { version = "0.1.0", path = "../clankers-db" }
 serde = { workspace = true }
 serde_json = { workspace = true }
 tokio = { workspace = true }
+tokio-util = "0.7"
 tracing = { workspace = true }
 chrono = { workspace = true }
 libc = "0.2"

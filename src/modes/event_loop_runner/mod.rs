@@ -33,6 +33,8 @@ use crate::tui::render;
 
 mod key_handler;
 
+const MAX_AGENT_EVENTS_PER_DRAIN: usize = 64;
+
 /// Owns the per-loop state and channels for the TUI event loop.
 ///
 /// The `SessionController` (in embedded mode) handles audit, session
@@ -165,7 +167,7 @@ impl<'a> EventLoopRunner<'a> {
         allow(unbounded_loop, reason = "event loop; exits on quit signal")
     )]
     fn drain_agent_events(&mut self) {
-        loop {
+        for _ in 0..MAX_AGENT_EVENTS_PER_DRAIN {
             match self.event_rx.try_recv() {
                 Ok(event) => self.process_agent_event(event),
                 Err(tokio::sync::broadcast::error::TryRecvError::Lagged(n)) => {
@@ -795,10 +797,12 @@ mod tests {
     use clankers_controller::SessionController;
     use clankers_controller::config::ControllerConfig;
     use clankers_controller::loop_mode::LoopConfig;
+    use clankers_provider::streaming::ContentDelta;
     use ratatui::Terminal;
     use ratatui::backend::CrosstermBackend;
 
     use super::EventLoopRunner;
+    use super::MAX_AGENT_EVENTS_PER_DRAIN;
     use super::sync_controller_session_id;
     use crate::config::keybindings::Keymap;
     use crate::modes::interactive::AgentCommand;
@@ -812,6 +816,7 @@ mod tests {
         cmd_rx: tokio::sync::mpsc::UnboundedReceiver<AgentCommand>,
         done_tx: tokio::sync::mpsc::UnboundedSender<TaskResult>,
         done_rx: Option<tokio::sync::mpsc::UnboundedReceiver<TaskResult>>,
+        event_tx: tokio::sync::broadcast::Sender<crate::agent::events::AgentEvent>,
         event_rx: Option<tokio::sync::broadcast::Receiver<crate::agent::events::AgentEvent>>,
         panel_tx: tokio::sync::mpsc::UnboundedSender<crate::tui::components::subagent_event::SubagentEvent>,
         panel_rx: Option<tokio::sync::mpsc::UnboundedReceiver<crate::tui::components::subagent_event::SubagentEvent>>,
@@ -835,7 +840,7 @@ mod tests {
 
             let (cmd_tx, cmd_rx) = tokio::sync::mpsc::unbounded_channel();
             let (done_tx, done_rx) = tokio::sync::mpsc::unbounded_channel();
-            let (_event_tx, event_rx) = tokio::sync::broadcast::channel(4);
+            let (event_tx, event_rx) = tokio::sync::broadcast::channel(MAX_AGENT_EVENTS_PER_DRAIN + 8);
             let (panel_tx, panel_rx) =
                 tokio::sync::mpsc::unbounded_channel::<crate::tui::components::subagent_event::SubagentEvent>();
             let (_todo_tx, todo_rx) = tokio::sync::mpsc::unbounded_channel::<(
@@ -852,6 +857,7 @@ mod tests {
                 cmd_rx,
                 done_tx,
                 done_rx: Some(done_rx),
+                event_tx,
                 event_rx: Some(event_rx),
                 panel_tx,
                 panel_rx: Some(panel_rx),
@@ -962,6 +968,36 @@ mod tests {
 
         sync_controller_session_id(&app, &mut controller);
         assert_eq!(controller.session_id(), "session-from-app");
+    }
+
+    #[test]
+    fn agent_event_drain_is_bounded_so_terminal_input_gets_a_turn() {
+        let mut harness = RunnerHarness::new(embedded_controller(false, None));
+        for index in 0..=MAX_AGENT_EVENTS_PER_DRAIN {
+            harness
+                .event_tx
+                .send(crate::agent::events::AgentEvent::MessageUpdate {
+                    index: 0,
+                    delta: ContentDelta::TextDelta {
+                        text: format!("token-{index} "),
+                    },
+                })
+                .expect("test event should send");
+        }
+
+        {
+            let mut runner = harness.runner();
+            runner.drain_agent_events();
+            assert!(runner.app.streaming.text.contains("token-0 "));
+            assert!(runner.app.streaming.text.contains(&format!("token-{} ", MAX_AGENT_EVENTS_PER_DRAIN - 1)));
+            assert!(
+                !runner.app.streaming.text.contains(&format!("token-{MAX_AGENT_EVENTS_PER_DRAIN} ")),
+                "drain must return to the outer loop before consuming every queued stream event"
+            );
+
+            runner.drain_agent_events();
+            assert!(runner.app.streaming.text.contains(&format!("token-{MAX_AGENT_EVENTS_PER_DRAIN} ")));
+        }
     }
 
     #[test]

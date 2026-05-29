@@ -156,15 +156,6 @@ fn clankers_binary() -> Result<PathBuf, String> {
 
     let target_dir = env::var("CARGO_TARGET_DIR").unwrap_or_else(|_| "target".to_string());
     let default = PathBuf::from(target_dir).join("debug/clankers");
-    if default.exists() {
-        return Ok(default);
-    }
-
-    let shared = PathBuf::from("/home/brittonr/.cargo-target/debug/clankers");
-    if shared.exists() {
-        return Ok(shared);
-    }
-
     let status = Command::new("cargo")
         .args(["build", "--bin", "clankers"])
         .status()

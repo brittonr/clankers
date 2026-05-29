@@ -400,6 +400,11 @@ impl SessionController {
         self.busy
     }
 
+    /// Return a cancellation handle for the current agent turn, if one exists.
+    pub fn current_cancel_token(&self) -> Option<tokio_util::sync::CancellationToken> {
+        self.agent.as_ref().map(|agent| agent.cancel_token())
+    }
+
     /// Get the session ID.
     pub fn session_id(&self) -> &str {
         &self.session_id

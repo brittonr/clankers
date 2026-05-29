@@ -6,6 +6,9 @@ use tracing::debug;
 
 use super::commands::AttachParityTracker;
 use crate::tui::app::App;
+use crate::tui::app::AppState;
+
+pub(crate) const MAX_DAEMON_EVENTS_PER_DRAIN: usize = 64;
 
 /// Drain available DaemonEvents from the client and apply them to App state.
 pub(crate) fn drain_daemon_events(
@@ -15,7 +18,10 @@ pub(crate) fn drain_daemon_events(
     max_subagent_panes: usize,
     parity_tracker: &mut AttachParityTracker,
 ) {
-    while let Some(event) = client.try_recv() {
+    for _ in 0..MAX_DAEMON_EVENTS_PER_DRAIN {
+        let Some(event) = client.try_recv() else {
+            break;
+        };
         process_daemon_event(app, client, &event, is_replaying_history, max_subagent_panes, parity_tracker);
     }
 }
@@ -188,6 +194,7 @@ pub(crate) fn process_daemon_event(
         }
         DaemonEvent::HistoryEnd => {
             app.finalize_active_block();
+            app.state = AppState::Idle;
             *is_replaying_history = false;
         }
 
