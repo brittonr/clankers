@@ -11,6 +11,7 @@
 
 use std::sync::Arc;
 
+use clankers_agent::CapabilityGate;
 use clankers_controller::transport::DaemonState;
 use clankers_controller::transport::SessionSocketInfo;
 use clankers_controller::transport_convert::attach_error;
@@ -126,6 +127,7 @@ async fn handle_daemon_stream(
                 &registry,
                 &shutdown,
                 should_skip_token_check,
+                auth.as_deref(),
             )
             .await?;
         }
@@ -159,31 +161,34 @@ async fn handle_control_stream(
                 warn!("QUIC CreateSession rejected: no auth token");
                 control_error("authentication token required for remote session creation")
             } else {
-                // Verify token and extract capabilities when auth is available
-                let capabilities = if let Some(token_b64) = token.as_deref()
+                // Verify public UCAN token and build the call-time tool gate when auth is available.
+                let public_auth = if let Some(token_b64) = token.as_deref()
                     && let Some(auth) = auth
                 {
-                    match clankers_ucan::Credential::from_base64(token_b64) {
-                        Ok(cred) => match auth.verify_credential(&cred) {
-                            Ok(caps) => Some(caps),
-                            Err(e) => {
-                                warn!("QUIC CreateSession: token verification failed: {e}");
-                                return write_quic_frame(
-                                    send,
-                                    &control_error(format!("token verification failed: {e}")),
-                                )
-                                .await;
-                            }
-                        },
-                        Err(e) => {
-                            warn!("QUIC CreateSession: invalid token encoding: {e}");
-                            return write_quic_frame(send, &control_error(format!("invalid token encoding: {e}")))
-                                .await;
+                    let request = super::session_store::session_create_admission_request();
+                    match auth.verify_credential_base64(token_b64, &request) {
+                        Ok((credential, _receipt)) => Some(auth.public_tool_authorization(credential)),
+                        Err(error) => {
+                            warn!("QUIC CreateSession: public UCAN/Basalt verification failed: {error}");
+                            return write_quic_frame(
+                                send,
+                                &control_error(format!("token verification failed: {error}")),
+                            )
+                            .await;
                         }
                     }
                 } else {
                     None // should_skip_token_check or no auth layer = full access
                 };
+
+                if let (Some(public_auth), Some(requested_model)) = (public_auth.as_ref(), model.as_deref()) {
+                    let gate = crate::capability_gate::PublicUcanCapabilityGate::new(public_auth.clone());
+                    if let Err(error) = gate.check_model_switch(requested_model) {
+                        warn!("QUIC CreateSession: requested model denied by public UCAN/Basalt: {error}");
+                        return write_quic_frame(send, &control_error(format!("model selection denied: {error}")))
+                            .await;
+                    }
+                }
 
                 create_session_over_quic(
                     model,
@@ -193,7 +198,8 @@ async fn handle_control_stream(
                     factory,
                     registry,
                     shutdown,
-                    capabilities,
+                    None,
+                    public_auth,
                 )
                 .await
             }
@@ -257,7 +263,8 @@ fn dispatch_readonly_control(
 /// Uses `spawn_agent_process` so the session lives in the actor registry
 /// with proper link/monitor semantics and in-process subagent support.
 ///
-/// `capabilities` — UCAN capabilities from the verified token (None = full access).
+/// `capabilities` — legacy UCAN capabilities from the verified token (None = full access).
+/// `public_auth` installs public UCAN + Basalt call-time tool enforcement.
 async fn create_session_over_quic(
     model: Option<String>,
     system_prompt: Option<String>,
@@ -267,6 +274,7 @@ async fn create_session_over_quic(
     registry: &clanker_actor::ProcessRegistry,
     shutdown: &tokio::sync::watch::Receiver<bool>,
     capabilities: Option<Vec<clankers_ucan::Capability>>,
+    public_auth: Option<crate::capability_gate::PublicUcanToolAuthorization>,
 ) -> clankers_protocol::ControlResponse {
     use clankers_controller::transport::SessionHandle;
     use clankers_controller::transport::session_socket_path;
@@ -283,6 +291,7 @@ async fn create_session_over_quic(
         system_prompt,
         None,
         capabilities,
+        public_auth,
     );
     let cmd_tx = spawned.cmd_tx;
     let event_tx = spawned.event_tx;
@@ -378,6 +387,7 @@ async fn handle_attach_stream(
     registry: &clanker_actor::ProcessRegistry,
     shutdown: &tokio::sync::watch::Receiver<bool>,
     should_skip_token_check: bool,
+    auth: Option<&super::session_store::AuthLayer>,
 ) -> Result<(), clankers_protocol::FrameError> {
     // Validate protocol version
     if handshake.protocol_version != PROTOCOL_VERSION {
@@ -417,7 +427,26 @@ async fn handle_attach_stream(
         }
     };
 
-    let (cmd_tx, mut event_rx) = {
+    let attach_public_auth = if !should_skip_token_check
+        && let Some(auth) = auth
+        && let Some(token_b64) = handshake.token.as_deref()
+    {
+        let request = super::session_store::session_attach_admission_request(&session_id);
+        match auth.verify_credential_base64(token_b64, &request) {
+            Ok((credential, _receipt)) => Some(auth.public_tool_authorization(credential)),
+            Err(error) => {
+                warn!("QUIC attach rejected: public UCAN/Basalt denied: {error}");
+                let resp = attach_error(format!("token verification failed: {error}"));
+                write_quic_frame(&mut send, &resp).await?;
+                send.finish().ok();
+                return Ok(());
+            }
+        }
+    } else {
+        None
+    };
+
+    let (cmd_tx, event_tx, mut event_rx) = {
         let mut st = state.lock().await;
 
         // Check if session needs lazy recovery
@@ -425,7 +454,7 @@ async fn handle_attach_stream(
 
         if needs_recovery {
             match super::agent_process::recover_session(&session_id, registry, factory, &mut st, shutdown) {
-                Ok((cmd_tx, event_tx)) => (cmd_tx, event_tx.subscribe()),
+                Ok((cmd_tx, event_tx)) => (cmd_tx, event_tx.clone(), event_tx.subscribe()),
                 Err(e) => {
                     let resp = attach_error(format!("session recovery failed: {e}"));
                     write_quic_frame(&mut send, &resp).await?;
@@ -448,7 +477,7 @@ async fn handle_attach_stream(
                         send.finish().ok();
                         return Ok(());
                     };
-                    (cmd_tx.clone(), event_tx.subscribe())
+                    (cmd_tx.clone(), event_tx.clone(), event_tx.subscribe())
                 }
                 None => {
                     let resp = attach_error(format!("session '{session_id}' not found"));
@@ -492,6 +521,22 @@ async fn handle_attach_stream(
     // Reader: QUIC recv stream → session commands
     while let Ok(cmd) = read_quic_frame::<SessionCommand>(&mut recv).await {
         let is_disconnect = matches!(cmd, SessionCommand::Disconnect);
+        if let Err(reason) = authorize_attached_session_command(attach_public_auth.as_ref(), &session_id, &cmd) {
+            let is_prompt_like = matches!(cmd, SessionCommand::Prompt { .. } | SessionCommand::RewriteAndPrompt { .. });
+            event_tx
+                .send(clankers_protocol::DaemonEvent::SystemMessage {
+                    text: format!("🔒 {reason}"),
+                    is_error: true,
+                })
+                .ok();
+            if is_prompt_like {
+                event_tx.send(clankers_protocol::DaemonEvent::PromptDone { error: Some(reason) }).ok();
+            }
+            if is_disconnect {
+                break;
+            }
+            continue;
+        }
         if cmd_tx.send(cmd).is_err() || is_disconnect {
             break;
         }
@@ -500,6 +545,69 @@ async fn handle_attach_stream(
     write_task.abort();
     info!("QUIC attach ended for session {session_id}");
     Ok(())
+}
+
+fn authorize_attached_session_command(
+    public_auth: Option<&crate::capability_gate::PublicUcanToolAuthorization>,
+    session_id: &str,
+    cmd: &SessionCommand,
+) -> Result<(), String> {
+    let Some(public_auth) = public_auth else {
+        return Ok(());
+    };
+    let gate = crate::capability_gate::PublicUcanCapabilityGate::new(public_auth.clone());
+    match cmd {
+        SessionCommand::Prompt { text, .. } => gate.check_prompt(session_id, text),
+        SessionCommand::RewriteAndPrompt { text } => {
+            gate.check_session_manage(session_id, "rewrite_prompt")?;
+            gate.check_prompt(session_id, text)
+        }
+        SessionCommand::SetModel { model } => gate.check_model_switch(model),
+        SessionCommand::ClearHistory => gate.check_session_manage(session_id, "clear_history"),
+        SessionCommand::TruncateMessages { .. } => gate.check_session_manage(session_id, "truncate_messages"),
+        SessionCommand::SetThinkingLevel { .. } => gate.check_session_manage(session_id, "set_thinking_level"),
+        SessionCommand::CycleThinkingLevel => gate.check_session_manage(session_id, "cycle_thinking_level"),
+        SessionCommand::SeedMessages { .. } => gate.check_session_manage(session_id, "seed_messages"),
+        SessionCommand::SetSystemPrompt { .. } => gate.check_session_manage(session_id, "set_system_prompt"),
+        SessionCommand::SetDisabledTools { .. } => gate.check_session_manage(session_id, "set_disabled_tools"),
+        SessionCommand::CompactHistory => gate.check_session_manage(session_id, "compact_history"),
+        SessionCommand::StartLoop { .. } => gate.check_session_manage(session_id, "start_loop"),
+        SessionCommand::StopLoop => gate.check_session_manage(session_id, "stop_loop"),
+        SessionCommand::SetAutoTest { .. } => gate.check_session_manage(session_id, "set_auto_test"),
+        SessionCommand::SetCapabilities { .. } => gate.check_session_manage(session_id, "set_capabilities"),
+        SessionCommand::SlashCommand { command, args } => {
+            authorize_attached_slash_command(&gate, session_id, command, args)
+        }
+        SessionCommand::Abort
+        | SessionCommand::ResetCancel
+        | SessionCommand::ConfirmBash { .. }
+        | SessionCommand::TodoResponse { .. }
+        | SessionCommand::GetSystemPrompt
+        | SessionCommand::SwitchAccount { .. }
+        | SessionCommand::GetToolList
+        | SessionCommand::ReplayHistory
+        | SessionCommand::GetCapabilities
+        | SessionCommand::Disconnect
+        | SessionCommand::GetPlugins => Ok(()),
+    }
+}
+
+fn authorize_attached_slash_command(
+    gate: &crate::capability_gate::PublicUcanCapabilityGate,
+    session_id: &str,
+    command: &str,
+    args: &str,
+) -> Result<(), String> {
+    match command {
+        "model" if !args.is_empty() => gate.check_model_switch(args),
+        "clear" => gate.check_session_manage(session_id, "clear_history"),
+        "compact" => gate.check_session_manage(session_id, "compact_history"),
+        "thinking" if args.is_empty() => gate.check_session_manage(session_id, "cycle_thinking_level"),
+        "thinking" => gate.check_session_manage(session_id, "set_thinking_level"),
+        "stop" => gate.check_session_manage(session_id, "stop_loop"),
+        "autotest" => gate.check_session_manage(session_id, "set_auto_test"),
+        _ => Ok(()),
+    }
 }
 
 // ── QUIC frame helpers ──────────────────────────────────────────────────────

@@ -8,87 +8,144 @@
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use clankers_ucan::Capability;
-use clankers_ucan::Credential;
-use clankers_ucan::RedbRevocationStore;
-use clankers_ucan::RevocationStore;
-use clankers_ucan::TokenVerifier;
+use clankers_ucan::BasaltAdmissionReceipt;
+use clankers_ucan::BasaltAdmissionRequest;
+use clankers_ucan::BasaltUcanAuthority;
+use clankers_ucan::PublicCredentialEnvelope;
+use clankers_ucan::PublicUcanIssuer;
+use clankers_ucan::RedbPublicCredentialStore;
 use redb::ReadableTable;
 use tracing::info;
 use tracing::warn;
 
+#[must_use]
+pub fn session_create_admission_request() -> BasaltAdmissionRequest {
+    BasaltAdmissionRequest::new("session-create", "clankers:daemon/remote/session", "session/create")
+}
+
+#[must_use]
+pub fn session_attach_admission_request(session_id: &str) -> BasaltAdmissionRequest {
+    BasaltAdmissionRequest::new("session-attach", format!("clankers:session/{session_id}"), "session/attach")
+}
+
+#[must_use]
+pub fn session_prompt_admission_request(session_id: &str) -> BasaltAdmissionRequest {
+    BasaltAdmissionRequest::new("session-prompt", format!("clankers:session/{session_id}"), "session/prompt")
+}
+
+#[must_use]
+pub fn session_manage_admission_request(session_id: &str) -> BasaltAdmissionRequest {
+    BasaltAdmissionRequest::new("session-manage", format!("clankers:session/{session_id}"), "session/manage")
+}
+
 // ── Auth layer ──────────────────────────────────────────────────────────────
 
-/// Shared auth state for token verification + user→token mappings.
+/// Shared public UCAN + Basalt auth state for token admission and user mappings.
 pub struct AuthLayer {
-    /// Verifier with the daemon owner's key as trusted root
-    verifier: TokenVerifier,
-    /// Persistent revocation store (redb-backed)
-    _revocation_store: RedbRevocationStore,
+    /// Public credential, revocation, and replay store.
+    pub public_store: RedbPublicCredentialStore,
+    /// Basalt policy used for daemon admission and call-time gates.
+    pub policy: Arc<basalt::Policy>,
     /// redb database for token storage
     pub db: Arc<redb::Database>,
-    /// Daemon owner's secret key (for signing delegated child tokens)
-    pub owner_key: ::iroh::SecretKey,
+    /// Daemon owner's public UCAN issuer adapter.
+    pub owner_issuer: PublicUcanIssuer,
 }
 
 impl AuthLayer {
-    /// Look up a stored credential for a user ID (Matrix user ID or iroh pubkey).
-    pub fn lookup_credential(&self, user_id: &str) -> Option<Credential> {
-        let read_txn = self.db.begin_read().ok()?;
-        let table = read_txn.open_table(clankers_ucan::revocation::AUTH_TOKENS_TABLE).ok()?;
-        let guard = table.get(user_id).ok()??;
-        let bytes = guard.value().to_vec();
-        match Credential::decode(&bytes) {
-            Ok(cred) => Some(cred),
-            Err(e) => {
-                warn!("Failed to decode credential for {user_id}, removing stale entry: {e}");
-                // Remove the stale entry so we don't warn on every lookup
-                drop(guard);
-                drop(table);
-                drop(read_txn);
-                if let Ok(tx) = self.db.begin_write() {
-                    if let Ok(mut table) = tx.open_table(clankers_ucan::revocation::AUTH_TOKENS_TABLE) {
-                        table.remove(user_id).ok();
-                    }
-                    tx.commit().ok();
-                }
-                None
-            }
+    /// Look up a stored public UCAN credential for a user ID (Matrix user ID or iroh pubkey).
+    pub fn lookup_credential(&self, user_id: &str) -> Option<PublicCredentialEnvelope> {
+        self.public_store.lookup_credential(user_id)
+    }
+
+    /// Store a public UCAN credential for a user ID.
+    pub fn store_credential(&self, user_id: &str, cred: &PublicCredentialEnvelope) {
+        if let Err(error) = self.public_store.store_credential(user_id, cred) {
+            warn!("Failed to store public UCAN credential: {error}");
         }
     }
 
-    /// Store a credential for a user ID.
-    pub fn store_credential(&self, user_id: &str, cred: &Credential) {
-        let encoded = match cred.encode() {
-            Ok(e) => e,
-            Err(e) => {
-                warn!("Failed to encode token for storage: {e}");
-                return;
-            }
+    /// Verify a public credential against a concrete Basalt request.
+    pub fn verify_credential(
+        &self,
+        cred: &PublicCredentialEnvelope,
+        request: &BasaltAdmissionRequest,
+    ) -> std::result::Result<BasaltAdmissionReceipt, String> {
+        self.verify_with_replay_policy(cred, request, true)
+    }
+
+    /// Decode and verify a base64 public UCAN envelope against a concrete Basalt request.
+    pub fn verify_credential_base64(
+        &self,
+        token_b64: &str,
+        request: &BasaltAdmissionRequest,
+    ) -> std::result::Result<(PublicCredentialEnvelope, BasaltAdmissionReceipt), String> {
+        let credential = PublicCredentialEnvelope::from_base64(token_b64)
+            .map_err(|error| format!("invalid public UCAN credential encoding: {error}"))?;
+        let receipt = self.verify_credential(&credential, request)?;
+        Ok((credential, receipt))
+    }
+
+    fn verify_stored_credential(
+        &self,
+        cred: &PublicCredentialEnvelope,
+        request: &BasaltAdmissionRequest,
+    ) -> std::result::Result<BasaltAdmissionReceipt, String> {
+        self.verify_with_replay_policy(cred, request, false)
+    }
+
+    fn verify_with_replay_policy(
+        &self,
+        cred: &PublicCredentialEnvelope,
+        request: &BasaltAdmissionRequest,
+        admit_replay: bool,
+    ) -> std::result::Result<BasaltAdmissionReceipt, String> {
+        let owner_root = self.owner_issuer.issuer().map_err(|error| error.to_string())?;
+        if !cred.trusted_roots().iter().any(|root| root == &owner_root) {
+            return Err(format!("untrusted public UCAN root: expected {owner_root}"));
+        }
+        let authority = BasaltUcanAuthority::new(&self.policy);
+        let time = ucan::VerificationTime::try_from_system_time(std::time::SystemTime::now())
+            .map_err(|error| format!("public UCAN clock error: {error}"))?;
+        let receipt = if admit_replay {
+            authority.authorize_with_store(cred, time, &self.public_store, request)
+        } else {
+            authority.authorize_with_revocations(cred, time, &self.public_store, request)
         };
-        if let Ok(tx) = self.db.begin_write() {
-            {
-                if let Ok(mut table) = tx.open_table(clankers_ucan::revocation::AUTH_TOKENS_TABLE) {
-                    table.insert(user_id, encoded.as_slice()).ok();
-                }
-            }
-            if let Err(e) = tx.commit() {
-                warn!("Failed to store token: {e}");
-            }
+        if receipt.is_allowed() {
+            Ok(receipt)
+        } else {
+            Err(receipt.reason.clone())
         }
     }
 
-    /// Verify a credential and return its leaf token's capabilities, or an error message.
-    pub fn verify_credential(&self, cred: &Credential) -> std::result::Result<Vec<Capability>, String> {
-        self.verifier.verify_with_chain(&cred.token, &cred.proofs, None).map_err(|e| format!("{e}"))?;
-        Ok(cred.token.capabilities.clone())
+    pub fn public_tool_authorization(
+        &self,
+        cred: PublicCredentialEnvelope,
+    ) -> crate::capability_gate::PublicUcanToolAuthorization {
+        crate::capability_gate::PublicUcanToolAuthorization::new(
+            cred,
+            Arc::clone(&self.policy),
+            self.public_store.clone(),
+        )
     }
 
-    /// Resolve capabilities for a user: credential → verify → capabilities,
-    /// or None if no credential (fall back to allowlist).
-    pub fn resolve_capabilities(&self, user_id: &str) -> Option<std::result::Result<Vec<Capability>, String>> {
+    pub fn public_tool_authorization_for_session(
+        &self,
+        cred: PublicCredentialEnvelope,
+        session_resource_id: &str,
+    ) -> crate::capability_gate::PublicUcanToolAuthorization {
+        self.public_tool_authorization(cred).with_session_resource_id(session_resource_id)
+    }
+
+    /// Resolve a stored public credential for a user against a request.
+    pub fn resolve_credential(
+        &self,
+        user_id: &str,
+        request: &BasaltAdmissionRequest,
+    ) -> Option<std::result::Result<PublicCredentialEnvelope, String>> {
         let cred = self.lookup_credential(user_id)?;
-        Some(self.verify_credential(&cred))
+        Some(self.verify_stored_credential(&cred, request).map(|_receipt| cred))
     }
 }
 
@@ -373,37 +430,29 @@ pub fn create_auth_layer(
     identity: &crate::modes::rpc::iroh::Identity,
 ) -> Option<Arc<AuthLayer>> {
     let db = Arc::clone(db);
-    // Ensure auth tables exist
-    if let Ok(tx) = db.begin_write() {
-        tx.open_table(clankers_ucan::revocation::AUTH_TOKENS_TABLE).ok();
-        tx.open_table(clankers_ucan::revocation::REVOKED_TOKENS_TABLE).ok();
-        tx.commit().ok();
-    }
-
-    let revocation_store = match RedbRevocationStore::new(Arc::clone(&db)) {
-        Ok(s) => s,
-        Err(e) => {
-            warn!("Failed to init revocation store: {e}");
+    let public_store = match RedbPublicCredentialStore::new(Arc::clone(&db)) {
+        Ok(store) => store,
+        Err(error) => {
+            warn!("Failed to init public UCAN credential store: {error}");
             return None;
         }
     };
-
-    let revoked = revocation_store.load_all();
-    let verifier = TokenVerifier::new().with_trusted_root(identity.public_key());
-    if !revoked.is_empty() {
-        if let Err(e) = verifier.load_revoked(&revoked) {
-            warn!("Failed to load revoked tokens: {e}");
+    let policy = match clankers_ucan::clankers_daemon_auth_policy() {
+        Ok(policy) => Arc::new(policy),
+        Err(error) => {
+            warn!("Failed to load Clankers daemon auth policy: {error}");
+            return None;
         }
-        info!("Loaded {} revoked token(s)", revoked.len());
-    }
+    };
+    let owner_issuer = PublicUcanIssuer::from_iroh_secret_key(&identity.secret_key);
 
     let layer = Arc::new(AuthLayer {
-        verifier,
-        _revocation_store: revocation_store,
+        public_store,
+        policy,
         db,
-        owner_key: identity.secret_key.clone(),
+        owner_issuer,
     });
-    info!("Auth layer initialized (trusted root: {})", identity.public_key().fmt_short());
+    info!("Public UCAN auth layer initialized (trusted root: {})", identity.public_key().fmt_short());
     Some(layer)
 }
 

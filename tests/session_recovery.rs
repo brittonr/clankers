@@ -454,7 +454,7 @@ async fn keyed_matrix_prompt_recovers_suspended_session_before_replying() {
     };
 
     let (reused_session_id, cmd_tx, event_tx) =
-        get_or_create_keyed_session(&state, &registry, &factory, &key, None).await;
+        get_or_create_keyed_session(&state, &registry, &factory, &key, None, None).await;
     assert_eq!(reused_session_id, session_id);
 
     let _response = prompt_and_collect(&cmd_tx, &event_tx, "followup".to_string(), vec![]).await;

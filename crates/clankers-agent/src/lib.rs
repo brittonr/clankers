@@ -310,6 +310,8 @@ impl Agent {
 
     /// Internal: run agent with arbitrary user content blocks
     async fn prompt_with_content(&mut self, text: &str, content: Vec<Content>) -> Result<()> {
+        self.check_prompt_authorization(text)?;
+
         // Create and append user message
         self.append_user_message(text, content);
 
@@ -513,6 +515,7 @@ impl Agent {
         if selection.role != "default" {
             let new_model = self.model_roles.resolve(&selection.role, &self.model);
             if new_model != self.model {
+                self.check_model_switch_authorization(&new_model)?;
                 let old = std::mem::replace(&mut self.model, new_model.clone());
                 self.event_tx
                     .send(AgentEvent::ModelChange {
@@ -597,16 +600,52 @@ impl Agent {
         &self.session_id
     }
 
-    /// Change the model
-    pub fn set_model(&mut self, model: String) {
+    /// Check whether the current capability gate allows a prompt.
+    pub fn check_prompt_authorization(&self, text: &str) -> Result<()> {
+        if let Some(gate) = &self.capability_gate {
+            gate.check_prompt(&self.session_id, text).map_err(|message| AgentError::Agent { message })?;
+        }
+        Ok(())
+    }
+
+    /// Check whether the current capability gate allows a session-management action.
+    pub fn check_session_manage_authorization(&self, action: &str) -> Result<()> {
+        if let Some(gate) = &self.capability_gate {
+            gate.check_session_manage(&self.session_id, action)
+                .map_err(|message| AgentError::Agent { message })?;
+        }
+        Ok(())
+    }
+
+    /// Check whether the current capability gate allows switching to `model`.
+    pub fn check_model_switch_authorization(&self, model: &str) -> Result<()> {
+        if let Some(gate) = &self.capability_gate {
+            gate.check_model_switch(model).map_err(|message| AgentError::Agent { message })?;
+        }
+        Ok(())
+    }
+
+    fn apply_model_change(&mut self, model: String, reason: impl Into<String>) {
         let old = std::mem::replace(&mut self.model, model.clone());
         self.event_tx
             .send(AgentEvent::ModelChange {
                 from: old,
                 to: model,
-                reason: "user_request".to_string(),
+                reason: reason.into(),
             })
             .ok();
+    }
+
+    /// Change the model after checking the capability gate.
+    pub fn try_set_model(&mut self, model: String) -> Result<()> {
+        self.check_model_switch_authorization(&model)?;
+        self.apply_model_change(model, "user_request");
+        Ok(())
+    }
+
+    /// Change the model without consulting the capability gate.
+    pub fn set_model(&mut self, model: String) {
+        self.apply_model_change(model, "user_request");
     }
 
     /// Seed the agent with pre-existing messages (for session resume)
@@ -708,6 +747,9 @@ impl Agent {
 
             // Resolve phase model
             let phase_model = self.model_roles.resolve(&phase.role, &self.model);
+            if phase_model != self.model {
+                self.check_model_switch_authorization(&phase_model)?;
+            }
             let old_model = std::mem::replace(&mut self.model, phase_model.clone());
             if phase_model != old_model {
                 self.event_tx

@@ -198,6 +198,7 @@ async fn handle_control(
                 system_prompt,
                 None,
                 None, // local sessions get full access
+                None,
             );
             let cmd_tx = spawned.cmd_tx;
             let event_tx = spawned.event_tx;

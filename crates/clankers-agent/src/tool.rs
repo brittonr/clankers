@@ -212,12 +212,33 @@ impl ToolContext {
     }
 }
 
-/// Gate for checking if a tool call is allowed by the session's capabilities.
+/// Gate for checking if a session operation is allowed by the session's capabilities.
 ///
-/// Implementations inspect the tool name and input parameters to decide
-/// whether to allow or block execution. Returning `Err(reason)` blocks
-/// the call and sends the reason back to the LLM as an error result.
+/// Implementations inspect prompts, model switches, session-management actions,
+/// and tool calls to decide whether to allow or block execution.
+/// Returning `Err(reason)` blocks the operation and reports the reason to the caller.
 pub trait CapabilityGate: Send + Sync {
+    /// Check if a user prompt is allowed in this session.
+    ///
+    /// Returns `Ok(())` if the prompt should proceed, `Err(reason)` if blocked.
+    fn check_prompt(&self, _session_id: &str, _text: &str) -> std::result::Result<(), String> {
+        Ok(())
+    }
+
+    /// Check if a session-management action is allowed.
+    ///
+    /// Returns `Ok(())` if the action should proceed, `Err(reason)` if blocked.
+    fn check_session_manage(&self, _session_id: &str, _action: &str) -> std::result::Result<(), String> {
+        Ok(())
+    }
+
+    /// Check if switching to or selecting a model is allowed.
+    ///
+    /// Returns `Ok(())` if the model change should proceed, `Err(reason)` if blocked.
+    fn check_model_switch(&self, _model: &str) -> std::result::Result<(), String> {
+        Ok(())
+    }
+
     /// Check if a tool call is allowed.
     ///
     /// Returns `Ok(())` if the call should proceed, `Err(reason)` if blocked.

@@ -67,18 +67,12 @@ impl SessionController {
                 }
             }
             SessionCommand::SetModel { model } => {
-                let from = self.model.clone();
-                if let Some(ref mut agent) = self.agent {
-                    agent.set_model(model.clone());
-                }
-                self.model = model.clone();
-                self.emit(DaemonEvent::ModelChanged {
-                    from,
-                    to: model,
-                    reason: "user request".to_string(),
-                });
+                self.set_model_from_command(model, "user request");
             }
             SessionCommand::ClearHistory => {
+                if !self.ensure_session_manage_authorized("clear_history") {
+                    return;
+                }
                 if let Some(ref mut agent) = self.agent {
                     agent.clear_messages();
                 }
@@ -88,6 +82,9 @@ impl SessionController {
                 });
             }
             SessionCommand::TruncateMessages { count } => {
+                if !self.ensure_session_manage_authorized("truncate_messages") {
+                    return;
+                }
                 if let Some(ref mut agent) = self.agent {
                     agent.truncate_messages(count);
                 }
@@ -97,12 +94,19 @@ impl SessionController {
                 });
             }
             SessionCommand::SetThinkingLevel { level } => {
-                self.handle_set_thinking_level(level);
+                if self.ensure_session_manage_authorized("set_thinking_level") {
+                    self.handle_set_thinking_level(level);
+                }
             }
             SessionCommand::CycleThinkingLevel => {
-                self.handle_cycle_thinking_level();
+                if self.ensure_session_manage_authorized("cycle_thinking_level") {
+                    self.handle_cycle_thinking_level();
+                }
             }
             SessionCommand::SeedMessages { messages } => {
+                if !self.ensure_session_manage_authorized("seed_messages") {
+                    return;
+                }
                 let agent_messages = self.convert_seed_messages(&messages);
                 let count = agent_messages.len();
                 if let Some(ref mut agent) = self.agent {
@@ -114,6 +118,9 @@ impl SessionController {
                 });
             }
             SessionCommand::SetSystemPrompt { prompt } => {
+                if !self.ensure_session_manage_authorized("set_system_prompt") {
+                    return;
+                }
                 if let Some(ref mut agent) = self.agent {
                     agent.set_system_prompt(prompt);
                 }
@@ -133,7 +140,9 @@ impl SessionController {
                 });
             }
             SessionCommand::SetDisabledTools { tools } => {
-                self.handle_set_disabled_tools(tools);
+                if self.ensure_session_manage_authorized("set_disabled_tools") {
+                    self.handle_set_disabled_tools(tools);
+                }
             }
             SessionCommand::ConfirmBash { request_id, approved } => {
                 if !self.bash_confirms.respond(&request_id, approved) {
@@ -146,6 +155,9 @@ impl SessionController {
                 }
             }
             SessionCommand::RewriteAndPrompt { text } => {
+                if !self.ensure_session_manage_authorized("rewrite_prompt") || !self.ensure_prompt_authorized(&text) {
+                    return;
+                }
                 // Remove the last user message and re-prompt
                 if let Some(ref mut agent) = self.agent {
                     agent.pop_last_exchange();
@@ -153,6 +165,9 @@ impl SessionController {
                 self.handle_prompt(text, vec![]).await;
             }
             SessionCommand::CompactHistory => {
+                if !self.ensure_session_manage_authorized("compact_history") {
+                    return;
+                }
                 if let Some(ref mut agent) = self.agent {
                     let result = agent.compact_messages();
                     self.emit(DaemonEvent::SessionCompaction {
@@ -166,12 +181,19 @@ impl SessionController {
                 prompt,
                 break_condition,
             } => {
-                self.handle_start_loop(iterations, prompt, break_condition);
+                if self.ensure_session_manage_authorized("start_loop") {
+                    self.handle_start_loop(iterations, prompt, break_condition);
+                }
             }
             SessionCommand::StopLoop => {
-                self.handle_stop_loop();
+                if self.ensure_session_manage_authorized("stop_loop") {
+                    self.handle_stop_loop();
+                }
             }
             SessionCommand::SetAutoTest { enabled, command } => {
+                if !self.ensure_session_manage_authorized("set_auto_test") {
+                    return;
+                }
                 self.auto_test_enabled = enabled;
                 if let Some(cmd) = command.clone() {
                     self.auto_test_command = Some(cmd);
@@ -201,6 +223,9 @@ impl SessionController {
                 });
             }
             SessionCommand::SetCapabilities { capabilities } => {
+                if !self.ensure_session_manage_authorized("set_capabilities") {
+                    return;
+                }
                 // Validate against ceiling: clamped result must match request
                 let effective = crate::capability::clamp_capabilities(&self.capability_ceiling, &capabilities);
                 if effective != capabilities {
@@ -252,6 +277,13 @@ impl SessionController {
                 self.handle_prompt_inner(text, images, Some(on_events)).await;
             }
             SessionCommand::RewriteAndPrompt { text } => {
+                if !self.ensure_session_manage_authorized("rewrite_prompt") || !self.ensure_prompt_authorized(&text) {
+                    let events = self.drain_events();
+                    if !events.is_empty() {
+                        on_events(events);
+                    }
+                    return;
+                }
                 if let Some(ref mut agent) = self.agent {
                     agent.pop_last_exchange();
                 }
@@ -265,6 +297,55 @@ impl SessionController {
                 }
             }
         }
+    }
+
+    fn emit_authorization_error(&mut self, error: AgentError) {
+        self.emit(DaemonEvent::SystemMessage {
+            text: error.to_string(),
+            is_error: true,
+        });
+    }
+
+    fn ensure_session_manage_authorized(&mut self, action: &str) -> bool {
+        let Some(agent) = self.agent.as_ref() else {
+            return true;
+        };
+        match agent.check_session_manage_authorization(action) {
+            Ok(()) => true,
+            Err(error) => {
+                self.emit_authorization_error(error);
+                false
+            }
+        }
+    }
+
+    fn ensure_prompt_authorized(&mut self, text: &str) -> bool {
+        let Some(agent) = self.agent.as_ref() else {
+            return true;
+        };
+        match agent.check_prompt_authorization(text) {
+            Ok(()) => true,
+            Err(error) => {
+                self.emit_authorization_error(error);
+                false
+            }
+        }
+    }
+
+    fn set_model_from_command(&mut self, model: String, reason: &str) -> bool {
+        let from = self.model.clone();
+        let authorization_error = self.agent.as_mut().and_then(|agent| agent.try_set_model(model.clone()).err());
+        if let Some(error) = authorization_error {
+            self.emit_authorization_error(error);
+            return false;
+        }
+        self.model = model.clone();
+        self.emit(DaemonEvent::ModelChanged {
+            from,
+            to: model,
+            reason: reason.to_string(),
+        });
+        true
     }
 
     fn handle_set_thinking_level(&mut self, level: String) {
@@ -830,19 +911,13 @@ impl SessionController {
                         is_error: false,
                     });
                 } else {
-                    let from = self.model.clone();
-                    if let Some(ref mut agent) = self.agent {
-                        agent.set_model(args.to_string());
-                    }
-                    self.model = args.to_string();
-                    self.emit(DaemonEvent::ModelChanged {
-                        from,
-                        to: args.to_string(),
-                        reason: "slash command".to_string(),
-                    });
+                    self.set_model_from_command(args.to_string(), "slash command");
                 }
             }
             "clear" => {
+                if !self.ensure_session_manage_authorized("clear_history") {
+                    return;
+                }
                 if let Some(ref mut agent) = self.agent {
                     agent.clear_messages();
                 }
@@ -852,6 +927,9 @@ impl SessionController {
                 });
             }
             "compact" => {
+                if !self.ensure_session_manage_authorized("compact_history") {
+                    return;
+                }
                 if let Some(ref mut agent) = self.agent {
                     let result = agent.compact_messages();
                     self.emit(DaemonEvent::SessionCompaction {
@@ -862,15 +940,22 @@ impl SessionController {
             }
             "thinking" => {
                 if args.is_empty() {
-                    self.handle_cycle_thinking_level();
-                } else {
+                    if self.ensure_session_manage_authorized("cycle_thinking_level") {
+                        self.handle_cycle_thinking_level();
+                    }
+                } else if self.ensure_session_manage_authorized("set_thinking_level") {
                     self.handle_set_thinking_level(args.to_string());
                 }
             }
             "stop" => {
-                self.handle_stop_loop();
+                if self.ensure_session_manage_authorized("stop_loop") {
+                    self.handle_stop_loop();
+                }
             }
             "autotest" => {
+                if !self.ensure_session_manage_authorized("set_auto_test") {
+                    return;
+                }
                 if args.is_empty() {
                     self.auto_test_enabled = !self.auto_test_enabled;
                 } else {
@@ -1139,6 +1224,31 @@ mod tests {
         }
     }
 
+    struct DenySessionOperationGate;
+
+    impl clankers_agent::CapabilityGate for DenySessionOperationGate {
+        fn check_prompt(&self, _session_id: &str, _text: &str) -> std::result::Result<(), String> {
+            Err("prompt denied by test gate".to_string())
+        }
+
+        fn check_session_manage(&self, _session_id: &str, action: &str) -> std::result::Result<(), String> {
+            Err(format!("session manage denied by test gate: {action}"))
+        }
+
+        fn check_model_switch(&self, model: &str) -> std::result::Result<(), String> {
+            Err(format!("model switch denied by test gate: {model}"))
+        }
+
+        fn check_tool_call(&self, _tool_name: &str, _input: &serde_json::Value) -> std::result::Result<(), String> {
+            Ok(())
+        }
+    }
+
+    fn install_capability_gate(ctrl: &mut SessionController, gate: Arc<dyn clankers_agent::CapabilityGate>) {
+        let agent = ctrl.agent.take().expect("test controller owns an agent").with_capability_gate(gate);
+        ctrl.agent = Some(agent);
+    }
+
     fn extract_last_user_prompt_text(messages: &[clankers_provider::message::AgentMessage]) -> Option<String> {
         messages.iter().rev().find_map(|message| match message {
             clankers_provider::message::AgentMessage::User(user_message) => {
@@ -1239,6 +1349,57 @@ mod tests {
             } if from == "test-model" && to == "opus"
         )));
         assert_eq!(ctrl.model(), "opus");
+    }
+
+    #[tokio::test]
+    async fn set_model_is_denied_by_capability_gate() {
+        let mut ctrl = make_test_controller();
+        install_capability_gate(&mut ctrl, Arc::new(DenySessionOperationGate));
+
+        ctrl.handle_command(SessionCommand::SetModel {
+            model: "opus".to_string(),
+        })
+        .await;
+
+        let events = ctrl.drain_events();
+        assert!(matches!(events.as_slice(), [DaemonEvent::SystemMessage { text, is_error: true }]
+            if text.contains("model switch denied")));
+        assert_eq!(ctrl.model(), "test-model");
+    }
+
+    #[tokio::test]
+    async fn session_manage_command_is_denied_by_capability_gate_before_mutation() {
+        let mut ctrl = make_test_controller();
+        install_capability_gate(&mut ctrl, Arc::new(DenySessionOperationGate));
+
+        ctrl.handle_command(SessionCommand::SetSystemPrompt {
+            prompt: "new prompt".to_string(),
+        })
+        .await;
+
+        let events = ctrl.drain_events();
+        assert!(matches!(events.as_slice(), [DaemonEvent::SystemMessage { text, is_error: true }]
+            if text.contains("session manage denied")));
+        assert_eq!(ctrl.agent.as_ref().expect("agent").system_prompt(), "You are a test assistant.");
+    }
+
+    #[tokio::test]
+    async fn prompt_is_denied_by_capability_gate_before_history_mutation() {
+        let mut ctrl = make_test_controller();
+        install_capability_gate(&mut ctrl, Arc::new(DenySessionOperationGate));
+
+        ctrl.handle_command(SessionCommand::Prompt {
+            text: "hello".to_string(),
+            images: vec![],
+        })
+        .await;
+
+        let events = ctrl.drain_events();
+        assert!(events.iter().any(|event| matches!(
+            event,
+            DaemonEvent::PromptDone { error: Some(message) } if message.contains("prompt denied")
+        )));
+        assert!(ctrl.agent.as_ref().expect("agent").messages().is_empty());
     }
 
     #[tokio::test]

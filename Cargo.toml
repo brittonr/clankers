@@ -48,6 +48,7 @@ license = "AGPL-3.0-or-later"
 # Shared across most workspace crates — centralised here to prevent version drift.
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
+ucan = { version = "0.1.0", git = "ssh://git@github.com/OnixResearch/ucan.git", rev = "ad61b53e89fa45f9bf7d313ce14c45de645bf53d" }
 tokio = { version = "1", features = ["full"] }
 tracing = "0.1"
 thiserror = "2.0"
@@ -95,6 +96,8 @@ clankers-autoresearch = { version = "0.1.0", path = "crates/clankers-autoresearc
 clankers-nix = { version = "0.1.0", path = "crates/clankers-nix", features = ["eval"] }
 clankers-agent-defs = { version = "0.1.0", path = "crates/clankers-agent-defs" }
 clankers-ucan = { version = "0.1.0", path = "crates/clankers-ucan" }
+basalt = { workspace = true }
+ucan = { workspace = true }
 clankers-config = { version = "0.1.0", path = "crates/clankers-config" }
 clankers-core = { version = "0.1.0", path = "crates/clankers-core" }
 clankers-db = { version = "0.1.0", path = "crates/clankers-db" }

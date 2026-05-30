@@ -128,11 +128,13 @@ pub(crate) async fn run_matrix_bridge(
                 match event {
                     BridgeEvent::TextMessage { sender, body, room_id }
                     | BridgeEvent::ChatMessage { sender, body, room_id, .. } => {
-                        // Auth check — extract capabilities from token
-                        let sender_caps = match check_sender_auth(
+                        // Auth check — extract capability gate material from token
+                        let (sender_caps, sender_public_auth) = match check_sender_auth(
                             &sender, &auth, &allowlist, &client, &room_id,
                         ).await {
-                            SendCheckResult::Allowed(caps) => caps,
+                            SendCheckResult::Allowed { legacy_capabilities, public_auth } => {
+                                (legacy_capabilities, public_auth)
+                            }
                             SendCheckResult::Denied => continue,
                         };
 
@@ -191,6 +193,7 @@ pub(crate) async fn run_matrix_bridge(
                             key.clone(),
                             body,
                             sender_caps.clone(),
+                            sender_public_auth.clone(),
                         ).await;
 
                         // Empty response re-prompt
@@ -204,6 +207,7 @@ pub(crate) async fn run_matrix_bridge(
                                 "You completed some actions but your response contained \
                                  no text. Briefly summarize what you did.".to_string(),
                                 sender_caps.clone(),
+                                sender_public_auth.clone(),
                             ).await;
                             response = if retry.trim().is_empty() {
                                 "(completed actions — no summary available)".to_string()
@@ -256,10 +260,12 @@ pub(crate) async fn run_matrix_bridge(
                         source,
                         room_id,
                     } => {
-                        let media_caps = match check_sender_auth(
+                        let (media_caps, media_public_auth) = match check_sender_auth(
                             &sender, &auth, &allowlist, &client, &room_id,
                         ).await {
-                            SendCheckResult::Allowed(caps) => caps,
+                            SendCheckResult::Allowed { legacy_capabilities, public_auth } => {
+                                (legacy_capabilities, public_auth)
+                            }
                             SendCheckResult::Denied => continue,
                         };
 
@@ -340,6 +346,7 @@ pub(crate) async fn run_matrix_bridge(
                                 prompt_text,
                                 vec![image_data],
                                 media_caps.clone(),
+                                media_public_auth.clone(),
                             ).await
                         } else {
                             let prompt_text = if caption.is_empty() {
@@ -361,6 +368,7 @@ pub(crate) async fn run_matrix_bridge(
                                 key.clone(),
                                 prompt_text,
                                 media_caps.clone(),
+                                media_public_auth.clone(),
                             ).await
                         };
 
@@ -374,6 +382,7 @@ pub(crate) async fn run_matrix_bridge(
                                 "You processed a file but your response contained no text. \
                                  Briefly summarize what you did.".to_string(),
                                 media_caps.clone(),
+                                media_public_auth.clone(),
                             ).await;
                             response = if retry.trim().is_empty() {
                                 "(processed file — no summary available)".to_string()
@@ -430,15 +439,17 @@ pub(crate) async fn run_matrix_bridge(
 // ── Helpers ─────────────────────────────────────────────────────────────────
 
 enum SendCheckResult {
-    /// Allowed with optional UCAN capabilities (None = full access)
-    Allowed(Option<Vec<clankers_ucan::Capability>>),
+    /// Allowed with optional legacy capabilities and optional public UCAN gate material.
+    Allowed {
+        legacy_capabilities: Option<Vec<clankers_ucan::Capability>>,
+        public_auth: Option<crate::capability_gate::PublicUcanToolAuthorization>,
+    },
     Denied,
 }
 
-/// Check auth for a Matrix sender: token → allowlist fallback.
+/// Check auth for a Matrix sender: public UCAN credential → allowlist fallback.
 ///
-/// Returns `Allowed(capabilities)` where capabilities are `Some` if the
-/// sender has a UCAN token, or `None` for allowlist-only users (full access).
+/// Allowlisted users without credentials get full local-style access.
 async fn check_sender_auth(
     sender: &str,
     auth: &Option<Arc<AuthLayer>>,
@@ -447,8 +458,12 @@ async fn check_sender_auth(
     room_id: &str,
 ) -> SendCheckResult {
     if let Some(auth) = auth {
-        match auth.resolve_capabilities(sender) {
-            Some(Ok(caps)) => SendCheckResult::Allowed(Some(caps)),
+        let request = crate::modes::daemon::session_store::session_prompt_admission_request(sender);
+        match auth.resolve_credential(sender, &request) {
+            Some(Ok(credential)) => SendCheckResult::Allowed {
+                legacy_capabilities: None,
+                public_auth: Some(auth.public_tool_authorization_for_session(credential, sender)),
+            },
             Some(Err(e)) => {
                 warn!("Matrix: token error for {}: {e}", sender);
                 if let Ok(rid) = clankers_matrix::ruma::RoomId::parse(room_id) {
@@ -464,7 +479,10 @@ async fn check_sender_auth(
             }
             None => {
                 if is_user_allowed(allowlist, sender) {
-                    SendCheckResult::Allowed(None) // allowlist users get full access
+                    SendCheckResult::Allowed {
+                        legacy_capabilities: None,
+                        public_auth: None,
+                    } // allowlist users get full access
                 } else {
                     info!("Matrix: denied message from {} (no token, not on allowlist)", sender);
                     SendCheckResult::Denied
@@ -472,7 +490,10 @@ async fn check_sender_auth(
             }
         }
     } else if is_user_allowed(allowlist, sender) {
-        SendCheckResult::Allowed(None) // no auth layer = full access
+        SendCheckResult::Allowed {
+            legacy_capabilities: None,
+            public_auth: None,
+        } // no auth layer = full access
     } else {
         info!("Matrix: denied message from {}", sender);
         SendCheckResult::Denied

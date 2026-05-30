@@ -6,12 +6,11 @@ use clanker_actor::ProcessRegistry;
 use clankers_controller::transport::DaemonState;
 use clankers_protocol::SessionCommand;
 use clankers_protocol::SessionKey;
-use clankers_ucan::Capability;
-use clankers_ucan::Credential;
 use tokio::sync::Mutex;
 
 use super::prompt::run_matrix_prompt;
 use crate::modes::daemon::session_store::AuthLayer;
+use crate::modes::daemon::session_store::session_prompt_admission_request;
 use crate::modes::daemon::socket_bridge::SessionFactory;
 
 /// Handle a `!command` from a Matrix user. Returns the response text.
@@ -75,6 +74,7 @@ pub(crate) async fn handle_bot_command(
                 key.clone(),
                 "/compact".to_string(),
                 None, // session already exists with capabilities from initial auth
+                None,
             )
             .await;
             "Context compacted.".to_string()
@@ -118,7 +118,7 @@ pub(crate) async fn handle_bot_command(
         "!delegate" => handle_delegate_command(args, key, &auth),
         _ => {
             // Unknown ! command — pass to agent as a normal prompt
-            run_matrix_prompt(state, registry, factory, key.clone(), body.to_string(), None).await
+            run_matrix_prompt(state, registry, factory, key.clone(), body.to_string(), None, None).await
         }
     }
 }
@@ -140,21 +140,17 @@ async fn handle_token_command(
         return "Token auth is not enabled on this daemon.".to_string();
     };
 
-    let cred = match Credential::from_base64(args) {
-        Ok(c) => c,
-        Err(e) => return format!("Invalid credential: {e}"),
+    let user_id = match key {
+        SessionKey::Matrix { user_id, .. } => user_id.clone(),
+        SessionKey::Iroh(id) => id.clone(),
     };
+    let request = session_prompt_admission_request(&user_id);
 
-    match auth.verify_credential(&cred) {
-        Ok(caps) => {
-            let user_id = match key {
-                SessionKey::Matrix { user_id, .. } => user_id.clone(),
-                SessionKey::Iroh(id) => id.clone(),
-            };
-
+    match auth.verify_credential_base64(args, &request) {
+        Ok((cred, receipt)) => {
             auth.store_credential(&user_id, &cred);
 
-            // Kill existing session so the next message picks up new capabilities
+            // Kill existing session so the next message picks up new capabilities.
             {
                 let mut st = state.lock().await;
                 if let Some(session_id) = st.key_index.get(key).cloned() {
@@ -167,199 +163,22 @@ async fn handle_token_command(
                 }
             }
 
-            let cap_names: Vec<&str> = caps
-                .iter()
-                .map(|c| match c {
-                    Capability::Prompt => "Prompt",
-                    Capability::ToolUse { .. } => "ToolUse",
-                    Capability::ShellExecute { .. } => "ShellExecute",
-                    Capability::FileAccess { .. } => "FileAccess",
-                    Capability::BotCommand { .. } => "BotCommand",
-                    Capability::SessionManage => "SessionManage",
-                    Capability::ModelSwitch => "ModelSwitch",
-                    Capability::Delegate => "Delegate",
-                })
-                .collect();
-
-            let expires = chrono::DateTime::from_timestamp(cred.token.expires_at as i64, 0)
-                .map(|dt| dt.format("%Y-%m-%d %H:%M UTC").to_string())
-                .unwrap_or_else(|| "unknown".to_string());
-
             format!(
-                "**Credential accepted** ✓\n\n\
-                 • Capabilities: {}\n\
-                 • Expires: {}\n\
-                 • Depth: {}\n\n\
-                 Your session has been restarted with the new capabilities.",
-                cap_names.join(", "),
-                expires,
-                cred.token.delegation_depth,
+                "**Public UCAN credential accepted** ✓\n\n\
+                 • Token reference: `{}`\n\
+                 • Audience: `{}`\n\
+                 • Policy: `{}`\n\
+                 • Replay: `{}`\n\n\
+                 Your session has been restarted with the new public UCAN/Basalt gate.",
+                receipt.token_reference, receipt.audience, receipt.policy_hash, receipt.replay_status,
             )
         }
         Err(e) => format!("**Credential rejected:** {e}"),
     }
 }
 
-#[cfg_attr(
-    dylint_lib = "tigerstyle",
-    allow(function_length, reason = "sequential setup/dispatch logic")
-)]
-fn handle_delegate_command(args: &str, key: &SessionKey, auth: &Option<Arc<AuthLayer>>) -> String {
-    if args.is_empty() {
-        return "**Delegate a child token from yours**\n\n\
-                Usage: `!delegate [options]`\n\n\
-                Options:\n\
-                • `--tools <pattern>` — comma-separated tool names or `*`\n\
-                • `--read-only` — shorthand for `--tools read,grep,find,ls`\n\
-                • `--expire <duration>` — e.g. `1h`, `7d`, `30m`\n\
-                • `--shell` — include ShellExecute capability\n\
-                • `--no-delegate` — child cannot further delegate\n\n\
-                Your token must have the Delegate capability.\n\
-                Child tokens cannot exceed your own permissions."
-            .to_string();
-    }
-
-    let Some(auth) = auth else {
-        return "Token auth is not enabled on this daemon.".to_string();
-    };
-
-    let user_id = match key {
-        SessionKey::Matrix { user_id, .. } => user_id.clone(),
-        SessionKey::Iroh(id) => id.clone(),
-    };
-
-    let parent_cred = match auth.lookup_credential(&user_id) {
-        Some(c) => c,
-        None => return "You don't have a registered credential. Use `!token <base64>` first.".to_string(),
-    };
-
-    if let Err(e) = auth.verify_credential(&parent_cred) {
-        return format!("Your credential is invalid: {e}");
-    }
-
-    if !parent_cred.token.capabilities.contains(&Capability::Delegate) {
-        return "Your token does not have the Delegate capability.".to_string();
-    }
-
-    // Parse flags
-    let parts: Vec<&str> = args.split_whitespace().collect();
-    let mut tools_pattern: Option<String> = None;
-    let mut expire_str: Option<&str> = None;
-    let mut should_include_shell = false;
-    let mut should_allow_delegate = true;
-    let mut is_read_only = false;
-    let mut i = 0;
-
-    while i < parts.len() {
-        match parts[i] {
-            "--tools" => {
-                if i + 1 < parts.len() {
-                    tools_pattern = Some(parts[i + 1].to_string());
-                    i += 2;
-                } else {
-                    return "`--tools` requires a pattern (e.g. `read,grep` or `*`)".to_string();
-                }
-            }
-            "--expire" => {
-                if i + 1 < parts.len() {
-                    expire_str = Some(parts[i + 1]);
-                    i += 2;
-                } else {
-                    return "`--expire` requires a duration (e.g. `1h`, `7d`)".to_string();
-                }
-            }
-            "--shell" => {
-                should_include_shell = true;
-                i += 1;
-            }
-            "--no-delegate" => {
-                should_allow_delegate = false;
-                i += 1;
-            }
-            "--read-only" => {
-                is_read_only = true;
-                i += 1;
-            }
-            other => {
-                return format!("Unknown flag: `{other}`. See `!delegate` for usage.");
-            }
-        }
-    }
-
-    if is_read_only {
-        tools_pattern = Some("read,grep,find,ls".to_string());
-    }
-
-    let lifetime = match expire_str {
-        Some(s) => match parse_delegate_duration(s) {
-            Some(d) => d,
-            None => return format!("Invalid duration: `{s}`. Use e.g. `30m`, `1h`, `7d`, `1y`."),
-        },
-        None => std::time::Duration::from_secs(3600),
-    };
-
-    let now = clankers_ucan::utils::current_time_secs();
-    let parent_remaining = parent_cred.token.expires_at.saturating_sub(now);
-    let lifetime = lifetime.min(std::time::Duration::from_secs(parent_remaining));
-
-    let mut child_caps = vec![Capability::Prompt];
-    if let Some(pattern) = tools_pattern {
-        child_caps.push(Capability::ToolUse { tool_pattern: pattern });
-    }
-    if should_include_shell {
-        child_caps.push(Capability::ShellExecute {
-            command_pattern: "*".into(),
-            working_dir: None,
-        });
-    }
-    if should_allow_delegate {
-        child_caps.push(Capability::Delegate);
-    }
-
-    match parent_cred.delegate_bearer(&auth.owner_key, child_caps, lifetime) {
-        Ok(child_cred) => {
-            let b64 = match child_cred.to_base64() {
-                Ok(b) => b,
-                Err(e) => return format!("Failed to encode child credential: {e}"),
-            };
-
-            let cap_names: Vec<&str> = child_cred
-                .token
-                .capabilities
-                .iter()
-                .map(|c| match c {
-                    Capability::Prompt => "Prompt",
-                    Capability::ToolUse { .. } => "ToolUse",
-                    Capability::ShellExecute { .. } => "ShellExecute",
-                    Capability::FileAccess { .. } => "FileAccess",
-                    Capability::BotCommand { .. } => "BotCommand",
-                    Capability::SessionManage => "SessionManage",
-                    Capability::ModelSwitch => "ModelSwitch",
-                    Capability::Delegate => "Delegate",
-                })
-                .collect();
-
-            let expires = chrono::DateTime::from_timestamp(child_cred.token.expires_at as i64, 0)
-                .map(|dt| dt.format("%Y-%m-%d %H:%M UTC").to_string())
-                .unwrap_or_else(|| "unknown".to_string());
-
-            format!(
-                "**Child credential created** ✓\n\n\
-                 • Capabilities: {}\n\
-                 • Expires: {}\n\
-                 • Depth: {}\n\
-                 • Proof chain: {} token(s)\n\n\
-                 ```\n{}\n```\n\n\
-                 Share this with the recipient. They register it with `!token <credential>`.",
-                cap_names.join(", "),
-                expires,
-                child_cred.token.delegation_depth,
-                child_cred.proofs.len(),
-                b64,
-            )
-        }
-        Err(e) => format!("**Delegation failed:** {e}"),
-    }
+fn handle_delegate_command(_args: &str, _key: &SessionKey, _auth: &Option<Arc<AuthLayer>>) -> String {
+    "Public UCAN delegation is explicit now. Ask the daemon owner to issue a delegated public UCAN envelope for your recipient DID, then register it with `!token <base64>`.".to_string()
 }
 
 /// Parse duration strings like "30m", "1h", "7d", "1y".

@@ -40,8 +40,9 @@ const MAX_COLLECTED_BYTES: usize = 512 * 1024;
 /// `transport::run_session_socket` separately if clients need
 /// to connect via Unix socket.
 ///
-/// `capabilities` — if set, tool calls are checked against these UCAN
-/// capabilities. `None` means full access (local sessions, root tokens).
+/// `capabilities` — if set, tool calls are checked against legacy Clankers
+/// UCAN capabilities. `public_auth` installs the public UCAN + Basalt gate.
+/// Both `None` means full access (local sessions).
 /// Info returned from `spawn_agent_process` for wiring up channels and catalog.
 pub struct SpawnedSession {
     pub pid: ProcessId,
@@ -59,6 +60,7 @@ pub fn spawn_agent_process(
     system_prompt: Option<String>,
     parent: Option<ProcessId>,
     capabilities: Option<Vec<clankers_ucan::Capability>>,
+    public_auth: Option<crate::capability_gate::PublicUcanToolAuthorization>,
 ) -> SpawnedSession {
     let model = model.unwrap_or_else(|| factory.default_model.clone());
     let system_prompt = system_prompt.unwrap_or_else(|| factory.default_system_prompt.clone());
@@ -90,7 +92,10 @@ pub fn spawn_agent_process(
     )
     .with_tools(tools);
 
-    if let Some(caps) = &effective_caps {
+    if let Some(public_auth) = public_auth {
+        let gate = std::sync::Arc::new(crate::capability_gate::PublicUcanCapabilityGate::new(public_auth));
+        builder = builder.with_capability_gate(gate);
+    } else if let Some(caps) = &effective_caps {
         let gate = std::sync::Arc::new(crate::capability_gate::UcanCapabilityGate::new(caps.clone()));
         builder = builder.with_capability_gate(gate);
     }
@@ -464,6 +469,7 @@ pub async fn run_ephemeral_agent(
         system_prompt,
         parent_pid,
         None, // ephemeral agents inherit parent's capabilities via actor links
+        None,
     );
     let pid = spawned.pid;
     let cmd_tx = spawned.cmd_tx;
@@ -692,6 +698,7 @@ pub async fn get_or_create_keyed_session(
     factory: &super::socket_bridge::SessionFactory,
     key: &clankers_protocol::SessionKey,
     capabilities: Option<Vec<clankers_ucan::Capability>>,
+    public_auth: Option<crate::capability_gate::PublicUcanToolAuthorization>,
 ) -> (
     String,
     tokio::sync::mpsc::UnboundedSender<SessionCommand>,
@@ -719,8 +726,16 @@ pub async fn get_or_create_keyed_session(
         && let Some(entry) = catalog.get_session(&session_id)
     {
         let seed_messages = load_recovery_seed_messages(&entry);
-        let spawned =
-            spawn_agent_process(registry, factory, session_id.clone(), Some(entry.model.clone()), None, None, None);
+        let spawned = spawn_agent_process(
+            registry,
+            factory,
+            session_id.clone(),
+            Some(entry.model.clone()),
+            None,
+            None,
+            None,
+            public_auth.clone(),
+        );
         let cmd_tx = spawned.cmd_tx;
         let event_tx = spawned.event_tx;
 
@@ -749,7 +764,8 @@ pub async fn get_or_create_keyed_session(
 
     // Slow path: create a new session
     let session_id = clanker_message::generate_id();
-    let spawned = spawn_agent_process(registry, factory, session_id.clone(), None, None, None, capabilities);
+    let spawned =
+        spawn_agent_process(registry, factory, session_id.clone(), None, None, None, capabilities, public_auth);
     let cmd_tx = spawned.cmd_tx;
     let event_tx = spawned.event_tx;
 
@@ -816,8 +832,16 @@ pub fn recover_session(
     let seed_messages = load_recovery_seed_messages(&entry);
 
     // Spawn the actor
-    let spawned =
-        spawn_agent_process(registry, factory, session_id.to_string(), Some(entry.model.clone()), None, None, None);
+    let spawned = spawn_agent_process(
+        registry,
+        factory,
+        session_id.to_string(),
+        Some(entry.model.clone()),
+        None,
+        None,
+        None,
+        None,
+    );
     let cmd_tx = spawned.cmd_tx;
     let event_tx = spawned.event_tx;
 
@@ -1241,6 +1265,7 @@ mod factory_plugin_tests {
             None,
             None,
             None,
+            None,
         );
         let mut event_rx = spawned.event_tx.subscribe();
 
@@ -1318,6 +1343,7 @@ mod factory_plugin_tests {
             &registry,
             &factory,
             "daemon-abort-streaming-test".to_string(),
+            None,
             None,
             None,
             None,
@@ -1628,8 +1654,10 @@ mod factory_plugin_tests {
 
         let registry = ProcessRegistry::new();
         let factory = make_factory(Some(Arc::clone(&pm)));
-        let session_a = super::spawn_agent_process(&registry, &factory, "shared-a".to_string(), None, None, None, None);
-        let session_b = super::spawn_agent_process(&registry, &factory, "shared-b".to_string(), None, None, None, None);
+        let session_a =
+            super::spawn_agent_process(&registry, &factory, "shared-a".to_string(), None, None, None, None, None);
+        let session_b =
+            super::spawn_agent_process(&registry, &factory, "shared-b".to_string(), None, None, None, None, None);
         let mut event_rx_a = session_a.event_tx.subscribe();
         let mut event_rx_b = session_b.event_tx.subscribe();
 
@@ -1696,10 +1724,26 @@ mod factory_plugin_tests {
 
         let registry = ProcessRegistry::new();
         let factory = make_factory(Some(Arc::clone(&pm)));
-        let session_a =
-            super::spawn_agent_process(&registry, &factory, "shared-restart-a".to_string(), None, None, None, None);
-        let session_b =
-            super::spawn_agent_process(&registry, &factory, "shared-restart-b".to_string(), None, None, None, None);
+        let session_a = super::spawn_agent_process(
+            &registry,
+            &factory,
+            "shared-restart-a".to_string(),
+            None,
+            None,
+            None,
+            None,
+            None,
+        );
+        let session_b = super::spawn_agent_process(
+            &registry,
+            &factory,
+            "shared-restart-b".to_string(),
+            None,
+            None,
+            None,
+            None,
+            None,
+        );
         let mut event_rx_a = session_a.event_tx.subscribe();
         let mut event_rx_b = session_b.event_tx.subscribe();
 
@@ -1771,6 +1815,7 @@ mod factory_plugin_tests {
             &registry,
             &factory,
             "daemon-plugin-list-session".to_string(),
+            None,
             None,
             None,
             None,

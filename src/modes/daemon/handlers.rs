@@ -54,7 +54,7 @@ pub(crate) async fn handle_chat_connection(
     // Verified capabilities are stored here and passed to sessions.
     let is_auth_required = auth.is_some();
     let mut is_authenticated = !is_auth_required; // open access when no auth layer
-    let mut verified_capabilities: Option<Vec<clankers_ucan::Capability>> = None;
+    let mut verified_public_auth: Option<crate::capability_gate::PublicUcanToolAuthorization> = None;
 
     loop {
         let (send, mut recv) = match conn.accept_bi().await {
@@ -79,24 +79,21 @@ pub(crate) async fn handle_chat_connection(
                 if let Some(token_b64) = request.get("token").and_then(|v| v.as_str())
                     && let Some(ref auth) = auth
                 {
-                    match clankers_ucan::Credential::from_base64(token_b64) {
-                        Ok(cred) => match auth.verify_credential(&cred) {
-                            Ok(caps) => {
-                                info!("[{}] is_authenticated with {} capabilities", key, caps.len());
-                                is_authenticated = true;
-                                verified_capabilities = Some(caps);
-                                auth.store_credential(peer_id, &cred);
-                            }
-                            Err(e) => {
-                                warn!("[{}] credential verification failed: {e}", key);
-                                let err = json!({ "type": "error", "message": format!("Token rejected: {e}") });
-                                let mut send = send;
-                                write_frame(&mut send, &serde_json::to_vec(&err).unwrap_or_default()).await.ok();
-                                send.finish().ok();
-                            }
-                        },
+                    let request = super::session_store::session_prompt_admission_request(peer_id);
+                    match auth.verify_credential_base64(token_b64, &request) {
+                        Ok((cred, _receipt)) => {
+                            info!("[{}] public UCAN credential accepted", key);
+                            is_authenticated = true;
+                            verified_public_auth =
+                                Some(auth.public_tool_authorization_for_session(cred.clone(), peer_id));
+                            auth.store_credential(peer_id, &cred);
+                        }
                         Err(e) => {
-                            warn!("[{}] invalid token encoding: {e}", key);
+                            warn!("[{}] credential verification failed: {e}", key);
+                            let err = json!({ "type": "error", "message": format!("Token rejected: {e}") });
+                            let mut send = send;
+                            write_frame(&mut send, &serde_json::to_vec(&err).unwrap_or_default()).await.ok();
+                            send.finish().ok();
                         }
                     }
                 }
@@ -129,9 +126,9 @@ pub(crate) async fn handle_chat_connection(
         let registry = registry.clone();
         let factory = Arc::clone(&factory);
         let key = key.clone();
-        let caps = verified_capabilities.clone();
+        let public_auth = verified_public_auth.clone();
         tokio::spawn(async move {
-            run_chat_prompt(state, registry, factory, key, text, send, caps).await;
+            run_chat_prompt(state, registry, factory, key, text, send, public_auth).await;
         });
     }
 }
@@ -148,10 +145,10 @@ async fn run_chat_prompt(
     key: SessionKey,
     text: String,
     mut send: ::iroh::endpoint::SendStream,
-    capabilities: Option<Vec<clankers_ucan::Capability>>,
+    public_auth: Option<crate::capability_gate::PublicUcanToolAuthorization>,
 ) {
     let (_session_id, cmd_tx, event_tx) =
-        get_or_create_keyed_session(&state, &registry, &factory, &key, capabilities).await;
+        get_or_create_keyed_session(&state, &registry, &factory, &key, None, public_auth).await;
 
     // Subscribe before sending the prompt so we don't miss events
     let mut event_rx = event_tx.subscribe();
@@ -318,30 +315,19 @@ pub(crate) async fn handle_rpc_v1_connection(
                 if let Some(token_b64) = request.get("token").and_then(|v| v.as_str())
                     && let Some(ref auth) = auth
                 {
-                    match clankers_ucan::Credential::from_base64(token_b64) {
-                        Ok(cred) => match auth.verify_credential(&cred) {
-                            Ok(caps) => {
-                                info!(
-                                    "[rpc/1 {}] is_authenticated with {} capabilities",
-                                    &peer_id[..8.min(peer_id.len())],
-                                    caps.len()
-                                );
-                                is_authenticated = true;
-                                auth.store_credential(&peer_id, &cred);
-                            }
-                            Err(e) => {
-                                warn!(
-                                    "[rpc/1 {}] credential verification failed: {e}",
-                                    &peer_id[..8.min(peer_id.len())]
-                                );
-                                let err = json!({ "error": format!("Token rejected: {e}") });
-                                let mut send = send;
-                                write_frame(&mut send, &serde_json::to_vec(&err).unwrap_or_default()).await.ok();
-                                send.finish().ok();
-                            }
-                        },
+                    let request = super::session_store::session_prompt_admission_request(&peer_id);
+                    match auth.verify_credential_base64(token_b64, &request) {
+                        Ok((cred, _receipt)) => {
+                            info!("[rpc/1 {}] public UCAN credential accepted", &peer_id[..8.min(peer_id.len())]);
+                            is_authenticated = true;
+                            auth.store_credential(&peer_id, &cred);
+                        }
                         Err(e) => {
-                            warn!("[rpc/1] invalid token encoding: {e}");
+                            warn!("[rpc/1 {}] credential verification failed: {e}", &peer_id[..8.min(peer_id.len())]);
+                            let err = json!({ "error": format!("Token rejected: {e}") });
+                            let mut send = send;
+                            write_frame(&mut send, &serde_json::to_vec(&err).unwrap_or_default()).await.ok();
+                            send.finish().ok();
                         }
                     }
                 }

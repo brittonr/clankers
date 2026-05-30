@@ -2038,7 +2038,7 @@ async fn capability_gate_blocks_stdio_tool_calls_in_turn_loop() {
         ..crate::config::Settings::default()
     };
     let gate: Arc<dyn crate::agent::CapabilityGate> =
-        Arc::new(crate::capability_gate::UcanCapabilityGate::new(vec![Capability::ToolUse {
+        Arc::new(crate::capability_gate::UcanCapabilityGate::new(vec![Capability::Prompt, Capability::ToolUse {
             tool_pattern: "read,bash".to_string(),
         }]));
     let mut agent = crate::agent::Agent::new(
@@ -2195,7 +2195,7 @@ async fn capability_gate_allows_stdio_tool_calls_in_turn_loop() {
         ..crate::config::Settings::default()
     };
     let gate: Arc<dyn crate::agent::CapabilityGate> =
-        Arc::new(crate::capability_gate::UcanCapabilityGate::new(vec![Capability::ToolUse {
+        Arc::new(crate::capability_gate::UcanCapabilityGate::new(vec![Capability::Prompt, Capability::ToolUse {
             tool_pattern: "stdio_capability_tool".to_string(),
         }]));
     let mut agent = crate::agent::Agent::new(
