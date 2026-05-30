@@ -461,11 +461,12 @@ pub(crate) fn emit_agent_turn_planning_receipt(
         .map(|authority| format!(" ucan_authority={:?} ucan_reason={:?}", authority.status, authority.reason))
         .unwrap_or_default();
     let message = format!(
-        "steel.host.plan_turn receipt status={:?} issue={:?} mode={:?} planner={:?} fallback={:?} receipt_hash={} plan_hash={}{}",
+        "steel.host.plan_turn receipt status={:?} issue={:?} mode={:?} planner={:?} executor={:?} fallback={:?} receipt_hash={} plan_hash={}{}",
         receipt.status,
         receipt.issue_code,
         receipt.rollout_stage,
         receipt.planner,
+        outcome.execution_planner,
         receipt.fallback_status,
         receipt.receipt_hash.prefixed(),
         receipt.plan_hash.map_or_else(|| "none".to_string(), ArtifactHash::prefixed),

@@ -18,6 +18,7 @@ use serde_json::json;
 const ERROR_EXIT: u8 = 1;
 const AGENT_TURN: &str = "crates/clankers-agent/src/turn/mod.rs";
 const ADAPTER: &str = "crates/clankers-agent/src/turn/steel_planning.rs";
+const STEEL_EXECUTION: &str = "crates/clankers-agent/src/turn/steel_execution.rs";
 const AGENT_CARGO: &str = "crates/clankers-agent/Cargo.toml";
 const DOC: &str = "docs/src/reference/steel-agent-turn-wiring.md";
 const SUMMARY: &str = "docs/src/SUMMARY.md";
@@ -30,7 +31,7 @@ const REQUIRED_ADAPTER_MARKERS: &[&str] = &[
     "DEFAULT_TURN_PLANNING_SEAM",
     "AgentTurnExecutionPlanner::Blocked",
     "prompt_hash",
-    "sorted_tool_names",
+    "tool_names",
     "steel.host.plan_turn",
 ];
 const REQUIRED_TURN_MARKERS: &[&str] = &[
@@ -38,7 +39,14 @@ const REQUIRED_TURN_MARKERS: &[&str] = &[
     "plan_agent_turn",
     "emit_agent_turn_planning_receipt",
     "steel.host.plan_turn blocked agent turn before provider request",
+    "run_steel_selected_engine_turn",
     "run_turn_loop_emits_steel_plan_turn_receipt_when_configured",
+    "run_turn_loop_uses_steel_selected_executor_when_default_planner_authorizes",
+];
+const REQUIRED_EXECUTION_MARKERS: &[&str] = &[
+    "Steel-selected turn execution adapter",
+    "run_engine_turn(seed, hosts).await",
+    "HostAdapters",
 ];
 const REQUIRED_DOC_MARKERS: &[&str] = &[
     "Steel Agent Turn Wiring",
@@ -46,7 +54,7 @@ const REQUIRED_DOC_MARKERS: &[&str] = &[
     "Default",
     "Blocked",
     "no ambient filesystem",
-    "Rust still owns provider calls",
+    "Rust-owned host functions",
 ];
 const FORBIDDEN_AGENT_IMPORTS: &[&str] = &["steel_core::", "steel::steel_vm", "steel_vm::"];
 const FORBIDDEN_RECEIPT_LEAKS: &[&str] = &[
@@ -73,6 +81,7 @@ fn main() -> ExitCode {
 fn run() -> Result<PathBuf, String> {
     let turn = read(AGENT_TURN)?;
     let adapter = read(ADAPTER)?;
+    let execution = read(STEEL_EXECUTION)?;
     let cargo = read(AGENT_CARGO)?;
     let doc = read(DOC)?;
     let summary = read(SUMMARY)?;
@@ -80,9 +89,11 @@ fn run() -> Result<PathBuf, String> {
 
     require_all(ADAPTER, &adapter, REQUIRED_ADAPTER_MARKERS, &mut errors);
     require_all(AGENT_TURN, &turn, REQUIRED_TURN_MARKERS, &mut errors);
+    require_all(STEEL_EXECUTION, &execution, REQUIRED_EXECUTION_MARKERS, &mut errors);
     require_all(DOC, &doc, REQUIRED_DOC_MARKERS, &mut errors);
     forbid_all(AGENT_TURN, &turn, FORBIDDEN_AGENT_IMPORTS, &mut errors);
     forbid_all(ADAPTER, &adapter, FORBIDDEN_AGENT_IMPORTS, &mut errors);
+    forbid_all(STEEL_EXECUTION, &execution, FORBIDDEN_AGENT_IMPORTS, &mut errors);
     forbid_all(DOC, &doc, FORBIDDEN_RECEIPT_LEAKS, &mut errors);
     if !cargo.contains("clankers-runtime") || !cargo.contains("clankers-artifacts") {
         errors.push(format!("{AGENT_CARGO} must depend on runtime/artifact DTO crates for the adapter"));
@@ -94,10 +105,18 @@ fn run() -> Result<PathBuf, String> {
         return Err(errors.join("\n"));
     }
 
-    let artifacts = [AGENT_TURN, ADAPTER, AGENT_CARGO, DOC, SUMMARY, "scripts/check-steel-agent-turn-wiring.rs"]
-        .iter()
-        .map(|path| hash_artifact(Path::new(path)))
-        .collect::<Result<Vec<_>, _>>()?;
+    let artifacts = [
+        AGENT_TURN,
+        ADAPTER,
+        STEEL_EXECUTION,
+        AGENT_CARGO,
+        DOC,
+        SUMMARY,
+        "scripts/check-steel-agent-turn-wiring.rs",
+    ]
+    .iter()
+    .map(|path| hash_artifact(Path::new(path)))
+    .collect::<Result<Vec<_>, _>>()?;
     let receipt = json!({
         "schema": "clankers.steel_agent_turn_wiring.receipt.v1",
         "validated_surfaces": [
@@ -105,11 +124,12 @@ fn run() -> Result<PathBuf, String> {
             "rust-owned-adapter",
             "runtime-orchestration-delegation",
             "blocked-before-provider-request",
+            "steel-selected-execution-adapter",
             "redacted-docs-and-receipts",
             "no-direct-steel-interpreter-import"
         ],
         "hashed_artifacts": artifacts,
-        "guidance": "Steel Scheme plans the turn only through typed Rust seams; Rust retains effect and fallback authority."
+        "guidance": "Steel Scheme selects authorized default turn execution through typed Rust seams; Rust retains provider/tool effect and fallback authority."
     });
     let output = PathBuf::from(OUTPUT);
     let parent = output.parent().ok_or_else(|| format!("{} has no parent", output.display()))?;

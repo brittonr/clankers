@@ -6,6 +6,7 @@ mod message;
 mod model_switch;
 mod policy;
 mod ports;
+mod steel_execution;
 mod steel_planning;
 mod steel_tool_substrate;
 mod transcript;
@@ -109,6 +110,7 @@ pub(crate) use ports::ProviderModelPort;
 pub(crate) use ports::TokenCancellationPort;
 #[cfg(test)]
 use serde_json::Value;
+use steel_execution::run_steel_selected_engine_turn;
 use steel_planning::AgentTurnExecutionPlanner;
 use steel_planning::AgentTurnPlanningRequest;
 pub use steel_planning::AgentTurnSteelPlanningConfig;
@@ -167,7 +169,7 @@ pub(crate) async fn run_turn_loop(
     debug_assert!(services.has_service_kind(AgentRuntimeServiceKind::Cancellation));
 
     let tool_defs = services.tools.tool_definitions();
-    if let Some(steel_turn_planning) = config.steel_turn_planning.as_ref() {
+    let execution_planner = if let Some(steel_turn_planning) = config.steel_turn_planning.as_ref() {
         let planning = plan_agent_turn(AgentTurnPlanningRequest {
             config: steel_turn_planning,
             session_id: ctx.session_id,
@@ -182,7 +184,10 @@ pub(crate) async fn run_turn_loop(
                 message: "steel.host.plan_turn blocked agent turn before provider request".to_string(),
             });
         }
-    }
+        planning.execution_planner
+    } else {
+        AgentTurnExecutionPlanner::RustNative
+    };
     let mut engine = EmbeddableEngine::new();
     let submit_result = engine.submit_turn(EngineTurnRequest {
         submission: EnginePromptSubmission {
@@ -230,15 +235,20 @@ pub(crate) async fn run_turn_loop(
         transcript: transcript.writer(),
     };
 
-    let report = run_engine_turn(EngineRunSeed::new(submit_seed_state, submit_outcome), HostAdapters {
+    let hosts = HostAdapters {
         model: &mut model_host,
         tools: &mut tool_host,
         retry_sleeper: &mut retry_sleeper,
         event_sink: &mut event_sink,
         cancellation: &mut cancellation,
         usage_observer: &mut usage_observer,
-    })
-    .await;
+    };
+    let seed = EngineRunSeed::new(submit_seed_state, submit_outcome);
+    let report = if execution_planner == AgentTurnExecutionPlanner::SteelScheme {
+        run_steel_selected_engine_turn(seed, hosts).await
+    } else {
+        run_engine_turn(seed, hosts).await
+    };
 
     *messages = transcript.into_messages();
 
@@ -1878,10 +1888,63 @@ mod tests {
             if let AgentEvent::SystemMessage { message } = event {
                 saw_steel_receipt |= message.contains("steel.host.plan_turn receipt")
                     && message.contains("status=Authorized")
+                    && message.contains("executor=RustNative")
                     && !message.contains("hello");
             }
         }
         assert!(saw_steel_receipt, "configured run_turn_loop should emit Steel planning receipt");
+    }
+
+    #[tokio::test]
+    async fn run_turn_loop_uses_steel_selected_executor_when_default_planner_authorizes() {
+        let provider = RetryableFailProvider::new(0, RETRYABLE_PROVIDER_STATUS);
+        let tools: HashMap<String, Arc<dyn Tool>> = HashMap::new();
+        let mut messages = vec![make_user_message()];
+        let mut config = make_turn_config();
+        let mut profile = clankers_runtime::SteelOrchestrationProfile::comparison_default(
+            clankers_artifacts::ArtifactHash::digest(b"script"),
+            clankers_artifacts::ArtifactHash::digest(b"policy"),
+        );
+        profile.rollout_stage = clankers_runtime::OrchestrationRolloutStage::Default;
+        config.steel_turn_planning = Some(AgentTurnSteelPlanningConfig::comparison_fixture(profile));
+        let (event_tx, mut event_rx) = broadcast::channel(256);
+        super::steel_execution::reset_steel_selected_engine_turn_call_count();
+
+        test_run_turn_loop(
+            &provider,
+            &tools,
+            &mut messages,
+            &config,
+            &event_tx,
+            CancellationToken::new(),
+            None,
+            None,
+            None,
+            "session-steel-selected-turn",
+            None,
+            None,
+            None,
+        )
+        .await
+        .expect("turn should succeed");
+
+        let mut saw_steel_selected_executor = false;
+        while let Ok(event) = event_rx.try_recv() {
+            if let AgentEvent::SystemMessage { message } = event {
+                saw_steel_selected_executor |= message.contains("steel.host.plan_turn receipt")
+                    && message.contains("planner=SteelScheme")
+                    && message.contains("executor=SteelScheme")
+                    && !message.contains("hello");
+            }
+        }
+        assert!(
+            saw_steel_selected_executor,
+            "default Steel planning should route the turn through the Steel-selected executor"
+        );
+        assert!(
+            super::steel_execution::steel_selected_engine_turn_call_count() > 0,
+            "default Steel planning should call the Steel-selected execution adapter"
+        );
     }
 
     #[tokio::test]

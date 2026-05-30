@@ -10,7 +10,7 @@ The Steel turn-planning runtime smoke proves the reviewed `steel.host.plan_turn`
 - Explicit `steelTurnPlanning` profile/script settings still load a reviewed profile and script through the same activation helper.
 - The script is checked by BLAKE3 before activation.
 - The profile requires explicit session capability and UCAN ability strings.
-- The Steel Scheme planner emits only a typed plan; Rust still authorizes and executes the provider turn.
+- The Steel Scheme planner emits only a typed plan; authorized default receipts select the Steel execution adapter, and Rust host functions still authorize and execute provider/tool effects.
 - The resulting `steel.host.plan_turn` receipt is bridged from `AgentEvent::SystemMessage` to `DaemonEvent::SystemMessage`, making it visible to daemon/attach clients.
 - Receipt text is redacted: no raw prompt, script body, credential, UCAN proof, provider payload, or tool body is exposed.
 
@@ -27,8 +27,8 @@ This preserves the seam:
 ```text
 Nickel = reviewed declaration/profile
 UCAN   = runtime delegated authority strings
-Rust   = validation, provider calls, daemon events, receipts
-Steel  = typed planning only
+Rust   = validation, host-effect execution, provider calls, daemon events, receipts
+Steel  = typed planning and selected execution adapter, without ambient host authority
 Wasm   = separate untrusted execution boundary
 ```
 

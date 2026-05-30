@@ -1,18 +1,18 @@
 # Steel Default Orchestration
 
-Steel Scheme is the default planner for the reviewed Clankers `steel.host.plan_turn` turn-planning seam when settings omit `steelTurnPlanning`. This does not make Steel an authority boundary. Steel proposes typed plans; Rust remains the authority for I/O, provider calls, tool execution, daemon/session state, mutation, verification, rollback, and receipts.
+Steel Scheme is the default planner for the reviewed Clankers `steel.host.plan_turn` turn-planning seam when settings omit `steelTurnPlanning`. Authorized default plans now select the Steel execution adapter, but this does not make Steel an authority boundary. Steel proposes typed plans; Rust-owned host functions remain the authority for I/O, provider calls, tool execution, daemon/session state, mutation, verification, rollback, and receipts.
 
 ## Layer split
 
 - Nickel declares the orchestration profile: enabled/default state, exact seam, script identity and hash, runtime budget, fallback mode, allowed host actions, rollout stage, and receipt redaction.
 - UCAN-style grants provide runtime delegated authority for the selected seam and target resources.
 - Steel Scheme runs only through the Clankers-owned Steel runtime wrapper and emits typed plan data.
-- Rust parses the plan, builds dynamic-runtime envelopes, authorizes every effect, emits receipts, and chooses fallback/block behavior.
+- Rust parses the plan, builds dynamic-runtime envelopes, authorizes every effect, selects the Steel execution adapter only for authorized default plans, emits receipts, and chooses fallback/block behavior.
 - Wasm remains the untrusted/tool execution boundary when a plan selects a Wasm tool.
 
 ## Default seam behavior
 
-The first reviewed default seam is low-risk turn planning / tool-candidate ordering through `steel.host.plan_turn`. Missing settings use the bundled default profile/script for that seam; explicit `steelTurnPlanning.enabled = false` remains the kill switch. A profile may run in comparison mode or default mode, but every selected action still crosses the dynamic-runtime authorization seam. Extra seams require separate reviewed profile entries, fixtures, and receipts; they do not inherit authority from `steel.host.plan_turn`.
+The first reviewed default seam is low-risk turn planning / tool-candidate ordering through `steel.host.plan_turn`. Missing settings use the bundled default profile/script for that seam; explicit `steelTurnPlanning.enabled = false` remains the kill switch. A profile may run in comparison mode or default mode. Comparison keeps the Rust-native execution oracle; default routes through the Steel-selected execution adapter, and every selected action still crosses the dynamic-runtime authorization seam. Extra seams require separate reviewed profile entries, fixtures, and receipts; they do not inherit authority from `steel.host.plan_turn`.
 
 ## Fallback and kill switch
 
