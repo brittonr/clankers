@@ -23,7 +23,10 @@ use clankers_runtime::DEFAULT_TURN_EXECUTION_SEAM;
 use clankers_runtime::DynamicRuntimeActionReason;
 use clankers_runtime::DynamicRuntimeActionStatus;
 use clankers_runtime::OrchestrationPlanReceipt;
+use clankers_runtime::SteelHostCallOutcome;
 use clankers_runtime::SteelOrchestrationProfile;
+use clankers_runtime::SteelRuntimeReasonCode;
+use clankers_runtime::SteelRuntimeStatusCode;
 use clankers_runtime::SteelTurnExecutionInput;
 use clankers_runtime::SteelTurnExecutionReceipt;
 use clankers_runtime::SteelTurnPlanningAuthorityGrant;
@@ -35,7 +38,7 @@ use crate::error::AgentError;
 use crate::error::Result;
 use crate::events::AgentEvent;
 
-const STEEL_SELECTED_EXECUTION_RECEIPT_SCHEMA: &str = "clankers.steel_selected_execution.receipt.v2";
+const STEEL_SELECTED_EXECUTION_RECEIPT_SCHEMA: &str = "clankers.steel_selected_execution.receipt.v3";
 const STEEL_SELECTED_EXECUTION_SEAM: &str = DEFAULT_TURN_EXECUTION_SEAM;
 const STEEL_SELECTED_EXECUTION_RUNNER: &str = "RustHostRunner";
 const STEEL_SELECTED_EXECUTION_EXECUTOR: &str = "SteelScheme";
@@ -142,13 +145,22 @@ fn emit_steel_selected_execution_receipt(
     let authority_status = authority_status_label(authority.authorization_receipt.status);
     let authority_reason = authority_reason_label(authority.authorization_receipt.reason);
     let authority_receipt_hash = authority.authorization_receipt.receipt_hash.prefixed();
+    let host_call_status = steel_runtime_status_label(&authority.host_call_receipt.runtime_status);
+    let host_call_reason = steel_runtime_reason_label(&authority.host_call_receipt.runtime_reason);
+    let host_call_payload = if authority.host_call_receipt.payload_valid {
+        "Valid"
+    } else {
+        "Invalid"
+    };
+    let host_call_outcome = host_call_outcome_label(&authority.host_call_receipt.host_call_outcome);
+    let host_call_receipt_hash = authority.host_call_receipt.receipt_hash.prefixed();
     let input_hash = authority.input_hash.prefixed();
     let input_bytes = authority.input_bytes;
     let receipt_hash = authority.receipt_hash.prefixed();
     let required_ucan = receipt_token(&authority.authorization_receipt.required_ucan_ability);
     let required_caps = receipt_token(&authority.authorization_receipt.required_session_capabilities.join(","));
     let message = format!(
-        "{STEEL_SELECTED_EXECUTION_SEAM} receipt schema={STEEL_SELECTED_EXECUTION_RECEIPT_SCHEMA} executor={STEEL_SELECTED_EXECUTION_EXECUTOR} session_hash={session_hash} model={model} status={status} host_runner={STEEL_SELECTED_EXECUTION_RUNNER} authority_status={authority_status} authority_reason={authority_reason} required_ucan={required_ucan} required_caps={required_caps} input_hash={input_hash} input_bytes={input_bytes} authority_receipt_hash={authority_receipt_hash} observed_events={observed_events} usage_observations={usage_observations} diagnostics={diagnostics} receipt_hash={receipt_hash}",
+        "{STEEL_SELECTED_EXECUTION_SEAM} receipt schema={STEEL_SELECTED_EXECUTION_RECEIPT_SCHEMA} executor={STEEL_SELECTED_EXECUTION_EXECUTOR} session_hash={session_hash} model={model} status={status} host_runner={STEEL_SELECTED_EXECUTION_RUNNER} host_call_status={host_call_status} host_call_reason={host_call_reason} host_call_outcome={host_call_outcome} host_call_payload={host_call_payload} host_call_receipt_hash={host_call_receipt_hash} authority_status={authority_status} authority_reason={authority_reason} required_ucan={required_ucan} required_caps={required_caps} input_hash={input_hash} input_bytes={input_bytes} authority_receipt_hash={authority_receipt_hash} observed_events={observed_events} usage_observations={usage_observations} diagnostics={diagnostics} receipt_hash={receipt_hash}",
     );
     context.event_tx.send(AgentEvent::SystemMessage { message }).ok();
 }
@@ -161,6 +173,38 @@ fn execution_status(report: &EngineRunReport) -> &'static str {
         return "Rejected";
     }
     "Completed"
+}
+
+fn steel_runtime_status_label(status: &SteelRuntimeStatusCode) -> &'static str {
+    match status {
+        SteelRuntimeStatusCode::Succeeded => "Succeeded",
+        SteelRuntimeStatusCode::Denied => "Denied",
+        SteelRuntimeStatusCode::ResourceLimited => "ResourceLimited",
+        SteelRuntimeStatusCode::EvaluationFailed => "EvaluationFailed",
+    }
+}
+
+fn steel_runtime_reason_label(reason: &SteelRuntimeReasonCode) -> &'static str {
+    match reason {
+        SteelRuntimeReasonCode::Ok => "Ok",
+        SteelRuntimeReasonCode::SourceTooLarge => "SourceTooLarge",
+        SteelRuntimeReasonCode::OutputTooLarge => "OutputTooLarge",
+        SteelRuntimeReasonCode::ExecutionBudgetExceeded => "ExecutionBudgetExceeded",
+        SteelRuntimeReasonCode::HostCallBudgetExceeded => "HostCallBudgetExceeded",
+        SteelRuntimeReasonCode::UnknownHostFunction => "UnknownHostFunction",
+        SteelRuntimeReasonCode::DisabledHostFunction => "DisabledHostFunction",
+        SteelRuntimeReasonCode::MissingHostCapability => "MissingHostCapability",
+        SteelRuntimeReasonCode::AmbientAuthorityDenied => "AmbientAuthorityDenied",
+        SteelRuntimeReasonCode::UnsupportedExpression => "UnsupportedExpression",
+    }
+}
+
+fn host_call_outcome_label(outcome: &Option<SteelHostCallOutcome>) -> &'static str {
+    match outcome {
+        Some(SteelHostCallOutcome::Approved) => "Approved",
+        Some(SteelHostCallOutcome::Denied) => "Denied",
+        None => "None",
+    }
 }
 
 fn authority_status_label(status: DynamicRuntimeActionStatus) -> &'static str {

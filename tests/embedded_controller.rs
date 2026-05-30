@@ -793,6 +793,11 @@ async fn steel_runtime_smoke_default_settings_emit_redacted_receipt() {
         execution_receipts.iter().any(|receipt| receipt.contains("executor=SteelScheme")
             && receipt.contains("status=Completed")
             && receipt.contains("host_runner=RustHostRunner")
+            && receipt.contains("host_call_status=Succeeded")
+            && receipt.contains("host_call_reason=Ok")
+            && receipt.contains("host_call_outcome=Approved")
+            && receipt.contains("host_call_payload=Valid")
+            && receipt.contains("host_call_receipt_hash=b3:")
             && receipt.contains("authority_status=Allowed")
             && receipt.contains("authority_reason=Ready")
             && receipt.contains("required_ucan=clankers/steel/orchestrate.execute_turn")
@@ -896,6 +901,11 @@ async fn steel_runtime_smoke_missing_execute_authority_fails_closed_before_provi
     assert!(prompt_done_error(&events).is_some_and(|error| error.contains("steel.host.execute_turn denied")));
     assert!(
         execution_receipts.iter().any(|receipt| receipt.contains("status=Denied")
+            && receipt.contains("host_call_status=Denied")
+            && receipt.contains("host_call_reason=MissingHostCapability")
+            && receipt.contains("host_call_outcome=Denied")
+            && receipt.contains("host_call_payload=Invalid")
+            && receipt.contains("host_call_receipt_hash=b3:")
             && receipt.contains("authority_status=PolicyDenied")
             && receipt.contains("authority_reason=MissingSessionCapability")
             && receipt.contains("required_ucan=clankers/steel/orchestrate.execute_turn")

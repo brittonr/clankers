@@ -35,7 +35,9 @@ const REQUIRED_RUNTIME_MARKERS: &[&str] = &[
     "STEEL_TURN_EXECUTION_RECEIPT_SCHEMA",
     "DEFAULT_TURN_EXECUTION_SEAM",
     "SteelTurnExecutionInput",
+    "SteelTurnExecutionHostCallReceipt",
     "SteelTurnExecutionReceipt",
+    "DEFAULT_TURN_EXECUTION_SOURCE",
     "authorize_steel_turn_execution",
     "DynamicRuntimeActionKind::HostFunction",
     "clankers/steel/orchestrate.execute_turn",
@@ -46,6 +48,9 @@ const REQUIRED_AGENT_EXECUTION_MARKERS: &[&str] = &[
     "authorize_steel_turn_execution",
     "SteelTurnExecutionInput",
     "steel.host.execute_turn denied before provider request",
+    "host_call_status=",
+    "host_call_reason=",
+    "host_call_receipt_hash=",
     "authority_status=",
     "authority_reason=",
     "required_ucan=",
@@ -55,6 +60,8 @@ const REQUIRED_AGENT_EXECUTION_MARKERS: &[&str] = &[
 const REQUIRED_EMBEDDED_MARKERS: &[&str] = &[
     "steel_runtime_smoke_missing_execute_authority_fails_closed_before_provider",
     "calls.load(Ordering::SeqCst), 0",
+    "host_call_status=Denied",
+    "host_call_reason=MissingHostCapability",
     "authority_status=PolicyDenied",
     "authority_reason=MissingSessionCapability",
     "required_ucan=clankers/steel/orchestrate.execute_turn",
@@ -65,6 +72,7 @@ const REQUIRED_DOC_MARKERS: &[&str] = &[
     "turn-execution",
     "clankers/steel/orchestrate.execute_turn",
     "before any provider request",
+    "host-call",
 ];
 const FORBIDDEN_DOC_MARKERS: &[&str] = &["raw_prompt =", "provider_payload =", "compact_ucan", "credential_value"];
 
@@ -123,6 +131,7 @@ fn run() -> Result<PathBuf, String> {
     }
     for marker in [
         "SteelTurnExecutionInput",
+        "SteelTurnExecutionHostCallReceipt",
         "SteelTurnExecutionReceipt",
         "authorize_steel_turn_execution",
     ] {

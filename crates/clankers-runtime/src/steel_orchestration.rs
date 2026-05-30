@@ -40,6 +40,9 @@ use crate::dynamic_runtime::DynamicRuntimeAuthorizationContext;
 use crate::dynamic_runtime::DynamicRuntimeKind;
 use crate::dynamic_runtime::DynamicRuntimeRedactionClass;
 use crate::dynamic_runtime::authorize_dynamic_runtime_action;
+use crate::steel_runtime::SteelHostCallOutcome;
+#[cfg(test)]
+use crate::steel_runtime::SteelHostCallReceipt;
 use crate::steel_runtime::SteelHostFunctionRegistration;
 use crate::steel_runtime::SteelRuntimeProfile;
 use crate::steel_runtime::SteelRuntimeReasonCode;
@@ -50,9 +53,11 @@ use crate::steel_runtime::evaluate_steel_request;
 
 pub const STEEL_ORCHESTRATION_PLAN_SCHEMA: &str = "clankers.steel_orchestration.plan.v1";
 pub const STEEL_ORCHESTRATION_RECEIPT_SCHEMA: &str = "clankers.steel_orchestration.receipt.v1";
+pub const STEEL_TURN_EXECUTION_HOST_CALL_SCHEMA: &str = "clankers.steel_turn_execution.host_call.v1";
 pub const STEEL_TURN_EXECUTION_RECEIPT_SCHEMA: &str = "clankers.steel_turn_execution.receipt.v1";
 pub const DEFAULT_TURN_PLANNING_SEAM: &str = "steel.host.plan_turn";
 pub const DEFAULT_TURN_EXECUTION_SEAM: &str = "steel.host.execute_turn";
+pub const DEFAULT_TURN_EXECUTION_SOURCE: &str = "(host \"steel.host.execute_turn\")";
 const DEFAULT_RECEIPT_PREFIX: &str = "target/steel-default-orchestration";
 const BASALT_STEEL_INPUT_SCHEMA: &str = "clankers.steel_orchestration.input.v1";
 const BASALT_STEEL_CONTRACT_VERSION: &str = "clankers.steel_orchestration.contract.v1";
@@ -339,6 +344,31 @@ pub enum SteelTurnExecutionStatus {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SteelTurnExecutionHostCallReceipt {
+    pub schema: String,
+    pub seam: String,
+    pub source_hash: ArtifactHash,
+    pub runtime_receipt_hash: ArtifactHash,
+    pub runtime_status: SteelRuntimeStatusCode,
+    pub runtime_reason: SteelRuntimeReasonCode,
+    pub host_call_outcome: Option<SteelHostCallOutcome>,
+    pub payload_hash: Option<ArtifactHash>,
+    pub payload_valid: bool,
+    pub safe_summary: String,
+    pub receipt_hash: ArtifactHash,
+}
+
+impl SteelTurnExecutionHostCallReceipt {
+    #[must_use]
+    pub fn is_allowed(&self) -> bool {
+        self.runtime_status == SteelRuntimeStatusCode::Succeeded
+            && self.runtime_reason == SteelRuntimeReasonCode::Ok
+            && self.host_call_outcome == Some(SteelHostCallOutcome::Approved)
+            && self.payload_valid
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SteelTurnExecutionReceipt {
     pub schema: String,
     pub status: SteelTurnExecutionStatus,
@@ -349,6 +379,7 @@ pub struct SteelTurnExecutionReceipt {
     pub plan_hash: Option<ArtifactHash>,
     pub input_hash: ArtifactHash,
     pub input_bytes: u64,
+    pub host_call_receipt: SteelTurnExecutionHostCallReceipt,
     pub authorization_receipt: DynamicRuntimeActionReceipt,
     pub redactions: Vec<String>,
     pub receipt_hash: ArtifactHash,
@@ -506,13 +537,128 @@ pub fn authorize_steel_turn_execution(
         &input.ucan_authority_grants,
         &input.disabled_actions,
     );
+    let host_call_receipt = evaluate_steel_execution_host_call(profile, input, input_hash);
     let authorization_receipt = authorize_dynamic_runtime_action(&envelope, &context);
-    let status = if authorization_receipt.status == DynamicRuntimeActionStatus::Allowed {
-        SteelTurnExecutionStatus::Authorized
+    let status =
+        if host_call_receipt.is_allowed() && authorization_receipt.status == DynamicRuntimeActionStatus::Allowed {
+            SteelTurnExecutionStatus::Authorized
+        } else {
+            SteelTurnExecutionStatus::Denied
+        };
+    steel_turn_execution_receipt(
+        profile,
+        input,
+        input_hash,
+        input_bytes.len() as u64,
+        host_call_receipt,
+        authorization_receipt,
+        status,
+    )
+}
+
+fn evaluate_steel_execution_host_call(
+    profile: &SteelOrchestrationProfile,
+    input: &SteelTurnExecutionInput,
+    input_hash: ArtifactHash,
+) -> SteelTurnExecutionHostCallReceipt {
+    let payload = steel_execution_host_call_payload(input, input_hash);
+    let host_functions = if profile.allowed_host_actions.contains(DEFAULT_TURN_EXECUTION_SEAM) {
+        vec![SteelHostFunctionRegistration {
+            name: DEFAULT_TURN_EXECUTION_SEAM.to_string(),
+            required_capability: execution_host_call_capability(profile),
+            output: payload,
+        }]
     } else {
-        SteelTurnExecutionStatus::Denied
+        Vec::new()
     };
-    steel_turn_execution_receipt(profile, input, input_hash, input_bytes.len() as u64, authorization_receipt, status)
+    let request = SteelRuntimeRequest {
+        profile: profile.runtime_profile.clone(),
+        source: DEFAULT_TURN_EXECUTION_SOURCE.to_string(),
+        session_capabilities: input.session_capabilities.clone(),
+        disabled_tools: input.disabled_actions.clone(),
+        host_functions,
+        receipt_destination: format!("{}/steel-execute-runtime.json", profile.receipt_prefix.trim_end_matches('/')),
+    };
+    let runtime_receipt = evaluate_steel_request(&request);
+    steel_execution_host_call_receipt(&request, input, &runtime_receipt)
+}
+
+fn execution_host_call_capability(profile: &SteelOrchestrationProfile) -> String {
+    profile
+        .execution_required_session_capabilities
+        .iter()
+        .find(|capability| capability.as_str() != "steel-orchestration")
+        .cloned()
+        .or_else(|| profile.execution_required_session_capabilities.first().cloned())
+        .unwrap_or_else(|| "turn-execution".to_string())
+}
+
+fn steel_execution_host_call_payload(input: &SteelTurnExecutionInput, input_hash: ArtifactHash) -> String {
+    format!(
+        "{}|{}|{}|{}|{}",
+        STEEL_TURN_EXECUTION_HOST_CALL_SCHEMA,
+        DEFAULT_TURN_EXECUTION_SEAM,
+        input.plan_receipt_hash.prefixed(),
+        input.host_runner,
+        input_hash.prefixed()
+    )
+}
+
+fn steel_execution_host_call_receipt(
+    request: &SteelRuntimeRequest,
+    input: &SteelTurnExecutionInput,
+    runtime_receipt: &SteelRuntimeReceipt,
+) -> SteelTurnExecutionHostCallReceipt {
+    let output = runtime_receipt.output.as_deref();
+    let payload_valid = output.is_some_and(|payload| steel_execution_host_call_payload_is_valid(input, payload));
+    let host_call_outcome = runtime_receipt.host_calls.first().map(|call| call.outcome.clone());
+    let mut receipt = SteelTurnExecutionHostCallReceipt {
+        schema: STEEL_TURN_EXECUTION_HOST_CALL_SCHEMA.to_string(),
+        seam: DEFAULT_TURN_EXECUTION_SEAM.to_string(),
+        source_hash: ArtifactHash::digest(request.source.as_bytes()),
+        runtime_receipt_hash: runtime_receipt.receipt_hash(),
+        runtime_status: runtime_receipt.status.clone(),
+        runtime_reason: runtime_receipt.reason_code.clone(),
+        host_call_outcome,
+        payload_hash: output.map(|payload| ArtifactHash::digest(payload.as_bytes())),
+        payload_valid,
+        safe_summary: steel_execution_host_call_summary(runtime_receipt, payload_valid),
+        receipt_hash: ArtifactHash::digest(b"pending"),
+    };
+    receipt.receipt_hash = steel_execution_host_call_receipt_hash(&receipt);
+    receipt
+}
+
+fn steel_execution_host_call_payload_is_valid(input: &SteelTurnExecutionInput, payload: &str) -> bool {
+    let mut parts = payload.split('|');
+    let schema = parts.next();
+    let seam = parts.next();
+    let plan_receipt_hash = parts.next();
+    let host_runner = parts.next();
+    let input_hash = parts.next();
+    schema == Some(STEEL_TURN_EXECUTION_HOST_CALL_SCHEMA)
+        && seam == Some(DEFAULT_TURN_EXECUTION_SEAM)
+        && plan_receipt_hash == Some(input.plan_receipt_hash.prefixed().as_str())
+        && host_runner == Some(input.host_runner.as_str())
+        && input_hash.is_some_and(|hash| hash.starts_with("b3:"))
+        && parts.next().is_none()
+}
+
+fn steel_execution_host_call_summary(runtime_receipt: &SteelRuntimeReceipt, payload_valid: bool) -> String {
+    if runtime_receipt.status != SteelRuntimeStatusCode::Succeeded {
+        return "Steel execute_turn host call denied before Rust host runner".to_string();
+    }
+    if !payload_valid {
+        return "Steel execute_turn host call returned malformed execution payload".to_string();
+    }
+    "Steel execute_turn host call approved typed Rust host runner request".to_string()
+}
+
+fn steel_execution_host_call_receipt_hash(receipt: &SteelTurnExecutionHostCallReceipt) -> ArtifactHash {
+    let mut material = receipt.clone();
+    material.receipt_hash = ArtifactHash::digest(b"omitted");
+    let bytes = serde_json::to_vec(&material).expect("Steel execution host-call receipt serializes");
+    ArtifactHash::digest(&bytes)
 }
 
 fn stable_execution_input_bytes(input: &SteelTurnExecutionInput) -> Vec<u8> {
@@ -541,6 +687,7 @@ fn steel_turn_execution_receipt(
     input: &SteelTurnExecutionInput,
     input_hash: ArtifactHash,
     input_bytes: u64,
+    host_call_receipt: SteelTurnExecutionHostCallReceipt,
     authorization_receipt: DynamicRuntimeActionReceipt,
     status: SteelTurnExecutionStatus,
 ) -> SteelTurnExecutionReceipt {
@@ -554,6 +701,7 @@ fn steel_turn_execution_receipt(
         plan_hash: input.plan_hash,
         input_hash,
         input_bytes,
+        host_call_receipt,
         authorization_receipt,
         redactions: vec![
             "raw_prompt".to_string(),
@@ -586,6 +734,7 @@ fn steel_turn_execution_receipt_hash(
         plan_hash: Option<ArtifactHash>,
         input_hash: ArtifactHash,
         input_bytes: u64,
+        host_call_receipt_hash: ArtifactHash,
         authorization_receipt_hash: ArtifactHash,
     }
     let material = ReceiptHashMaterial {
@@ -599,6 +748,7 @@ fn steel_turn_execution_receipt_hash(
         plan_hash: receipt.plan_hash,
         input_hash: receipt.input_hash,
         input_bytes: receipt.input_bytes,
+        host_call_receipt_hash: receipt.host_call_receipt.receipt_hash,
         authorization_receipt_hash: receipt.authorization_receipt.receipt_hash,
     };
     let bytes = serde_json::to_vec(&material).expect("Steel execution receipt material serializes");
@@ -1453,6 +1603,10 @@ mod tests {
         assert_eq!(allowed.status, SteelTurnExecutionStatus::Authorized);
         assert_eq!(allowed.seam, DEFAULT_TURN_EXECUTION_SEAM);
         assert_eq!(allowed.authorization_receipt.status, DynamicRuntimeActionStatus::Allowed);
+        assert!(allowed.host_call_receipt.is_allowed());
+        assert_eq!(allowed.host_call_receipt.runtime_status, SteelRuntimeStatusCode::Succeeded);
+        assert_eq!(allowed.host_call_receipt.runtime_reason, SteelRuntimeReasonCode::Ok);
+        assert_eq!(allowed.host_call_receipt.host_call_outcome, Some(SteelHostCallOutcome::Approved));
         assert_eq!(allowed.authorization_receipt.reason, DynamicRuntimeActionReason::Ready);
         assert_eq!(allowed.authorization_receipt.required_ucan_ability, "clankers/steel/orchestrate.execute_turn");
         assert_eq!(allowed.authorization_receipt.required_session_capabilities, vec![
@@ -1471,15 +1625,69 @@ mod tests {
         missing_ucan.granted_ucan_abilities.clear();
         let denied_ucan = authorize_steel_turn_execution(&profile, &missing_ucan);
         assert_eq!(denied_ucan.status, SteelTurnExecutionStatus::Denied);
+        assert!(denied_ucan.host_call_receipt.is_allowed());
         assert_eq!(denied_ucan.authorization_receipt.status, DynamicRuntimeActionStatus::UcanDenied);
         assert_eq!(denied_ucan.authorization_receipt.reason, DynamicRuntimeActionReason::MissingUcanAbility);
+
+        let mut missing_capability = execution_input(&plan_receipt);
+        missing_capability.session_capabilities.retain(|capability| capability != "turn-execution");
+        let denied_capability = authorize_steel_turn_execution(&profile, &missing_capability);
+        assert_eq!(denied_capability.status, SteelTurnExecutionStatus::Denied);
+        assert!(!denied_capability.host_call_receipt.is_allowed());
+        assert_eq!(denied_capability.host_call_receipt.runtime_status, SteelRuntimeStatusCode::Denied);
+        assert_eq!(denied_capability.host_call_receipt.runtime_reason, SteelRuntimeReasonCode::MissingHostCapability);
+        assert_eq!(denied_capability.authorization_receipt.status, DynamicRuntimeActionStatus::PolicyDenied);
+        assert_eq!(
+            denied_capability.authorization_receipt.reason,
+            DynamicRuntimeActionReason::MissingSessionCapability
+        );
 
         let mut disabled = execution_input(&plan_receipt);
         disabled.disabled_actions = vec![DEFAULT_TURN_EXECUTION_SEAM.to_string()];
         let disabled_receipt = authorize_steel_turn_execution(&profile, &disabled);
         assert_eq!(disabled_receipt.status, SteelTurnExecutionStatus::Denied);
+        assert!(!disabled_receipt.host_call_receipt.is_allowed());
+        assert_eq!(disabled_receipt.host_call_receipt.runtime_reason, SteelRuntimeReasonCode::DisabledHostFunction);
         assert_eq!(disabled_receipt.authorization_receipt.status, DynamicRuntimeActionStatus::Disabled);
         assert_eq!(disabled_receipt.authorization_receipt.reason, DynamicRuntimeActionReason::DisabledAction);
+    }
+
+    #[test]
+    fn execute_turn_host_call_rejects_malformed_payload_before_authorized_status() {
+        let profile = profile();
+        let plan_receipt = plan_turn_with_steel_or_fallback(&profile, &input_with_payload(valid_payload()));
+        let input = execution_input(&plan_receipt);
+        let request = SteelRuntimeRequest {
+            profile: profile.runtime_profile.clone(),
+            source: DEFAULT_TURN_EXECUTION_SOURCE.to_string(),
+            session_capabilities: input.session_capabilities.clone(),
+            disabled_tools: Vec::new(),
+            host_functions: Vec::new(),
+            receipt_destination: "target/steel-execute-runtime.json".to_string(),
+        };
+        let runtime_receipt = SteelRuntimeReceipt {
+            schema: crate::steel_runtime::STEEL_RUNTIME_RECEIPT_SCHEMA.to_string(),
+            status: SteelRuntimeStatusCode::Succeeded,
+            reason_code: SteelRuntimeReasonCode::Ok,
+            safe_message: "fixture malformed payload".to_string(),
+            profile_name: profile.runtime_profile.name.clone(),
+            source_hash: ArtifactHash::digest(DEFAULT_TURN_EXECUTION_SOURCE.as_bytes()),
+            output_hash: Some(ArtifactHash::digest(b"malformed")),
+            output: Some("malformed".to_string()),
+            host_calls: vec![SteelHostCallReceipt {
+                name: DEFAULT_TURN_EXECUTION_SEAM.to_string(),
+                outcome: SteelHostCallOutcome::Approved,
+                safe_message: "approved but malformed".to_string(),
+            }],
+            redactions: vec!["source".to_string()],
+            steps_used: 1,
+            ambient_authority: false,
+            sandbox_claim: "fixture".to_string(),
+        };
+        let host_call = steel_execution_host_call_receipt(&request, &input, &runtime_receipt);
+        assert!(!host_call.is_allowed());
+        assert!(!host_call.payload_valid);
+        assert!(host_call.safe_summary.contains("malformed"));
     }
 
     #[test]

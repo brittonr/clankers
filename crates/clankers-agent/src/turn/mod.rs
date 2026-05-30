@@ -189,9 +189,9 @@ pub(crate) async fn run_turn_loop(
     } else {
         None
     };
-    let execution_planner = planning_outcome.as_ref().map_or(AgentTurnExecutionPlanner::RustNative, |planning| {
-        planning.execution_planner
-    });
+    let execution_planner = planning_outcome
+        .as_ref()
+        .map_or(AgentTurnExecutionPlanner::RustNative, |planning| planning.execution_planner);
     let mut engine = EmbeddableEngine::new();
     let submit_result = engine.submit_turn(EngineTurnRequest {
         submission: EnginePromptSubmission {
@@ -1960,6 +1960,9 @@ mod tests {
                 saw_steel_execution_receipt |= message.contains("steel.host.execute_turn receipt")
                     && message.contains("executor=SteelScheme")
                     && message.contains("status=Completed")
+                    && message.contains("host_call_status=Succeeded")
+                    && message.contains("host_call_reason=Ok")
+                    && message.contains("host_call_payload=Valid")
                     && message.contains("authority_status=Allowed")
                     && message.contains("required_ucan=clankers/steel/orchestrate.execute_turn")
                     && !message.contains("hello");
