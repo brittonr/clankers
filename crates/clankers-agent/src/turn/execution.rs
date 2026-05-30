@@ -527,6 +527,8 @@ pub(super) async fn execute_tools_parallel(
     .await
 }
 
+// Clippy allowance: this adapter mirrors the engine/tool-host seam while the
+// per-call context is still assembled from independent controller-owned slots.
 #[allow(clippy::too_many_arguments)]
 pub(super) async fn execute_tools_parallel_with_substrate(
     controller_tools: &HashMap<String, Arc<dyn Tool>>,
@@ -576,6 +578,8 @@ pub(super) async fn execute_tools_parallel_with_substrate(
 }
 
 /// Execute a single tool and return its result message
+// Clippy allowance: this boundary receives the fully expanded tool context from
+// both legacy parallel execution and the engine host adapter.
 #[allow(clippy::too_many_arguments)]
 async fn execute_single_tool(
     tool: Option<Arc<dyn Tool>>,
@@ -678,19 +682,7 @@ async fn execute_single_tool(
     )
     .await;
 
-    // Fire post-tool hook (async, fire-and-forget)
-    if let Some(ref pipeline) = hook_pipeline {
-        let result_json = serde_json::to_value(&result).ok();
-        let payload = clankers_hooks::HookPayload::tool(
-            "post-tool",
-            &session_id,
-            &tool_name,
-            &call_id,
-            serde_json::json!({}),
-            result_json,
-        );
-        pipeline.fire_async(clankers_hooks::HookPoint::PostTool, payload);
-    }
+    fire_post_tool_hook(hook_pipeline.as_ref(), &session_id, &tool_name, &call_id, &result);
 
     event_tx
         .send(AgentEvent::ToolExecutionEnd {
@@ -708,6 +700,27 @@ async fn execute_single_tool(
         is_error: result.is_error,
         details: result.details,
         timestamp: Utc::now(),
+    }
+}
+
+fn fire_post_tool_hook(
+    hook_pipeline: Option<&Arc<clankers_hooks::HookPipeline>>,
+    session_id: &str,
+    tool_name: &str,
+    call_id: &str,
+    result: &ToolExecResult,
+) {
+    if let Some(pipeline) = hook_pipeline {
+        let result_json = serde_json::to_value(result).ok();
+        let payload = clankers_hooks::HookPayload::tool(
+            "post-tool",
+            session_id,
+            tool_name,
+            call_id,
+            serde_json::json!({}),
+            result_json,
+        );
+        pipeline.fire_async(clankers_hooks::HookPoint::PostTool, payload);
     }
 }
 

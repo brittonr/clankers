@@ -225,30 +225,67 @@ pub fn plan_tool_invocation_with_steel_or_fallback(
             plan: None,
         });
     }
+    if let Some(issue) = tool_invocation_preflight_issue(profile, input) {
+        return fallback_or_block(profile, input, issue, None, None);
+    }
+
+    let (steel_runtime_receipt_hash, plan) = match evaluate_tool_invocation_plan(profile, input) {
+        Ok(result) => result,
+        Err(error) => {
+            return fallback_or_block(profile, input, error.issue, error.steel_runtime_receipt_hash, error.plan);
+        }
+    };
+    receipt(ReceiptInput {
+        profile,
+        input,
+        status: SteelToolSubstrateStatus::Authorized,
+        issue: SteelToolSubstrateIssue::Ok,
+        message: "Steel tool substrate authorized typed plan; Rust executor owns host effect",
+        steel_runtime_receipt_hash: Some(steel_runtime_receipt_hash),
+        plan: Some(plan),
+    })
+}
+
+fn tool_invocation_preflight_issue(
+    profile: &SteelToolSubstrateProfile,
+    input: &SteelToolInvocationInput,
+) -> Option<SteelToolSubstrateIssue> {
     if !profile.allowed_executor_kinds.contains(&input.executor_kind) {
-        return fallback_or_block(profile, input, SteelToolSubstrateIssue::ExecutorKindDenied, None, None);
+        return Some(SteelToolSubstrateIssue::ExecutorKindDenied);
     }
     if input
         .disabled_tools
         .iter()
         .any(|item| item == &input.tool_name || item == input.executor_kind.as_str())
     {
-        return fallback_or_block(profile, input, SteelToolSubstrateIssue::ToolDisabled, None, None);
+        return Some(SteelToolSubstrateIssue::ToolDisabled);
     }
     if input.input_bytes > profile.max_input_bytes {
-        return fallback_or_block(profile, input, SteelToolSubstrateIssue::InputTooLarge, None, None);
+        return Some(SteelToolSubstrateIssue::InputTooLarge);
     }
     if !profile
         .required_session_capabilities
         .iter()
         .all(|required| input.session_capabilities.iter().any(|available| available == required))
     {
-        return fallback_or_block(profile, input, SteelToolSubstrateIssue::MissingSessionCapability, None, None);
+        return Some(SteelToolSubstrateIssue::MissingSessionCapability);
     }
     if !input.granted_ucan_abilities.iter().any(|ability| ability == &profile.required_ucan_ability) {
-        return fallback_or_block(profile, input, SteelToolSubstrateIssue::MissingUcanAbility, None, None);
+        return Some(SteelToolSubstrateIssue::MissingUcanAbility);
     }
+    None
+}
 
+struct SteelPlanEvaluationError {
+    issue: SteelToolSubstrateIssue,
+    steel_runtime_receipt_hash: Option<ArtifactHash>,
+    plan: Option<SteelToolInvocationPlan>,
+}
+
+fn evaluate_tool_invocation_plan(
+    profile: &SteelToolSubstrateProfile,
+    input: &SteelToolInvocationInput,
+) -> Result<(ArtifactHash, SteelToolInvocationPlan), SteelPlanEvaluationError> {
     let steel_request = SteelRuntimeRequest {
         profile: profile.runtime_profile.clone(),
         source: input.steel_source.clone(),
@@ -262,54 +299,38 @@ pub fn plan_tool_invocation_with_steel_or_fallback(
         receipt_destination: format!("{}/steel-runtime.json", profile.receipt_prefix.trim_end_matches('/')),
     };
     let steel_receipt = evaluate_steel_request(&steel_request);
-    let steel_runtime_receipt_hash = Some(steel_receipt.receipt_hash());
+    let steel_runtime_receipt_hash = steel_receipt.receipt_hash();
     if steel_receipt.status != SteelRuntimeStatusCode::Succeeded
         || steel_receipt.reason_code != SteelRuntimeReasonCode::Ok
     {
-        return fallback_or_block(
-            profile,
-            input,
-            SteelToolSubstrateIssue::RuntimeFailed,
-            steel_runtime_receipt_hash,
-            None,
-        );
+        return Err(SteelPlanEvaluationError {
+            issue: SteelToolSubstrateIssue::RuntimeFailed,
+            steel_runtime_receipt_hash: Some(steel_runtime_receipt_hash),
+            plan: None,
+        });
     }
     let Some(output) = steel_receipt.output.as_deref() else {
-        return fallback_or_block(
-            profile,
-            input,
-            SteelToolSubstrateIssue::MalformedPlan,
-            steel_runtime_receipt_hash,
-            None,
-        );
+        return Err(SteelPlanEvaluationError {
+            issue: SteelToolSubstrateIssue::MalformedPlan,
+            steel_runtime_receipt_hash: Some(steel_runtime_receipt_hash),
+            plan: None,
+        });
     };
     let Some(plan) = parse_plan(output) else {
-        return fallback_or_block(
-            profile,
-            input,
-            SteelToolSubstrateIssue::MalformedPlan,
-            steel_runtime_receipt_hash,
-            None,
-        );
+        return Err(SteelPlanEvaluationError {
+            issue: SteelToolSubstrateIssue::MalformedPlan,
+            steel_runtime_receipt_hash: Some(steel_runtime_receipt_hash),
+            plan: None,
+        });
     };
     if !plan_matches_input(&plan, input) {
-        return fallback_or_block(
-            profile,
-            input,
-            SteelToolSubstrateIssue::MalformedPlan,
-            steel_runtime_receipt_hash,
-            Some(plan),
-        );
+        return Err(SteelPlanEvaluationError {
+            issue: SteelToolSubstrateIssue::MalformedPlan,
+            steel_runtime_receipt_hash: Some(steel_runtime_receipt_hash),
+            plan: Some(plan),
+        });
     }
-    receipt(ReceiptInput {
-        profile,
-        input,
-        status: SteelToolSubstrateStatus::Authorized,
-        issue: SteelToolSubstrateIssue::Ok,
-        message: "Steel tool substrate authorized typed plan; Rust executor owns host effect",
-        steel_runtime_receipt_hash,
-        plan: Some(plan),
-    })
+    Ok((steel_runtime_receipt_hash, plan))
 }
 
 fn fallback_or_block(

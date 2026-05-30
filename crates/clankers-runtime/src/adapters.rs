@@ -83,6 +83,8 @@ impl RuntimeToolAdapter for UnavailableRuntimeToolAdapter {
     }
 }
 
+const RUNTIME_RETRY_DELAY_MS_MAX: u64 = 365 * 24 * 60 * 60 * 1000;
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RuntimeRetryRequest {
     pub request_id: String,
@@ -94,8 +96,20 @@ impl RuntimeRetryRequest {
     pub fn new(request_id: impl Into<String>, delay: Duration) -> Self {
         Self {
             request_id: request_id.into(),
-            delay_ms: delay.as_millis().try_into().unwrap_or(u64::MAX),
+            delay_ms: runtime_retry_delay_ms(delay),
         }
+    }
+}
+
+fn runtime_retry_delay_ms(delay: Duration) -> u64 {
+    let delay_ms = delay.as_millis();
+    let delay_ms_max = u128::from(RUNTIME_RETRY_DELAY_MS_MAX);
+    if delay_ms > delay_ms_max {
+        return RUNTIME_RETRY_DELAY_MS_MAX;
+    }
+    match u64::try_from(delay_ms) {
+        Ok(value) => value,
+        Err(_) => RUNTIME_RETRY_DELAY_MS_MAX,
     }
 }
 

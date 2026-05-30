@@ -395,6 +395,10 @@ fn runtime_usage_observation(observation: &UsageObservation) -> RuntimeUsageObse
     }
 }
 
+fn runtime_usage_tokens_to_usize(tokens: u64) -> Result<usize, String> {
+    usize::try_from(tokens).map_err(|_| "runtime usage token count exceeded host size".to_string())
+}
+
 fn model_response_to_engine_parts(
     events: Vec<SessionEvent>,
 ) -> (Vec<Content>, Option<Usage>, Vec<SessionEvent>, Option<String>) {
@@ -412,14 +416,17 @@ fn model_response_to_engine_parts(
                 input_tokens,
                 output_tokens,
                 ..
-            } => {
-                usage = Some(Usage {
-                    input_tokens: *input_tokens as usize,
-                    output_tokens: *output_tokens as usize,
-                    cache_creation_input_tokens: 0,
-                    cache_read_input_tokens: 0,
-                });
-            }
+            } => match (runtime_usage_tokens_to_usize(*input_tokens), runtime_usage_tokens_to_usize(*output_tokens)) {
+                (Ok(input_tokens), Ok(output_tokens)) => {
+                    usage = Some(Usage {
+                        input_tokens,
+                        output_tokens,
+                        cache_creation_input_tokens: 0,
+                        cache_read_input_tokens: 0,
+                    });
+                }
+                (Err(message), _) | (_, Err(message)) => failure = Some(message),
+            },
             SessionEvent::Error { message, .. } => failure = Some(message.clone()),
             SessionEvent::PromptAccepted { .. } | SessionEvent::Completed { .. } | SessionEvent::Shutdown { .. } => {}
             SessionEvent::ToolStarted { .. }

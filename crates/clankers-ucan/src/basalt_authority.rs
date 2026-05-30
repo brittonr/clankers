@@ -306,14 +306,14 @@ impl<'a> BasaltUcanAuthority<'a> {
                 );
             }
         };
-        let allowed = basalt_receipt.is_allowed();
-        let reason = if allowed {
+        let is_allowed = basalt_receipt.is_allowed();
+        let reason = if is_allowed {
             "allowed by public UCAN and Basalt policy".to_owned()
         } else {
             format!("Basalt policy denied: {}", basalt_receipt.reason())
         };
         self.receipt(
-            allowed,
+            is_allowed,
             reason,
             Some(basalt_receipt.reason().to_owned()),
             request,

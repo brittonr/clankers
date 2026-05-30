@@ -30,6 +30,52 @@ pub fn semantic_event_to_daemon_event(event: &SemanticEvent) -> Option<DaemonEve
         SemanticEvent::ContentBlockStop { .. } => Some(DaemonEvent::ContentBlockStop),
         SemanticEvent::AssistantDelta { text, .. } => Some(DaemonEvent::TextDelta { text: text.clone() }),
         SemanticEvent::ThinkingDelta { text, .. } => Some(DaemonEvent::ThinkingDelta { text: text.clone() }),
+        SemanticEvent::ToolCall { .. }
+        | SemanticEvent::ToolStarted { .. }
+        | SemanticEvent::ToolOutput { .. }
+        | SemanticEvent::ToolProgressUpdate { .. }
+        | SemanticEvent::ToolChunk { .. }
+        | SemanticEvent::ToolFinished { .. }
+        | SemanticEvent::ConfirmationRequested { .. } => semantic_tool_event_to_daemon_event(event),
+        SemanticEvent::UsageUpdated {
+            input_tokens,
+            output_tokens,
+            cache_read_tokens,
+            ..
+        } => Some(DaemonEvent::UsageUpdate {
+            input_tokens: *input_tokens,
+            output_tokens: *output_tokens,
+            cache_read: *cache_read_tokens,
+            model: String::new(),
+        }),
+        SemanticEvent::Error { message, .. } => Some(DaemonEvent::SystemMessage {
+            text: message.clone(),
+            is_error: true,
+        }),
+        SemanticEvent::UserInput {
+            text,
+            agent_msg_count,
+            timestamp_rfc3339,
+            ..
+        } => Some(DaemonEvent::UserInput {
+            text: text.clone(),
+            agent_msg_count: *agent_msg_count,
+            timestamp: timestamp_rfc3339.clone(),
+        }),
+        SemanticEvent::SessionCompaction {
+            compacted_count,
+            tokens_saved,
+            ..
+        } => Some(DaemonEvent::SessionCompaction {
+            compacted_count: *compacted_count,
+            tokens_saved: *tokens_saved,
+        }),
+        SemanticEvent::PromptAccepted { .. } | SemanticEvent::Completed { .. } | SemanticEvent::Shutdown { .. } => None,
+    }
+}
+
+fn semantic_tool_event_to_daemon_event(event: &SemanticEvent) -> Option<DaemonEvent> {
+    match event {
         SemanticEvent::ToolCall {
             tool_name,
             call_id,
@@ -40,17 +86,12 @@ pub fn semantic_event_to_daemon_event(event: &SemanticEvent) -> Option<DaemonEve
             call_id: call_id.clone(),
             input: input.clone(),
         }),
-        SemanticEvent::ToolStarted {
-            call_id, tool_name, ..
-        } => Some(DaemonEvent::ToolStart {
+        SemanticEvent::ToolStarted { call_id, tool_name, .. } => Some(DaemonEvent::ToolStart {
             call_id: call_id.clone(),
             tool_name: tool_name.clone(),
         }),
         SemanticEvent::ToolOutput {
-            call_id,
-            text,
-            images,
-            ..
+            call_id, text, images, ..
         } => Some(DaemonEvent::ToolOutput {
             call_id: call_id.clone(),
             text: text.clone(),
@@ -87,40 +128,7 @@ pub fn semantic_event_to_daemon_event(event: &SemanticEvent) -> Option<DaemonEve
             command: request.summary.clone(),
             working_dir: request.working_dir.clone().unwrap_or_default(),
         }),
-        SemanticEvent::UsageUpdated {
-            input_tokens,
-            output_tokens,
-            cache_read_tokens,
-            ..
-        } => Some(DaemonEvent::UsageUpdate {
-            input_tokens: *input_tokens,
-            output_tokens: *output_tokens,
-            cache_read: *cache_read_tokens,
-            model: String::new(),
-        }),
-        SemanticEvent::Error { message, .. } => Some(DaemonEvent::SystemMessage {
-            text: message.clone(),
-            is_error: true,
-        }),
-        SemanticEvent::UserInput {
-            text,
-            agent_msg_count,
-            timestamp_rfc3339,
-            ..
-        } => Some(DaemonEvent::UserInput {
-            text: text.clone(),
-            agent_msg_count: *agent_msg_count,
-            timestamp: timestamp_rfc3339.clone(),
-        }),
-        SemanticEvent::SessionCompaction {
-            compacted_count,
-            tokens_saved,
-            ..
-        } => Some(DaemonEvent::SessionCompaction {
-            compacted_count: *compacted_count,
-            tokens_saved: *tokens_saved,
-        }),
-        SemanticEvent::PromptAccepted { .. } | SemanticEvent::Completed { .. } | SemanticEvent::Shutdown { .. } => None,
+        _ => None,
     }
 }
 

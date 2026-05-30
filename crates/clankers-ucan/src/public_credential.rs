@@ -15,16 +15,20 @@ use serde::Serialize;
 
 pub const PUBLIC_CREDENTIAL_SCHEMA_V1: &str = "clankers.ucan.credential.v1";
 
+const PUBLIC_UCAN_MAX_PROOF_DEPTH: usize = 16;
+const PUBLIC_UCAN_MAX_PROOF_COUNT: usize = 64;
+const PUBLIC_UCAN_MAX_COMPACT_TOKEN_BYTES: usize = 64 * 1024;
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct PublicCredentialEnvelope {
     schema: String,
     token: ucan::CompactToken,
-    #[serde(default)]
+    #[serde(default = "empty_proofs")]
     proofs: Vec<ucan::CompactToken>,
     audience: ucan::AudienceDid,
-    #[serde(default)]
+    #[serde(default = "empty_trusted_roots")]
     trusted_roots: Vec<ucan::IssuerDid>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[serde(default = "no_replay_id", skip_serializing_if = "Option::is_none")]
     replay_id: Option<String>,
 }
 
@@ -198,7 +202,7 @@ impl PublicCredentialEnvelope {
             &resolver,
             &proofs,
             revocations,
-            ucan::VerificationLimits::default(),
+            public_ucan_verification_limits(),
         )
         .map_err(|source| PublicCredentialError::Verify {
             message: source.to_string(),
@@ -239,8 +243,7 @@ impl PublicCredentialEnvelope {
             .map(|proof| (ucan::proof_reference(proof).as_bytes().to_vec(), proof))
             .collect::<HashMap<_, _>>();
         let trusted = self.trusted_roots.iter().map(ToString::to_string).collect::<HashSet<_>>();
-        let mut visited = HashSet::new();
-        if token_chain_has_trusted_root(&self.token, &proof_map, &trusted, &mut visited)? {
+        if token_chain_has_trusted_root(&self.token, &proof_map, &trusted)? {
             return Ok(());
         }
         Err(PublicCredentialError::UntrustedRoot {
@@ -275,31 +278,57 @@ fn token_chain_has_trusted_root<'a>(
     token: &'a ucan::CompactToken,
     proof_map: &HashMap<Vec<u8>, &'a ucan::CompactToken>,
     trusted: &HashSet<String>,
-    visited: &mut HashSet<Vec<u8>>,
 ) -> PublicCredentialResult<bool> {
-    let reference = ucan::proof_reference(token).as_bytes().to_vec();
-    if !visited.insert(reference) {
-        return Ok(false);
-    }
-    let claims = token_claims(token)?;
-    let issuer =
-        ucan::IssuerDid::new(claims.issuer_did().to_owned()).map_err(|source| PublicCredentialError::Verify {
-            message: source.to_string(),
-        })?;
-    if claims.proofs().is_empty() {
-        return Ok(trusted.contains(issuer.as_str()));
-    }
-    for proof in claims.proofs() {
-        let Some(parent) = proof_map.get(proof.as_bytes()) else {
-            return Err(PublicCredentialError::MissingProof {
-                reference: base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(proof.as_bytes()),
-            });
-        };
-        if token_chain_has_trusted_root(parent, proof_map, trusted, visited)? {
-            return Ok(true);
+    let mut pending = vec![token];
+    let mut visited = HashSet::new();
+
+    while let Some(candidate) = pending.pop() {
+        let reference = ucan::proof_reference(candidate).as_bytes().to_vec();
+        if !visited.insert(reference) {
+            continue;
+        }
+        let claims = token_claims(candidate)?;
+        let issuer =
+            ucan::IssuerDid::new(claims.issuer_did().to_owned()).map_err(|source| PublicCredentialError::Verify {
+                message: source.to_string(),
+            })?;
+        if claims.proofs().is_empty() {
+            if trusted.contains(issuer.as_str()) {
+                return Ok(true);
+            }
+            continue;
+        }
+        for proof in claims.proofs() {
+            let Some(parent) = proof_map.get(proof.as_bytes()) else {
+                return Err(PublicCredentialError::MissingProof {
+                    reference: base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(proof.as_bytes()),
+                });
+            };
+            pending.push(parent);
         }
     }
+
     Ok(false)
+}
+
+fn empty_proofs() -> Vec<ucan::CompactToken> {
+    Vec::new()
+}
+
+fn empty_trusted_roots() -> Vec<ucan::IssuerDid> {
+    Vec::new()
+}
+
+const fn no_replay_id() -> Option<String> {
+    None
+}
+
+const fn public_ucan_verification_limits() -> ucan::VerificationLimits {
+    ucan::VerificationLimits::new(
+        PUBLIC_UCAN_MAX_PROOF_DEPTH,
+        PUBLIC_UCAN_MAX_PROOF_COUNT,
+        PUBLIC_UCAN_MAX_COMPACT_TOKEN_BYTES,
+    )
 }
 
 fn token_claims(token: &ucan::CompactToken) -> PublicCredentialResult<ucan::core::token::Claims> {
