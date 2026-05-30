@@ -3,6 +3,7 @@ Artifact-Type: validation-report
 Task-ID: V6
 Covers: r[ucan-basalt-daemon-auth.verification.closeout]
 Created: 2026-05-29
+Updated: 2026-05-30
 Status: complete
 
 # Closeout Validation
@@ -44,4 +45,29 @@ cairn sync --execute: mutated true, receipt 760620a1f8f489582507292bbc45b057dc40
 cairn archive --execute: mutated true, receipt 508a4b90e4143dbb793bb6a2d57f21212b55087ac30c0c633b07aa5a8b5b0daf
 post-archive cairn validate: valid true, changes 0
 post-archive git diff --check: Ok 0
+```
+
+## Post-I6 Re-run
+
+Additional validation after extending call-time prompt/session/model checks:
+
+```text
+nix develop /home/brittonr/git/clankers -c cargo check --manifest-path /home/brittonr/git/clankers/Cargo.toml -p clankers-ucan -p clankers-agent -p clankers-controller -p clankers --tests
+nix develop /home/brittonr/git/clankers -c cargo test --manifest-path /home/brittonr/git/clankers/Cargo.toml --test auth_credential --test public_ucan_boundary
+nix develop /home/brittonr/git/clankers -c cargo test --manifest-path /home/brittonr/git/clankers/Cargo.toml -p clankers capability_gate --lib
+nix develop /home/brittonr/git/clankers -c cargo test --manifest-path /home/brittonr/git/clankers/Cargo.toml -p clankers-controller capability_gate --lib
+git diff --check
+nix run .#cairn -- validate --root .
+```
+
+Result excerpts:
+
+```text
+cargo check touched crates --tests: Finished dev profile; Ok 0
+auth_credential: 10 passed; 0 failed
+public_ucan_boundary: 3 passed; 0 failed
+clankers capability_gate: 29 passed; 0 failed
+clankers-controller capability_gate: 3 passed; 0 failed
+git diff --check: Ok 0
+cairn validate: valid true, changes 0, specs_validated 45
 ```

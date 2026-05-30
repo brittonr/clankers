@@ -3,6 +3,7 @@
 ## Corrections
 | Date | Source | What Went Wrong | What To Do Instead |
 |------|--------|----------------|-------------------|
+| 2026-05-30 | self | A temporary dogfood crate outside the workspace floated transitive crypto deps and hit an `ed25519-dalek`/`pkcs8` compile error even though the repo lockfile builds | For temp crates that depend on Clankers path deps, copy the root `Cargo.lock` into the temp crate before `cargo run`; then run without `--locked` so Cargo only adds the temp package while preserving pinned dependency versions. |
 | 2026-05-30 | self | During Cairn archive closeout, `git add -N` on ignored active evidence left intent-add entries and an `evidence/` directory under `cairn/changes`, so post-archive `cairn validate` still saw a broken active change missing proposal/tasks | After `cairn archive --execute`, remove the active change dir and `git reset -q --` any active intent-add evidence paths before final validate/status; force-add the archived evidence/spec outputs instead. |
 | 2026-05-30 | self | Ran `rustfmt` on `crates/clankers-agent/src/lib.rs` and it formatted child module `events.rs`, creating unrelated churn I had to restore | Treat Rust `lib.rs` like `mod.rs` in this repo: avoid direct rustfmt on module roots unless child-module formatting churn is intended. |
 | 2026-05-30 | self | Repeated a bad pi `grep` call by putting two roots in the single `path` string, which made the tool look for a literal combined path | Run two grep calls, use `rg`, or choose a common parent path instead of space-joining path arguments. |

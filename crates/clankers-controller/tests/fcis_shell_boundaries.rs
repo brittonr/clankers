@@ -418,7 +418,7 @@ const AGENT_TURN_SHELL_CONCERN_REQUIRED_PATHS: [&str; 5] = [
     "check_model_switch",
     "update_usage_tracking",
     "stream_model_request",
-    "execute_tools_parallel",
+    "execute_tools_parallel_with_substrate",
     "clankers_hooks::HookPipeline",
 ];
 const AGENT_TURN_TRANSCRIPT_FILE: &str = "crates/clankers-agent/src/turn/transcript.rs";

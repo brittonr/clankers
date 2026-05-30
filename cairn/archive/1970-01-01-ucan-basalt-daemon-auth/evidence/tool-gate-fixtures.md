@@ -3,6 +3,7 @@ Artifact-Type: test-report
 Task-ID: V4
 Covers: r[ucan-basalt-daemon-auth.tool-gate.call-time], r[ucan-basalt-daemon-auth.vocabulary.operation-matrix], r[ucan-basalt-daemon-auth.verification.tool-gate]
 Created: 2026-05-29
+Updated: 2026-05-30
 Status: complete
 
 # Tool Gate Fixture Verification
@@ -37,6 +38,7 @@ Result excerpts:
 
 ```text
 running 29 tests
+test capability_gate::tests::legacy_ucan_gate_preserves_tool_only_default_capabilities_behavior ... ok
 test capability_gate::tests::public_session_and_model_requests_are_concrete ... ok
 test capability_gate::tests::public_ucan_gate_can_bind_prompt_checks_to_transport_identity ... ok
 test capability_gate::tests::public_ucan_gate_requires_session_prompt_capability ... ok
