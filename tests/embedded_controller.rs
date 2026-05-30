@@ -244,6 +244,18 @@ fn steel_receipt_events(events: &[DaemonEvent]) -> Vec<String> {
         .collect()
 }
 
+fn steel_execution_receipt_events(events: &[DaemonEvent]) -> Vec<String> {
+    events
+        .iter()
+        .filter_map(|event| match event {
+            DaemonEvent::SystemMessage { text, .. } if text.contains("steel.host.execute_turn receipt") => {
+                Some(text.clone())
+            }
+            _ => None,
+        })
+        .collect()
+}
+
 fn prompt_done_error(events: &[DaemonEvent]) -> Option<&str> {
     events.iter().find_map(|event| match event {
         DaemonEvent::PromptDone { error: Some(error) } => Some(error.as_str()),
@@ -735,6 +747,10 @@ async fn steel_runtime_smoke_prompt_command_emits_redacted_receipt() {
             && receipt.contains("fallback=NotNeeded")),
         "comparison Steel runtime smoke should emit authorized Rust-native executor receipt: {receipts:?}"
     );
+    assert!(
+        steel_execution_receipt_events(&events).is_empty(),
+        "comparison rollout should not emit Steel-selected execution receipt"
+    );
     assert!(receipts.iter().all(|receipt| !receipt.contains(raw_prompt)));
     assert!(receipts.iter().all(|receipt| !receipt.contains("(host")));
     assert!(receipts.iter().all(|receipt| !receipt.contains("runtime-smoke-plan-turn")));
@@ -763,8 +779,17 @@ async fn steel_runtime_smoke_default_settings_emit_redacted_receipt() {
             && receipt.contains("fallback=NotNeeded")),
         "default settings should emit authorized Steel-selected executor receipt: {receipts:?}"
     );
+    let execution_receipts = steel_execution_receipt_events(&events);
+    assert!(
+        execution_receipts.iter().any(|receipt| receipt.contains("executor=SteelScheme")
+            && receipt.contains("status=Completed")
+            && receipt.contains("host_runner=RustHostRunner")),
+        "default settings should emit Steel-selected execution receipt: {execution_receipts:?}"
+    );
     assert!(receipts.iter().all(|receipt| !receipt.contains(raw_prompt)));
     assert!(receipts.iter().all(|receipt| !receipt.contains("(host")));
+    assert!(execution_receipts.iter().all(|receipt| !receipt.contains(raw_prompt)));
+    assert!(execution_receipts.iter().all(|receipt| !receipt.contains("(host")));
 }
 
 #[tokio::test]
@@ -783,6 +808,10 @@ async fn steel_runtime_smoke_explicit_disable_keeps_rust_native() {
     assert_eq!(calls.load(Ordering::SeqCst), 1, "explicit disable should keep Rust-native provider path");
     assert!(matches!(events.last(), Some(DaemonEvent::PromptDone { error: None })));
     assert!(steel_receipt_events(&events).is_empty(), "explicit disable must emit no Steel receipt");
+    assert!(
+        steel_execution_receipt_events(&events).is_empty(),
+        "explicit disable must emit no Steel execution receipt"
+    );
 }
 
 #[tokio::test]

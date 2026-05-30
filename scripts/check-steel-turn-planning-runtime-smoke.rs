@@ -36,6 +36,8 @@ const REQUIRED_TEST_MARKERS: &[&str] = &[
     "planner=SteelScheme",
     "executor=RustNative",
     "executor=SteelScheme",
+    "steel.host.execute_turn receipt",
+    "host_runner=RustHostRunner",
     "fallback=NotNeeded",
     "!receipt.contains(raw_prompt)",
     "calls.load(Ordering::SeqCst), 0",
@@ -52,6 +54,7 @@ const REQUIRED_DOC_MARKERS: &[&str] = &[
     "steel.host.plan_turn",
     "DaemonEvent::SystemMessage",
     "executor=SteelScheme",
+    "steel.host.execute_turn",
     "no raw prompt",
     "target/steel-turn-planning-runtime-smoke/receipt.json",
 ];
@@ -116,6 +119,7 @@ fn run() -> Result<PathBuf, String> {
             "config-driven-steel-planning",
             "daemon-visible-redacted-receipt",
             "daemon-visible-steel-executor-selection",
+            "daemon-visible-steel-execution-receipt",
             "hash-mismatch-fail-closed",
             "authority-missing-fail-closed",
             "provider-call-suppressed-on-invalid-activation"

@@ -12,7 +12,8 @@ The Steel turn-planning runtime smoke proves the reviewed `steel.host.plan_turn`
 - The profile requires explicit session capability and UCAN ability strings.
 - The Steel Scheme planner emits only a typed plan; authorized default receipts select the Steel execution adapter, and Rust host functions still authorize and execute provider/tool effects.
 - The resulting `steel.host.plan_turn` receipt is bridged from `AgentEvent::SystemMessage` to `DaemonEvent::SystemMessage`, making planner/executor selection visible to daemon/attach clients.
-- Default-settings smoke asserts the daemon-visible receipt includes `executor=SteelScheme`; comparison smoke asserts `executor=RustNative`.
+- Default-settings smoke asserts the daemon-visible planning receipt includes `executor=SteelScheme` and also observes a `steel.host.execute_turn` execution receipt from the Steel-selected adapter.
+- Comparison smoke asserts the planning receipt includes `executor=RustNative` and emits no Steel-selected execution receipt.
 - Receipt text is redacted: no raw prompt, script body, credential, UCAN proof, provider payload, or tool body is exposed.
 
 ## Fail-closed checks

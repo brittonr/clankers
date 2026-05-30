@@ -110,6 +110,7 @@ pub(crate) use ports::ProviderModelPort;
 pub(crate) use ports::TokenCancellationPort;
 #[cfg(test)]
 use serde_json::Value;
+use steel_execution::SteelSelectedExecutionReceiptContext;
 use steel_execution::run_steel_selected_engine_turn;
 use steel_planning::AgentTurnExecutionPlanner;
 use steel_planning::AgentTurnPlanningRequest;
@@ -245,7 +246,12 @@ pub(crate) async fn run_turn_loop(
     };
     let seed = EngineRunSeed::new(submit_seed_state, submit_outcome);
     let report = if execution_planner == AgentTurnExecutionPlanner::SteelScheme {
-        run_steel_selected_engine_turn(seed, hosts).await
+        run_steel_selected_engine_turn(seed, hosts, SteelSelectedExecutionReceiptContext {
+            session_id: ctx.session_id,
+            model: &config.model,
+            event_tx: services.events,
+        })
+        .await
     } else {
         run_engine_turn(seed, hosts).await
     };
@@ -1929,11 +1935,16 @@ mod tests {
         .expect("turn should succeed");
 
         let mut saw_steel_selected_executor = false;
+        let mut saw_steel_execution_receipt = false;
         while let Ok(event) = event_rx.try_recv() {
             if let AgentEvent::SystemMessage { message } = event {
                 saw_steel_selected_executor |= message.contains("steel.host.plan_turn receipt")
                     && message.contains("planner=SteelScheme")
                     && message.contains("executor=SteelScheme")
+                    && !message.contains("hello");
+                saw_steel_execution_receipt |= message.contains("steel.host.execute_turn receipt")
+                    && message.contains("executor=SteelScheme")
+                    && message.contains("status=Completed")
                     && !message.contains("hello");
             }
         }
@@ -1941,6 +1952,7 @@ mod tests {
             saw_steel_selected_executor,
             "default Steel planning should route the turn through the Steel-selected executor"
         );
+        assert!(saw_steel_execution_receipt, "default Steel execution should emit a redacted execution receipt");
         assert!(
             super::steel_execution::steel_selected_engine_turn_call_count() > 0,
             "default Steel planning should call the Steel-selected execution adapter"

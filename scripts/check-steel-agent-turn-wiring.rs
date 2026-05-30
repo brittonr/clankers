@@ -46,6 +46,8 @@ const REQUIRED_TURN_MARKERS: &[&str] = &[
 const REQUIRED_EXECUTION_MARKERS: &[&str] = &[
     "Steel-selected turn execution adapter",
     "run_engine_turn(seed, hosts).await",
+    "STEEL_SELECTED_EXECUTION_SEAM",
+    "SteelSelectedExecutionReceiptContext",
     "HostAdapters",
 ];
 const REQUIRED_DOC_MARKERS: &[&str] = &[
@@ -55,6 +57,7 @@ const REQUIRED_DOC_MARKERS: &[&str] = &[
     "Blocked",
     "no ambient filesystem",
     "Rust-owned host functions",
+    "steel.host.execute_turn",
 ];
 const FORBIDDEN_AGENT_IMPORTS: &[&str] = &["steel_core::", "steel::steel_vm", "steel_vm::"];
 const FORBIDDEN_RECEIPT_LEAKS: &[&str] = &[
@@ -125,6 +128,7 @@ fn run() -> Result<PathBuf, String> {
             "runtime-orchestration-delegation",
             "blocked-before-provider-request",
             "steel-selected-execution-adapter",
+            "steel-selected-execution-receipt",
             "redacted-docs-and-receipts",
             "no-direct-steel-interpreter-import"
         ],
