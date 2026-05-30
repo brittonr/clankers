@@ -4,7 +4,6 @@ use std::fs;
 use std::time::Duration;
 
 use readiness_common::ReadinessSandbox;
-use readiness_common::repo_root;
 use serde_json::Value;
 
 #[test]
@@ -50,7 +49,6 @@ fn readiness_e2e_fake_provider_print_bash_read_find_and_json() {
 
     let mut bash = sandbox.clankers();
     let bash = bash
-        .current_dir(repo_root())
         .env("CLANKERS_FAKE_PROVIDER", "1")
         .args(["-p", "Use the bash tool to run: echo CLANKERS_TOOL_TEST_OK"])
         .timeout(Duration::from_secs(120))
@@ -60,7 +58,6 @@ fn readiness_e2e_fake_provider_print_bash_read_find_and_json() {
 
     let mut read = sandbox.clankers();
     let read = read
-        .current_dir(repo_root())
         .env("CLANKERS_FAKE_PROVIDER", "1")
         .args([
             "-p",
@@ -72,7 +69,6 @@ fn readiness_e2e_fake_provider_print_bash_read_find_and_json() {
 
     let mut find = sandbox.clankers();
     let find = find
-        .current_dir(repo_root())
         .env("CLANKERS_FAKE_PROVIDER", "1")
         .args(["-p", "Use the find tool to find files named 'mod.rs' under src/"])
         .run();
@@ -100,7 +96,6 @@ fn readiness_e2e_fake_provider_write_edit_read_round_trip() {
 
     let mut write = sandbox.clankers();
     let write = write
-        .current_dir(repo_root())
         .env("CLANKERS_FAKE_PROVIDER", "1")
         .args([
             "-p",
@@ -119,7 +114,6 @@ fn readiness_e2e_fake_provider_write_edit_read_round_trip() {
 
     let mut edit = sandbox.clankers();
     let edit = edit
-        .current_dir(repo_root())
         .env("CLANKERS_FAKE_PROVIDER", "1")
         .args([
             "-p",
@@ -134,7 +128,6 @@ fn readiness_e2e_fake_provider_write_edit_read_round_trip() {
 
     let mut read = sandbox.clankers();
     let read = read
-        .current_dir(repo_root())
         .env("CLANKERS_FAKE_PROVIDER", "1")
         .args([
             "-p",

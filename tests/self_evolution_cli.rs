@@ -1,3 +1,4 @@
+use std::path::Path;
 use std::path::PathBuf;
 use std::process::Command;
 use std::process::Output;
@@ -10,12 +11,28 @@ fn clankers_bin() -> PathBuf {
         .expect("CARGO_BIN_EXE_clankers should be set for integration tests")
 }
 
-fn run_clankers(args: &[String]) -> Output {
-    Command::new(clankers_bin()).args(args).env("NO_COLOR", "1").output().expect("run clankers")
+fn run_clankers_in(cwd: &Path, args: &[String]) -> Output {
+    let home = cwd.join("home");
+    std::fs::create_dir_all(home.join(".config")).expect("isolated config dir");
+    std::fs::create_dir_all(home.join(".cache")).expect("isolated cache dir");
+    std::fs::create_dir_all(home.join(".local/share")).expect("isolated data dir");
+    std::fs::create_dir_all(home.join(".run")).expect("isolated runtime dir");
+
+    Command::new(clankers_bin())
+        .args(args)
+        .current_dir(cwd)
+        .env("HOME", &home)
+        .env("XDG_CONFIG_HOME", home.join(".config"))
+        .env("XDG_CACHE_HOME", home.join(".cache"))
+        .env("XDG_DATA_HOME", home.join(".local/share"))
+        .env("XDG_RUNTIME_DIR", home.join(".run"))
+        .env("NO_COLOR", "1")
+        .output()
+        .expect("run clankers")
 }
 
-fn run_clankers_json(args: &[String]) -> Value {
-    let output = run_clankers(args);
+fn run_clankers_json_in(cwd: &Path, args: &[String]) -> Value {
+    let output = run_clankers_in(cwd, args);
     let stdout = String::from_utf8_lossy(&output.stdout);
     let stderr = String::from_utf8_lossy(&output.stderr);
     assert!(
@@ -26,8 +43,8 @@ fn run_clankers_json(args: &[String]) -> Value {
     serde_json::from_slice(&output.stdout).expect("stdout should be JSON")
 }
 
-fn run_clankers_failure(args: &[String]) -> Output {
-    let output = run_clankers(args);
+fn run_clankers_failure_in(cwd: &Path, args: &[String]) -> Output {
+    let output = run_clankers_in(cwd, args);
     assert!(
         !output.status.success(),
         "clankers command unexpectedly succeeded\nargs: {args:?}\nstdout:\n{}\nstderr:\n{}",
@@ -80,7 +97,7 @@ fn self_evolution_cli_runs_approve_preflight_and_live_apply_with_temp_files() {
     std::fs::write(&candidate_source, "initial target artifact\nimproved candidate line\n").expect("write candidate");
     std::fs::create_dir(&candidate_output).expect("create candidate output root");
 
-    let run = run_clankers_json(&[
+    let run = run_clankers_json_in(tmp.path(), &[
         "self-evolution".into(),
         "run".into(),
         "--target".into(),
@@ -116,7 +133,7 @@ fn self_evolution_cli_runs_approve_preflight_and_live_apply_with_temp_files() {
     assert!(!approval_path.exists(), "approval should not exist before approval step");
     assert!(!application_path.exists(), "application should not exist before apply step");
 
-    let approval = run_clankers_json(&[
+    let approval = run_clankers_json_in(tmp.path(), &[
         "self-evolution".into(),
         "approve".into(),
         "--receipt".into(),
@@ -138,7 +155,7 @@ fn self_evolution_cli_runs_approve_preflight_and_live_apply_with_temp_files() {
     assert!(!application_path.exists(), "approval should not create application receipt");
 
     let verify_command = format!("grep -q 'improved candidate line' {}", target.display());
-    let preflight = run_clankers_json(&[
+    let preflight = run_clankers_json_in(tmp.path(), &[
         "self-evolution".into(),
         "apply".into(),
         "--receipt".into(),
@@ -159,7 +176,7 @@ fn self_evolution_cli_runs_approve_preflight_and_live_apply_with_temp_files() {
     assert_eq!(std::fs::read_to_string(&target).expect("target after preflight"), "initial target artifact\n");
     assert!(!application_path.exists(), "dry-run apply must not write application receipt");
 
-    let live = run_clankers_json(&[
+    let live = run_clankers_json_in(tmp.path(), &[
         "self-evolution".into(),
         "apply".into(),
         "--receipt".into(),
@@ -194,7 +211,7 @@ fn self_evolution_cli_runs_approve_preflight_and_live_apply_with_temp_files() {
     assert_eq!(string_field(&application, &["rollback", "backup_path"]), planned_backup.display().to_string());
     assert_eq!(application["rollback"]["instructions"].as_array().expect("rollback instructions").len(), 2);
 
-    let rollback_preflight = run_clankers_json(&[
+    let rollback_preflight = run_clankers_json_in(tmp.path(), &[
         "self-evolution".into(),
         "rollback".into(),
         "--application".into(),
@@ -211,7 +228,7 @@ fn self_evolution_cli_runs_approve_preflight_and_live_apply_with_temp_files() {
     let rollback_path = run_dir.join("rollback.json");
     assert!(!rollback_path.exists(), "dry-run rollback must not write rollback receipt");
 
-    let rollback = run_clankers_json(&[
+    let rollback = run_clankers_json_in(tmp.path(), &[
         "self-evolution".into(),
         "rollback".into(),
         "--application".into(),
@@ -237,7 +254,7 @@ fn self_evolution_cli_rejects_stale_target_live_apply_before_mutation() {
     std::fs::write(&candidate_source, "initial target artifact\nimproved candidate line\n").expect("write candidate");
     std::fs::create_dir(&candidate_output).expect("create candidate output root");
 
-    let run = run_clankers_json(&[
+    let run = run_clankers_json_in(tmp.path(), &[
         "self-evolution".into(),
         "run".into(),
         "--target".into(),
@@ -264,7 +281,7 @@ fn self_evolution_cli_rejects_stale_target_live_apply_before_mutation() {
     let approval_path = run_dir.join("approval.json");
     let application_path = run_dir.join("application.json");
 
-    let approval = run_clankers_json(&[
+    let approval = run_clankers_json_in(tmp.path(), &[
         "self-evolution".into(),
         "approve".into(),
         "--receipt".into(),
@@ -283,7 +300,7 @@ fn self_evolution_cli_rejects_stale_target_live_apply_before_mutation() {
     std::fs::write(&target, "operator changed target before apply\n").expect("mutate target after approval");
 
     let verify_command = format!("grep -q 'improved candidate line' {}", target.display());
-    let failed_apply = run_clankers_failure(&[
+    let failed_apply = run_clankers_failure_in(tmp.path(), &[
         "self-evolution".into(),
         "apply".into(),
         "--receipt".into(),
