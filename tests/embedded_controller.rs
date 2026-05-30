@@ -731,8 +731,9 @@ async fn steel_runtime_smoke_prompt_command_emits_redacted_receipt() {
     assert!(
         receipts.iter().any(|receipt| receipt.contains("status=Authorized")
             && receipt.contains("planner=SteelScheme")
+            && receipt.contains("executor=RustNative")
             && receipt.contains("fallback=NotNeeded")),
-        "Steel runtime smoke should emit authorized receipt: {receipts:?}"
+        "comparison Steel runtime smoke should emit authorized Rust-native executor receipt: {receipts:?}"
     );
     assert!(receipts.iter().all(|receipt| !receipt.contains(raw_prompt)));
     assert!(receipts.iter().all(|receipt| !receipt.contains("(host")));
@@ -758,8 +759,9 @@ async fn steel_runtime_smoke_default_settings_emit_redacted_receipt() {
     assert!(
         receipts.iter().any(|receipt| receipt.contains("status=Authorized")
             && receipt.contains("planner=SteelScheme")
+            && receipt.contains("executor=SteelScheme")
             && receipt.contains("fallback=NotNeeded")),
-        "default settings should emit authorized Steel receipt: {receipts:?}"
+        "default settings should emit authorized Steel-selected executor receipt: {receipts:?}"
     );
     assert!(receipts.iter().all(|receipt| !receipt.contains(raw_prompt)));
     assert!(receipts.iter().all(|receipt| !receipt.contains("(host")));

@@ -34,6 +34,8 @@ const REQUIRED_TEST_MARKERS: &[&str] = &[
     "steel.host.plan_turn receipt",
     "status=Authorized",
     "planner=SteelScheme",
+    "executor=RustNative",
+    "executor=SteelScheme",
     "fallback=NotNeeded",
     "!receipt.contains(raw_prompt)",
     "calls.load(Ordering::SeqCst), 0",
@@ -49,6 +51,7 @@ const REQUIRED_DOC_MARKERS: &[&str] = &[
     "SessionCommand::Prompt",
     "steel.host.plan_turn",
     "DaemonEvent::SystemMessage",
+    "executor=SteelScheme",
     "no raw prompt",
     "target/steel-turn-planning-runtime-smoke/receipt.json",
 ];
@@ -112,6 +115,7 @@ fn run() -> Result<PathBuf, String> {
             "explicit-disable-rust-native-planning",
             "config-driven-steel-planning",
             "daemon-visible-redacted-receipt",
+            "daemon-visible-steel-executor-selection",
             "hash-mismatch-fail-closed",
             "authority-missing-fail-closed",
             "provider-call-suppressed-on-invalid-activation"
@@ -124,7 +128,7 @@ fn run() -> Result<PathBuf, String> {
             "ucan_proofs": "omitted",
             "provider_payloads": "omitted"
         },
-        "guidance": "Steel Scheme remains a typed planner; Rust validates config, bridges redacted receipts, calls providers, and fails closed before I/O on invalid activation."
+        "guidance": "Steel Scheme remains a typed planner and selected-executor signal; Rust validates config, bridges redacted receipts, calls providers through host effects, and fails closed before I/O on invalid activation."
     });
     let output = PathBuf::from(OUTPUT);
     let parent = output.parent().ok_or_else(|| format!("{} has no parent", output.display()))?;

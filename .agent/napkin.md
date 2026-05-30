@@ -3,6 +3,7 @@
 ## Corrections
 | Date | Source | What Went Wrong | What To Do Instead |
 |------|--------|----------------|-------------------|
+| 2026-05-30 | self | Cairn sync for `steel-executor-runtime-smoke` reported `mutated true` but the canonical existing spec did not include the new delta until I read and patched it manually | After any Cairn sync, read the target canonical spec even for existing domains; do not trust the mutation receipt alone to prove new requirements landed. |
 | 2026-05-30 | self | A Steel-selected turn-loop test only checked receipt text at first, which would not prove the new execution adapter branch was actually called | For executor migration tests, add a focused runtime seam observation (for example a cfg(test) counter/hook in the adapter) in addition to receipt assertions. |
 | 2026-05-30 | self | Followed an older napkin reminder to use `unwrap-ok` with `steel/process`, but this Steel module exposed `Ok?`/`Ok->value`/`Err?`/`Err->value` instead | When `unwrap-ok` is unavailable, require `steel/process` and `steel/core/result`, then unwrap process results with `Ok->value` after guarding `Err?`. |
 | 2026-05-30 | self | Full `cargo nextest run` exceeded the Steel tool's 300s timeout even after all tests eventually printed a passing summary, leaving the command status as a tool timeout | For final-review validation, either cite the printed nextest summary carefully as observed output or split nextest with `--partition` into sub-300s chunks when an actual `(Ok 0)` status is needed. |

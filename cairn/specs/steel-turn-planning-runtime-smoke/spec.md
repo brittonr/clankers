@@ -27,6 +27,22 @@ Clankers MUST emit client-observable receipt evidence for Steel turn-planning de
 - AND the receipt text MUST omit the raw user prompt
 - AND the receipt text MUST omit raw script/profile bodies
 
+### Requirement: Runtime smoke exposes selected executor [r[steel-executor-runtime-smoke.executor-visible]]
+
+Clankers MUST prove that real `SessionCommand::Prompt` handling emits daemon/session-visible Steel receipt text that distinguishes Rust-native comparison execution from Steel-selected default execution.
+
+#### Scenario: comparison smoke records Rust-native executor [r[steel-executor-runtime-smoke.executor-visible.comparison]]
+- GIVEN a session controller is built with reviewed Steel turn planning in comparison rollout mode
+- WHEN a prompt command is handled
+- THEN the daemon-visible `steel.host.plan_turn` receipt MUST include `executor=RustNative`
+- AND the provider call MUST still run through the Rust-owned provider path
+
+#### Scenario: default smoke records Steel executor [r[steel-executor-runtime-smoke.executor-visible.default]]
+- GIVEN a session controller is built with default reviewed Steel turn-planning settings
+- WHEN a prompt command is handled
+- THEN the daemon-visible `steel.host.plan_turn` receipt MUST include `executor=SteelScheme`
+- AND the receipt MUST omit raw prompts, raw scripts, credentials, UCAN proofs, and provider payloads
+
 ### Requirement: Invalid runtime activation fails closed [r[steel-turn-planning-runtime-smoke.fail-closed]]
 
 Clankers MUST not silently fall back to Rust-only planning when reviewed Steel activation config is invalid at runtime.
