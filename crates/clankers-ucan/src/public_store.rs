@@ -222,6 +222,13 @@ impl std::fmt::Display for PublicCredentialStoreError {
 
 impl std::error::Error for PublicCredentialStoreError {}
 
+#[cfg_attr(
+    dylint_lib = "tigerstyle",
+    allow(
+        tigerstyle::ambient_clock,
+        reason = "replay admission storage is an imperative shell boundary that timestamps accepted credential references"
+    )
+)]
 fn now_unix_seconds() -> u64 {
     SystemTime::now()
         .duration_since(SystemTime::UNIX_EPOCH)

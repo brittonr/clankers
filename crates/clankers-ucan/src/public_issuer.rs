@@ -122,6 +122,13 @@ fn token_time_bounds(lifetime: Duration) -> PublicIssuerResult<ucan::TokenTimeBo
     })
 }
 
+#[cfg_attr(
+    dylint_lib = "tigerstyle",
+    allow(
+        tigerstyle::ambient_clock,
+        reason = "public credential issuance is an imperative shell boundary that signs fresh wall-clock UCAN bounds"
+    )
+)]
 fn now_unix_seconds() -> PublicIssuerResult<u64> {
     SystemTime::now()
         .duration_since(SystemTime::UNIX_EPOCH)
