@@ -29,7 +29,12 @@ const DOC_PATH: &str = "docs/src/reference/steel-default-orchestration.md";
 const DEFAULT_OUTPUT: &str = "target/steel-default-orchestration/profile-receipt.json";
 const EXPECTED_SCHEMA: &str = "clankers.steel_default_orchestration.profile.v1";
 const EXPECTED_RECEIPT_SCHEMA: &str = "clankers.steel_default_orchestration.receipt.v1";
-const ALLOWED_SEAMS: &[&str] = &["steel.host.plan_turn", "steel.host.route_action"];
+const ALLOWED_SEAMS: &[&str] = &[
+    "steel.host.plan_turn",
+    "steel.host.execute_turn",
+    "steel.host.route_action",
+];
+const REQUIRED_HOST_ACTIONS: &[&str] = &["steel.host.plan_turn", "steel.host.execute_turn"];
 const REQUIRED_REDACTED_FIELDS: &[&str] = &[
     "raw_prompt",
     "provider_payload",
@@ -66,12 +71,7 @@ const REQUIRED_RUNTIME_MARKERS: &[&str] = &[
     "evaluate_steel_request",
     "authorize_dynamic_runtime_action",
 ];
-const FORBIDDEN_DIRECT_IMPORT_MARKERS: &[&str] = &[
-    "steel_core::",
-    "steel::steel_vm",
-    "steel_vm::",
-    "Engine::new()",
-];
+const FORBIDDEN_DIRECT_IMPORT_MARKERS: &[&str] = &["steel_core::", "steel::steel_vm", "steel_vm::", "Engine::new()"];
 
 fn main() -> ExitCode {
     match run() {
@@ -87,14 +87,18 @@ fn main() -> ExitCode {
 }
 
 fn run() -> Result<PathBuf, String> {
-    let profile_text = fs::read_to_string(PROFILE_JSON).map_err(|error| format!("failed to read {PROFILE_JSON}: {error}"))?;
-    let profile: Value = serde_json::from_str(&profile_text).map_err(|error| format!("failed to parse {PROFILE_JSON}: {error}"))?;
+    let profile_text =
+        fs::read_to_string(PROFILE_JSON).map_err(|error| format!("failed to read {PROFILE_JSON}: {error}"))?;
+    let profile: Value =
+        serde_json::from_str(&profile_text).map_err(|error| format!("failed to parse {PROFILE_JSON}: {error}"))?;
     let invalid_text = fs::read_to_string(INVALID_PROFILE_JSON)
         .map_err(|error| format!("failed to read {INVALID_PROFILE_JSON}: {error}"))?;
     let invalid_profile: Value = serde_json::from_str(&invalid_text)
         .map_err(|error| format!("failed to parse {INVALID_PROFILE_JSON}: {error}"))?;
-    let nickel_text = fs::read_to_string(PROFILE_NICKEL).map_err(|error| format!("failed to read {PROFILE_NICKEL}: {error}"))?;
-    let runtime_text = fs::read_to_string(RUNTIME_SOURCE).map_err(|error| format!("failed to read {RUNTIME_SOURCE}: {error}"))?;
+    let nickel_text =
+        fs::read_to_string(PROFILE_NICKEL).map_err(|error| format!("failed to read {PROFILE_NICKEL}: {error}"))?;
+    let runtime_text =
+        fs::read_to_string(RUNTIME_SOURCE).map_err(|error| format!("failed to read {RUNTIME_SOURCE}: {error}"))?;
     let lib_text = fs::read_to_string(RUNTIME_LIB).map_err(|error| format!("failed to read {RUNTIME_LIB}: {error}"))?;
     let doc_text = fs::read_to_string(DOC_PATH).map_err(|error| format!("failed to read {DOC_PATH}: {error}"))?;
 
@@ -132,6 +136,7 @@ fn run() -> Result<PathBuf, String> {
             "script-hash-required",
             "fallback-policy",
             "allowed-host-action-scope",
+            "execute-turn-host-action-scope",
             "receipt-redaction",
             "rust-wrapper-only-adapter",
             "operator-docs"
@@ -186,7 +191,9 @@ fn validate_profile(profile: &Value, errors: &mut Vec<String>) {
 }
 
 fn validate_script(script: Option<&Value>, errors: &mut Vec<String>) {
-    let Some(script) = object(script, "script", errors) else { return };
+    let Some(script) = object(script, "script", errors) else {
+        return;
+    };
     for field in ["id", "source_kind", "path"] {
         if required_str(script, field, errors).is_empty() {
             errors.push(format!("script field `{field}` must be non-empty"));
@@ -199,11 +206,20 @@ fn validate_script(script: Option<&Value>, errors: &mut Vec<String>) {
 }
 
 fn validate_budget(budget: Option<&Value>, errors: &mut Vec<String>) {
-    let Some(budget) = object(budget, "runtime_budget", errors) else { return };
+    let Some(budget) = object(budget, "runtime_budget", errors) else {
+        return;
+    };
     if required_str(budget, "steel_profile", errors).is_empty() {
         errors.push("runtime_budget steel_profile must be non-empty".to_string());
     }
-    for field in ["max_source_bytes", "max_output_bytes", "max_host_calls", "max_steps", "max_plan_items", "max_input_bytes"] {
+    for field in [
+        "max_source_bytes",
+        "max_output_bytes",
+        "max_host_calls",
+        "max_steps",
+        "max_plan_items",
+        "max_input_bytes",
+    ] {
         if required_u64(budget, field, errors) == 0 {
             errors.push(format!("runtime_budget field `{field}` must be positive"));
         }
@@ -211,18 +227,18 @@ fn validate_budget(budget: Option<&Value>, errors: &mut Vec<String>) {
 }
 
 fn validate_host_actions(profile: &Value, errors: &mut Vec<String>) {
-    let seam = required_str(profile, "planning_seam", errors).to_string();
     let mut names = BTreeSet::new();
     for action in array(profile, "allowed_host_actions", errors) {
         let name = required_str(action, "name", errors).to_string();
         if !name.is_empty() && !names.insert(name.clone()) {
             errors.push(format!("duplicate host action `{name}`"));
         }
-        if name != seam {
-            errors.push(format!("host action `{name}` does not match selected seam `{seam}`"));
+        if !ALLOWED_SEAMS.contains(&name.as_str()) {
+            errors.push(format!("host action `{name}` is not reviewed"));
         }
         let key = required_str(action, "dynamic_runtime_action", errors);
-        if key == "*" || key.ends_with(":*") || !key.starts_with("host_function:") {
+        let expected_key = format!("host_function:{name}");
+        if key == "*" || key.ends_with(":*") || key != expected_key {
             errors.push(format!("host action `{name}` has unsafe dynamic action `{key}`"));
         }
         let target_prefix = required_str(action, "target_prefix", errors);
@@ -237,13 +253,17 @@ fn validate_host_actions(profile: &Value, errors: &mut Vec<String>) {
             errors.push(format!("host action `{name}` has unsafe UCAN ability `{ability}`"));
         }
     }
-    if names.is_empty() {
-        errors.push("profile must expose at least one reviewed host action".to_string());
+    for required in REQUIRED_HOST_ACTIONS {
+        if !names.contains(*required) {
+            errors.push(format!("profile must expose reviewed host action `{required}`"));
+        }
     }
 }
 
 fn validate_receipt_policy(receipt: Option<&Value>, errors: &mut Vec<String>) {
-    let Some(receipt) = object(receipt, "receipt_policy", errors) else { return };
+    let Some(receipt) = object(receipt, "receipt_policy", errors) else {
+        return;
+    };
     if required_str(receipt, "schema", errors) != EXPECTED_RECEIPT_SCHEMA {
         errors.push(format!("receipt schema must be {EXPECTED_RECEIPT_SCHEMA}"));
     }
@@ -270,7 +290,9 @@ fn validate_receipt_policy(receipt: Option<&Value>, errors: &mut Vec<String>) {
 }
 
 fn validate_audit(audit: Option<&Value>, errors: &mut Vec<String>) {
-    let Some(audit) = object(audit, "audit", errors) else { return };
+    let Some(audit) = object(audit, "audit", errors) else {
+        return;
+    };
     if required_str(audit, "owner", errors).is_empty() {
         errors.push("audit owner must be non-empty".to_string());
     }
@@ -285,7 +307,16 @@ fn validate_audit(audit: Option<&Value>, errors: &mut Vec<String>) {
 fn validate_invalid_fixture(profile: &Value, errors: &mut Vec<String>) {
     let mut invalid_errors = Vec::new();
     validate_profile(profile, &mut invalid_errors);
-    for expected in ["planning seam", "fallback", "blake3", "unsafe dynamic", "target prefix", "UCAN", "redaction", "review_required"] {
+    for expected in [
+        "planning seam",
+        "fallback",
+        "blake3",
+        "unsafe dynamic",
+        "target prefix",
+        "UCAN",
+        "redaction",
+        "review_required",
+    ] {
         if !invalid_errors.iter().any(|error| error.contains(expected)) {
             errors.push(format!("invalid fixture did not trigger expected error containing `{expected}`"));
         }

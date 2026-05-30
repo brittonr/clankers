@@ -922,11 +922,18 @@ fn default_steel_turn_planning_enabled() -> bool {
 }
 
 fn default_steel_turn_planning_session_capabilities() -> Vec<String> {
-    vec!["steel-orchestration".to_string(), "turn-planning".to_string()]
+    vec![
+        "steel-orchestration".to_string(),
+        "turn-planning".to_string(),
+        "turn-execution".to_string(),
+    ]
 }
 
 fn default_steel_turn_planning_ucan_abilities() -> Vec<String> {
-    vec!["clankers/steel/orchestrate.plan_turn".to_string()]
+    vec![
+        "clankers/steel/orchestrate.plan_turn".to_string(),
+        "clankers/steel/orchestrate.execute_turn".to_string(),
+    ]
 }
 
 fn default_steel_turn_planning_max_source_bytes() -> u64 {
@@ -1521,8 +1528,15 @@ mod tests {
         assert!(settings.disabled_tools.is_empty());
         assert!(settings.steel_turn_planning.enabled);
         assert!(settings.steel_turn_planning.uses_bundled_profile());
-        assert_eq!(settings.steel_turn_planning.session_capabilities, vec!["steel-orchestration", "turn-planning"]);
-        assert_eq!(settings.steel_turn_planning.granted_ucan_abilities, vec!["clankers/steel/orchestrate.plan_turn"]);
+        assert_eq!(settings.steel_turn_planning.session_capabilities, vec![
+            "steel-orchestration",
+            "turn-planning",
+            "turn-execution"
+        ]);
+        assert_eq!(settings.steel_turn_planning.granted_ucan_abilities, vec![
+            "clankers/steel/orchestrate.plan_turn",
+            "clankers/steel/orchestrate.execute_turn"
+        ]);
         assert!(settings.steel_turn_planning.validate().is_ok());
     }
 

@@ -9,8 +9,9 @@ The real agent turn shell calls the reviewed `steel.host.plan_turn` planning sea
 3. The adapter delegates to `clankers-runtime::plan_turn_with_steel_or_fallback` for the existing `steel.host.plan_turn` seam.
 4. The runtime evaluates the constrained Steel wrapper host call, parses typed plan payloads, and routes selected action envelopes through Rust authorization receipts.
 5. The agent shell emits a redacted `steel.host.plan_turn` receipt summary including the selected executor. If policy selects block-on-failure, the provider request is not sent.
-6. When the receipt selects `executor=SteelScheme`, `turn/steel_execution.rs` runs the Steel-selected adapter and delegates typed provider/tool effects through the existing reducer-backed host runner.
-7. After the host runner returns, the adapter emits a redacted `steel.host.execute_turn` receipt with the selected executor, session hash, model label, result class, host-runner label, safe counts, and receipt hash.
+6. When the receipt selects `executor=SteelScheme`, `turn/steel_execution.rs` builds a redacted `SteelTurnExecutionInput` for `steel.host.execute_turn` from hashes, session target, host-runner label, session capabilities, and UCAN abilities.
+7. Rust calls `clankers-runtime::authorize_steel_turn_execution` before the host runner. Missing `turn-execution` session capability, missing `clankers/steel/orchestrate.execute_turn` UCAN ability, disabled action policy, unsafe destinations, or unsupported host-function policy deny before any provider request.
+8. After authorization and host-runner return, the adapter emits a daemon-visible redacted `steel.host.execute_turn` receipt with executor, session hash, model label, result class, host-runner label, execution authority status/reason, authority receipt hash, safe counts, and receipt hash.
 
 ## Modes
 
@@ -21,8 +22,8 @@ The real agent turn shell calls the reviewed `steel.host.plan_turn` planning sea
 
 ## Boundaries
 
-Steel receives no ambient filesystem, shell, git, network, provider, credential, daemon, TUI, native-tool, session, or mutation authority. It can only call registered host functions with the capabilities supplied by Rust. The current planning adapter registers `steel.host.plan_turn` only; the Steel-selected execution adapter is a Rust host-effect seam that keeps interpreter details out of controller/daemon/TUI/provider shells and emits deterministic redacted planning and execution receipts for review.
+Steel receives no ambient filesystem, shell, git, network, provider, credential, daemon, TUI, native-tool, session, or mutation authority. It can only call registered host functions with the capabilities supplied by Rust. The current profile names `steel.host.plan_turn` for typed planning and `steel.host.execute_turn` for the Steel-selected execution authority check; both remain Rust-owned host seams that keep interpreter details out of controller/daemon/TUI/provider shells and emit deterministic redacted planning and execution receipts for review.
 
 ## Evidence
 
-Focused Rust tests cover comparison mode, default selection after Rust authorization, disabled fallback, malformed-plan fallback, fallback-disabled blocking, denied authorization, stable redacted receipts, and real `run_turn_loop` invocations that emit Steel planning receipts for both Rust-native comparison and Steel-selected default execution plus an execution receipt when the Steel-selected adapter runs, without leaking prompt text.
+Focused Rust tests cover comparison mode, default selection after Rust authorization, disabled fallback, malformed-plan fallback, fallback-disabled blocking, denied planning authorization, denied execution authority before provider calls, stable redacted receipts, and real `run_turn_loop` invocations that emit Steel planning receipts for both Rust-native comparison and Steel-selected default execution plus an execution receipt when the Steel-selected adapter runs, without leaking prompt text.

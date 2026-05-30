@@ -192,11 +192,18 @@ fn steel_smoke_settings(
         "fallback_mode": "rust_native",
         "script": { "id": "runtime-smoke-plan-turn" },
         "runtime_budget": { "max_input_bytes": 4096 },
-        "allowed_host_actions": [{
-            "name": "steel.host.plan_turn",
-            "required_session_capabilities": ["steel.turn.plan"],
-            "ucan_ability": "clankers.turn.plan"
-        }],
+        "allowed_host_actions": [
+            {
+                "name": "steel.host.plan_turn",
+                "required_session_capabilities": ["steel.turn.plan"],
+                "ucan_ability": "clankers.turn.plan"
+            },
+            {
+                "name": "steel.host.execute_turn",
+                "required_session_capabilities": ["steel.turn.execute"],
+                "ucan_ability": "clankers.turn.execute"
+            }
+        ],
         "receipt_policy": { "destination_prefix": "target/steel-turn-planning-runtime-smoke" }
     });
     let profile_bytes = serde_json::to_vec_pretty(&profile).expect("profile JSON should serialize");
@@ -216,10 +223,12 @@ fn steel_smoke_settings(
         planning_seam: Some("steel.host.plan_turn".to_string()),
         session_capabilities: vec![
             "steel.turn.plan".to_string(),
+            "steel.turn.execute".to_string(),
             "steel-orchestration".to_string(),
             "turn-planning".to_string(),
+            "turn-execution".to_string(),
         ],
-        granted_ucan_abilities: vec!["clankers.turn.plan".to_string()],
+        granted_ucan_abilities: vec!["clankers.turn.plan".to_string(), "clankers.turn.execute".to_string()],
         ucan_authority_grants: Vec::new(),
         disabled_actions: Vec::new(),
         receipt_prefix: Some("target/steel-turn-planning-runtime-smoke".to_string()),
@@ -783,7 +792,12 @@ async fn steel_runtime_smoke_default_settings_emit_redacted_receipt() {
     assert!(
         execution_receipts.iter().any(|receipt| receipt.contains("executor=SteelScheme")
             && receipt.contains("status=Completed")
-            && receipt.contains("host_runner=RustHostRunner")),
+            && receipt.contains("host_runner=RustHostRunner")
+            && receipt.contains("authority_status=Allowed")
+            && receipt.contains("authority_reason=Ready")
+            && receipt.contains("required_ucan=clankers/steel/orchestrate.execute_turn")
+            && receipt.contains("required_caps=steel-orchestration,turn-execution")
+            && receipt.contains("authority_receipt_hash=b3:")),
         "default settings should emit Steel-selected execution receipt: {execution_receipts:?}"
     );
     assert!(receipts.iter().all(|receipt| !receipt.contains(raw_prompt)));
@@ -853,6 +867,42 @@ async fn steel_runtime_smoke_missing_authority_fails_closed_before_receipt() {
     assert_eq!(calls.load(Ordering::SeqCst), 0, "missing authority must fail before provider call");
     assert!(prompt_done_error(&events).is_some_and(|error| error.contains("missing Steel session capability")));
     assert!(steel_receipt_events(&events).is_empty(), "invalid authority must not emit success receipt");
+}
+
+#[tokio::test]
+async fn steel_runtime_smoke_missing_execute_authority_fails_closed_before_provider() {
+    let settings = clankers_config::settings::Settings::default();
+    let mut settings = settings;
+    settings
+        .steel_turn_planning
+        .session_capabilities
+        .retain(|capability| capability != "turn-execution");
+    settings
+        .steel_turn_planning
+        .granted_ucan_abilities
+        .retain(|ability| ability != "clankers/steel/orchestrate.execute_turn");
+    let (mut ctrl, calls) = make_steel_smoke_controller(settings);
+    let raw_prompt = "execute authority missing prompt";
+
+    ctrl.handle_command(SessionCommand::Prompt {
+        text: raw_prompt.to_string(),
+        images: Vec::new(),
+    })
+    .await;
+    let events = ctrl.drain_events();
+    let execution_receipts = steel_execution_receipt_events(&events);
+
+    assert_eq!(calls.load(Ordering::SeqCst), 0, "execution authority denial must happen before provider call");
+    assert!(prompt_done_error(&events).is_some_and(|error| error.contains("steel.host.execute_turn denied")));
+    assert!(
+        execution_receipts.iter().any(|receipt| receipt.contains("status=Denied")
+            && receipt.contains("authority_status=PolicyDenied")
+            && receipt.contains("authority_reason=MissingSessionCapability")
+            && receipt.contains("required_ucan=clankers/steel/orchestrate.execute_turn")
+            && receipt.contains("authority_receipt_hash=b3:")),
+        "execution denial should emit daemon-visible authority receipt: {execution_receipts:?}"
+    );
+    assert!(execution_receipts.iter().all(|receipt| !receipt.contains(raw_prompt)));
 }
 
 #[tokio::test]

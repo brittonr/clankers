@@ -45,6 +45,10 @@ const REQUIRED_TURN_MARKERS: &[&str] = &[
 ];
 const REQUIRED_EXECUTION_MARKERS: &[&str] = &[
     "Steel-selected turn execution adapter",
+    "authorize_steel_turn_execution",
+    "SteelTurnExecutionInput",
+    "authority_status=",
+    "authority_receipt_hash=",
     "run_engine_turn(seed, hosts).await",
     "STEEL_SELECTED_EXECUTION_SEAM",
     "SteelSelectedExecutionReceiptContext",
@@ -58,6 +62,7 @@ const REQUIRED_DOC_MARKERS: &[&str] = &[
     "no ambient filesystem",
     "Rust-owned host functions",
     "steel.host.execute_turn",
+    "execution authority",
 ];
 const FORBIDDEN_AGENT_IMPORTS: &[&str] = &["steel_core::", "steel::steel_vm", "steel_vm::"];
 const FORBIDDEN_RECEIPT_LEAKS: &[&str] = &[

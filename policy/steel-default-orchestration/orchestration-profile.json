@@ -9,6 +9,16 @@
       ],
       "target_prefix": "turn:",
       "ucan_ability": "clankers/steel/orchestrate.plan_turn"
+    },
+    {
+      "dynamic_runtime_action": "host_function:steel.host.execute_turn",
+      "name": "steel.host.execute_turn",
+      "required_session_capabilities": [
+        "steel-orchestration",
+        "turn-execution"
+      ],
+      "target_prefix": "session:",
+      "ucan_ability": "clankers/steel/orchestrate.execute_turn"
     }
   ],
   "audit": {

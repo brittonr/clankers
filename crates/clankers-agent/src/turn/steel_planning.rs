@@ -7,6 +7,7 @@ use clankers_config::SteelTurnPlanningFallbackMode;
 use clankers_config::SteelTurnPlanningRolloutStage;
 use clankers_config::SteelTurnPlanningSettings;
 use clankers_provider::message::AgentMessage;
+use clankers_runtime::DEFAULT_TURN_EXECUTION_SEAM;
 use clankers_runtime::DEFAULT_TURN_PLANNING_SEAM;
 use clankers_runtime::OrchestrationCandidate;
 use clankers_runtime::OrchestrationFallbackMode;
@@ -47,13 +48,23 @@ impl AgentTurnSteelPlanningConfig {
     #[must_use]
     pub fn comparison_fixture(profile: SteelOrchestrationProfile) -> Self {
         let target_resource = "session:fixture";
+        let mut session_capabilities = profile.required_session_capabilities.clone();
+        session_capabilities.extend(profile.execution_required_session_capabilities.clone());
+        session_capabilities.sort();
+        session_capabilities.dedup();
+        let mut granted_ucan_abilities = vec![
+            profile.required_ucan_ability.clone(),
+            profile.execution_required_ucan_ability.clone(),
+        ];
+        granted_ucan_abilities.sort();
+        granted_ucan_abilities.dedup();
         Self {
             steel_plan_payload: format!(
                 "{STEEL_ORCHESTRATION_PLAN_SCHEMA}|{AGENT_TURN_DECISION_ID}|{DEFAULT_TURN_PLANNING_SEAM}|{target_resource}|{AGENT_TURN_DECISION_CLASS}"
             ),
             steel_source: DEFAULT_STEEL_SOURCE.to_string(),
-            session_capabilities: profile.required_session_capabilities.clone(),
-            granted_ucan_abilities: vec![profile.required_ucan_ability.clone()],
+            session_capabilities,
+            granted_ucan_abilities,
             ucan_authority_grants: Vec::new(),
             disabled_actions: Vec::new(),
             profile,
@@ -317,13 +328,8 @@ fn runtime_profile_from_export(
         return Err(SteelTurnPlanningActivationError::ReceiptOutsideTarget(receipt_prefix.to_string()));
     }
     let allowed_host_actions = allowed_host_actions(&export.allowed_host_actions)?;
-    let required_action = export
-        .allowed_host_actions
-        .iter()
-        .find(|action| action.name == DEFAULT_TURN_PLANNING_SEAM)
-        .ok_or_else(|| {
-        SteelTurnPlanningActivationError::UnsupportedHostAction("missing steel.host.plan_turn".to_string())
-    })?;
+    let required_action = required_host_action(&export.allowed_host_actions, DEFAULT_TURN_PLANNING_SEAM)?;
+    let execution_action = required_host_action(&export.allowed_host_actions, DEFAULT_TURN_EXECUTION_SEAM)?;
     Ok(SteelOrchestrationProfile {
         name: export.name.clone(),
         enabled: settings.enabled && export.enabled,
@@ -338,6 +344,8 @@ fn runtime_profile_from_export(
         allowed_host_actions,
         required_session_capabilities: required_action.required_session_capabilities.clone(),
         required_ucan_ability: required_action.ucan_ability.clone(),
+        execution_required_session_capabilities: execution_action.required_session_capabilities.clone(),
+        execution_required_ucan_ability: execution_action.ucan_ability.clone(),
         receipt_prefix: receipt_prefix.to_string(),
         max_input_bytes: settings.max_input_bytes.unwrap_or(export.runtime_budget.max_input_bytes),
     })
@@ -348,17 +356,27 @@ fn allowed_host_actions(
 ) -> Result<BTreeSet<String>, SteelTurnPlanningActivationError> {
     let mut allowed = BTreeSet::new();
     for action in actions {
-        if action.name != DEFAULT_TURN_PLANNING_SEAM {
+        if action.name != DEFAULT_TURN_PLANNING_SEAM && action.name != DEFAULT_TURN_EXECUTION_SEAM {
             return Err(SteelTurnPlanningActivationError::UnsupportedHostAction(action.name.clone()));
         }
         allowed.insert(action.name.clone());
     }
-    if !allowed.contains(DEFAULT_TURN_PLANNING_SEAM) {
-        return Err(SteelTurnPlanningActivationError::UnsupportedHostAction(
-            "missing steel.host.plan_turn".to_string(),
-        ));
+    for required in [DEFAULT_TURN_PLANNING_SEAM, DEFAULT_TURN_EXECUTION_SEAM] {
+        if !allowed.contains(required) {
+            return Err(SteelTurnPlanningActivationError::UnsupportedHostAction(format!("missing {required}")));
+        }
     }
     Ok(allowed)
+}
+
+fn required_host_action<'a>(
+    actions: &'a [NickelSteelHostAction],
+    name: &str,
+) -> Result<&'a NickelSteelHostAction, SteelTurnPlanningActivationError> {
+    actions
+        .iter()
+        .find(|action| action.name == name)
+        .ok_or_else(|| SteelTurnPlanningActivationError::UnsupportedHostAction(format!("missing {name}")))
 }
 
 fn ensure_session_authority(
@@ -593,11 +611,18 @@ mod tests {
             "fallback_mode": "rust_native",
             "script": {"id": "default-plan-turn-v1"},
             "runtime_budget": {"max_input_bytes": 8192},
-            "allowed_host_actions": [{
-                "name": "steel.host.plan_turn",
-                "required_session_capabilities": ["steel-orchestration", "turn-planning"],
-                "ucan_ability": "clankers/steel/orchestrate.plan_turn"
-            }],
+            "allowed_host_actions": [
+                {
+                    "name": "steel.host.plan_turn",
+                    "required_session_capabilities": ["steel-orchestration", "turn-planning"],
+                    "ucan_ability": "clankers/steel/orchestrate.plan_turn"
+                },
+                {
+                    "name": "steel.host.execute_turn",
+                    "required_session_capabilities": ["steel-orchestration", "turn-execution"],
+                    "ucan_ability": "clankers/steel/orchestrate.execute_turn"
+                }
+            ],
             "receipt_policy": {"destination_prefix": "target/steel-turn-planning-config-activation"}
         });
         let profile_text = serde_json::to_string_pretty(&profile).unwrap();
@@ -612,8 +637,15 @@ mod tests {
             rollout_stage: Some(SteelTurnPlanningRolloutStage::Comparison),
             fallback_mode: Some(SteelTurnPlanningFallbackMode::RustNative),
             planning_seam: None,
-            session_capabilities: vec!["steel-orchestration".to_string(), "turn-planning".to_string()],
-            granted_ucan_abilities: vec!["clankers/steel/orchestrate.plan_turn".to_string()],
+            session_capabilities: vec![
+                "steel-orchestration".to_string(),
+                "turn-planning".to_string(),
+                "turn-execution".to_string(),
+            ],
+            granted_ucan_abilities: vec![
+                "clankers/steel/orchestrate.plan_turn".to_string(),
+                "clankers/steel/orchestrate.execute_turn".to_string(),
+            ],
             ucan_authority_grants: vec![SteelTurnPlanningAuthorityGrantSettings {
                 resource: "session:session-fixture".to_string(),
                 ability: "clankers/steel/orchestrate.plan_turn".to_string(),
@@ -641,8 +673,11 @@ mod tests {
         .expect("bundled default config present");
         assert_eq!(config.profile.rollout_stage, OrchestrationRolloutStage::Default);
         assert_eq!(config.profile.planning_seam, DEFAULT_TURN_PLANNING_SEAM);
-        assert_eq!(config.session_capabilities, vec!["steel-orchestration", "turn-planning"]);
-        assert_eq!(config.granted_ucan_abilities, vec!["clankers/steel/orchestrate.plan_turn"]);
+        assert_eq!(config.session_capabilities, vec!["steel-orchestration", "turn-planning", "turn-execution"]);
+        assert_eq!(config.granted_ucan_abilities, vec![
+            "clankers/steel/orchestrate.plan_turn",
+            "clankers/steel/orchestrate.execute_turn"
+        ]);
         assert!(config.steel_source.contains(DEFAULT_TURN_PLANNING_SEAM));
         let outcome = plan(&config);
         assert_eq!(outcome.execution_planner, AgentTurnExecutionPlanner::SteelScheme);
@@ -717,7 +752,7 @@ mod tests {
         assert_eq!(config.profile.rollout_stage, OrchestrationRolloutStage::Comparison);
         assert_eq!(config.profile.planning_seam, DEFAULT_TURN_PLANNING_SEAM);
         assert_eq!(config.profile.receipt_prefix, "target/steel-turn-planning-config-activation");
-        assert_eq!(config.session_capabilities, vec!["steel-orchestration", "turn-planning"]);
+        assert_eq!(config.session_capabilities, vec!["steel-orchestration", "turn-planning", "turn-execution"]);
         assert_eq!(config.ucan_authority_grants.len(), 1);
         assert_eq!(config.ucan_authority_grants[0].resource, "session:session-fixture");
         assert_eq!(config.ucan_authority_grants[0].proof_reference.as_deref(), Some("settings-grant"));

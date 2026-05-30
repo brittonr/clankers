@@ -14,7 +14,7 @@ let RedactionClass = std.contract.from_predicate (fun value =>
   value == "metadata_only" || value == "public_summary"
 ) in
 let SeamName = std.contract.from_predicate (fun value =>
-  value == "steel.host.plan_turn" || value == "steel.host.route_action"
+  value == "steel.host.plan_turn" || value == "steel.host.execute_turn" || value == "steel.host.route_action"
 ) in
 let HostAction = {
   name | SeamName,
@@ -93,6 +93,13 @@ let OrchestrationProfile = {
       target_prefix = "turn:",
       required_session_capabilities = ["steel-orchestration", "turn-planning"],
       ucan_ability = "clankers/steel/orchestrate.plan_turn",
+    },
+    {
+      name = "steel.host.execute_turn",
+      dynamic_runtime_action = "host_function:steel.host.execute_turn",
+      target_prefix = "session:",
+      required_session_capabilities = ["steel-orchestration", "turn-execution"],
+      ucan_ability = "clankers/steel/orchestrate.execute_turn",
     },
   ],
   receipt_policy = {

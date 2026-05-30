@@ -27,21 +27,21 @@ Both normal turns and orchestrated phase turns call the same Rust helper, `steel
 4. computes or verifies profile/script BLAKE3 hashes;
 5. rejects empty or over-budget scripts before interpreter execution;
 6. parses only the reviewed Nickel-exported profile schema;
-7. requires the seam and allowed host action to be exactly `steel.host.plan_turn`;
-8. requires the configured session capabilities and UCAN ability to satisfy the profile;
-9. rejects disabled required host actions;
+7. requires the planning seam to remain `steel.host.plan_turn` and the reviewed allowed host actions to include only `steel.host.plan_turn` plus the separate `steel.host.execute_turn` execution-authority seam;
+8. requires the configured planning session capabilities and UCAN ability to satisfy the profile before Steel planning;
+9. rejects disabled required planning host actions;
 10. constrains receipts to `target/steel-turn-planning-config-activation/...` or another `target/` prefix.
 
 ## Authority boundaries
 
-Steel Scheme receives no ambient filesystem, shell, git, network, provider, credential, daemon, TUI, native-tool, session, or mutation authority. It can request turn planning only through the typed Rust host seam. Rust still owns provider calls, tool execution, fallback/block decisions, receipts, verification, and all host effects. Nickel owns declarative profile/config; UCAN/session state supplies runtime authority.
+Steel Scheme receives no ambient filesystem, shell, git, network, provider, credential, daemon, TUI, native-tool, session, or mutation authority. It can request turn planning only through the typed Rust host seam, and default execution must pass the separate `steel.host.execute_turn` Rust authority check before provider/tool work. Rust still owns provider calls, tool execution, fallback/block decisions, receipts, verification, and all host effects. Nickel owns declarative profile/config; UCAN/session state supplies runtime authority.
 
 ## Rollout behavior
 
 - **Default:** missing settings use the bundled reviewed `steel.host.plan_turn` profile/script and emit redacted Steel planning receipts.
 - **Disabled:** explicit `steelTurnPlanning.enabled = false` builds no Steel plan-turn config; Rust-native planning proceeds without a Steel receipt.
 - **Comparison:** Steel runs and emits redacted planning evidence, but Rust-native execution remains selected.
-- **Default:** Steel may select the planning result only after Rust parses typed output and receives authorized effect evidence.
+- **Default:** Steel may select the planning result only after Rust parses typed output and receives authorized planning evidence; the selected execution adapter then requires `steel.host.execute_turn` authority before provider/tool effects.
 - **Block:** malformed/denied Steel planning with block fallback stops before provider/tool effects.
 
 ## Receipts and redaction

@@ -50,7 +50,9 @@ use crate::steel_runtime::evaluate_steel_request;
 
 pub const STEEL_ORCHESTRATION_PLAN_SCHEMA: &str = "clankers.steel_orchestration.plan.v1";
 pub const STEEL_ORCHESTRATION_RECEIPT_SCHEMA: &str = "clankers.steel_orchestration.receipt.v1";
+pub const STEEL_TURN_EXECUTION_RECEIPT_SCHEMA: &str = "clankers.steel_turn_execution.receipt.v1";
 pub const DEFAULT_TURN_PLANNING_SEAM: &str = "steel.host.plan_turn";
+pub const DEFAULT_TURN_EXECUTION_SEAM: &str = "steel.host.execute_turn";
 const DEFAULT_RECEIPT_PREFIX: &str = "target/steel-default-orchestration";
 const BASALT_STEEL_INPUT_SCHEMA: &str = "clankers.steel_orchestration.input.v1";
 const BASALT_STEEL_CONTRACT_VERSION: &str = "clankers.steel_orchestration.contract.v1";
@@ -73,6 +75,8 @@ pub struct SteelOrchestrationProfile {
     pub allowed_host_actions: BTreeSet<String>,
     pub required_session_capabilities: Vec<String>,
     pub required_ucan_ability: String,
+    pub execution_required_session_capabilities: Vec<String>,
+    pub execution_required_ucan_ability: String,
     pub receipt_prefix: String,
     pub max_input_bytes: u64,
 }
@@ -82,6 +86,7 @@ impl SteelOrchestrationProfile {
     pub fn comparison_default(script_hash: ArtifactHash, policy_hash: ArtifactHash) -> Self {
         let mut allowed_host_actions = BTreeSet::new();
         allowed_host_actions.insert(DEFAULT_TURN_PLANNING_SEAM.to_string());
+        allowed_host_actions.insert(DEFAULT_TURN_EXECUTION_SEAM.to_string());
         Self {
             name: "steel-plan-turn-default".to_string(),
             enabled: true,
@@ -96,6 +101,11 @@ impl SteelOrchestrationProfile {
             allowed_host_actions,
             required_session_capabilities: vec!["steel-orchestration".to_string(), "turn-planning".to_string()],
             required_ucan_ability: "clankers/steel/orchestrate.plan_turn".to_string(),
+            execution_required_session_capabilities: vec![
+                "steel-orchestration".to_string(),
+                "turn-execution".to_string(),
+            ],
+            execution_required_ucan_ability: "clankers/steel/orchestrate.execute_turn".to_string(),
             receipt_prefix: DEFAULT_RECEIPT_PREFIX.to_string(),
             max_input_bytes: 8192,
         }
@@ -306,6 +316,51 @@ pub enum RustNativeFallbackStatus {
     Unavailable,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SteelTurnExecutionInput {
+    pub turn_id: String,
+    pub target_resource: String,
+    pub plan_receipt_hash: ArtifactHash,
+    pub plan_hash: Option<ArtifactHash>,
+    pub prompt_hash: ArtifactHash,
+    pub host_runner: String,
+    pub session_capabilities: Vec<String>,
+    pub disabled_actions: Vec<String>,
+    pub granted_ucan_abilities: Vec<String>,
+    #[serde(default)]
+    pub ucan_authority_grants: Vec<SteelTurnPlanningAuthorityGrant>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum SteelTurnExecutionStatus {
+    Authorized,
+    Denied,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SteelTurnExecutionReceipt {
+    pub schema: String,
+    pub status: SteelTurnExecutionStatus,
+    pub seam: String,
+    pub executor: OrchestrationPlannerKind,
+    pub host_runner: String,
+    pub plan_receipt_hash: ArtifactHash,
+    pub plan_hash: Option<ArtifactHash>,
+    pub input_hash: ArtifactHash,
+    pub input_bytes: u64,
+    pub authorization_receipt: DynamicRuntimeActionReceipt,
+    pub redactions: Vec<String>,
+    pub receipt_hash: ArtifactHash,
+}
+
+impl SteelTurnExecutionReceipt {
+    #[must_use]
+    pub const fn is_allowed(&self) -> bool {
+        matches!(self.status, SteelTurnExecutionStatus::Authorized)
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct BasaltSteelContractEvidence {
     pub request_schema: String,
@@ -417,6 +472,139 @@ pub fn plan_turn_with_steel_or_fallback(
         Some(basalt_evidence),
     )
 }
+
+#[must_use]
+pub fn authorize_steel_turn_execution(
+    profile: &SteelOrchestrationProfile,
+    input: &SteelTurnExecutionInput,
+) -> SteelTurnExecutionReceipt {
+    let input_bytes = stable_execution_input_bytes(input);
+    let input_hash = ArtifactHash::digest(&input_bytes);
+    let envelope = DynamicRuntimeActionEnvelope {
+        schema: DYNAMIC_RUNTIME_ACTION_SCHEMA.to_string(),
+        action_id: format!("steel-execute:{}", route_slug(&input.turn_id)),
+        runtime: DynamicRuntimeKind::SteelScheme,
+        runtime_profile: profile.runtime_profile.name.clone(),
+        action_kind: DynamicRuntimeActionKind::HostFunction,
+        action_name: DEFAULT_TURN_EXECUTION_SEAM.to_string(),
+        target_resource: input.target_resource.clone(),
+        receipt_destination: format!(
+            "{}/steel-execute-{}.json",
+            profile.receipt_prefix.trim_end_matches('/'),
+            route_slug(&input.turn_id)
+        ),
+        required_ucan_ability: profile.execution_required_ucan_ability.clone(),
+        required_session_capabilities: profile.execution_required_session_capabilities.clone(),
+        input_hash,
+        input_bytes: input_bytes.len() as u64,
+        redaction: DynamicRuntimeRedactionClass::MetadataOnly,
+    };
+    let context = dynamic_authorization_context(
+        profile,
+        &input.session_capabilities,
+        &input.granted_ucan_abilities,
+        &input.ucan_authority_grants,
+        &input.disabled_actions,
+    );
+    let authorization_receipt = authorize_dynamic_runtime_action(&envelope, &context);
+    let status = if authorization_receipt.status == DynamicRuntimeActionStatus::Allowed {
+        SteelTurnExecutionStatus::Authorized
+    } else {
+        SteelTurnExecutionStatus::Denied
+    };
+    steel_turn_execution_receipt(profile, input, input_hash, input_bytes.len() as u64, authorization_receipt, status)
+}
+
+fn stable_execution_input_bytes(input: &SteelTurnExecutionInput) -> Vec<u8> {
+    #[derive(Serialize)]
+    struct ExecutionInputHashMaterial<'a> {
+        turn_id: &'a str,
+        target_resource: &'a str,
+        plan_receipt_hash: ArtifactHash,
+        plan_hash: Option<ArtifactHash>,
+        prompt_hash: ArtifactHash,
+        host_runner: &'a str,
+    }
+    let material = ExecutionInputHashMaterial {
+        turn_id: &input.turn_id,
+        target_resource: &input.target_resource,
+        plan_receipt_hash: input.plan_receipt_hash,
+        plan_hash: input.plan_hash,
+        prompt_hash: input.prompt_hash,
+        host_runner: &input.host_runner,
+    };
+    serde_json::to_vec(&material).expect("Steel execution input material serializes")
+}
+
+fn steel_turn_execution_receipt(
+    profile: &SteelOrchestrationProfile,
+    input: &SteelTurnExecutionInput,
+    input_hash: ArtifactHash,
+    input_bytes: u64,
+    authorization_receipt: DynamicRuntimeActionReceipt,
+    status: SteelTurnExecutionStatus,
+) -> SteelTurnExecutionReceipt {
+    let mut receipt = SteelTurnExecutionReceipt {
+        schema: STEEL_TURN_EXECUTION_RECEIPT_SCHEMA.to_string(),
+        status,
+        seam: DEFAULT_TURN_EXECUTION_SEAM.to_string(),
+        executor: OrchestrationPlannerKind::SteelScheme,
+        host_runner: input.host_runner.clone(),
+        plan_receipt_hash: input.plan_receipt_hash,
+        plan_hash: input.plan_hash,
+        input_hash,
+        input_bytes,
+        authorization_receipt,
+        redactions: vec![
+            "raw_prompt".to_string(),
+            "provider_payload".to_string(),
+            "compact_ucan".to_string(),
+            "raw_proof".to_string(),
+            "credential".to_string(),
+            "script_source".to_string(),
+            "tool_body".to_string(),
+        ],
+        receipt_hash: ArtifactHash::digest(b"pending"),
+    };
+    receipt.receipt_hash = steel_turn_execution_receipt_hash(profile, &receipt);
+    receipt
+}
+
+fn steel_turn_execution_receipt_hash(
+    profile: &SteelOrchestrationProfile,
+    receipt: &SteelTurnExecutionReceipt,
+) -> ArtifactHash {
+    #[derive(Serialize)]
+    struct ReceiptHashMaterial<'a> {
+        schema: &'a str,
+        profile_name: &'a str,
+        seam: &'a str,
+        status: SteelTurnExecutionStatus,
+        executor: OrchestrationPlannerKind,
+        host_runner: &'a str,
+        plan_receipt_hash: ArtifactHash,
+        plan_hash: Option<ArtifactHash>,
+        input_hash: ArtifactHash,
+        input_bytes: u64,
+        authorization_receipt_hash: ArtifactHash,
+    }
+    let material = ReceiptHashMaterial {
+        schema: &receipt.schema,
+        profile_name: &profile.name,
+        seam: &receipt.seam,
+        status: receipt.status,
+        executor: receipt.executor,
+        host_runner: &receipt.host_runner,
+        plan_receipt_hash: receipt.plan_receipt_hash,
+        plan_hash: receipt.plan_hash,
+        input_hash: receipt.input_hash,
+        input_bytes: receipt.input_bytes,
+        authorization_receipt_hash: receipt.authorization_receipt.receipt_hash,
+    };
+    let bytes = serde_json::to_vec(&material).expect("Steel execution receipt material serializes");
+    ArtifactHash::digest(&bytes)
+}
+
 struct SteelPlanEvaluationError {
     steel_receipt_hash: ArtifactHash,
     issue_code: OrchestrationIssueCode,
@@ -1014,19 +1202,35 @@ fn authorization_context(
     profile: &SteelOrchestrationProfile,
     input: &TurnPlanningInput,
 ) -> DynamicRuntimeAuthorizationContext {
+    dynamic_authorization_context(
+        profile,
+        &input.session_capabilities,
+        &input.granted_ucan_abilities,
+        &input.ucan_authority_grants,
+        &input.disabled_actions,
+    )
+}
+
+fn dynamic_authorization_context(
+    profile: &SteelOrchestrationProfile,
+    session_capabilities: &[String],
+    granted_ucan_abilities: &[String],
+    ucan_authority_grants: &[SteelTurnPlanningAuthorityGrant],
+    disabled_actions: &[String],
+) -> DynamicRuntimeAuthorizationContext {
     let allowed_actions = profile
         .allowed_host_actions
         .iter()
         .map(|action| format!("host_function:{action}"))
         .collect::<BTreeSet<_>>();
-    let mut granted_ucan_abilities = input.granted_ucan_abilities.iter().cloned().collect::<BTreeSet<_>>();
-    granted_ucan_abilities.extend(input.ucan_authority_grants.iter().map(|grant| grant.ability.clone()));
+    let mut granted_ucan_abilities = granted_ucan_abilities.iter().cloned().collect::<BTreeSet<_>>();
+    granted_ucan_abilities.extend(ucan_authority_grants.iter().map(|grant| grant.ability.clone()));
     DynamicRuntimeAuthorizationContext {
         allowed_runtime_profiles: BTreeSet::from([profile.runtime_profile.name.clone()]),
         allowed_actions,
         granted_ucan_abilities,
-        session_capabilities: input.session_capabilities.iter().cloned().collect(),
-        disabled_actions: input.disabled_actions.iter().cloned().collect(),
+        session_capabilities: session_capabilities.iter().cloned().collect(),
+        disabled_actions: disabled_actions.iter().cloned().collect(),
         max_input_bytes: profile.max_input_bytes,
     }
 }
@@ -1207,6 +1411,21 @@ mod tests {
         )
     }
 
+    fn execution_input(plan_receipt: &OrchestrationPlanReceipt) -> SteelTurnExecutionInput {
+        SteelTurnExecutionInput {
+            turn_id: "session-1:1".to_string(),
+            target_resource: "session:session-1".to_string(),
+            plan_receipt_hash: plan_receipt.receipt_hash,
+            plan_hash: plan_receipt.plan_hash,
+            prompt_hash: ArtifactHash::digest(b"prompt"),
+            host_runner: "RustHostRunner".to_string(),
+            session_capabilities: vec!["steel-orchestration".to_string(), "turn-execution".to_string()],
+            disabled_actions: Vec::new(),
+            granted_ucan_abilities: vec!["clankers/steel/orchestrate.execute_turn".to_string()],
+            ucan_authority_grants: Vec::new(),
+        }
+    }
+
     #[test]
     fn steel_plan_is_default_but_effects_cross_dynamic_runtime_authorization() {
         let receipt = plan_turn_with_steel_or_fallback(&profile(), &input_with_payload(valid_payload()));
@@ -1223,6 +1442,44 @@ mod tests {
         assert!(receipt.basalt_receipt_hash.as_deref().is_some_and(|hash| hash.starts_with("blake3:")));
         assert!(receipt.basalt_receipt_valid);
         assert_eq!(receipt.basalt_receipt_reason.as_deref(), Some("accepted"));
+    }
+
+    #[test]
+    fn execute_turn_authority_requires_execution_capability_and_ucan() {
+        let profile = profile();
+        let plan_receipt = plan_turn_with_steel_or_fallback(&profile, &input_with_payload(valid_payload()));
+        let allowed = authorize_steel_turn_execution(&profile, &execution_input(&plan_receipt));
+        assert_eq!(allowed.schema, STEEL_TURN_EXECUTION_RECEIPT_SCHEMA);
+        assert_eq!(allowed.status, SteelTurnExecutionStatus::Authorized);
+        assert_eq!(allowed.seam, DEFAULT_TURN_EXECUTION_SEAM);
+        assert_eq!(allowed.authorization_receipt.status, DynamicRuntimeActionStatus::Allowed);
+        assert_eq!(allowed.authorization_receipt.reason, DynamicRuntimeActionReason::Ready);
+        assert_eq!(allowed.authorization_receipt.required_ucan_ability, "clankers/steel/orchestrate.execute_turn");
+        assert_eq!(allowed.authorization_receipt.required_session_capabilities, vec![
+            "steel-orchestration",
+            "turn-execution"
+        ]);
+        assert!(allowed.redactions.contains(&"raw_prompt".to_string()));
+        assert!(allowed.receipt_hash.prefixed().starts_with("b3:"));
+    }
+
+    #[test]
+    fn execute_turn_authority_denies_missing_ucan_or_disabled_action_before_host_runner() {
+        let profile = profile();
+        let plan_receipt = plan_turn_with_steel_or_fallback(&profile, &input_with_payload(valid_payload()));
+        let mut missing_ucan = execution_input(&plan_receipt);
+        missing_ucan.granted_ucan_abilities.clear();
+        let denied_ucan = authorize_steel_turn_execution(&profile, &missing_ucan);
+        assert_eq!(denied_ucan.status, SteelTurnExecutionStatus::Denied);
+        assert_eq!(denied_ucan.authorization_receipt.status, DynamicRuntimeActionStatus::UcanDenied);
+        assert_eq!(denied_ucan.authorization_receipt.reason, DynamicRuntimeActionReason::MissingUcanAbility);
+
+        let mut disabled = execution_input(&plan_receipt);
+        disabled.disabled_actions = vec![DEFAULT_TURN_EXECUTION_SEAM.to_string()];
+        let disabled_receipt = authorize_steel_turn_execution(&profile, &disabled);
+        assert_eq!(disabled_receipt.status, SteelTurnExecutionStatus::Denied);
+        assert_eq!(disabled_receipt.authorization_receipt.status, DynamicRuntimeActionStatus::Disabled);
+        assert_eq!(disabled_receipt.authorization_receipt.reason, DynamicRuntimeActionReason::DisabledAction);
     }
 
     #[test]

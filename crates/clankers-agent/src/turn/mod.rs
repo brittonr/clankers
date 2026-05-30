@@ -170,7 +170,7 @@ pub(crate) async fn run_turn_loop(
     debug_assert!(services.has_service_kind(AgentRuntimeServiceKind::Cancellation));
 
     let tool_defs = services.tools.tool_definitions();
-    let execution_planner = if let Some(steel_turn_planning) = config.steel_turn_planning.as_ref() {
+    let planning_outcome = if let Some(steel_turn_planning) = config.steel_turn_planning.as_ref() {
         let planning = plan_agent_turn(AgentTurnPlanningRequest {
             config: steel_turn_planning,
             session_id: ctx.session_id,
@@ -185,10 +185,13 @@ pub(crate) async fn run_turn_loop(
                 message: "steel.host.plan_turn blocked agent turn before provider request".to_string(),
             });
         }
-        planning.execution_planner
+        Some(planning)
     } else {
-        AgentTurnExecutionPlanner::RustNative
+        None
     };
+    let execution_planner = planning_outcome.as_ref().map_or(AgentTurnExecutionPlanner::RustNative, |planning| {
+        planning.execution_planner
+    });
     let mut engine = EmbeddableEngine::new();
     let submit_result = engine.submit_turn(EngineTurnRequest {
         submission: EnginePromptSubmission {
@@ -246,12 +249,24 @@ pub(crate) async fn run_turn_loop(
     };
     let seed = EngineRunSeed::new(submit_seed_state, submit_outcome);
     let report = if execution_planner == AgentTurnExecutionPlanner::SteelScheme {
+        let steel_turn_planning = config.steel_turn_planning.as_ref().ok_or_else(|| AgentError::Agent {
+            message: "steel.host.execute_turn selected without Steel planning config".to_string(),
+        })?;
+        let planning = planning_outcome.as_ref().ok_or_else(|| AgentError::Agent {
+            message: "steel.host.execute_turn selected without Steel planning receipt".to_string(),
+        })?;
         run_steel_selected_engine_turn(seed, hosts, SteelSelectedExecutionReceiptContext {
             session_id: ctx.session_id,
             model: &config.model,
             event_tx: services.events,
+            profile: &steel_turn_planning.profile,
+            planning_receipt: &planning.receipt,
+            session_capabilities: &steel_turn_planning.session_capabilities,
+            granted_ucan_abilities: &steel_turn_planning.granted_ucan_abilities,
+            ucan_authority_grants: &steel_turn_planning.ucan_authority_grants,
+            disabled_actions: &steel_turn_planning.disabled_actions,
         })
-        .await
+        .await?
     } else {
         run_engine_turn(seed, hosts).await
     };
@@ -1945,6 +1960,8 @@ mod tests {
                 saw_steel_execution_receipt |= message.contains("steel.host.execute_turn receipt")
                     && message.contains("executor=SteelScheme")
                     && message.contains("status=Completed")
+                    && message.contains("authority_status=Allowed")
+                    && message.contains("required_ucan=clankers/steel/orchestrate.execute_turn")
                     && !message.contains("hello");
             }
         }
