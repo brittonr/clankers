@@ -69,6 +69,11 @@ impl HookPipeline {
 
             tracing::debug!(hook = %point, handler = handler.name(), "firing hook");
 
+            if !point.is_pre_hook() {
+                let _ = handler.handle(point, payload).await;
+                continue;
+            }
+
             match handler.handle(point, payload).await {
                 v @ HookVerdict::Deny { .. } => {
                     tracing::info!(
@@ -76,15 +81,19 @@ impl HookPipeline {
                         handler = handler.name(),
                         "hook denied operation"
                     );
-                    // Short-circuit on deny for pre-hooks
-                    if point.is_pre_hook() {
-                        return v;
-                    }
+                    return v;
+                }
+                v @ HookVerdict::Modify(_) if point.allows_modify() => {
                     verdict = verdict.merge(v);
                 }
-                v => {
-                    verdict = verdict.merge(v);
+                HookVerdict::Modify(_) => {
+                    tracing::debug!(
+                        hook = %point,
+                        handler = handler.name(),
+                        "hook returned ignored modification for deny-only pre-hook"
+                    );
                 }
+                HookVerdict::Continue => {}
             }
         }
 
@@ -175,6 +184,44 @@ mod tests {
         }
     }
 
+    struct AlwaysDenyAll;
+
+    #[async_trait]
+    impl HookHandler for AlwaysDenyAll {
+        fn name(&self) -> &str {
+            "always-deny-all"
+        }
+        fn priority(&self) -> u32 {
+            100
+        }
+        fn subscribes_to(&self, _point: HookPoint) -> bool {
+            true
+        }
+        async fn handle(&self, _point: HookPoint, _payload: &HookPayload) -> HookVerdict {
+            HookVerdict::Deny {
+                reason: "denied by test".into(),
+            }
+        }
+    }
+
+    struct AlwaysModify;
+
+    #[async_trait]
+    impl HookHandler for AlwaysModify {
+        fn name(&self) -> &str {
+            "always-modify"
+        }
+        fn priority(&self) -> u32 {
+            100
+        }
+        fn subscribes_to(&self, _point: HookPoint) -> bool {
+            true
+        }
+        async fn handle(&self, _point: HookPoint, _payload: &HookPayload) -> HookVerdict {
+            HookVerdict::Modify(serde_json::json!({"modified": true}))
+        }
+    }
+
     struct OnlyTools;
 
     #[async_trait]
@@ -216,6 +263,38 @@ mod tests {
         p.register(Arc::new(AlwaysDeny));
         let v = p.fire(HookPoint::PreTool, &test_payload()).await;
         assert!(matches!(v, HookVerdict::Deny { .. }));
+    }
+
+    #[tokio::test]
+    async fn deny_handler_blocks_pre_turn() {
+        let mut p = HookPipeline::new();
+        p.register(Arc::new(AlwaysDeny));
+        let v = p.fire(HookPoint::PreTurn, &test_payload()).await;
+        assert!(matches!(v, HookVerdict::Deny { .. }));
+    }
+
+    #[tokio::test]
+    async fn post_hook_verdicts_are_observational() {
+        let mut p = HookPipeline::new();
+        p.register(Arc::new(AlwaysDenyAll));
+        let v = p.fire(HookPoint::PostTurn, &test_payload()).await;
+        assert!(matches!(v, HookVerdict::Continue));
+    }
+
+    #[tokio::test]
+    async fn pre_turn_ignores_modifications_without_mutation_contract() {
+        let mut p = HookPipeline::new();
+        p.register(Arc::new(AlwaysModify));
+        let v = p.fire(HookPoint::PreTurn, &test_payload()).await;
+        assert!(matches!(v, HookVerdict::Continue));
+    }
+
+    #[tokio::test]
+    async fn pre_prompt_keeps_modify_contract() {
+        let mut p = HookPipeline::new();
+        p.register(Arc::new(AlwaysModify));
+        let v = p.fire(HookPoint::PrePrompt, &test_payload()).await;
+        assert!(matches!(v, HookVerdict::Modify(_)));
     }
 
     #[tokio::test]

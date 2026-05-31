@@ -18,8 +18,14 @@ pub enum HookPoint {
     PreCommit,
     PostCommit,
     // Turn lifecycle
+    /// Blocking prompt-level turn gate fired before model/tool execution.
+    PreTurn,
+    /// Non-blocking transcript/model-turn notification fired when a model turn starts.
     TurnStart,
+    /// Non-blocking transcript/model-turn notification fired when a model turn ends.
     TurnEnd,
+    /// Observational prompt-level turn hook fired after the agent turn outcome is known.
+    PostTurn,
     // Model
     ModelChange,
 }
@@ -37,14 +43,21 @@ impl HookPoint {
             Self::PostTool => "post-tool",
             Self::PreCommit => "pre-commit",
             Self::PostCommit => "post-commit",
+            Self::PreTurn => "pre-turn",
             Self::TurnStart => "turn-start",
             Self::TurnEnd => "turn-end",
+            Self::PostTurn => "post-turn",
             Self::ModelChange => "model-change",
         }
     }
 
-    /// Whether this hook point can deny/modify the operation.
+    /// Whether this hook point can deny the operation and fail closed on hook errors.
     pub fn is_pre_hook(&self) -> bool {
+        matches!(self, Self::PrePrompt | Self::PreTool | Self::PreCommit | Self::PreTurn)
+    }
+
+    /// Whether this pre-hook has an explicit payload mutation contract.
+    pub fn allows_modify(&self) -> bool {
         matches!(self, Self::PrePrompt | Self::PreTool | Self::PreCommit)
     }
 
@@ -60,8 +73,10 @@ impl HookPoint {
             Self::PostTool,
             Self::PreCommit,
             Self::PostCommit,
+            Self::PreTurn,
             Self::TurnStart,
             Self::TurnEnd,
+            Self::PostTurn,
             Self::ModelChange,
         ]
     }
@@ -70,5 +85,35 @@ impl HookPoint {
 impl std::fmt::Display for HookPoint {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.write_str(self.to_filename())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::HookPoint;
+
+    #[test]
+    fn turn_hook_filenames_distinguish_gates_from_notifications() {
+        assert_eq!(HookPoint::PreTurn.to_filename(), "pre-turn");
+        assert_eq!(HookPoint::TurnStart.to_filename(), "turn-start");
+        assert_eq!(HookPoint::TurnEnd.to_filename(), "turn-end");
+        assert_eq!(HookPoint::PostTurn.to_filename(), "post-turn");
+    }
+
+    #[test]
+    fn pre_turn_is_blocking_but_not_mutating() {
+        assert!(HookPoint::PreTurn.is_pre_hook());
+        assert!(!HookPoint::PreTurn.allows_modify());
+        assert!(!HookPoint::PostTurn.is_pre_hook());
+        assert!(!HookPoint::TurnStart.is_pre_hook());
+        assert!(!HookPoint::TurnEnd.is_pre_hook());
+    }
+
+    #[test]
+    fn prompt_and_tool_pre_hooks_keep_modify_contracts() {
+        assert!(HookPoint::PrePrompt.is_pre_hook());
+        assert!(HookPoint::PrePrompt.allows_modify());
+        assert!(HookPoint::PreTool.allows_modify());
+        assert!(!HookPoint::PostPrompt.allows_modify());
     }
 }

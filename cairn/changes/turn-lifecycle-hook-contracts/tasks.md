@@ -1,6 +1,6 @@
 ## Phase 1: Contract and hook surface
 
-- [ ] [serial] I1: Add explicit hook point names for blocking pre-agent-turn and observational post-agent-turn semantics, preserving `TurnStart`/`TurnEnd` as non-blocking lifecycle notifications. r[turn-lifecycle-hooks.agent-turn-hooks] [covers=turn-lifecycle-hooks.agent-turn-hooks]
+- [x] [serial] I1: Add explicit hook point names for blocking pre-agent-turn and observational post-agent-turn semantics, preserving `TurnStart`/`TurnEnd` as non-blocking lifecycle notifications. r[turn-lifecycle-hooks.agent-turn-hooks] [covers=turn-lifecycle-hooks.agent-turn-hooks]
 - [ ] [serial] I2: Wire `PrePrompt` and `PostPrompt` in the prompt execution path before history append and after final prompt outcome, including denial/modify behavior for `PrePrompt`. r[turn-lifecycle-hooks.prompt-hooks] [covers=turn-lifecycle-hooks.prompt-hooks]
 - [ ] [serial] I3: Add typed prompt/turn payload fields with stable correlation IDs, safe previews/digests, status, model, usage, and safe error metadata. r[turn-lifecycle-hooks.payload-contract] [covers=turn-lifecycle-hooks.payload-contract]
 - [ ] [serial] I4: Wire the blocking pre-agent-turn hook at the agent/runtime prompt boundary before the first model request, and wire post-agent-turn after the prompt-level model/tool loop outcome. r[turn-lifecycle-hooks.dispatch-ownership] [covers=turn-lifecycle-hooks.dispatch-ownership]
@@ -8,7 +8,7 @@
 
 ## Phase 2: Verification
 
-- [ ] [serial] V1: Add hook pipeline and script-hook unit tests for pre/post prompt and pre/post agent-turn verdict behavior, including deny, modify, and post-hook continue semantics. r[turn-lifecycle-hooks.prompt-hooks] r[turn-lifecycle-hooks.agent-turn-hooks] [covers=turn-lifecycle-hooks.prompt-hooks,turn-lifecycle-hooks.agent-turn-hooks] [evidence=evidence/hook-pipeline-fixtures.md]
+- [x] [serial] V1: Add hook pipeline and script-hook unit tests for pre/post prompt and pre/post agent-turn verdict behavior, including deny, modify, and post-hook continue semantics. r[turn-lifecycle-hooks.prompt-hooks] r[turn-lifecycle-hooks.agent-turn-hooks] [covers=turn-lifecycle-hooks.prompt-hooks,turn-lifecycle-hooks.agent-turn-hooks] [evidence=evidence/hook-pipeline-fixtures.md]
 - [ ] [serial] V2: Add runtime seam tests proving pre-agent-turn denial prevents provider/model requests and tool execution in standalone and daemon/controller-owned paths. r[turn-lifecycle-hooks.validation] r[turn-lifecycle-hooks.dispatch-ownership] [covers=turn-lifecycle-hooks.validation,turn-lifecycle-hooks.dispatch-ownership] [evidence=evidence/pre-turn-denial-rails.md]
 - [ ] [serial] V3: Add ordering tests proving prompt hooks, agent-turn hooks, existing `TurnStart`/`TurnEnd`, and tool hooks fire once in the documented relative order. r[turn-lifecycle-hooks.validation] [covers=turn-lifecycle-hooks.validation] [evidence=evidence/hook-ordering-rails.md]
 - [ ] [serial] V4: Add payload redaction/correlation tests for script and plugin hook payloads, including secret-like prompt/tool output fixtures. r[turn-lifecycle-hooks.payload-contract] r[turn-lifecycle-hooks.validation] [covers=turn-lifecycle-hooks.payload-contract,turn-lifecycle-hooks.validation] [evidence=evidence/hook-payload-redaction.md]

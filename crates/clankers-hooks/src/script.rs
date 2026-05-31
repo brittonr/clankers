@@ -179,8 +179,8 @@ fn parse_script_output(point: HookPoint, output: &ScriptOutput) -> HookVerdict {
         return HookVerdict::Continue;
     }
 
-    // For pre-hooks, check if stdout contains JSON modifications
-    if point.is_pre_hook()
+    // For explicitly mutating pre-hooks, check if stdout contains JSON modifications.
+    if point.allows_modify()
         && !output.stdout.trim().is_empty()
         && let Ok(modified) = serde_json::from_str::<serde_json::Value>(output.stdout.trim())
     {
@@ -252,11 +252,32 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn script_exit_1_denies_pre_turn() {
+        let dir = TempDir::new().unwrap();
+        make_script(dir.path(), "pre-turn", "#!/bin/sh\necho 'turn blocked' >&2\nexit 1\n");
+        let handler = ScriptHookHandler::new(dir.path().to_path_buf(), Duration::from_secs(5));
+        let v = handler.handle(HookPoint::PreTurn, &test_payload("pre-turn")).await;
+        match v {
+            HookVerdict::Deny { reason } => assert_eq!(reason, "turn blocked"),
+            _ => panic!("expected Deny"),
+        }
+    }
+
+    #[tokio::test]
     async fn script_exit_1_post_hook_continues() {
         let dir = TempDir::new().unwrap();
         make_script(dir.path(), "post-tool", "#!/bin/sh\nexit 1\n");
         let handler = ScriptHookHandler::new(dir.path().to_path_buf(), Duration::from_secs(5));
         let v = handler.handle(HookPoint::PostTool, &test_payload("post-tool")).await;
+        assert!(matches!(v, HookVerdict::Continue));
+    }
+
+    #[tokio::test]
+    async fn script_exit_1_post_turn_continues() {
+        let dir = TempDir::new().unwrap();
+        make_script(dir.path(), "post-turn", "#!/bin/sh\nexit 1\n");
+        let handler = ScriptHookHandler::new(dir.path().to_path_buf(), Duration::from_secs(5));
+        let v = handler.handle(HookPoint::PostTurn, &test_payload("post-turn")).await;
         assert!(matches!(v, HookVerdict::Continue));
     }
 
@@ -270,6 +291,27 @@ mod tests {
             HookVerdict::Modify(val) => assert_eq!(val["modified"], true),
             _ => panic!("expected Modify, got {:?}", v),
         }
+    }
+
+    #[tokio::test]
+    async fn script_stdout_json_modifies_pre_prompt() {
+        let dir = TempDir::new().unwrap();
+        make_script(dir.path(), "pre-prompt", "#!/bin/sh\necho '{\"text\": \"rewritten\"}'\n");
+        let handler = ScriptHookHandler::new(dir.path().to_path_buf(), Duration::from_secs(5));
+        let v = handler.handle(HookPoint::PrePrompt, &test_payload("pre-prompt")).await;
+        match v {
+            HookVerdict::Modify(val) => assert_eq!(val["text"], "rewritten"),
+            _ => panic!("expected Modify, got {:?}", v),
+        }
+    }
+
+    #[tokio::test]
+    async fn script_stdout_json_does_not_modify_pre_turn() {
+        let dir = TempDir::new().unwrap();
+        make_script(dir.path(), "pre-turn", "#!/bin/sh\necho '{\"ignored\": true}'\n");
+        let handler = ScriptHookHandler::new(dir.path().to_path_buf(), Duration::from_secs(5));
+        let v = handler.handle(HookPoint::PreTurn, &test_payload("pre-turn")).await;
+        assert!(matches!(v, HookVerdict::Continue));
     }
 
     #[tokio::test]

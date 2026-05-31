@@ -10,8 +10,10 @@ pub enum PluginEvent {
     ToolExecutionStart,
     AgentStart,
     AgentEnd,
+    PreTurn,
     TurnStart,
     TurnEnd,
+    PostTurn,
     MessageUpdate,
     UserInput,
     UserCancel,
@@ -38,8 +40,10 @@ impl PluginEvent {
             "tool_execution_start" => Some(Self::ToolExecutionStart),
             "agent_start" => Some(Self::AgentStart),
             "agent_end" => Some(Self::AgentEnd),
+            "pre_turn" => Some(Self::PreTurn),
             "turn_start" => Some(Self::TurnStart),
             "turn_end" => Some(Self::TurnEnd),
+            "post_turn" => Some(Self::PostTurn),
             "message_update" => Some(Self::MessageUpdate),
             "user_input" => Some(Self::UserInput),
             "user_cancel" => Some(Self::UserCancel),
@@ -64,8 +68,10 @@ impl PluginEvent {
                 | (Self::ToolExecutionStart, "tool_execution_start")
                 | (Self::AgentStart, "agent_start")
                 | (Self::AgentEnd, "agent_end")
+                | (Self::PreTurn, "pre_turn")
                 | (Self::TurnStart, "turn_start")
                 | (Self::TurnEnd, "turn_end")
+                | (Self::PostTurn, "post_turn")
                 | (Self::MessageUpdate, "message_update")
                 | (Self::UserInput, "user_input")
                 | (Self::UserCancel, "user_cancel")
