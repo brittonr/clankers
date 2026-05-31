@@ -4,13 +4,13 @@
 //! interpret these effects instead of re-implementing command-specific policy.
 
 use clankers_protocol::SessionCommand;
+use clankers_provider::ThinkingLevel;
+use clankers_tui::app::App;
 
 use crate::modes::interactive::AgentCommand;
 use crate::modes::session_command_policy;
 use crate::modes::session_command_policy::LocalSessionEffect;
 use crate::modes::session_command_policy::SessionCommandEffect;
-use clankers_provider::ThinkingLevel;
-use clankers_tui::app::App;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum SlashUiEffect {
@@ -110,6 +110,7 @@ pub(crate) fn apply_local_session_effect(app: &mut App, effect: Option<LocalSess
     }
 }
 
+#[cfg(test)]
 pub(crate) fn apply_standalone_slash_effect(
     app: &mut App,
     cmd_tx: &tokio::sync::mpsc::UnboundedSender<AgentCommand>,
@@ -128,6 +129,7 @@ pub(crate) fn apply_standalone_slash_effect(
     }
 }
 
+#[cfg(test)]
 fn apply_standalone_session_effect(
     app: &mut App,
     cmd_tx: &tokio::sync::mpsc::UnboundedSender<AgentCommand>,
@@ -139,6 +141,7 @@ fn apply_standalone_session_effect(
     }
 }
 
+#[cfg(test)]
 fn apply_standalone_session_command(
     cmd_tx: &tokio::sync::mpsc::UnboundedSender<AgentCommand>,
     command: SessionCommand,

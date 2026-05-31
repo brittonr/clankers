@@ -2,6 +2,7 @@ const ATTACH: &str = include_str!("../src/modes/attach.rs");
 const ATTACH_COMMANDS: &str = include_str!("../src/modes/attach/commands.rs");
 const ATTACH_REMOTE: &str = include_str!("../src/modes/attach_remote.rs");
 const SESSION_COMMAND_POLICY: &str = include_str!("../src/modes/session_command_policy.rs");
+const SLASH_EFFECTS: &str = include_str!("../src/slash_commands/effects.rs");
 const REQUEST_LIFECYCLE: &str = include_str!("../docs/src/reference/request-lifecycle.md");
 
 #[test]
@@ -45,7 +46,13 @@ fn thinking_slash_bridges_explicit_and_cycle_paths_before_suppressing_daemon_ack
         "AgentCommand::SetThinkingLevel(level)",
         "session_command_policy::set_thinking_level_effect(level)",
         "AgentCommand::CycleThinkingLevel",
-        "session_command_policy::cycle_thinking_level_effect(app.thinking_level)",
+        "session_command_policy::cycle_thinking_level_effect(current_thinking_level)",
+    ] {
+        assert!(SLASH_EFFECTS.contains(anchor), "slash effect thinking parity anchor missing `{anchor}`");
+    }
+
+    for anchor in [
+        "slash_commands::effects::agent_command_effect(agent_cmd, app.thinking_level)",
         "apply_local_session_effect(app, effect.local);",
         "parity_tracker.expect_ack(effect.ack);",
     ] {

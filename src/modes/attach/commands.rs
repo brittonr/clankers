@@ -2,6 +2,7 @@ use clanker_tui_types::AppState;
 use clankers_controller::client::ClientAdapter;
 use clankers_protocol::DaemonEvent;
 use clankers_protocol::SessionCommand;
+use clankers_tui::app::App;
 use tracing::warn;
 
 use crate::modes::session_command_policy;
@@ -11,7 +12,6 @@ use crate::modes::session_command_policy::SessionCommandEffect;
 use crate::slash_commands;
 use crate::slash_commands::effects::SlashEffect;
 use crate::slash_commands::effects::SlashPluginEffect;
-use clankers_tui::app::App;
 
 /// Attach-side slash routing.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -225,6 +225,7 @@ pub(crate) fn dispatch_attach_slash(
 }
 
 /// Handle a client-side slash command locally.
+#[cfg(test)]
 pub(crate) fn handle_client_side_slash(app: &mut App, command: &str, args: &str) {
     let (client, _cmd_rx) = tokio::sync::mpsc::unbounded_channel();
     let (_event_tx, event_rx) = tokio::sync::mpsc::unbounded_channel();
