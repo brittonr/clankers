@@ -231,6 +231,67 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn script_payloads_preserve_prompt_turn_correlation_and_redact_safe_turn_fields() {
+        let dir = TempDir::new().unwrap();
+        let pre_prompt_file = dir.path().join("pre-prompt.json");
+        let post_turn_file = dir.path().join("post-turn.json");
+        make_script(dir.path(), "pre-prompt", &format!("#!/bin/sh\ncat > {}\n", pre_prompt_file.display()));
+        make_script(dir.path(), "post-turn", &format!("#!/bin/sh\ncat > {}\n", post_turn_file.display()));
+        let handler = ScriptHookHandler::new(dir.path().to_path_buf(), Duration::from_secs(5));
+        let prompt_text = "deploy with token=super-secret-value";
+        let tool_output_secret = "tool output contained sk-live-secret";
+        let prompt_id = "prompt-correlation-1";
+
+        let pre_prompt = HookPayload::prompt_with_metadata(
+            "pre-prompt",
+            "session-redaction",
+            prompt_id,
+            prompt_text,
+            Some("system prompt must not appear in turn payload"),
+            crate::payload::HookStatus::Pending,
+            None,
+        );
+        let post_turn = HookPayload::turn(
+            "post-turn",
+            "session-redaction",
+            prompt_id,
+            "test-model",
+            prompt_text,
+            4,
+            1,
+            crate::payload::HookStatus::Success,
+            Some(crate::payload::HookSafeError::new(tool_output_secret, Some("tool_output"))),
+            Some(crate::payload::HookUsage {
+                input_tokens: 3,
+                output_tokens: 5,
+                cache_creation_input_tokens: 0,
+                cache_read_input_tokens: 0,
+            }),
+        );
+
+        handler.handle(HookPoint::PrePrompt, &pre_prompt).await;
+        handler.handle(HookPoint::PostTurn, &post_turn).await;
+
+        let pre_prompt_json: serde_json::Value =
+            serde_json::from_str(&fs::read_to_string(&pre_prompt_file).unwrap()).unwrap();
+        let post_turn_text = fs::read_to_string(&post_turn_file).unwrap();
+        let post_turn_json: serde_json::Value = serde_json::from_str(&post_turn_text).unwrap();
+
+        assert_eq!(pre_prompt_json["prompt_id"], prompt_id);
+        assert_eq!(post_turn_json["prompt_id"], prompt_id);
+        assert_eq!(post_turn_json["kind"], "turn");
+        assert_eq!(post_turn_json["model"], "test-model");
+        assert_eq!(post_turn_json["tool_call_count"], 1);
+        assert_eq!(post_turn_json["prompt_digest"], pre_prompt_json["prompt_digest"]);
+        assert_eq!(post_turn_json["prompt_preview"], "[redacted secret-like text]");
+        assert_eq!(post_turn_json["error"]["message"], "[redacted secret-like text]");
+        assert!(post_turn_json.get("text").is_none());
+        assert!(post_turn_json.get("system_prompt").is_none());
+        assert!(!post_turn_text.contains("super-secret-value"));
+        assert!(!post_turn_text.contains("sk-live-secret"));
+    }
+
+    #[tokio::test]
     async fn script_exit_0_continues() {
         let dir = TempDir::new().unwrap();
         make_script(dir.path(), "pre-tool", "#!/bin/sh\nexit 0\n");

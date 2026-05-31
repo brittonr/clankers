@@ -192,6 +192,8 @@
 
 - Full workspace `cargo nextest run` fits pi's 300s tool timeout when split as `--partition count:1/4` through `count:4/4`; on 2026-05-30 each partition finished in ~112-116s with cached builds.
 - For formatting a touched Rust crate root without recursing into child modules, `rustfmt --config skip_children=true crates/.../src/lib.rs` kept formatting limited to the root file on 2026-05-31.
+- For deterministic ordering tests across fire-and-forget hook tasks, use test-only `Notify` gates to linearize the recorder around real causal boundaries (provider waits for controller lifecycle observation; post-hook recorder waits for prior lifecycle markers) instead of asserting raw Tokio scheduling order.
+- For plugin hook payload contract tests, add/exercise the JSON event-envelope builder seam in `PluginHookHandler` instead of trying to stand up an Extism WASM instance when the contract is serialization/mapping rather than plugin execution.
 
 ### Crate extraction
 - Re-export pattern: original location does `pub use new_crate::*;` for zero API change

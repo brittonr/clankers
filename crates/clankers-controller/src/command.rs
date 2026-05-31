@@ -1025,6 +1025,7 @@ mod tests {
     use std::sync::Arc;
     use std::sync::Mutex;
     use std::sync::atomic::AtomicBool;
+    use std::sync::atomic::AtomicUsize;
     use std::sync::atomic::Ordering;
     use std::time::Duration;
 
@@ -1288,6 +1289,225 @@ mod tests {
         }
     }
 
+    #[derive(Clone, Default)]
+    struct HookOrderRecorder {
+        points: Arc<Mutex<Vec<clankers_hooks::HookPoint>>>,
+        notify: Arc<tokio::sync::Notify>,
+    }
+
+    impl HookOrderRecorder {
+        fn snapshot(&self) -> Vec<clankers_hooks::HookPoint> {
+            self.points.lock().unwrap_or_else(|poisoned| poisoned.into_inner()).clone()
+        }
+
+        fn count(&self, point: clankers_hooks::HookPoint) -> usize {
+            self.points
+                .lock()
+                .unwrap_or_else(|poisoned| poisoned.into_inner())
+                .iter()
+                .filter(|recorded| **recorded == point)
+                .count()
+        }
+
+        async fn push(&self, point: clankers_hooks::HookPoint) {
+            self.points.lock().unwrap_or_else(|poisoned| poisoned.into_inner()).push(point);
+            self.notify.notify_waiters();
+        }
+
+        async fn wait_for_len(&self, expected_len: usize) {
+            tokio::time::timeout(Duration::from_secs(2), async {
+                loop {
+                    let notified = self.notify.notified();
+                    if self.snapshot().len() >= expected_len {
+                        break;
+                    }
+                    notified.await;
+                }
+            })
+            .await
+            .expect("expected hook ordering records to arrive");
+        }
+
+        async fn wait_for_count(&self, point: clankers_hooks::HookPoint, expected_count: usize) {
+            tokio::time::timeout(Duration::from_secs(2), async {
+                loop {
+                    let notified = self.notify.notified();
+                    if self.count(point) >= expected_count {
+                        break;
+                    }
+                    notified.await;
+                }
+            })
+            .await
+            .expect("expected hook point record to arrive");
+        }
+    }
+
+    struct OrderingHook {
+        recorder: HookOrderRecorder,
+    }
+
+    #[async_trait::async_trait]
+    impl clankers_hooks::HookHandler for OrderingHook {
+        fn name(&self) -> &str {
+            "ordering-hook"
+        }
+
+        fn priority(&self) -> u32 {
+            clankers_hooks::dispatcher::PRIORITY_PLUGIN_HOOKS
+        }
+
+        fn subscribes_to(&self, point: clankers_hooks::HookPoint) -> bool {
+            matches!(
+                point,
+                clankers_hooks::HookPoint::PrePrompt
+                    | clankers_hooks::HookPoint::PostPrompt
+                    | clankers_hooks::HookPoint::PreTurn
+                    | clankers_hooks::HookPoint::TurnStart
+                    | clankers_hooks::HookPoint::PreTool
+                    | clankers_hooks::HookPoint::PostTool
+                    | clankers_hooks::HookPoint::TurnEnd
+                    | clankers_hooks::HookPoint::PostTurn
+            )
+        }
+
+        async fn handle(
+            &self,
+            point: clankers_hooks::HookPoint,
+            _payload: &clankers_hooks::HookPayload,
+        ) -> clankers_hooks::HookVerdict {
+            // Post and lifecycle hooks are intentionally fire-and-forget. The waits below only
+            // linearize the test recorder around causal boundaries that already exist in the
+            // prompt path, so the assertion is not sensitive to Tokio task scheduling.
+            match point {
+                clankers_hooks::HookPoint::TurnEnd => {
+                    if self.recorder.count(clankers_hooks::HookPoint::TurnEnd) == 0 {
+                        self.recorder.wait_for_count(clankers_hooks::HookPoint::PostTool, 1).await;
+                    } else {
+                        self.recorder.wait_for_count(clankers_hooks::HookPoint::TurnStart, 2).await;
+                    }
+                    self.recorder.push(point).await;
+                }
+                clankers_hooks::HookPoint::PostTurn => {
+                    self.recorder.wait_for_count(clankers_hooks::HookPoint::TurnEnd, 2).await;
+                    self.recorder.push(point).await;
+                }
+                clankers_hooks::HookPoint::PostPrompt => {
+                    self.recorder.wait_for_count(clankers_hooks::HookPoint::PostTurn, 1).await;
+                    self.recorder.push(point).await;
+                }
+                _ => self.recorder.push(point).await,
+            }
+            clankers_hooks::HookVerdict::Continue
+        }
+    }
+
+    struct OrderingTool {
+        definition: clankers_agent::ToolDefinition,
+    }
+
+    #[async_trait::async_trait]
+    impl clankers_agent::Tool for OrderingTool {
+        fn definition(&self) -> &clankers_agent::ToolDefinition {
+            &self.definition
+        }
+
+        async fn execute(
+            &self,
+            _ctx: &clankers_agent::ToolContext,
+            _params: serde_json::Value,
+        ) -> clankers_agent::ToolResult {
+            clankers_agent::ToolResult::text("tool ok")
+        }
+    }
+
+    struct OrderingToolRoundTripProvider {
+        recorder: HookOrderRecorder,
+        call_count: AtomicUsize,
+    }
+
+    #[async_trait::async_trait]
+    impl clankers_provider::Provider for OrderingToolRoundTripProvider {
+        async fn complete(
+            &self,
+            _request: clankers_provider::CompletionRequest,
+            tx: tokio::sync::mpsc::Sender<clankers_provider::streaming::StreamEvent>,
+        ) -> clankers_provider::error::Result<()> {
+            let call_index = self.call_count.fetch_add(1, Ordering::SeqCst);
+            // The provider waits for controller lifecycle-hook observation before producing
+            // downstream stream events. This proves streaming event draining keeps lifecycle
+            // notifications interleaved with prompt/tool hooks instead of delayed until prompt end.
+            if call_index == 0 {
+                self.recorder.wait_for_count(clankers_hooks::HookPoint::TurnStart, 1).await;
+            } else {
+                self.recorder.wait_for_count(clankers_hooks::HookPoint::TurnEnd, 1).await;
+            }
+
+            tx.send(clankers_provider::streaming::StreamEvent::MessageStart {
+                message: clankers_provider::streaming::MessageMetadata {
+                    id: format!("ordering-{call_index}"),
+                    model: "test-model".to_string(),
+                    role: "assistant".to_string(),
+                },
+            })
+            .await
+            .ok();
+
+            if call_index == 0 {
+                tx.send(clankers_provider::streaming::StreamEvent::ContentBlockStart {
+                    index: 0,
+                    content_block: clanker_message::Content::ToolUse {
+                        id: "call-1".to_string(),
+                        name: "ordering_tool".to_string(),
+                        input: serde_json::json!({}),
+                    },
+                })
+                .await
+                .ok();
+                tx.send(clankers_provider::streaming::StreamEvent::ContentBlockStop { index: 0 }).await.ok();
+                tx.send(clankers_provider::streaming::StreamEvent::MessageDelta {
+                    stop_reason: Some("tool_use".to_string()),
+                    usage: clanker_message::Usage::default(),
+                })
+                .await
+                .ok();
+            } else {
+                tx.send(clankers_provider::streaming::StreamEvent::ContentBlockStart {
+                    index: 0,
+                    content_block: clanker_message::Content::Text { text: String::new() },
+                })
+                .await
+                .ok();
+                tx.send(clankers_provider::streaming::StreamEvent::ContentBlockDelta {
+                    index: 0,
+                    delta: clankers_provider::streaming::ContentDelta::TextDelta {
+                        text: "done".to_string(),
+                    },
+                })
+                .await
+                .ok();
+                tx.send(clankers_provider::streaming::StreamEvent::ContentBlockStop { index: 0 }).await.ok();
+                tx.send(clankers_provider::streaming::StreamEvent::MessageDelta {
+                    stop_reason: Some("end_turn".to_string()),
+                    usage: clanker_message::Usage::default(),
+                })
+                .await
+                .ok();
+            }
+
+            tx.send(clankers_provider::streaming::StreamEvent::MessageStop).await.ok();
+            Ok(())
+        }
+
+        fn models(&self) -> &[clankers_provider::Model] {
+            &[]
+        }
+
+        fn name(&self) -> &str {
+            "ordering-tool-roundtrip"
+        }
+    }
+
     fn make_test_controller_with_provider(provider: Arc<dyn clankers_provider::Provider>) -> SessionController {
         make_test_controller_with_provider_and_hooks(provider, None)
     }
@@ -1462,6 +1682,67 @@ mod tests {
         )));
         assert!(requests.lock().unwrap_or_else(|poisoned| poisoned.into_inner()).is_empty());
         assert_eq!(ctrl.agent.as_ref().expect("agent").messages().len(), 1);
+    }
+
+    #[tokio::test]
+    async fn controller_owned_prompt_hooks_lifecycle_notifications_and_tool_hooks_fire_in_order() {
+        let recorder = HookOrderRecorder::default();
+        let mut pipeline = clankers_hooks::HookPipeline::new();
+        pipeline.register(Arc::new(OrderingHook {
+            recorder: recorder.clone(),
+        }));
+        let pipeline = Arc::new(pipeline);
+        let provider = Arc::new(OrderingToolRoundTripProvider {
+            recorder: recorder.clone(),
+            call_count: AtomicUsize::new(0),
+        });
+        let tool: Arc<dyn clankers_agent::Tool> = Arc::new(OrderingTool {
+            definition: clankers_agent::ToolDefinition {
+                name: "ordering_tool".to_string(),
+                description: "tool used by hook ordering tests".to_string(),
+                input_schema: serde_json::json!({"type": "object"}),
+            },
+        });
+        let agent = clankers_agent::Agent::new(
+            provider.clone(),
+            vec![tool],
+            clankers_config::settings::Settings::default(),
+            "test-model".to_string(),
+            "You are a test assistant.".to_string(),
+        );
+        let mut ctrl = SessionController::new(agent, ControllerConfig {
+            session_id: "test-session".to_string(),
+            model: "test-model".to_string(),
+            hook_pipeline: Some(pipeline),
+            ..Default::default()
+        });
+        let mut streamed_events = Vec::new();
+        let mut collect_events = |events: Vec<DaemonEvent>| streamed_events.extend(events);
+
+        ctrl.handle_command_with_streaming_events(
+            SessionCommand::Prompt {
+                text: "run ordering tool".to_string(),
+                images: vec![],
+            },
+            &mut collect_events,
+        )
+        .await;
+        recorder.wait_for_len(10).await;
+
+        assert_eq!(provider.call_count.load(Ordering::SeqCst), 2);
+        assert!(matches!(streamed_events.last(), Some(DaemonEvent::PromptDone { error: None })));
+        assert_eq!(recorder.snapshot(), vec![
+            clankers_hooks::HookPoint::PrePrompt,
+            clankers_hooks::HookPoint::PreTurn,
+            clankers_hooks::HookPoint::TurnStart,
+            clankers_hooks::HookPoint::PreTool,
+            clankers_hooks::HookPoint::PostTool,
+            clankers_hooks::HookPoint::TurnEnd,
+            clankers_hooks::HookPoint::TurnStart,
+            clankers_hooks::HookPoint::TurnEnd,
+            clankers_hooks::HookPoint::PostTurn,
+            clankers_hooks::HookPoint::PostPrompt,
+        ]);
     }
 
     #[tokio::test]
