@@ -36,9 +36,20 @@ const ACCEPTED_SPEC: &str = "cairn/specs/lego-architecture-boundaries/spec.md";
 const PROCESS_TOOL: &str = "src/tools/process.rs";
 const PROCESS_TOOL_ADAPTER: &str = "src/tools/process/adapter.rs";
 const AGENT_LIB: &str = "crates/clankers-agent/src/lib.rs";
+const AGENT_BUILDER: &str = "crates/clankers-agent/src/builder.rs";
+const AGENT_COMPACTION: &str = "crates/clankers-agent/src/compaction.rs";
+const AGENT_COMPACTION_TOOL_SUMMARIES: &str = "crates/clankers-agent/src/compaction/tool_summaries.rs";
+const AGENT_EVENTS: &str = "crates/clankers-agent/src/events.rs";
 const AGENT_TURN_MOD: &str = "crates/clankers-agent/src/turn/mod.rs";
 const AGENT_TURN_ADAPTERS: &str = "crates/clankers-agent/src/turn/adapters.rs";
+const AGENT_TURN_EXECUTION: &str = "crates/clankers-agent/src/turn/execution.rs";
+const AGENT_TURN_MESSAGE: &str = "crates/clankers-agent/src/turn/message.rs";
+const AGENT_TURN_POLICY: &str = "crates/clankers-agent/src/turn/policy.rs";
 const AGENT_TURN_PORTS: &str = "crates/clankers-agent/src/turn/ports.rs";
+const AGENT_TURN_STEEL_PLANNING: &str = "crates/clankers-agent/src/turn/steel_planning.rs";
+const AGENT_TURN_STEEL_TOOL_SUBSTRATE: &str = "crates/clankers-agent/src/turn/steel_tool_substrate.rs";
+const AGENT_TURN_TRANSCRIPT: &str = "crates/clankers-agent/src/turn/transcript.rs";
+const AGENT_TURN_USAGE: &str = "crates/clankers-agent/src/turn/usage.rs";
 const CONTROLLER_CORE_EFFECTS: &str = "crates/clankers-controller/src/core_effects.rs";
 const CONTROLLER_CONVERT: &str = "crates/clankers-controller/src/convert.rs";
 const CONTROLLER_DOMAIN_EVENT: &str = "crates/clankers-controller/src/domain_event.rs";
@@ -108,6 +119,7 @@ fn run() -> Result<PathBuf, String> {
     let shared_dtos = shared_dto_crates(&reverse_map);
     let process_tool_adapter = process_tool_adapter_signature()?;
     let agent_turn_ports = agent_turn_ports_signature()?;
+    let agent_provider_neutral_dtos = agent_provider_neutral_dto_signature()?;
     let controller_effect_interpretation = controller_effect_interpretation_signature()?;
     let provider_router_bridge = provider_router_bridge_signature()?;
     let controller_domain_event = controller_domain_event_signature()?;
@@ -144,6 +156,7 @@ fn run() -> Result<PathBuf, String> {
         "most_shared_dto_crates": shared_dtos,
         "process_tool_adapter": process_tool_adapter,
         "agent_turn_ports": agent_turn_ports,
+        "agent_provider_neutral_dtos": agent_provider_neutral_dtos,
         "controller_effect_interpretation": controller_effect_interpretation,
         "provider_router_bridge": provider_router_bridge,
         "controller_domain_event": controller_domain_event,
@@ -177,9 +190,20 @@ fn run() -> Result<PathBuf, String> {
             hash_artifact(Path::new(PROCESS_TOOL))?,
             hash_artifact(Path::new(PROCESS_TOOL_ADAPTER))?,
             hash_artifact(Path::new(AGENT_LIB))?,
+            hash_artifact(Path::new(AGENT_BUILDER))?,
+            hash_artifact(Path::new(AGENT_COMPACTION))?,
+            hash_artifact(Path::new(AGENT_COMPACTION_TOOL_SUMMARIES))?,
+            hash_artifact(Path::new(AGENT_EVENTS))?,
             hash_artifact(Path::new(AGENT_TURN_MOD))?,
             hash_artifact(Path::new(AGENT_TURN_ADAPTERS))?,
+            hash_artifact(Path::new(AGENT_TURN_EXECUTION))?,
+            hash_artifact(Path::new(AGENT_TURN_MESSAGE))?,
+            hash_artifact(Path::new(AGENT_TURN_POLICY))?,
             hash_artifact(Path::new(AGENT_TURN_PORTS))?,
+            hash_artifact(Path::new(AGENT_TURN_STEEL_PLANNING))?,
+            hash_artifact(Path::new(AGENT_TURN_STEEL_TOOL_SUBSTRATE))?,
+            hash_artifact(Path::new(AGENT_TURN_TRANSCRIPT))?,
+            hash_artifact(Path::new(AGENT_TURN_USAGE))?,
             hash_artifact(Path::new(CONTROLLER_CORE_EFFECTS))?,
             hash_artifact(Path::new(CONTROLLER_CONVERT))?,
             hash_artifact(Path::new(CONTROLLER_DOMAIN_EVENT))?,
@@ -578,6 +602,63 @@ fn agent_turn_ports_signature() -> Result<Value, String> {
         "cancellation_adapter": "TokenCancellationPort",
         "provider_adapter_owner": "crates/clankers-agent/src/lib.rs app-edge shell",
         "typed_rail_kind": "Rust AST module, trait, impl, struct-field, and service-receipt checks"
+    }))
+}
+
+fn agent_provider_neutral_dto_signature() -> Result<Value, String> {
+    let reusable_modules = [
+        AGENT_COMPACTION,
+        AGENT_COMPACTION_TOOL_SUMMARIES,
+        AGENT_EVENTS,
+        AGENT_TURN_EXECUTION,
+        AGENT_TURN_MESSAGE,
+        AGENT_TURN_MOD,
+        AGENT_TURN_POLICY,
+        AGENT_TURN_PORTS,
+        AGENT_TURN_STEEL_PLANNING,
+        AGENT_TURN_STEEL_TOOL_SUBSTRATE,
+        AGENT_TURN_TRANSCRIPT,
+        AGENT_TURN_USAGE,
+    ];
+    let forbidden_reexports = [
+        ("clankers_provider::message", "neutral message DTOs must come from clanker-message"),
+        ("clankers_provider::streaming", "neutral stream DTOs must come from clanker-message"),
+        ("clankers_provider::Usage", "usage DTO must come from clanker-message"),
+        ("clankers_provider::ThinkingConfig", "thinking config DTO must come from clanker-message"),
+    ];
+
+    for module in reusable_modules {
+        let source = fs::read_to_string(module).map_err(|error| format!("failed to read {module}: {error}"))?;
+        for (needle, reason) in forbidden_reexports {
+            forbid_contains(
+                &source,
+                needle,
+                &format!("agent provider neutral DTO import in {module}; {reason}"),
+            )?;
+        }
+    }
+
+    let ports = fs::read_to_string(AGENT_TURN_PORTS)
+        .map_err(|error| format!("failed to read {AGENT_TURN_PORTS}: {error}"))?;
+    require_contains(
+        &ports,
+        "convergence: \"replace concrete provider construction at app edge only\"",
+        "agent provider dependency convergence receipt",
+    )?;
+
+    Ok(json!({
+        "checked_modules": reusable_modules,
+        "neutral_owner": "clanker-message",
+        "model_adapter_modules": [AGENT_TURN_EXECUTION, AGENT_TURN_PORTS],
+        "provider_native_allowed_in_model_adapters": ["CompletionRequest", "Provider"],
+        "forbidden_provider_reexports": [
+            "clankers_provider::message",
+            "clankers_provider::streaming",
+            "clankers_provider::Usage",
+            "clankers_provider::ThinkingConfig"
+        ],
+        "provider_dependency_convergence": "replace concrete provider construction at app edge only",
+        "typed_rail_kind": "source import ownership check over reusable agent policy modules"
     }))
 }
 

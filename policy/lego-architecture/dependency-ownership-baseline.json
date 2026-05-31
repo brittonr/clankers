@@ -101,6 +101,39 @@
       "owner": "turn orchestration shell; concrete systems should migrate behind model/tool/config/storage/hook/prompt/skill/cost ports",
       "package": "clankers-agent"
     },
+    "agent_provider_neutral_dtos": {
+      "checked_modules": [
+        "crates/clankers-agent/src/compaction.rs",
+        "crates/clankers-agent/src/compaction/tool_summaries.rs",
+        "crates/clankers-agent/src/events.rs",
+        "crates/clankers-agent/src/turn/execution.rs",
+        "crates/clankers-agent/src/turn/message.rs",
+        "crates/clankers-agent/src/turn/mod.rs",
+        "crates/clankers-agent/src/turn/policy.rs",
+        "crates/clankers-agent/src/turn/ports.rs",
+        "crates/clankers-agent/src/turn/steel_planning.rs",
+        "crates/clankers-agent/src/turn/steel_tool_substrate.rs",
+        "crates/clankers-agent/src/turn/transcript.rs",
+        "crates/clankers-agent/src/turn/usage.rs"
+      ],
+      "forbidden_provider_reexports": [
+        "clankers_provider::message",
+        "clankers_provider::streaming",
+        "clankers_provider::Usage",
+        "clankers_provider::ThinkingConfig"
+      ],
+      "model_adapter_modules": [
+        "crates/clankers-agent/src/turn/execution.rs",
+        "crates/clankers-agent/src/turn/ports.rs"
+      ],
+      "neutral_owner": "clanker-message",
+      "provider_dependency_convergence": "replace concrete provider construction at app edge only",
+      "provider_native_allowed_in_model_adapters": [
+        "CompletionRequest",
+        "Provider"
+      ],
+      "typed_rail_kind": "source import ownership check over reusable agent policy modules"
+    },
     "agent_turn_ports": {
       "cancellation_adapter": "TokenCancellationPort",
       "cancellation_port_trait": "AgentCancellationPort",

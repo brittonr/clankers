@@ -2,6 +2,7 @@
 
 use std::sync::Arc;
 
+use clanker_message::ThinkingConfig;
 use clankers_config::paths::ClankersPaths;
 use clankers_config::settings::Settings;
 use clankers_db::Db;
@@ -26,7 +27,7 @@ pub struct AgentBuilder {
     tools: Vec<Arc<dyn Tool>>,
     db: Option<Db>,
     paths: Option<ClankersPaths>,
-    thinking: Option<clankers_provider::ThinkingConfig>,
+    thinking: Option<ThinkingConfig>,
     capability_gate: Option<Arc<dyn crate::tool::CapabilityGate>>,
 }
 
@@ -59,7 +60,7 @@ impl AgentBuilder {
     }
 
     /// Enable extended thinking with the given config.
-    pub fn with_thinking(mut self, config: clankers_provider::ThinkingConfig) -> Self {
+    pub fn with_thinking(mut self, config: ThinkingConfig) -> Self {
         self.thinking = Some(config);
         self
     }

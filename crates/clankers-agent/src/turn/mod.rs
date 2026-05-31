@@ -57,7 +57,7 @@ use clankers_model_selection::cost_tracker::CostTracker;
 use clankers_provider::CompletionRequest;
 #[cfg(test)]
 use clankers_provider::Provider;
-use clankers_provider::ThinkingConfig;
+use clanker_message::ThinkingConfig;
 #[cfg(test)]
 use clanker_message::Usage;
 use clanker_message::*;
