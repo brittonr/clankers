@@ -26,8 +26,10 @@ const SETTINGS: &str = "crates/clankers-config/src/settings.rs";
 const PLUGIN_TOOL: &str = "src/tools/plugin_tool.rs";
 const SUBAGENT_TOOL: &str = "src/tools/subagent.rs";
 const DELEGATE_TOOL: &str = "src/tools/delegate/mod.rs";
-const TASKS: &str = "cairn/changes/steel-tool-plugin-substrate/tasks.md";
-const SPEC: &str = "cairn/changes/steel-tool-plugin-substrate/specs/steel-tool-plugin-substrate/spec.md";
+const ACTIVE_TASKS: &str = "cairn/changes/steel-tool-plugin-substrate/tasks.md";
+const ARCHIVED_TASKS: &str = "cairn/archive/1970-01-01-steel-tool-plugin-substrate/tasks.md";
+const ACTIVE_SPEC: &str = "cairn/changes/steel-tool-plugin-substrate/specs/steel-tool-plugin-substrate/spec.md";
+const CANONICAL_SPEC: &str = "cairn/specs/steel-tool-plugin-substrate/spec.md";
 const OUTPUT: &str = "target/steel-tool-plugin-substrate/receipt.json";
 
 const RUNTIME_MARKERS: &[&str] = &[
@@ -81,6 +83,7 @@ const SPEC_MARKERS: &[&str] = &[
     "subagents.lifecycle-preserved",
     "receipts.redaction",
     "verification.runtime-dogfood",
+    "checker-paths.active-archive-resolution",
 ];
 
 const FORBIDDEN_DIRECT_STEEL_IMPORTS: &[&str] = &["steel_core::", "steel::steel_vm", "steel_vm::"];
@@ -109,15 +112,17 @@ fn run() -> Result<PathBuf, String> {
     let plugin_tool = read(PLUGIN_TOOL)?;
     let subagent_tool = read(SUBAGENT_TOOL)?;
     let delegate_tool = read(DELEGATE_TOOL)?;
-    let tasks = read(TASKS)?;
-    let spec = read(SPEC)?;
+    let task_path = existing_task_path();
+    let spec_path = existing_spec_path();
+    let tasks = read(task_path)?;
+    let spec = read(spec_path)?;
     let mut errors = Vec::new();
 
     require_all(RUNTIME, &runtime, RUNTIME_MARKERS, &mut errors);
     require_all(AGENT_ADAPTER, &adapter, AGENT_MARKERS, &mut errors);
     require_all(EXECUTION, &execution, EXECUTION_MARKERS, &mut errors);
     require_all(SETTINGS, &settings, SETTINGS_MARKERS, &mut errors);
-    require_all(SPEC, &spec, SPEC_MARKERS, &mut errors);
+    require_all(spec_path, &spec, SPEC_MARKERS, &mut errors);
     require(RUNTIME_LIB, &runtime_lib, "pub mod steel_tool_substrate;", &mut errors);
     require(RUNTIME_LIB, &runtime_lib, "pub use steel_tool_substrate::SteelToolExecutorKind;", &mut errors);
     require(PORTS, &ports, "steel_tool_substrate: Option<AgentToolSteelSubstrateConfig>", &mut errors);
@@ -126,7 +131,7 @@ fn run() -> Result<PathBuf, String> {
     require(PLUGIN_TOOL, &plugin_tool, "PluginToolBackend::Stdio", &mut errors);
     require(SUBAGENT_TOOL, &subagent_tool, "ToolExecutionBackend::Subagent", &mut errors);
     require(DELEGATE_TOOL, &delegate_tool, "ToolExecutionBackend::Subagent", &mut errors);
-    require(TASKS, &tasks, "V7: Run Cairn gates", &mut errors);
+    require(task_path, &tasks, "V7: Run Cairn gates", &mut errors);
     forbid_all(RUNTIME, &runtime, FORBIDDEN_DIRECT_STEEL_IMPORTS, &mut errors);
     forbid_all(AGENT_ADAPTER, &adapter, FORBIDDEN_DIRECT_STEEL_IMPORTS, &mut errors);
     forbid_all(EXECUTION, &execution, FORBIDDEN_DIRECT_STEEL_IMPORTS, &mut errors);
@@ -146,8 +151,8 @@ fn run() -> Result<PathBuf, String> {
         PLUGIN_TOOL,
         SUBAGENT_TOOL,
         DELEGATE_TOOL,
-        TASKS,
-        SPEC,
+        task_path,
+        spec_path,
         "scripts/check-steel-tool-plugin-substrate.rs",
     ]
     .iter()
@@ -175,6 +180,22 @@ fn run() -> Result<PathBuf, String> {
     fs::write(&output, [bytes.as_slice(), b"\n"].concat())
         .map_err(|error| format!("failed to write {}: {error}", output.display()))?;
     Ok(output)
+}
+
+fn existing_task_path() -> &'static str {
+    existing_path(ACTIVE_TASKS, ARCHIVED_TASKS)
+}
+
+fn existing_spec_path() -> &'static str {
+    existing_path(ACTIVE_SPEC, CANONICAL_SPEC)
+}
+
+fn existing_path(active: &'static str, archived_or_canonical: &'static str) -> &'static str {
+    if Path::new(active).exists() {
+        active
+    } else {
+        archived_or_canonical
+    }
 }
 
 fn read(path: &str) -> Result<String, String> {
