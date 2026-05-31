@@ -61,6 +61,24 @@ impl HookPoint {
         matches!(self, Self::PrePrompt | Self::PreTool | Self::PreCommit)
     }
 
+    /// Snake-case plugin event kind for hooks exposed through the plugin event protocol.
+    pub fn plugin_event_kind(&self) -> Option<&'static str> {
+        match self {
+            Self::PrePrompt | Self::PostPrompt => Some("user_input"),
+            Self::SessionStart => Some("session_start"),
+            Self::SessionEnd => Some("session_end"),
+            Self::OnError => None,
+            Self::PreTool => Some("tool_call"),
+            Self::PostTool => Some("tool_result"),
+            Self::PreCommit | Self::PostCommit => None,
+            Self::PreTurn => Some("pre_turn"),
+            Self::TurnStart => Some("turn_start"),
+            Self::TurnEnd => Some("turn_end"),
+            Self::PostTurn => Some("post_turn"),
+            Self::ModelChange => Some("model_change"),
+        }
+    }
+
     /// All hook points (for iteration).
     pub fn all() -> &'static [HookPoint] {
         &[
@@ -115,5 +133,16 @@ mod tests {
         assert!(HookPoint::PrePrompt.allows_modify());
         assert!(HookPoint::PreTool.allows_modify());
         assert!(!HookPoint::PostPrompt.allows_modify());
+    }
+
+    #[test]
+    fn plugin_event_mapping_is_owned_by_hook_point() {
+        assert_eq!(HookPoint::PreTurn.plugin_event_kind(), Some("pre_turn"));
+        assert_eq!(HookPoint::TurnStart.plugin_event_kind(), Some("turn_start"));
+        assert_eq!(HookPoint::TurnEnd.plugin_event_kind(), Some("turn_end"));
+        assert_eq!(HookPoint::PostTurn.plugin_event_kind(), Some("post_turn"));
+        assert_eq!(HookPoint::PreCommit.plugin_event_kind(), None);
+        assert_eq!(HookPoint::PostCommit.plugin_event_kind(), None);
+        assert_eq!(HookPoint::OnError.plugin_event_kind(), None);
     }
 }

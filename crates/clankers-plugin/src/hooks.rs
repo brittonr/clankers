@@ -27,21 +27,8 @@ impl PluginHookHandler {
     }
 
     /// Map a HookPoint to the plugin event name string.
-    fn hook_to_event_kind(point: HookPoint) -> &'static str {
-        match point {
-            HookPoint::PreTool => "tool_call",
-            HookPoint::PostTool => "tool_result",
-            HookPoint::PrePrompt | HookPoint::PostPrompt => "user_input",
-            HookPoint::SessionStart => "session_start",
-            HookPoint::SessionEnd => "session_end",
-            HookPoint::PreTurn => "pre_turn",
-            HookPoint::TurnStart => "turn_start",
-            HookPoint::TurnEnd => "turn_end",
-            HookPoint::PostTurn => "post_turn",
-            HookPoint::ModelChange => "model_change",
-            HookPoint::PreCommit | HookPoint::PostCommit => "",
-            HookPoint::OnError => "",
-        }
+    fn hook_to_event_kind(point: HookPoint) -> Option<&'static str> {
+        point.plugin_event_kind()
     }
 }
 
@@ -56,19 +43,13 @@ impl HookHandler for PluginHookHandler {
     }
 
     fn subscribes_to(&self, point: HookPoint) -> bool {
-        let kind = Self::hook_to_event_kind(point);
-        if kind.is_empty() {
-            return false;
-        }
-
-        self.plugin_host.has_event_subscriber(kind)
+        Self::hook_to_event_kind(point).is_some_and(|kind| self.plugin_host.has_event_subscriber(kind))
     }
 
     async fn handle(&self, point: HookPoint, payload: &HookPayload) -> HookVerdict {
-        let kind = Self::hook_to_event_kind(point);
-        if kind.is_empty() {
+        let Some(kind) = Self::hook_to_event_kind(point) else {
             return HookVerdict::Continue;
-        }
+        };
 
         // Build JSON payload matching plugin event protocol
         let event_json = serde_json::json!({

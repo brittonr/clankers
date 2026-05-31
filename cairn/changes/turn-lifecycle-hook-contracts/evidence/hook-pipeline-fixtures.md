@@ -16,6 +16,8 @@ Implemented the first contract slice:
 - Tightened `HookPipeline::fire(...)` so non-pre hook verdicts remain observational and return `Continue`.
 - Added script-hook tests for `PreTurn` denial, `PostTurn` continue, `PrePrompt` modification, and ignored `PreTurn` modification output.
 - Added plugin event parser coverage for `pre_turn` and `post_turn` mapping names.
+- Moved hook-point-to-plugin-event mapping ownership into `HookPoint::plugin_event_kind()` so future enum variants fail in the enum-owning crate until their plugin support or explicit unsupported status is declared.
+- Added plugin bridge coverage proving every supported `HookPoint::plugin_event_kind()` parses and matches the plugin event protocol.
 
 ## Commands
 

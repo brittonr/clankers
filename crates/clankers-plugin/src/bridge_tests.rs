@@ -1,5 +1,7 @@
 //! Tests for plugin event parse/dispatch consistency.
 
+use clankers_hooks::HookPoint;
+
 use super::bridge::*;
 
 // ── parse + matches_event_kind agreement ────────────────────
@@ -88,4 +90,28 @@ fn unknown_event_strings_rejected() {
     assert!(PluginEvent::parse("TOOL_CALL").is_none()); // case sensitive
     assert!(PluginEvent::parse("tool-call").is_none()); // dash vs underscore
     assert!(PluginEvent::parse("plugin_init ").is_none()); // trailing space
+}
+
+#[test]
+fn hook_point_plugin_event_kinds_parse_and_match() {
+    let unsupported = [HookPoint::PreCommit, HookPoint::PostCommit, HookPoint::OnError];
+
+    for point in HookPoint::all() {
+        match point.plugin_event_kind() {
+            Some(kind) => {
+                let parsed = PluginEvent::parse(kind)
+                    .unwrap_or_else(|| panic!("HookPoint::{point:?} maps to unparseable plugin event {kind}"));
+                assert!(
+                    parsed.matches_event_kind(kind),
+                    "HookPoint::{point:?} maps to plugin event {kind}, but {parsed:?} does not match it"
+                );
+            }
+            None => {
+                assert!(
+                    unsupported.contains(point),
+                    "HookPoint::{point:?} must declare a plugin event kind or be explicitly unsupported"
+                );
+            }
+        }
+    }
 }
