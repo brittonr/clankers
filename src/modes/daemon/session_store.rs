@@ -123,11 +123,23 @@ impl AuthLayer {
         &self,
         cred: PublicCredentialEnvelope,
     ) -> crate::capability_gate::PublicUcanToolAuthorization {
-        crate::capability_gate::PublicUcanToolAuthorization::new(
+        let auth = crate::capability_gate::PublicUcanToolAuthorization::new(
             cred,
             Arc::clone(&self.policy),
             self.public_store.clone(),
-        )
+        );
+        match std::env::current_dir() {
+            Ok(cwd) => auth.with_file_authority_root(cwd),
+            Err(_) => auth,
+        }
+    }
+
+    pub fn public_tool_authorization_for_file_root(
+        &self,
+        cred: PublicCredentialEnvelope,
+        file_authority_root: impl Into<PathBuf>,
+    ) -> crate::capability_gate::PublicUcanToolAuthorization {
+        self.public_tool_authorization(cred).with_file_authority_root(file_authority_root)
     }
 
     pub fn public_tool_authorization_for_session(

@@ -4,6 +4,9 @@
 //! The gate is attached to the Agent at session creation and consulted
 //! before protected prompts, session operations, model switches, and tools.
 
+use std::path::Component;
+use std::path::Path;
+use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::SystemTime;
 
@@ -31,6 +34,7 @@ pub struct PublicUcanToolAuthorization {
     policy: Arc<basalt::Policy>,
     store: RedbPublicCredentialStore,
     session_resource_id: Option<String>,
+    file_authority_root: Option<PathBuf>,
 }
 
 impl PublicUcanToolAuthorization {
@@ -45,12 +49,19 @@ impl PublicUcanToolAuthorization {
             policy,
             store,
             session_resource_id: None,
+            file_authority_root: None,
         }
     }
 
     #[must_use]
     pub fn with_session_resource_id(mut self, session_resource_id: impl Into<String>) -> Self {
         self.session_resource_id = Some(session_resource_id.into());
+        self
+    }
+
+    #[must_use]
+    pub fn with_file_authority_root(mut self, root: impl Into<PathBuf>) -> Self {
+        self.file_authority_root = Some(root.into());
         self
     }
 }
@@ -108,7 +119,7 @@ impl CapabilityGate for PublicUcanCapabilityGate {
     }
 
     fn check_tool_call(&self, tool_name: &str, input: &Value) -> Result<(), String> {
-        let requests = public_tool_requests(tool_name, input)?;
+        let requests = public_tool_requests(tool_name, input, self.auth.file_authority_root.as_deref())?;
         self.authorize_all(requests.as_slice())
     }
 }
@@ -125,7 +136,11 @@ fn public_model_request(model: &str) -> BasaltAdmissionRequest {
     BasaltAdmissionRequest::new("model-use", format!("clankers:model/{}", encode_resource_segment(model)), "model/use")
 }
 
-fn public_tool_requests(tool_name: &str, input: &Value) -> Result<Vec<BasaltAdmissionRequest>, String> {
+fn public_tool_requests(
+    tool_name: &str,
+    input: &Value,
+    file_authority_root: Option<&Path>,
+) -> Result<Vec<BasaltAdmissionRequest>, String> {
     let mut requests = vec![BasaltAdmissionRequest::new(
         "tool-use",
         format!("clankers:tool/{}", encode_resource_segment(tool_name)),
@@ -134,11 +149,11 @@ fn public_tool_requests(tool_name: &str, input: &Value) -> Result<Vec<BasaltAdmi
 
     if FILE_READ_TOOLS.contains(&tool_name) {
         let path = required_file_tool_path(tool_name, input)?;
-        requests.push(file_request("file-read", EffectKind::FileRead, path)?);
+        requests.push(public_file_request("file-read", EffectKind::FileRead, path, file_authority_root)?);
     }
     if FILE_WRITE_TOOLS.contains(&tool_name) {
         let path = required_file_tool_path(tool_name, input)?;
-        requests.push(file_request("file-write", EffectKind::FileWrite, path)?);
+        requests.push(public_file_request("file-write", EffectKind::FileWrite, path, file_authority_root)?);
     }
 
     if tool_name == "bash" {
@@ -176,6 +191,84 @@ fn required_file_tool_path<'a>(tool_name: &str, input: &'a Value) -> Result<&'a 
         return Err(format!("public UCAN/Basalt requires non-empty concrete file path for {tool_name} tool"));
     }
     Ok(path)
+}
+
+fn public_file_request(
+    contract: &str,
+    kind: EffectKind,
+    path: &str,
+    file_authority_root: Option<&Path>,
+) -> Result<BasaltAdmissionRequest, String> {
+    let canonical_path = public_file_tool_authorization_path(path, file_authority_root)?;
+    file_request(contract, kind, canonical_path.as_str())
+}
+
+fn public_file_tool_authorization_path(path: &str, file_authority_root: Option<&Path>) -> Result<String, String> {
+    let path = path.trim();
+    if path.as_bytes().contains(&0) {
+        return Err("public UCAN/Basalt file path contains NUL byte".to_string());
+    }
+    let input_path = Path::new(path);
+    if input_path.is_absolute() {
+        return Ok(path.to_string());
+    }
+    let root = file_authority_root
+        .ok_or_else(|| "public UCAN/Basalt requires session file root for relative file path".to_string())?;
+    rooted_relative_path(root, input_path)
+}
+
+fn rooted_relative_path(root: &Path, relative_path: &Path) -> Result<String, String> {
+    let root = absolute_root_path(root)?;
+    let root_parts = path_parts(root.as_path())?;
+    let mut parts = root_parts.clone();
+    for component in relative_path.components() {
+        match component {
+            Component::CurDir => {}
+            Component::Normal(segment) => parts.push(segment.to_string_lossy().into_owned()),
+            Component::ParentDir => {
+                if parts.len() == root_parts.len() {
+                    return Err("public UCAN/Basalt file path escapes session file root".to_string());
+                }
+                parts.pop();
+            }
+            Component::RootDir | Component::Prefix(_) => {
+                return Err("public UCAN/Basalt relative file path became absolute".to_string());
+            }
+        }
+    }
+    Ok(format!("/{}", parts.join("/")))
+}
+
+fn absolute_root_path(root: &Path) -> Result<PathBuf, String> {
+    let candidate = if root.is_absolute() {
+        root.to_path_buf()
+    } else {
+        std::env::current_dir()
+            .map_err(|error| format!("public UCAN/Basalt cannot resolve session file root: {error}"))?
+            .join(root)
+    };
+    if candidate.as_os_str().is_empty() {
+        return Err("public UCAN/Basalt session file root is empty".to_string());
+    }
+    Ok(candidate)
+}
+
+fn path_parts(path: &Path) -> Result<Vec<String>, String> {
+    let mut parts = Vec::new();
+    for component in path.components() {
+        match component {
+            Component::Prefix(_) => return Err("public UCAN/Basalt file root has unsupported prefix".to_string()),
+            Component::RootDir | Component::CurDir => {}
+            Component::Normal(segment) => parts.push(segment.to_string_lossy().into_owned()),
+            Component::ParentDir => {
+                if parts.is_empty() {
+                    return Err("public UCAN/Basalt file root escapes filesystem root".to_string());
+                }
+                parts.pop();
+            }
+        }
+    }
+    Ok(parts)
 }
 
 fn file_request(contract: &str, kind: EffectKind, path: &str) -> Result<BasaltAdmissionRequest, String> {
@@ -655,12 +748,27 @@ mod tests {
     }
 
     fn public_gate(capabilities: Vec<ucan::CapabilityDocument>) -> (tempfile::TempDir, PublicUcanCapabilityGate) {
-        public_gate_with_session_resource(capabilities, None)
+        public_gate_with_session_resource_and_file_root(capabilities, None, None)
     }
 
     fn public_gate_with_session_resource(
         capabilities: Vec<ucan::CapabilityDocument>,
         session_resource_id: Option<&str>,
+    ) -> (tempfile::TempDir, PublicUcanCapabilityGate) {
+        public_gate_with_session_resource_and_file_root(capabilities, session_resource_id, None)
+    }
+
+    fn public_gate_with_file_root(
+        capabilities: Vec<ucan::CapabilityDocument>,
+        file_authority_root: &str,
+    ) -> (tempfile::TempDir, PublicUcanCapabilityGate) {
+        public_gate_with_session_resource_and_file_root(capabilities, None, Some(file_authority_root))
+    }
+
+    fn public_gate_with_session_resource_and_file_root(
+        capabilities: Vec<ucan::CapabilityDocument>,
+        session_resource_id: Option<&str>,
+        file_authority_root: Option<&str>,
     ) -> (tempfile::TempDir, PublicUcanCapabilityGate) {
         let tmp = tempfile::tempdir().expect("tempdir");
         let db = Arc::new(redb::Database::create(tmp.path().join("auth.db")).expect("db"));
@@ -682,6 +790,9 @@ mod tests {
         let mut auth = PublicUcanToolAuthorization::new(envelope, policy, store);
         if let Some(session_resource_id) = session_resource_id {
             auth = auth.with_session_resource_id(session_resource_id);
+        }
+        if let Some(file_authority_root) = file_authority_root {
+            auth = auth.with_file_authority_root(file_authority_root);
         }
         (tmp, PublicUcanCapabilityGate::new(auth))
     }
@@ -816,7 +927,7 @@ mod tests {
 
     #[test]
     fn public_tool_requests_are_concrete_and_receipts_identify_denial() {
-        let requests = public_tool_requests("write", &json!({"path": "/tmp/project/out.txt"})).expect("requests");
+        let requests = public_tool_requests("write", &json!({"path": "/tmp/project/out.txt"}), None).expect("requests");
         assert_eq!(requests.len(), 2);
         assert_eq!(requests[0].contract(), "tool-use");
         assert_eq!(requests[0].resource(), "clankers:tool/write");
@@ -841,11 +952,11 @@ mod tests {
             json!({"pattern": "needle"}),
             json!({"pattern": "needle", "path": "   "}),
         ] {
-            let denied = public_tool_requests("grep", &params).expect_err("grep must require explicit path");
+            let denied = public_tool_requests("grep", &params, None).expect_err("grep must require explicit path");
             assert!(denied.contains("concrete file path"));
         }
 
-        let requests = public_tool_requests("grep", &json!({"pattern": "needle", "path": "/tmp/project"}))
+        let requests = public_tool_requests("grep", &json!({"pattern": "needle", "path": "/tmp/project"}), None)
             .expect("explicit path should build requests");
         assert_eq!(requests.len(), 2);
         assert_eq!(requests[0].contract(), "tool-use");
@@ -867,6 +978,52 @@ mod tests {
         let reason = denied.expect_err("omitted path should deny before ambient default");
         assert!(reason.contains("concrete file path"));
         assert!(!reason.contains("/tmp/project"));
+    }
+
+    #[test]
+    fn public_ucan_relative_file_path_resolves_under_file_root() {
+        let requests = public_tool_requests(
+            "grep",
+            &json!({"pattern": "needle", "path": "src/lib.rs"}),
+            Some(Path::new("/workspace/project")),
+        )
+        .expect("relative path should resolve under root");
+        assert_eq!(requests[1].contract(), "file-read");
+        assert_eq!(requests[1].resource(), "clankers:file:/workspace/project/src/lib.rs");
+        assert_eq!(requests[1].ability(), "file/read");
+
+        let (_tmp, gate) = public_gate_with_file_root(
+            vec![
+                public_cap("clankers:tool/grep", "tool/use"),
+                public_cap("clankers:file:/workspace/project/src/lib.rs", "file/read"),
+            ],
+            "/workspace/project",
+        );
+        assert!(gate.check_tool_call("grep", &json!({"pattern": "needle", "path": "src/lib.rs"})).is_ok());
+    }
+
+    #[test]
+    fn public_ucan_relative_file_path_requires_file_root_and_denies_escape() {
+        let missing_root = public_tool_requests("grep", &json!({"pattern": "needle", "path": "src/lib.rs"}), None);
+        assert!(missing_root.expect_err("relative path needs root").contains("session file root"));
+
+        let traversal = public_tool_requests(
+            "grep",
+            &json!({"pattern": "needle", "path": "../secret"}),
+            Some(Path::new("/workspace/project")),
+        );
+        assert!(traversal.expect_err("escape should deny").contains("escapes session file root"));
+    }
+
+    #[test]
+    fn public_ucan_absolute_file_path_keeps_explicit_resource_semantics() {
+        let requests =
+            public_tool_requests("read", &json!({"path": "/var/log/app.log"}), Some(Path::new("/workspace/project")))
+                .expect("absolute path should stay explicit");
+
+        assert_eq!(requests[1].contract(), "file-read");
+        assert_eq!(requests[1].resource(), "clankers:file:/var/log/app.log");
+        assert_eq!(requests[1].ability(), "file/read");
     }
 
     #[test]

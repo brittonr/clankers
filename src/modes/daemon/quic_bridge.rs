@@ -154,6 +154,7 @@ async fn handle_control_stream(
             model,
             system_prompt,
             token,
+            cwd,
             thinking_level,
             ..
         } => {
@@ -167,7 +168,10 @@ async fn handle_control_stream(
                 {
                     let request = super::session_store::session_create_admission_request();
                     match auth.verify_credential_base64(token_b64, &request) {
-                        Ok((credential, _receipt)) => Some(auth.public_tool_authorization(credential)),
+                        Ok((credential, _receipt)) => Some(match cwd.as_deref() {
+                            Some(file_root) => auth.public_tool_authorization_for_file_root(credential, file_root),
+                            None => auth.public_tool_authorization(credential),
+                        }),
                         Err(error) => {
                             warn!("QUIC CreateSession: public UCAN/Basalt verification failed: {error}");
                             return write_quic_frame(
