@@ -1593,8 +1593,6 @@ dependencies = [
  "chrono",
  "clanker-loop",
  "clanker-message",
- "clanker-router",
- "clanker-tui-types",
  "clankers-adapters",
  "clankers-artifacts",
  "clankers-config",

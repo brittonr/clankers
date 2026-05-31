@@ -4,11 +4,14 @@
 //! into TUI-native events. The TUI crate never imports agent types directly.
 
 use clanker_tui_types::DisplayImage;
+use clanker_tui_types::ProgressKind;
+use clanker_tui_types::ToolProgress;
 use clanker_tui_types::TuiEvent;
-
 use clankers_agent::events::AgentEvent;
+use clankers_agent::tool::progress as agent_progress;
 use clankers_provider::message::Content;
 use clankers_provider::streaming::ContentDelta;
+
 use crate::tools::ToolResultContent;
 
 /// Translate an AgentEvent into zero or more TuiEvents.
@@ -70,7 +73,7 @@ pub fn translate(event: &AgentEvent) -> Option<TuiEvent> {
         }
         AgentEvent::ToolProgressUpdate { call_id, progress } => Some(TuiEvent::ToolProgressUpdate {
             call_id: call_id.clone(),
-            progress: progress.clone(),
+            progress: agent_progress_to_tui(progress),
         }),
         AgentEvent::ToolResultChunk { call_id, chunk } => Some(TuiEvent::ToolChunk {
             call_id: call_id.clone(),
@@ -112,6 +115,37 @@ pub fn translate(event: &AgentEvent) -> Option<TuiEvent> {
     }
 }
 
+fn agent_progress_to_tui(progress: &agent_progress::ToolProgress) -> ToolProgress {
+    ToolProgress {
+        kind: match &progress.kind {
+            agent_progress::ProgressKind::Bytes { current, total } => ProgressKind::Bytes {
+                current: *current,
+                total: *total,
+            },
+            agent_progress::ProgressKind::Lines { current, total } => ProgressKind::Lines {
+                current: *current,
+                total: *total,
+            },
+            agent_progress::ProgressKind::Items { current, total } => ProgressKind::Items {
+                current: *current,
+                total: *total,
+            },
+            agent_progress::ProgressKind::Percentage { percent } => ProgressKind::Percentage { percent: *percent },
+            agent_progress::ProgressKind::Phase {
+                name,
+                step,
+                total_steps,
+            } => ProgressKind::Phase {
+                name: name.clone(),
+                step: *step,
+                total_steps: *total_steps,
+            },
+        },
+        message: progress.message.clone(),
+        timestamp: progress.timestamp,
+    }
+}
+
 /// Extract text and images from ToolResult content.
 fn extract_tool_content(content: &[ToolResultContent]) -> (String, Vec<DisplayImage>) {
     let mut text = String::new();
@@ -138,15 +172,15 @@ fn extract_tool_content(content: &[ToolResultContent]) -> (String, Vec<DisplayIm
 #[cfg(test)]
 mod tests {
     use chrono::Utc;
-    use serde_json::json;
-
-    use super::*;
     use clankers_provider::Usage;
     use clankers_provider::message::AssistantMessage;
     use clankers_provider::message::Content;
     use clankers_provider::message::MessageId;
     use clankers_provider::message::StopReason;
     use clankers_provider::streaming::ContentDelta;
+    use serde_json::json;
+
+    use super::*;
     use crate::tools::ToolResult;
 
     #[test]
@@ -265,6 +299,30 @@ mod tests {
                 assert_eq!(tool_name, "read");
             }
             _ => panic!("Expected ToolStart, got {:?}", result),
+        }
+    }
+
+    #[test]
+    fn test_translate_tool_progress_update_projects_neutral_agent_progress_to_tui_edge() {
+        let event = AgentEvent::ToolProgressUpdate {
+            call_id: "call_progress".to_string(),
+            progress: agent_progress::ToolProgress::phase("Fetching", 1, Some(2)).with_message("Downloading"),
+        };
+        let result = translate(&event);
+        match result {
+            Some(TuiEvent::ToolProgressUpdate { call_id, progress }) => {
+                assert_eq!(call_id, "call_progress");
+                assert_eq!(progress.message.as_deref(), Some("Downloading"));
+                assert!(matches!(
+                    progress.kind,
+                    ProgressKind::Phase {
+                        ref name,
+                        step: 1,
+                        total_steps: Some(2),
+                    } if name == "Fetching"
+                ));
+            }
+            _ => panic!("Expected ToolProgressUpdate, got {:?}", result),
         }
     }
 

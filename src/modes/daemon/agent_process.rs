@@ -28,6 +28,7 @@ use tracing::debug;
 use tracing::info;
 use tracing::warn;
 
+use super::session_builder::merge_session_capabilities;
 use super::socket_bridge::SessionFactory;
 
 /// Maximum bytes collected from agent text output.
@@ -82,7 +83,8 @@ pub fn spawn_agent_process(
     //   2. Settings caps only (local)    → gate from defaultCapabilities
     //   3. Both                          → merge (both sets must authorize)
     //   4. Neither                       → no gate, full access
-    let effective_caps = merge_capabilities(capabilities.as_deref(), factory.settings.default_capabilities.as_deref());
+    let effective_caps =
+        merge_session_capabilities(capabilities.as_deref(), factory.settings.default_capabilities.as_deref());
 
     let mut builder = clankers_agent::builder::AgentBuilder::new(
         Arc::clone(&factory.provider),
@@ -937,39 +939,11 @@ fn build_session_hook_pipeline(
 
     // Plugin hooks
     if let Some(pm) = plugin_manager {
-        pipeline.register(std::sync::Arc::new(clankers_plugin::hooks::PluginHookHandler::new(std::sync::Arc::clone(pm))));
+        pipeline
+            .register(std::sync::Arc::new(clankers_plugin::hooks::PluginHookHandler::new(std::sync::Arc::clone(pm))));
     }
 
     Some(std::sync::Arc::new(pipeline))
-}
-
-/// Merge UCAN token capabilities with settings default_capabilities.
-///
-/// When both are present, the settings caps act as an outer boundary:
-/// only UCAN capabilities that the settings also authorize are kept.
-/// When only one source is present, use it. When neither, return None.
-fn merge_capabilities(
-    ucan_caps: Option<&[clankers_ucan::Capability]>,
-    settings_caps: Option<&[clankers_ucan::Capability]>,
-) -> Option<Vec<clankers_ucan::Capability>> {
-    match (ucan_caps, settings_caps) {
-        (None, None) => None,
-        (Some(u), None) => Some(u.to_vec()),
-        (None, Some(s)) => Some(s.to_vec()),
-        (Some(u), Some(s)) => {
-            // Both present — intersect. Keep only UCAN caps that the
-            // settings also contain (settings is the outer boundary).
-            let filtered: Vec<clankers_ucan::Capability> =
-                u.iter().filter(|cap| s.iter().any(|sc| sc.contains(cap))).cloned().collect();
-            if filtered.is_empty() {
-                // UCAN token has no capabilities that settings allow.
-                // Return an empty set so the gate blocks everything.
-                Some(Vec::new())
-            } else {
-                Some(filtered)
-            }
-        }
-    }
 }
 
 #[cfg(test)]
@@ -1751,84 +1725,5 @@ mod factory_plugin_tests {
 
         shutdown_spawned_session(&registry, &spawned);
         clankers_plugin::shutdown_plugin_runtime(&pm, "test shutdown").await;
-    }
-}
-
-#[cfg(test)]
-mod merge_tests {
-    use clankers_ucan::Capability;
-
-    use super::*;
-
-    #[test]
-    fn neither_source_gives_none() {
-        assert!(merge_capabilities(None, None).is_none());
-    }
-
-    #[test]
-    fn ucan_only() {
-        let ucan = vec![Capability::ToolUse {
-            tool_pattern: "read".to_string(),
-        }];
-        let result = merge_capabilities(Some(&ucan), None).unwrap();
-        assert_eq!(result.len(), 1);
-    }
-
-    #[test]
-    fn settings_only() {
-        let settings = vec![Capability::ToolUse {
-            tool_pattern: "read,bash".to_string(),
-        }];
-        let result = merge_capabilities(None, Some(&settings)).unwrap();
-        assert_eq!(result.len(), 1);
-    }
-
-    #[test]
-    fn both_intersects() {
-        // Settings allow read,bash,grep; UCAN token grants read,write
-        let settings = vec![Capability::ToolUse {
-            tool_pattern: "read,bash,grep".to_string(),
-        }];
-        let ucan = vec![
-            Capability::ToolUse {
-                tool_pattern: "read".to_string(),
-            },
-            Capability::ToolUse {
-                tool_pattern: "write".to_string(),
-            },
-        ];
-        let result = merge_capabilities(Some(&ucan), Some(&settings)).unwrap();
-        // Only "read" survives — settings don't contain "write"
-        assert_eq!(result.len(), 1);
-        assert!(matches!(&result[0], Capability::ToolUse { tool_pattern } if tool_pattern == "read"));
-    }
-
-    #[test]
-    fn both_no_overlap_gives_empty() {
-        let settings = vec![Capability::ToolUse {
-            tool_pattern: "read".to_string(),
-        }];
-        let ucan = vec![Capability::ToolUse {
-            tool_pattern: "bash".to_string(),
-        }];
-        let result = merge_capabilities(Some(&ucan), Some(&settings)).unwrap();
-        assert!(result.is_empty());
-    }
-
-    #[test]
-    fn settings_wildcard_passes_all_ucan() {
-        let settings = vec![Capability::ToolUse {
-            tool_pattern: "*".to_string(),
-        }];
-        let ucan = vec![
-            Capability::ToolUse {
-                tool_pattern: "read".to_string(),
-            },
-            Capability::ToolUse {
-                tool_pattern: "bash".to_string(),
-            },
-        ];
-        let result = merge_capabilities(Some(&ucan), Some(&settings)).unwrap();
-        assert_eq!(result.len(), 2);
     }
 }

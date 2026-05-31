@@ -23,11 +23,11 @@ use clankers_protocol::DaemonEvent;
 use clankers_protocol::ImageData;
 use clankers_protocol::SerializedMessage;
 use clankers_protocol::SessionCommand;
-use clankers_provider::message::Content as ProviderContent;
 use tracing::info;
 use tracing::warn;
 
 use crate::SessionController;
+use crate::command_images::prompt_images_to_provider_content;
 use crate::convert::semantic_event_to_daemon_event;
 use crate::runtime_adapter::ControllerRuntimeAdapter;
 use crate::runtime_adapter::RuntimeControlRequest;
@@ -747,21 +747,7 @@ impl SessionController {
         self.outgoing.push(DaemonEvent::AgentStart);
         self.flush_outgoing_for_streaming(&mut on_events);
 
-        let image_content = if images.is_empty() {
-            None
-        } else {
-            Some(
-                images
-                    .into_iter()
-                    .map(|img| ProviderContent::Image {
-                        source: clankers_provider::message::ImageSource::Base64 {
-                            media_type: img.media_type,
-                            data: img.data,
-                        },
-                    })
-                    .collect::<Vec<_>>(),
-            )
-        };
+        let image_content = prompt_images_to_provider_content(images);
 
         // Take the agent and event receiver out to avoid borrow conflicts while
         // the prompt future is alive and we keep draining broadcast events.

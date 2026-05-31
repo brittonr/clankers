@@ -85,17 +85,13 @@ impl RpcProvider {
     }
 }
 
-fn build_router_request(request: CompletionRequest) -> clanker_router::CompletionRequest {
-    crate::router_request_bridge::build_router_request(request)
-}
-
 #[async_trait]
 impl Provider for RpcProvider {
     async fn complete(&self, request: CompletionRequest, tx: mpsc::Sender<StreamEvent>) -> Result<()> {
         // Convert clankers CompletionRequest → router CompletionRequest
         // Messages must be in Anthropic API format (role + content), not clankers
         // internal AgentMessage enum format.
-        let router_request = build_router_request(request);
+        let router_request = crate::router_request_bridge::build_router_request(request);
 
         // Send to daemon and translate streaming events
         let (router_tx, mut router_rx) = mpsc::channel(64);
@@ -134,12 +130,12 @@ mod tests {
 
     use serde_json::json;
 
-    use super::build_router_request;
     use crate::CompletionRequest;
     use crate::message::AgentMessage;
     use crate::message::Content;
     use crate::message::MessageId;
     use crate::message::UserMessage;
+    use crate::router_request_bridge::build_router_request;
 
     fn make_request() -> CompletionRequest {
         CompletionRequest {

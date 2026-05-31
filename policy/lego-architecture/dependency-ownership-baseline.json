@@ -86,8 +86,6 @@
   "inventory_signature": {
     "agent_crate": {
       "concrete_dependencies": [
-        "clanker-router",
-        "clanker-tui-types",
         "clankers-config",
         "clankers-db",
         "clankers-hooks",
@@ -98,8 +96,8 @@
         "clankers-skills",
         "clankers-util"
       ],
-      "concrete_dependency_count": 11,
-      "internal_dependency_count": 19,
+      "concrete_dependency_count": 9,
+      "internal_dependency_count": 17,
       "owner": "turn orchestration shell; concrete systems should migrate behind model/tool/config/storage/hook/prompt/skill/cost ports",
       "package": "clankers-agent"
     },
@@ -266,10 +264,9 @@
         "package": "clanker-message"
       },
       {
-        "dependent_count": 10,
+        "dependent_count": 9,
         "dependents": [
           "clankers",
-          "clankers-agent",
           "clankers-config",
           "clankers-controller",
           "clankers-model-selection",
@@ -568,6 +565,7 @@
         "disabled_tools_effect",
         "manual_compaction_effect"
       ],
+      "slash_effects_module": "src/slash_commands/effects.rs",
       "standalone_agent_task_module": "src/modes/agent_task.rs",
       "typed_rail_kind": "Rust AST enum, struct, function, and call-path checks"
     }

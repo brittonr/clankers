@@ -5,11 +5,11 @@ use std::time::Duration;
 use std::time::Instant;
 
 use async_trait::async_trait;
+// Re-export ToolDefinition from clanker-message (canonical definition)
+pub use clanker_message::ToolDefinition;
 // ToolResult and ToolResultContent — canonical definitions in clanker-message.
 pub use clanker_message::ToolResult;
 pub use clanker_message::ToolResultContent;
-// Re-export ToolDefinition from clanker-router (canonical definition)
-pub use clanker_router::provider::ToolDefinition;
 use parking_lot::Mutex;
 use serde_json::Value;
 use tokio::sync::broadcast;
@@ -17,15 +17,115 @@ use tokio_util::sync::CancellationToken;
 
 use crate::events::AgentEvent;
 
-/// Re-export progress types from their canonical crates.
+/// Neutral progress types emitted by tools.
 pub mod progress {
-    // ProgressKind and ToolProgress — canonical definitions in clanker-tui-types.
+    use std::time::Instant;
+
     // ResultChunk, TruncationConfig, ToolResultAccumulator — canonical definitions in clanker-message.
     pub use clanker_message::ResultChunk;
     pub use clanker_message::ToolResultAccumulator;
     pub use clanker_message::TruncationConfig;
-    pub use clanker_tui_types::ProgressKind;
-    pub use clanker_tui_types::ToolProgress;
+
+    #[cfg_attr(
+        dylint_lib = "tigerstyle",
+        allow(
+            ambient_clock,
+            reason = "tool progress timestamps are captured at the tool event boundary"
+        )
+    )]
+    fn progress_timestamp() -> Instant {
+        Instant::now()
+    }
+
+    /// Different types of progress a tool can report without depending on display DTOs.
+    #[derive(Debug, Clone, PartialEq)]
+    pub enum ProgressKind {
+        Bytes {
+            current: u64,
+            total: Option<u64>,
+        },
+        Lines {
+            current: u64,
+            total: Option<u64>,
+        },
+        Items {
+            current: u64,
+            total: Option<u64>,
+        },
+        Percentage {
+            percent: f32,
+        },
+        Phase {
+            name: String,
+            step: u32,
+            total_steps: Option<u32>,
+        },
+    }
+
+    /// Structured progress information emitted by tools during execution.
+    #[derive(Debug, Clone)]
+    pub struct ToolProgress {
+        pub kind: ProgressKind,
+        pub message: Option<String>,
+        pub timestamp: Instant,
+    }
+
+    impl ToolProgress {
+        #[must_use]
+        pub fn bytes(current: u64, total: Option<u64>) -> Self {
+            Self {
+                kind: ProgressKind::Bytes { current, total },
+                message: None,
+                timestamp: progress_timestamp(),
+            }
+        }
+
+        #[must_use]
+        pub fn lines(current: u64, total: Option<u64>) -> Self {
+            Self {
+                kind: ProgressKind::Lines { current, total },
+                message: None,
+                timestamp: progress_timestamp(),
+            }
+        }
+
+        #[must_use]
+        pub fn items(current: u64, total: Option<u64>) -> Self {
+            Self {
+                kind: ProgressKind::Items { current, total },
+                message: None,
+                timestamp: progress_timestamp(),
+            }
+        }
+
+        #[must_use]
+        pub fn percentage(percent: f32) -> Self {
+            Self {
+                kind: ProgressKind::Percentage { percent },
+                message: None,
+                timestamp: progress_timestamp(),
+            }
+        }
+
+        #[must_use]
+        pub fn phase(name: impl Into<String>, step: u32, total_steps: Option<u32>) -> Self {
+            Self {
+                kind: ProgressKind::Phase {
+                    name: name.into(),
+                    step,
+                    total_steps,
+                },
+                message: None,
+                timestamp: progress_timestamp(),
+            }
+        }
+
+        #[must_use]
+        pub fn with_message(mut self, message: impl Into<String>) -> Self {
+            self.message = Some(message.into());
+            self
+        }
+    }
 }
 
 /// Shared slot the turn loop reads after each tool execution round.

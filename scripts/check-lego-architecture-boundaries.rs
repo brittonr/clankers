@@ -48,6 +48,7 @@ const PROVIDER_ROUTER_ADAPTER: &str = "crates/clankers-provider/src/router.rs";
 const PROVIDER_RPC_ADAPTER: &str = "crates/clankers-provider/src/rpc_provider.rs";
 const SESSION_COMMAND_POLICY: &str = "src/modes/session_command_policy.rs";
 const ATTACH_COMMANDS: &str = "src/modes/attach/commands.rs";
+const SLASH_EFFECTS: &str = "src/slash_commands/effects.rs";
 const AGENT_TASK: &str = "src/modes/agent_task.rs";
 
 const AGENT_CONCRETE_DEPS: &[&str] = &[
@@ -188,6 +189,7 @@ fn run() -> Result<PathBuf, String> {
             hash_artifact(Path::new(PROVIDER_RPC_ADAPTER))?,
             hash_artifact(Path::new(SESSION_COMMAND_POLICY))?,
             hash_artifact(Path::new(ATTACH_COMMANDS))?,
+            hash_artifact(Path::new(SLASH_EFFECTS))?,
             hash_artifact(Path::new(AGENT_TASK))?
         ]
     });
@@ -812,9 +814,11 @@ fn controller_domain_event_signature() -> Result<Value, String> {
 fn session_command_policy_signature() -> Result<Value, String> {
     let policy_file = read_rust_file(SESSION_COMMAND_POLICY)?;
     let attach_file = read_rust_file(ATTACH_COMMANDS)?;
+    let slash_effects_file = read_rust_file(SLASH_EFFECTS)?;
     let agent_task_file = read_rust_file(AGENT_TASK)?;
     let policy = &policy_file.source;
     let attach = &attach_file.source;
+    let slash_effects = &slash_effects_file.source;
     let agent_task = &agent_task_file.source;
 
     require_rust_enum(&policy_file, "LocalSessionEffect", "typed local session effect DTO")?;
@@ -830,9 +834,9 @@ fn session_command_policy_signature() -> Result<Value, String> {
         require_rust_fn(&policy_file, function, "shared session command policy function")?;
     }
     require_rust_path(
-        &attach_file,
+        &slash_effects_file,
         "session_command_policy::cycle_thinking_level_effect",
-        "attach cycle thinking delegates to shared policy",
+        "slash cycle thinking delegates to shared policy before attach dispatch",
     )?;
     require_rust_path(
         &attach_file,
@@ -866,9 +870,9 @@ fn session_command_policy_signature() -> Result<Value, String> {
         "attach command shell delegates through shared effect dispatcher",
     )?;
     require_contains(
-        &attach,
-        "session_command_policy::cycle_thinking_level_effect(app.thinking_level)",
-        "attach cycle thinking delegates to shared policy",
+        &slash_effects,
+        "session_command_policy::cycle_thinking_level_effect(current_thinking_level)",
+        "slash cycle thinking delegates to shared policy before attach dispatch",
     )?;
     require_contains(
         &attach,
@@ -884,6 +888,7 @@ fn session_command_policy_signature() -> Result<Value, String> {
     Ok(json!({
         "policy_module": SESSION_COMMAND_POLICY,
         "attach_adapter_module": ATTACH_COMMANDS,
+        "slash_effects_module": SLASH_EFFECTS,
         "standalone_agent_task_module": AGENT_TASK,
         "local_effect_dto": "LocalSessionEffect",
         "ack_policy_dto": "SessionAckPolicy",

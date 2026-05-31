@@ -212,6 +212,28 @@ impl SessionBuildPlan {
     }
 }
 
+/// Merge UCAN token capabilities with settings `default_capabilities` before spawning a session.
+///
+/// When both are present, the settings caps act as an outer boundary: only UCAN capabilities
+/// that the settings also authorize are kept. When only one source is present, use it. When
+/// neither exists, return `None` to mean full local access.
+pub(crate) fn merge_session_capabilities(
+    ucan_caps: Option<&[clankers_ucan::Capability]>,
+    settings_caps: Option<&[clankers_ucan::Capability]>,
+) -> Option<Vec<clankers_ucan::Capability>> {
+    match (ucan_caps, settings_caps) {
+        (None, None) => None,
+        (Some(ucan), None) => Some(ucan.to_vec()),
+        (None, Some(settings)) => Some(settings.to_vec()),
+        (Some(ucan), Some(settings)) => Some(
+            ucan.iter()
+                .filter(|capability| settings.iter().any(|setting| setting.contains(capability)))
+                .cloned()
+                .collect(),
+        ),
+    }
+}
+
 pub(crate) fn load_recovery_seed_messages(entry: &SessionCatalogEntry) -> Vec<SerializedMessage> {
     if !entry.automerge_path.exists() {
         tracing::warn!("recovery automerge file missing at {:?} — starting fresh", entry.automerge_path);
@@ -322,6 +344,7 @@ mod tests {
     use clanker_message::StopReason;
     use clanker_message::Usage;
     use clanker_message::UserMessage;
+    use clankers_ucan::Capability;
     use tempfile::tempdir;
 
     use super::*;
@@ -355,6 +378,32 @@ mod tests {
                 Some(user_id),
             )
             .unwrap();
+    }
+
+    #[test]
+    fn session_capability_merge_is_socketless_and_settings_bounded() {
+        assert!(merge_session_capabilities(None, None).is_none());
+
+        let settings = vec![Capability::ToolUse {
+            tool_pattern: "read,bash,grep".to_string(),
+        }];
+        let ucan = vec![
+            Capability::ToolUse {
+                tool_pattern: "read".to_string(),
+            },
+            Capability::ToolUse {
+                tool_pattern: "write".to_string(),
+            },
+        ];
+        let result = merge_session_capabilities(Some(&ucan), Some(&settings)).unwrap();
+        assert_eq!(result.len(), 1);
+        assert!(matches!(&result[0], Capability::ToolUse { tool_pattern } if tool_pattern == "read"));
+
+        let no_overlap_settings = vec![Capability::ToolUse {
+            tool_pattern: "todo".to_string(),
+        }];
+        let blocked = merge_session_capabilities(Some(&ucan), Some(&no_overlap_settings)).unwrap();
+        assert!(blocked.is_empty());
     }
 
     #[test]

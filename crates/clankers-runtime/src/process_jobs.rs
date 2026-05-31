@@ -31,6 +31,30 @@ pub const PROCESS_JOB_MAX_SAFE_PREVIEW_CHARS: usize = 160;
 pub const PROCESS_JOB_MAX_SAFE_EXCERPT_CHARS: usize = 512;
 pub const PROCESS_JOB_MAX_SAFE_METADATA_VALUE_CHARS: usize = 128;
 
+/// Backend-neutral native-process admission decision.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ProcessJobNativeAdmissionDecision {
+    pub accepted: bool,
+    pub active: usize,
+    pub limit: usize,
+}
+
+impl ProcessJobNativeAdmissionDecision {
+    #[must_use]
+    pub fn summary(&self) -> String {
+        format!("native process admission denied: active process limit reached ({}/{})", self.active, self.limit)
+    }
+}
+
+#[must_use]
+pub fn native_process_job_admission_decision(active: usize, limit: usize) -> ProcessJobNativeAdmissionDecision {
+    ProcessJobNativeAdmissionDecision {
+        accepted: active < limit,
+        active,
+        limit,
+    }
+}
+
 /// Canonical, versioned input envelope for BLAKE3-native public process/job ids.
 ///
 /// Backend-owned locators such as PIDs, pueue task ids, and systemd unit names do
@@ -4405,6 +4429,18 @@ mod tests {
         assert_eq!(mismatch.state, ProcessJobReconciliationState::IdentityMismatch);
         assert_eq!(mismatch.backend_ref, None);
         assert!(matches!(unavailable.status, ProcessJobStatus::BackendUnavailable { .. }));
+    }
+
+    #[test]
+    fn native_admission_decision_is_owned_by_process_job_contracts() {
+        let accepted = native_process_job_admission_decision(31, 32);
+        let rejected = native_process_job_admission_decision(32, 32);
+
+        assert!(accepted.accepted);
+        assert_eq!(accepted.active, 31);
+        assert_eq!(accepted.limit, 32);
+        assert!(!rejected.accepted);
+        assert_eq!(rejected.summary(), "native process admission denied: active process limit reached (32/32)");
     }
 
     #[test]

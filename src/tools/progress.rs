@@ -1,13 +1,11 @@
-//! Structured progress and result streaming for tools
+//! Structured progress and result streaming for tools.
 //!
-//! Progress types re-exported from `clanker-tui-types`.
-//! Result streaming types re-exported from `clanker-message`.
+//! Progress types come from the neutral agent tool boundary so built-in tool
+//! policy does not import display DTOs. Result streaming types are re-exported
+//! from `clanker-message`.
 
-// ProgressKind and ToolProgress — canonical definitions in clanker-tui-types.
-pub use clanker_tui_types::ProgressKind;
-pub use clanker_tui_types::ToolProgress;
-
-// ResultChunk, TruncationConfig, ToolResultAccumulator — canonical definitions in clanker-message.
 pub use clanker_message::ResultChunk;
 pub use clanker_message::ToolResultAccumulator;
 pub use clanker_message::TruncationConfig;
+pub use clankers_agent::tool::progress::ProgressKind;
+pub use clankers_agent::tool::progress::ToolProgress;

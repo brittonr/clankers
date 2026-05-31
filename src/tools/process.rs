@@ -45,6 +45,7 @@ use clankers_runtime::process_jobs::ProcessJobLogChunk;
 use clankers_runtime::process_jobs::ProcessJobLogCursor;
 use clankers_runtime::process_jobs::ProcessJobLogRange;
 use clankers_runtime::process_jobs::ProcessJobLogRef;
+use clankers_runtime::process_jobs::ProcessJobNativeAdmissionDecision as NativeAdmissionDecision;
 use clankers_runtime::process_jobs::ProcessJobNotificationDecision;
 use clankers_runtime::process_jobs::ProcessJobNotificationEvent;
 use clankers_runtime::process_jobs::ProcessJobNotificationKind;
@@ -67,6 +68,8 @@ use clankers_runtime::process_jobs::ProcessJobToolReceipt;
 use clankers_runtime::process_jobs::ProcessJobToolRequest;
 use clankers_runtime::process_jobs::ProcessJobToolResult;
 use clankers_runtime::process_jobs::StartProcessJobRequest;
+use clankers_runtime::process_jobs::native_process_job_admission_decision as native_admission_decision;
+use clankers_util::ansi::strip_ansi;
 use serde_json::Value;
 use serde_json::json;
 use tokio::io::AsyncBufReadExt;
@@ -80,7 +83,6 @@ use super::Tool;
 use super::ToolContext;
 use super::ToolDefinition;
 use super::ToolResult;
-use clankers_util::ansi::strip_ansi;
 
 mod adapter;
 use adapter::ProcessToolJsonAdapter;
@@ -115,27 +117,6 @@ fn unsupported_gc_receipt(
     });
     receipt.refresh_summary();
     receipt
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-struct NativeAdmissionDecision {
-    accepted: bool,
-    active: usize,
-    limit: usize,
-}
-
-impl NativeAdmissionDecision {
-    fn summary(&self) -> String {
-        format!("native process admission denied: active process limit reached ({}/{})", self.active, self.limit)
-    }
-}
-
-fn native_admission_decision(active: usize, limit: usize) -> NativeAdmissionDecision {
-    NativeAdmissionDecision {
-        accepted: active < limit,
-        active,
-        limit,
-    }
 }
 
 static REGISTRY: LazyLock<std::sync::Mutex<ProcessRegistry>> =
