@@ -132,13 +132,13 @@ fn public_tool_requests(tool_name: &str, input: &Value) -> Result<Vec<BasaltAdmi
         "tool/use",
     )];
 
-    if let Some(path) = input.get("path").and_then(|value| value.as_str()) {
-        if FILE_READ_TOOLS.contains(&tool_name) {
-            requests.push(file_request("file-read", EffectKind::FileRead, path)?);
-        }
-        if FILE_WRITE_TOOLS.contains(&tool_name) {
-            requests.push(file_request("file-write", EffectKind::FileWrite, path)?);
-        }
+    if FILE_READ_TOOLS.contains(&tool_name) {
+        let path = required_file_tool_path(tool_name, input)?;
+        requests.push(file_request("file-read", EffectKind::FileRead, path)?);
+    }
+    if FILE_WRITE_TOOLS.contains(&tool_name) {
+        let path = required_file_tool_path(tool_name, input)?;
+        requests.push(file_request("file-write", EffectKind::FileWrite, path)?);
     }
 
     if tool_name == "bash" {
@@ -166,6 +166,16 @@ fn public_tool_requests(tool_name: &str, input: &Value) -> Result<Vec<BasaltAdmi
     }
 
     Ok(requests)
+}
+
+fn required_file_tool_path<'a>(tool_name: &str, input: &'a Value) -> Result<&'a str, String> {
+    let Some(path) = input.get("path").and_then(Value::as_str) else {
+        return Err(format!("public UCAN/Basalt requires concrete file path for {tool_name} tool"));
+    };
+    if path.trim().is_empty() {
+        return Err(format!("public UCAN/Basalt requires non-empty concrete file path for {tool_name} tool"));
+    }
+    Ok(path)
 }
 
 fn file_request(contract: &str, kind: EffectKind, path: &str) -> Result<BasaltAdmissionRequest, String> {
@@ -823,6 +833,40 @@ mod tests {
         let reason = denied.expect_err("write grant missing");
         assert!(reason.contains("file/write"));
         assert!(reason.contains("Basalt"));
+    }
+
+    #[test]
+    fn public_ucan_file_tools_require_concrete_path() {
+        for params in [
+            json!({"pattern": "needle"}),
+            json!({"pattern": "needle", "path": "   "}),
+        ] {
+            let denied = public_tool_requests("grep", &params).expect_err("grep must require explicit path");
+            assert!(denied.contains("concrete file path"));
+        }
+
+        let requests = public_tool_requests("grep", &json!({"pattern": "needle", "path": "/tmp/project"}))
+            .expect("explicit path should build requests");
+        assert_eq!(requests.len(), 2);
+        assert_eq!(requests[0].contract(), "tool-use");
+        assert_eq!(requests[0].resource(), "clankers:tool/grep");
+        assert_eq!(requests[1].contract(), "file-read");
+        assert_eq!(requests[1].resource(), "clankers:file:/tmp/project");
+        assert_eq!(requests[1].ability(), "file/read");
+    }
+
+    #[test]
+    fn public_ucan_gate_denies_file_tool_default_path_before_execution() {
+        let (_tmp, gate) = public_gate(vec![
+            public_cap("clankers:tool/grep", "tool/use"),
+            public_cap("clankers:file:/tmp/project", "file/read"),
+        ]);
+
+        let denied = gate.check_tool_call("grep", &json!({"pattern": "needle"}));
+
+        let reason = denied.expect_err("omitted path should deny before ambient default");
+        assert!(reason.contains("concrete file path"));
+        assert!(!reason.contains("/tmp/project"));
     }
 
     #[test]
