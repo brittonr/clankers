@@ -14,13 +14,13 @@ use tokio::sync::mpsc;
 use tracing::info;
 use tracing::warn;
 
-use crate::provider::CompletionRequest;
-use crate::provider::Provider;
-use crate::provider::message::AgentMessage;
-use crate::provider::message::Content;
-use crate::provider::message::MessageId;
-use crate::provider::message::UserMessage;
-use crate::provider::streaming::StreamEvent;
+use clankers_provider::CompletionRequest;
+use clankers_provider::Provider;
+use clankers_provider::message::AgentMessage;
+use clankers_provider::message::Content;
+use clankers_provider::message::MessageId;
+use clankers_provider::message::UserMessage;
+use clankers_provider::streaming::StreamEvent;
 
 /// Attempt to resolve a conflicted file using the LLM.
 ///
@@ -97,7 +97,7 @@ pub async fn resolve_conflict(
     let mut resolved = String::new();
     while let Some(event) = rx.recv().await {
         if let StreamEvent::ContentBlockDelta {
-            delta: crate::provider::streaming::ContentDelta::TextDelta { text },
+            delta: clankers_provider::streaming::ContentDelta::TextDelta { text },
             ..
         } = event
         {

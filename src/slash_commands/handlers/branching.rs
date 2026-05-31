@@ -3,7 +3,7 @@
 use super::SlashContext;
 use super::SlashHandler;
 use crate::modes::interactive::AgentCommand;
-use crate::provider::message::MessageId;
+use clankers_provider::message::MessageId;
 
 pub struct ForkHandler;
 

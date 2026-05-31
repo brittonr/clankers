@@ -7,7 +7,7 @@
 use clankers_protocol::DaemonEvent;
 use clankers_protocol::SessionCommand;
 
-use crate::provider::ThinkingLevel;
+use clankers_provider::ThinkingLevel;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum LocalSessionEffect {

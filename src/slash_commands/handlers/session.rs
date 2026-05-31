@@ -64,13 +64,13 @@ fn handle_show_current(ctx: &mut SlashContext<'_>) {
 
 fn handle_list(ctx: &mut SlashContext<'_>, args: &str) {
     use std::fmt::Write;
-    let paths = crate::config::ClankersPaths::get();
+    let paths = clankers_config::ClankersPaths::get();
     let limit: usize = if args.is_empty() {
         10
     } else {
         args.parse().unwrap_or(10)
     };
-    let files = crate::session::store::list_sessions(&paths.global_sessions_dir, &ctx.app.cwd);
+    let files = clankers_session::store::list_sessions(&paths.global_sessions_dir, &ctx.app.cwd);
 
     if files.is_empty() {
         ctx.app.push_system("No sessions found for this directory.".to_string(), false);
@@ -83,7 +83,7 @@ fn handle_list(ctx: &mut SlashContext<'_>, args: &str) {
             && path.file_name().and_then(|n| n.to_str()).is_some_and(|n| n.contains(&ctx.app.session_id));
         let marker = if is_current_file { " ◀ current" } else { "" };
 
-        if let Some(summary) = crate::session::store::read_session_summary(path) {
+        if let Some(summary) = clankers_session::store::read_session_summary(path) {
             let date = summary.created_at.format("%Y-%m-%d %H:%M");
             let preview = summary.first_user_message.as_deref().unwrap_or("(empty)");
             write!(
@@ -112,8 +112,8 @@ fn handle_list(ctx: &mut SlashContext<'_>, args: &str) {
 }
 
 fn handle_resume(ctx: &mut SlashContext<'_>, args: &str) {
-    let paths = crate::config::ClankersPaths::get();
-    let files = crate::session::store::list_sessions(&paths.global_sessions_dir, &ctx.app.cwd);
+    let paths = clankers_config::ClankersPaths::get();
+    let files = clankers_session::store::list_sessions(&paths.global_sessions_dir, &ctx.app.cwd);
 
     if files.is_empty() {
         ctx.app.push_system("No sessions found for this directory.".to_string(), true);
@@ -122,10 +122,10 @@ fn handle_resume(ctx: &mut SlashContext<'_>, args: &str) {
 
     if args.is_empty() {
         // Open the session selector menu
-        let items: Vec<crate::tui::components::session_selector::SessionItem> = files
+        let items: Vec<clankers_tui::components::session_selector::SessionItem> = files
             .iter()
             .map(|f| {
-                if let Some(summary) = crate::session::store::read_session_summary(f) {
+                if let Some(summary) = clankers_session::store::read_session_summary(f) {
                     let date = summary.created_at.with_timezone(&chrono::Local).format("%Y-%m-%d %H:%M");
                     let preview = summary.first_user_message.as_deref().unwrap_or("(empty)");
                     let label = format!(
@@ -136,14 +136,14 @@ fn handle_resume(ctx: &mut SlashContext<'_>, args: &str) {
                         summary.message_count,
                         summary.model,
                     );
-                    crate::tui::components::session_selector::SessionItem {
+                    clankers_tui::components::session_selector::SessionItem {
                         session_id: summary.session_id,
                         label,
                         file_path: f.clone(),
                     }
                 } else {
                     let name = f.file_name().and_then(|n| n.to_str()).unwrap_or("?");
-                    crate::tui::components::session_selector::SessionItem {
+                    clankers_tui::components::session_selector::SessionItem {
                         session_id: name.to_string(),
                         label: name.to_string(),
                         file_path: f.clone(),
@@ -177,8 +177,8 @@ fn handle_delete(ctx: &mut SlashContext<'_>, args: &str) {
         return;
     }
 
-    let paths = crate::config::ClankersPaths::get();
-    let found = crate::session::store::find_session_by_id(&paths.global_sessions_dir, &ctx.app.cwd, args);
+    let paths = clankers_config::ClankersPaths::get();
+    let found = clankers_session::store::find_session_by_id(&paths.global_sessions_dir, &ctx.app.cwd, args);
 
     if let Some(file) = found {
         match std::fs::remove_file(&file) {
@@ -195,8 +195,8 @@ fn handle_delete(ctx: &mut SlashContext<'_>, args: &str) {
 }
 
 fn handle_purge(ctx: &mut SlashContext<'_>) {
-    let paths = crate::config::ClankersPaths::get();
-    match crate::session::store::purge_sessions(&paths.global_sessions_dir, &ctx.app.cwd) {
+    let paths = clankers_config::ClankersPaths::get();
+    match clankers_session::store::purge_sessions(&paths.global_sessions_dir, &ctx.app.cwd) {
         Ok(count) => {
             ctx.app.push_system(format!("Deleted {} session(s) for this directory.", count), false);
         }

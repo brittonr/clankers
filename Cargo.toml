@@ -154,6 +154,7 @@ sha2 = "0.10"
 tokio-stream = "0.1"
 regex = "1"
 serde_yaml = "0.9"
+terminal-colorsaurus = "1.0"
 rat-inline = { workspace = true }
 ratatui = "0.30"
 ratatui-hypertile = { version = "0.1", features = ["serde"] }

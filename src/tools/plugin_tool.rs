@@ -6,8 +6,8 @@ use std::time::Duration;
 use async_trait::async_trait;
 use serde_json::Value;
 
-use crate::plugin::PluginManager;
-use crate::plugin::StdioToolCallEvent;
+use clankers_plugin::PluginManager;
+use clankers_plugin::StdioToolCallEvent;
 use crate::tools::Tool;
 use crate::tools::ToolContext;
 use crate::tools::ToolDefinition;
@@ -92,7 +92,7 @@ impl PluginTool {
                         .get(&self.plugin_name)
                         .map(|info| info.manifest.permissions.clone())
                         .unwrap_or_default();
-                    let host_fns = crate::plugin::host::HostFunctions::new();
+                    let host_fns = clankers_plugin::host::HostFunctions::new();
                     let host_results = host_fns.process_host_calls(&parsed, &permissions);
                     if !host_results.is_empty() {
                         tracing::debug!("Plugin '{}' made {} host call(s)", self.plugin_name, host_results.len());
@@ -115,7 +115,7 @@ impl PluginTool {
     async fn execute_stdio(&self, ctx: &ToolContext, params: Value) -> ToolResult {
         ctx.emit_progress(&format!("plugin: {}::{}", self.plugin_name, self.definition.name));
 
-        let mut events = match crate::plugin::start_stdio_tool_call(
+        let mut events = match clankers_plugin::start_stdio_tool_call(
             &self.manager,
             &self.plugin_name,
             &ctx.call_id,
@@ -140,12 +140,12 @@ impl PluginTool {
         loop {
             tokio::select! {
                 () = ctx.signal.cancelled() => {
-                    crate::plugin::cancel_stdio_tool_call(&self.manager, &self.plugin_name, &ctx.call_id, "turn cancelled").ok();
+                    clankers_plugin::cancel_stdio_tool_call(&self.manager, &self.plugin_name, &ctx.call_id, "turn cancelled").ok();
                     return self.finish_cancelled_stdio_call(&ctx.call_id, &mut events, cancel_grace).await;
                 }
                 () = &mut timed_out => {
-                    crate::plugin::cancel_stdio_tool_call(&self.manager, &self.plugin_name, &ctx.call_id, "tool call timed out").ok();
-                    crate::plugin::abandon_stdio_tool_call(&self.manager, &self.plugin_name, &ctx.call_id).ok();
+                    clankers_plugin::cancel_stdio_tool_call(&self.manager, &self.plugin_name, &ctx.call_id, "tool call timed out").ok();
+                    clankers_plugin::abandon_stdio_tool_call(&self.manager, &self.plugin_name, &ctx.call_id).ok();
                     return ToolResult::error(format!(
                         "Plugin tool '{}' timed out waiting for stdio result",
                         self.definition.name,
@@ -182,14 +182,14 @@ impl PluginTool {
         loop {
             tokio::select! {
                 () = &mut cancelled => {
-                    crate::plugin::abandon_stdio_tool_call(&self.manager, &self.plugin_name, call_id).ok();
+                    clankers_plugin::abandon_stdio_tool_call(&self.manager, &self.plugin_name, call_id).ok();
                     return ToolResult::error("Tool call cancelled");
                 }
                 event = events.recv() => {
                     match event {
                         Some(StdioToolCallEvent::Progress(_)) => {}
                         Some(_) | None => {
-                            crate::plugin::abandon_stdio_tool_call(&self.manager, &self.plugin_name, call_id).ok();
+                            clankers_plugin::abandon_stdio_tool_call(&self.manager, &self.plugin_name, call_id).ok();
                             return ToolResult::error("Tool call cancelled");
                         }
                     }

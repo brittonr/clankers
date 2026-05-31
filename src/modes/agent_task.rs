@@ -7,7 +7,7 @@ use std::sync::Arc;
 
 use super::interactive::AgentCommand;
 use super::interactive::TaskResult;
-use crate::agent::Agent;
+use clankers_agent::Agent;
 
 /// Spawn the background agent task that processes commands.
 ///
@@ -20,7 +20,7 @@ pub(crate) fn spawn_agent_task(
     mut cmd_rx: tokio::sync::mpsc::UnboundedReceiver<AgentCommand>,
     done_tx: tokio::sync::mpsc::UnboundedSender<TaskResult>,
     tool_env_for_rebuild: crate::modes::common::ToolEnv,
-    plugin_manager: Option<Arc<std::sync::Mutex<crate::plugin::PluginManager>>>,
+    plugin_manager: Option<Arc<std::sync::Mutex<clankers_plugin::PluginManager>>>,
 ) {
     tokio::spawn(async move {
         while let Some(cmd) = cmd_rx.recv().await {
@@ -29,10 +29,10 @@ pub(crate) fn spawn_agent_task(
                     handle_prompt(&mut agent, &mut cmd_rx, &done_tx, &text, None).await;
                 }
                 AgentCommand::PromptWithImages { text, images } => {
-                    let img_contents: Vec<crate::provider::message::Content> = images
+                    let img_contents: Vec<clankers_provider::message::Content> = images
                         .into_iter()
-                        .map(|img| crate::provider::message::Content::Image {
-                            source: crate::provider::message::ImageSource::Base64 {
+                        .map(|img| clankers_provider::message::Content::Image {
+                            source: clankers_provider::message::ImageSource::Base64 {
                                 media_type: img.media_type,
                                 data: img.data,
                             },
@@ -46,10 +46,10 @@ pub(crate) fn spawn_agent_task(
                 }
                 AgentCommand::RewriteAndPromptWithImages { text, images } => {
                     let improved = rewrite_prompt(agent.provider(), agent.model(), agent.session_id(), &text).await;
-                    let img_contents: Vec<crate::provider::message::Content> = images
+                    let img_contents: Vec<clankers_provider::message::Content> = images
                         .into_iter()
-                        .map(|img| crate::provider::message::Content::Image {
-                            source: crate::provider::message::ImageSource::Base64 {
+                        .map(|img| clankers_provider::message::Content::Image {
+                            source: clankers_provider::message::ImageSource::Base64 {
                                 media_type: img.media_type,
                                 data: img.data,
                             },
@@ -102,7 +102,7 @@ pub(crate) fn spawn_agent_task(
                     handle_switch_account(
                         &mut agent,
                         &done_tx,
-                        crate::provider::auth::DEFAULT_OAUTH_PROVIDER,
+                        clankers_provider::auth::DEFAULT_OAUTH_PROVIDER,
                         &account_name,
                     )
                     .await;
@@ -145,7 +145,7 @@ async fn handle_prompt(
     cmd_rx: &mut tokio::sync::mpsc::UnboundedReceiver<AgentCommand>,
     done_tx: &tokio::sync::mpsc::UnboundedSender<TaskResult>,
     text: &str,
-    images: Option<Vec<crate::provider::message::Content>>,
+    images: Option<Vec<clankers_provider::message::Content>>,
 ) {
     agent.reset_cancel();
     let cancel = agent.cancel_token();
@@ -204,9 +204,9 @@ async fn handle_login(
     provider: &str,
     account: &str,
 ) {
-    use crate::provider::auth::AuthStoreExt;
+    use clankers_provider::auth::AuthStoreExt;
 
-    let oauth_flow = match crate::provider::auth::OAuthFlow::from_provider(Some(provider)) {
+    let oauth_flow = match clankers_provider::auth::OAuthFlow::from_provider(Some(provider)) {
         Ok(flow) => flow,
         Err(e) => {
             done_tx.send(TaskResult::LoginDone(Err(format!("Login failed: {}", e)))).ok();
@@ -217,13 +217,13 @@ async fn handle_login(
     let result = oauth_flow.exchange_code(code, state, verifier).await;
     match result {
         Ok(creds) => {
-            let paths = crate::config::ClankersPaths::get();
-            let mut store = crate::provider::auth::AuthStore::load(&paths.global_auth);
+            let paths = clankers_config::ClankersPaths::get();
+            let mut store = clankers_provider::auth::AuthStore::load(&paths.global_auth);
             store.set_provider_credentials(provider, account, creds);
             store.switch_provider_account(provider, account);
             match store.save(&paths.global_auth) {
                 Ok(()) => {
-                    crate::provider::openai_codex::reset_entitlement(provider, None);
+                    clankers_provider::openai_codex::reset_entitlement(provider, None);
                     agent.provider().reload_credentials().await;
                     done_tx
                         .send(TaskResult::LoginDone(Ok(format!(
@@ -250,24 +250,24 @@ async fn handle_switch_account(
     provider: &str,
     account_name: &str,
 ) {
-    use crate::provider::auth::AuthStoreExt;
+    use clankers_provider::auth::AuthStoreExt;
 
-    let paths = crate::config::ClankersPaths::get();
-    let mut store = crate::provider::auth::AuthStore::load(&paths.global_auth);
+    let paths = clankers_config::ClankersPaths::get();
+    let mut store = clankers_provider::auth::AuthStore::load(&paths.global_auth);
     if store.switch_provider_account(provider, account_name) {
         if let Err(e) = store.save(&paths.global_auth) {
             done_tx.send(TaskResult::AccountSwitched(Err(format!("Failed to save: {}", e)))).ok();
         } else {
-            crate::provider::openai_codex::reset_entitlement(provider, None);
+            clankers_provider::openai_codex::reset_entitlement(provider, None);
             agent.provider().reload_credentials().await;
-            let label = if provider == crate::provider::auth::DEFAULT_OAUTH_PROVIDER {
+            let label = if provider == clankers_provider::auth::DEFAULT_OAUTH_PROVIDER {
                 account_name.to_string()
             } else {
                 format!("{}:{}", provider, account_name)
             };
             done_tx.send(TaskResult::AccountSwitched(Ok(label))).ok();
         }
-    } else if provider == crate::provider::auth::DEFAULT_OAUTH_PROVIDER {
+    } else if provider == clankers_provider::auth::DEFAULT_OAUTH_PROVIDER {
         done_tx.send(TaskResult::AccountSwitched(Err(format!("No account '{}'", account_name)))).ok();
     } else {
         done_tx
@@ -285,17 +285,17 @@ async fn handle_switch_account(
 /// the model to improve the user's prompt for clarity and specificity.
 /// Falls back to the original text if the rewrite call fails.
 pub(crate) async fn rewrite_prompt(
-    provider: &std::sync::Arc<dyn crate::provider::Provider>,
+    provider: &std::sync::Arc<dyn clankers_provider::Provider>,
     model: &str,
     session_id: &str,
     original: &str,
 ) -> String {
-    use crate::provider::CompletionRequest;
-    use crate::provider::message::AgentMessage;
-    use crate::provider::message::Content;
-    use crate::provider::message::MessageId;
-    use crate::provider::message::UserMessage;
-    use crate::provider::streaming::StreamEvent;
+    use clankers_provider::CompletionRequest;
+    use clankers_provider::message::AgentMessage;
+    use clankers_provider::message::Content;
+    use clankers_provider::message::MessageId;
+    use clankers_provider::message::UserMessage;
+    use clankers_provider::streaming::StreamEvent;
 
     let system = "You are a prompt engineer. Your job is to rewrite the user's prompt \
         to be clearer, more specific, and more effective for an AI coding assistant. \
@@ -342,7 +342,7 @@ pub(crate) async fn rewrite_prompt(
     let mut result = String::new();
     while let Some(event) = rx.recv().await {
         if let StreamEvent::ContentBlockDelta {
-            delta: crate::provider::streaming::ContentDelta::TextDelta { text },
+            delta: clankers_provider::streaming::ContentDelta::TextDelta { text },
             ..
         } = event
         {
@@ -378,13 +378,13 @@ mod tests {
     use async_trait::async_trait;
     use tokio::sync::mpsc;
 
-    use crate::agent::Agent;
+    use clankers_agent::Agent;
     use crate::modes::interactive::TaskResult;
-    use crate::provider::CompletionRequest;
-    use crate::provider::Model;
-    use crate::provider::Provider;
-    use crate::provider::streaming::ContentDelta;
-    use crate::provider::streaming::StreamEvent;
+    use clankers_provider::CompletionRequest;
+    use clankers_provider::Model;
+    use clankers_provider::Provider;
+    use clankers_provider::streaming::ContentDelta;
+    use clankers_provider::streaming::StreamEvent;
 
     /// Mock provider that streams back a fixed response.
     struct MockRewriteProvider {
@@ -397,7 +397,7 @@ mod tests {
             &self,
             _request: CompletionRequest,
             tx: mpsc::Sender<StreamEvent>,
-        ) -> crate::provider::error::Result<()> {
+        ) -> clankers_provider::error::Result<()> {
             tx.send(StreamEvent::ContentBlockDelta {
                 index: 0,
                 delta: ContentDelta::TextDelta {
@@ -428,8 +428,8 @@ mod tests {
             &self,
             _request: CompletionRequest,
             _tx: mpsc::Sender<StreamEvent>,
-        ) -> crate::provider::error::Result<()> {
-            Err(crate::provider::error::provider_err("intentional test failure"))
+        ) -> clankers_provider::error::Result<()> {
+            Err(clankers_provider::error::provider_err("intentional test failure"))
         }
 
         fn models(&self) -> &[Model] {
@@ -450,7 +450,7 @@ mod tests {
             &self,
             _request: CompletionRequest,
             tx: mpsc::Sender<StreamEvent>,
-        ) -> crate::provider::error::Result<()> {
+        ) -> clankers_provider::error::Result<()> {
             tx.send(StreamEvent::MessageStop).await.ok();
             Ok(())
         }
@@ -479,10 +479,10 @@ mod tests {
                 &self,
                 _request: CompletionRequest,
                 tx: mpsc::Sender<StreamEvent>,
-            ) -> crate::provider::error::Result<()> {
+            ) -> clankers_provider::error::Result<()> {
                 self.calls.fetch_add(1, Ordering::SeqCst);
                 tx.send(StreamEvent::MessageStart {
-                    message: crate::provider::streaming::MessageMetadata {
+                    message: clankers_provider::streaming::MessageMetadata {
                         id: "standalone-msg".to_string(),
                         model: "test-model".to_string(),
                         role: "assistant".to_string(),
@@ -529,7 +529,7 @@ mod tests {
         let mut agent = Agent::new(
             provider_dyn,
             Vec::new(),
-            crate::config::Settings::default(),
+            clankers_config::Settings::default(),
             "test-model".to_string(),
             "test system".to_string(),
         );
@@ -590,7 +590,7 @@ mod tests {
                 &self,
                 request: CompletionRequest,
                 tx: mpsc::Sender<StreamEvent>,
-            ) -> crate::provider::error::Result<()> {
+            ) -> clankers_provider::error::Result<()> {
                 *self.captured.lock().unwrap() = Some(request);
                 tx.send(StreamEvent::ContentBlockDelta {
                     index: 0,

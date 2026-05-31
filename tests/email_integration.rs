@@ -11,7 +11,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use std::sync::Mutex;
 
-use clankers::plugin::PluginManager;
+use clankers_plugin::PluginManager;
 
 /// Build a PluginManager with the email plugin loaded and configured.
 /// Returns None if any required env var is missing.

@@ -13,8 +13,8 @@ pub use clankers_agent::tool::ToolResult;
 pub use clankers_agent::tool::ToolResultContent;
 pub use clankers_agent::tool::model_switch_slot;
 
-/// Output truncation utilities — re-exported from `crate::util::truncation`.
-pub use crate::util::truncation;
+/// Output truncation utilities — re-exported from `clankers_util::truncation`.
+pub use clankers_util::truncation;
 
 fn protect_file_mutation(tool_name: &str, path_str: &str) -> Result<serde_json::Value, String> {
     let path = std::path::Path::new(path_str);

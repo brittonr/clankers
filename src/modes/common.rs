@@ -23,14 +23,11 @@ use tokio::sync::broadcast;
 use tracing::info;
 use tracing::warn;
 
-use crate::agent::events::AgentEvent;
+use clankers_agent::events::AgentEvent;
 use crate::error::Result;
-use crate::plugin::PluginManager;
-use crate::plugin::PluginState;
+use clankers_plugin::PluginManager;
+use clankers_plugin::PluginState;
 use crate::tools::Tool;
-use crate::tools::ToolDefinition;
-use crate::tools::plugin_tool::PluginTool;
-use crate::tools::validator_tool::ValidatorTool;
 
 // ── Thinking setup ──────────────────────────────────────────────────────────
 
@@ -44,7 +41,7 @@ pub(crate) fn core_thinking_level(level: clanker_tui_types::ThinkingLevel) -> cl
     }
 }
 
-pub(crate) fn apply_thinking_settings(app: &mut crate::tui::app::App, settings: &crate::config::settings::Settings) {
+pub(crate) fn apply_thinking_settings(app: &mut clankers_tui::app::App, settings: &clankers_config::settings::Settings) {
     let level = settings.parsed_thinking_level();
     app.thinking_enabled = level.is_enabled();
     app.thinking_level = level;
@@ -196,17 +193,17 @@ impl ToolTier {
 #[derive(Default, Clone)]
 pub struct ToolEnv {
     /// Settings needed by tool constructors that mirror runtime config.
-    pub settings: Option<crate::config::settings::Settings>,
+    pub settings: Option<clankers_config::settings::Settings>,
     /// Event bus for streaming partial results to the TUI.
     pub event_tx: Option<broadcast::Sender<AgentEvent>>,
     /// Channel for subagent panel events (delegate/subagent status).
-    pub panel_tx: Option<tokio::sync::mpsc::UnboundedSender<crate::tui::components::subagent_event::SubagentEvent>>,
+    pub panel_tx: Option<tokio::sync::mpsc::UnboundedSender<clankers_tui::components::subagent_event::SubagentEvent>>,
     /// Channel for TODO list updates.
     pub todo_tx: Option<crate::tools::todo::TodoTx>,
     /// Channel for bash tool confirmation prompts.
     pub bash_confirm_tx: Option<crate::tools::bash::ConfirmTx>,
     /// Shared process monitor for tracking child processes.
-    pub process_monitor: Option<crate::procmon::ProcessMonitorHandle>,
+    pub process_monitor: Option<clankers_procmon::ProcessMonitorHandle>,
     /// Actor context for in-process subagent/delegate spawning (daemon mode).
     pub actor_ctx: Option<crate::tools::subagent::ActorContext>,
     /// Shared schedule engine for the schedule tool.
@@ -221,214 +218,11 @@ pub struct ToolEnv {
 
 /// Build all tools with tier assignments, wiring up channels from a [`ToolEnv`].
 ///
-/// Per-tool streaming is handled uniformly via `ToolContext` — the event
-/// channel is passed to every tool at execution time by the turn loop,
-/// so no per-tool wiring is needed here.
-#[cfg_attr(
-    dylint_lib = "tigerstyle",
-    allow(
-        function_length,
-        reason = "sequential setup/dispatch logic — splitting would fragment readability"
-    )
-)]
+/// Concrete tool construction is owned by `modes::tool_catalog`; this public
+/// wrapper preserves the existing call surface while keeping family ownership
+/// inspectable.
 pub fn build_tiered_tools(env: &ToolEnv) -> Vec<(ToolTier, Arc<dyn Tool>)> {
-    let panel_tx = env.panel_tx.clone();
-    let todo_tx = env.todo_tx.clone();
-    let bash_confirm_tx = env.bash_confirm_tx.clone();
-    let process_monitor = env.process_monitor.clone();
-    let mut bash_tool = if let Some(tx) = bash_confirm_tx {
-        crate::tools::bash::BashTool::with_confirm(tx)
-    } else {
-        crate::tools::bash::BashTool::new()
-    };
-    if let Some(ref pm) = process_monitor {
-        bash_tool = bash_tool.with_process_monitor(pm.clone());
-    }
-
-    let mut subagent_tool = crate::tools::subagent::SubagentTool::new();
-    if let Some(ref ptx) = panel_tx {
-        subagent_tool = subagent_tool.with_panel_tx(ptx.clone());
-    }
-    if let Some(ref pm) = process_monitor {
-        subagent_tool = subagent_tool.with_process_monitor(pm.clone());
-    }
-    if let Some(ref actx) = env.actor_ctx {
-        subagent_tool = subagent_tool.with_actor_ctx(actx.clone());
-    }
-
-    let mut delegate_tool = crate::tools::delegate::DelegateTool::new();
-    if let Some(ref ptx) = panel_tx {
-        delegate_tool = delegate_tool.with_panel_tx(ptx.clone());
-    }
-    // Enable remote peer routing if paths exist
-    {
-        let paths = crate::config::ClankersPaths::get();
-        let registry_path = crate::modes::rpc::peers::registry_path(paths);
-        let identity_path = crate::modes::rpc::iroh::identity_path(paths);
-        delegate_tool = delegate_tool.with_peer_routing(registry_path, identity_path);
-    }
-    if let Some(ref pm) = process_monitor {
-        delegate_tool = delegate_tool.with_process_monitor(pm.clone());
-    }
-    if let Some(ref actx) = env.actor_ctx {
-        delegate_tool = delegate_tool.with_actor_ctx(actx.clone());
-    }
-
-    let mut todo_tool = crate::tools::todo::TodoTool::new();
-    if let Some(tx) = todo_tx {
-        todo_tool = todo_tool.with_tx(tx);
-    }
-
-    let mut procmon_tool = crate::tools::procmon::ProcmonTool::new();
-    if let Some(ref pm) = process_monitor {
-        procmon_tool = procmon_tool.with_monitor(pm.clone());
-    }
-
-    let mut process_tool = crate::tools::process::ProcessTool::new();
-    if let Some(ref pm) = process_monitor {
-        process_tool = process_tool.with_process_monitor(pm.clone());
-    }
-
-    let mut tools: Vec<(ToolTier, Arc<dyn Tool>)> = vec![
-        // ── Core (always active) ────────────────────────────────────
-        (ToolTier::Core, Arc::new(crate::tools::read::ReadTool::new())),
-        (ToolTier::Core, Arc::new(crate::tools::write::WriteTool::new())),
-        (ToolTier::Core, Arc::new(crate::tools::edit::EditTool::new())),
-        (ToolTier::Core, Arc::new(crate::tools::patch::PatchTool::new())),
-        (ToolTier::Core, Arc::new(crate::tools::execute_code::ExecuteCodeTool::new())),
-        (ToolTier::Core, Arc::new(process_tool)),
-        (ToolTier::Core, Arc::new(bash_tool)),
-        (ToolTier::Core, Arc::new(crate::tools::grep::GrepTool::new())),
-        (ToolTier::Core, Arc::new(crate::tools::find::FindTool::new())),
-        (ToolTier::Core, Arc::new(crate::tools::ls::LsTool::new())),
-        // ── Orchestration (on demand) ───────────────────────────────
-        (ToolTier::Orchestration, Arc::new(subagent_tool)),
-        (ToolTier::Orchestration, Arc::new(delegate_tool)),
-        (ToolTier::Orchestration, Arc::new(crate::tools::signal_loop::SignalLoopTool::new())),
-        (ToolTier::Orchestration, Arc::new(procmon_tool)),
-        // ── Specialty (interactive default) ─────────────────────────
-        (ToolTier::Specialty, Arc::new(todo_tool)),
-        (ToolTier::Specialty, Arc::new(crate::tools::nix::NixTool::new())),
-        (ToolTier::Specialty, Arc::new(crate::tools::web::WebTool::new())),
-        (ToolTier::Specialty, Arc::new(crate::tools::checkpoint::CheckpointTool::new())),
-        (ToolTier::Specialty, Arc::new(crate::tools::tool_gateway::ToolGatewayTool::new())),
-        (ToolTier::Specialty, Arc::new(crate::tools::voice_mode::VoiceModeTool::new())),
-        (ToolTier::Specialty, Arc::new(crate::tools::soul_personality::SoulPersonalityTool::new())),
-        (ToolTier::Specialty, Arc::new(crate::tools::commit::CommitTool::new())),
-        (ToolTier::Specialty, Arc::new(crate::tools::review::ReviewTool::new())),
-        (ToolTier::Specialty, Arc::new(crate::tools::ask::AskTool::new())),
-        (ToolTier::Specialty, Arc::new(crate::tools::image_gen::ImageGenTool::new())),
-        (ToolTier::Specialty, Arc::new(crate::tools::tts::TtsTool::new())),
-        (ToolTier::Specialty, Arc::new(crate::tools::autoresearch::InitExperimentTool::new())),
-        (ToolTier::Specialty, Arc::new(crate::tools::autoresearch::RunExperimentTool::new())),
-        (ToolTier::Specialty, Arc::new(crate::tools::autoresearch::LogExperimentTool::new())),
-        (
-            ToolTier::Specialty,
-            Arc::new(crate::tools::memory::MemoryTool::new(clankers_config::settings::MemoryLimits::default())),
-        ),
-        (
-            ToolTier::Specialty,
-            Arc::new(crate::tools::skill_manage::SkillManageTool::new(
-                crate::config::ClankersPaths::get().global_skills_dir.clone(),
-            )),
-        ),
-        (
-            ToolTier::Specialty,
-            Arc::new(crate::tools::skill_view::SkillsListTool::new(
-                crate::config::ClankersPaths::get().global_skills_dir.clone(),
-                crate::tools::skill_view::project_skills_dir_from_cwd(),
-            )),
-        ),
-        (
-            ToolTier::Specialty,
-            Arc::new(crate::tools::skill_view::SkillViewTool::new(
-                crate::config::ClankersPaths::get().global_skills_dir.clone(),
-                crate::tools::skill_view::project_skills_dir_from_cwd(),
-            )),
-        ),
-        (
-            ToolTier::Specialty,
-            Arc::new(crate::tools::session_search::SessionSearchTool::new(
-                crate::config::ClankersPaths::get().global_sessions_dir.clone(),
-                100,
-            )),
-        ),
-        (
-            ToolTier::Specialty,
-            Arc::new(crate::tools::compress::CompressTool::new(
-                crate::tools::compress::compression_slot(),
-                env.settings
-                    .as_ref()
-                    .map(|settings| settings.compression.keep_recent)
-                    .unwrap_or(crate::config::settings::CompressionSettings::default().keep_recent),
-                env.settings
-                    .as_ref()
-                    .map(|settings| settings.compression.min_messages)
-                    .unwrap_or(crate::config::settings::CompressionSettings::default().min_messages),
-            )),
-        ),
-        // ── Matrix (daemon only) ────────────────────────────────────
-        #[cfg(feature = "matrix-bridge")]
-        (ToolTier::Matrix, Arc::new(crate::tools::matrix::MatrixSendTool::new())),
-        #[cfg(feature = "matrix-bridge")]
-        (ToolTier::Matrix, Arc::new(crate::tools::matrix::MatrixReadTool::new())),
-        #[cfg(feature = "matrix-bridge")]
-        (ToolTier::Matrix, Arc::new(crate::tools::matrix::MatrixRoomsTool::new())),
-        #[cfg(feature = "matrix-bridge")]
-        (ToolTier::Matrix, Arc::new(crate::tools::matrix::MatrixPeersTool::new())),
-        #[cfg(feature = "matrix-bridge")]
-        (ToolTier::Matrix, Arc::new(crate::tools::matrix::MatrixJoinTool::new())),
-        #[cfg(feature = "matrix-bridge")]
-        (ToolTier::Matrix, Arc::new(crate::tools::matrix::MatrixRpcTool::new())),
-    ];
-
-    // Register schedule tool when a ScheduleEngine is available
-    if let Some(ref engine) = env.schedule_engine {
-        tools.push((ToolTier::Specialty, Arc::new(crate::tools::schedule::ScheduleTool::new(Arc::clone(engine)))));
-    }
-
-    // Register browser automation when enabled in settings. The runtime is lazy so tool-list
-    // construction stays synchronous for prompt, TUI, and daemon/session paths.
-    if let Some(settings) = env.settings.as_ref()
-        && let Some(tool) = crate::tools::browser::build_browser_tool_from_settings(&settings.browser_automation)
-    {
-        tools.push((ToolTier::Specialty, tool));
-    }
-
-    // Register external memory providers when enabled in settings. The tool uses the
-    // shared ToolContext database at execution time, so every mode using ToolEnv settings
-    // gets the same publication gate while retaining per-session DB wiring.
-    if let Some(settings) = env.settings.as_ref()
-        && let Some(tool) =
-            crate::tools::external_memory::build_external_memory_tool_from_settings(&settings.external_memory)
-    {
-        tools.push((ToolTier::Specialty, tool));
-    }
-
-    if let Some(settings) = env.settings.as_ref()
-        && settings.steel_eval.enabled
-    {
-        tools.push((
-            ToolTier::Specialty,
-            Arc::new(crate::tools::steel_eval::SteelEvalTool::new(steel_eval_tool_config(&settings.steel_eval))),
-        ));
-    }
-
-    // Register nix_eval only when nix is on PATH
-    if std::process::Command::new("nix")
-        .arg("--version")
-        .stdout(std::process::Stdio::null())
-        .stderr(std::process::Stdio::null())
-        .status()
-        .is_ok()
-    {
-        tools.push((ToolTier::Specialty, Arc::new(crate::tools::nix::eval_tool::NixEvalTool::new())));
-    }
-
-    #[cfg(feature = "tui-validate")]
-    tools.push((ToolTier::Specialty, Arc::new(crate::tools::devtools::validate_tui::ValidateTuiTool::new())));
-
-    tools
+    crate::modes::tool_catalog::build_builtin_tiered_tools(env)
 }
 
 /// Initialize the plugin manager, discover and load all plugins from the
@@ -448,7 +242,7 @@ pub fn init_plugin_manager(
         global_plugins_dir,
         project_plugins_dir,
         extra_dirs,
-        crate::plugin::PluginRuntimeMode::Standalone,
+        clankers_plugin::PluginRuntimeMode::Standalone,
         &cwd,
     )
 }
@@ -457,7 +251,7 @@ pub fn init_plugin_manager_for_mode(
     global_plugins_dir: &Path,
     project_plugins_dir: Option<&Path>,
     extra_dirs: &[&Path],
-    runtime_mode: crate::plugin::PluginRuntimeMode,
+    runtime_mode: clankers_plugin::PluginRuntimeMode,
     cwd: &Path,
 ) -> Arc<Mutex<PluginManager>> {
     let mut manager =
@@ -511,8 +305,8 @@ pub fn init_plugin_manager_for_mode(
     manager.set_stdio_reserved_tool_names(builtin_tool_names);
 
     let manager = Arc::new(Mutex::new(manager));
-    crate::plugin::configure_stdio_runtime(&manager, cwd.to_path_buf(), runtime_mode);
-    crate::plugin::start_stdio_plugins(&manager);
+    clankers_plugin::configure_stdio_runtime(&manager, cwd.to_path_buf(), runtime_mode);
+    clankers_plugin::start_stdio_plugins(&manager);
     manager
 }
 
@@ -523,207 +317,24 @@ pub fn init_plugin_manager_for_mode(
 pub fn build_plugin_tools(
     builtin_tools: &[Arc<dyn Tool>],
     manager: &Arc<Mutex<PluginManager>>,
-    panel_tx: Option<&tokio::sync::mpsc::UnboundedSender<crate::tui::components::subagent_event::SubagentEvent>>,
+    panel_tx: Option<&tokio::sync::mpsc::UnboundedSender<clankers_tui::components::subagent_event::SubagentEvent>>,
 ) -> Vec<Arc<dyn Tool>> {
-    let host = crate::plugin::PluginHostFacade::new(Arc::clone(manager));
-    let mut tools: Vec<Arc<dyn Tool>> = Vec::new();
-
-    // Derive built-in tool names from the actual tool list — skip plugin tools that collide.
-    let mut seen_names: std::collections::HashSet<String> =
-        builtin_tools.iter().map(|t| t.definition().name.clone()).collect();
-
-    let mut active_plugins = host.active_plugins();
-    active_plugins.sort_by(|left, right| {
-        let left_rank = i32::from(!left.manifest.kind.uses_wasm_runtime());
-        let right_rank = i32::from(!right.manifest.kind.uses_wasm_runtime());
-        left_rank.cmp(&right_rank).then(left.name.cmp(&right.name))
-    });
-
-    for plugin_info in active_plugins {
-        if plugin_info.manifest.kind.uses_wasm_runtime() {
-            if !plugin_info.manifest.tool_definitions.is_empty() {
-                build_detailed_tools(&plugin_info, manager, &mut seen_names, panel_tx, &mut tools);
-            } else {
-                build_bare_tools(&plugin_info, manager, &mut seen_names, &mut tools);
-            }
-        } else {
-            build_stdio_tools(&plugin_info, manager, &mut seen_names, &mut tools);
-        }
-    }
-
-    if !tools.is_empty() {
-        info!("Registered {} plugin tool(s)", tools.len());
-    }
-
-    tools
+    crate::modes::tool_catalog::build_plugin_tools(builtin_tools, manager, panel_tx)
 }
 
-/// Build tools from detailed tool_definitions in a plugin manifest.
-fn build_detailed_tools(
-    plugin_info: &crate::plugin::PluginInfo,
-    manager: &Arc<Mutex<PluginManager>>,
-    seen_names: &mut std::collections::HashSet<String>,
-    panel_tx: Option<&tokio::sync::mpsc::UnboundedSender<crate::tui::components::subagent_event::SubagentEvent>>,
-    tools: &mut Vec<Arc<dyn Tool>>,
-) {
-    let is_validator = plugin_info.manifest.permissions.iter().any(|p| p == "exec" || p == "all");
-
-    for tool_def in &plugin_info.manifest.tool_definitions {
-        if !seen_names.insert(tool_def.name.clone()) {
-            continue;
-        }
-
-        let definition = ToolDefinition {
-            name: tool_def.name.clone(),
-            description: tool_def.description.clone(),
-            input_schema: tool_def.input_schema.clone(),
-        };
-
-        if is_validator && tool_def.name.starts_with("validate") {
-            let mut vtool =
-                ValidatorTool::new(definition, plugin_info.name.clone(), tool_def.handler.clone(), Arc::clone(manager));
-            if let Some(ptx) = panel_tx {
-                vtool = vtool.with_panel_tx(ptx.clone());
-            }
-            tools.push(Arc::new(vtool));
-        } else {
-            tools.push(Arc::new(PluginTool::new(
-                definition,
-                plugin_info.name.clone(),
-                tool_def.handler.clone(),
-                Arc::clone(manager),
-            )));
-        }
-    }
-}
-
-/// Build tools from bare tool names in a plugin manifest (fallback path).
-fn build_bare_tools(
-    plugin_info: &crate::plugin::PluginInfo,
-    manager: &Arc<Mutex<PluginManager>>,
-    seen_names: &mut std::collections::HashSet<String>,
-    tools: &mut Vec<Arc<dyn Tool>>,
-) {
-    for tool_name in &plugin_info.manifest.tools {
-        if !seen_names.insert(tool_name.clone()) {
-            continue;
-        }
-
-        let definition = ToolDefinition {
-            name: tool_name.clone(),
-            description: format!("Tool '{}' provided by plugin '{}'", tool_name, plugin_info.name),
-            input_schema: serde_json::json!({
-                "type": "object",
-                "properties": {
-                    "input": {
-                        "type": "string",
-                        "description": "Input to pass to the tool"
-                    }
-                }
-            }),
-        };
-        tools.push(Arc::new(PluginTool::new(
-            definition,
-            plugin_info.name.clone(),
-            "handle_tool_call".to_string(),
-            Arc::clone(manager),
-        )));
-    }
-}
-
-fn build_stdio_tools(
-    plugin_info: &crate::plugin::PluginInfo,
-    manager: &Arc<Mutex<PluginManager>>,
-    seen_names: &mut std::collections::HashSet<String>,
-    tools: &mut Vec<Arc<dyn Tool>>,
-) {
-    let registered = {
-        let manager = manager.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
-        manager.live_registered_tools(&plugin_info.name)
-    };
-
-    for tool in registered {
-        if !seen_names.insert(tool.name.clone()) {
-            continue;
-        }
-        tools.push(Arc::new(PluginTool::new_stdio(
-            ToolDefinition {
-                name: tool.name,
-                description: tool.description,
-                input_schema: tool.input_schema,
-            },
-            plugin_info.name.clone(),
-            Arc::clone(manager),
-        )));
-    }
-}
-
-/// Build the full tiered tool set (built-in with tiers + plugin tools as Specialty).
+/// Build the full tiered tool set (built-in, plugin, MCP, and runtime extension tools).
 pub fn build_all_tiered_tools(
     env: &ToolEnv,
     plugin_manager: Option<&Arc<Mutex<PluginManager>>>,
 ) -> Vec<(ToolTier, Arc<dyn Tool>)> {
-    let mut tiered = build_tiered_tools(env);
-    if let Some(manager) = plugin_manager {
-        let flat_tools: Vec<Arc<dyn Tool>> = tiered.iter().map(|(_, t)| t.clone()).collect();
-        let plugin_tools = build_plugin_tools(&flat_tools, manager, env.panel_tx.as_ref());
-        // Plugin tools are Specialty tier by default
-        for tool in plugin_tools {
-            tiered.push((ToolTier::Specialty, tool));
-        }
-    }
-    if let (Some(settings), Some(registry)) = (&env.settings, &env.mcp_registry)
-        && !settings.mcp.servers.is_empty()
-    {
-        let mut seen_names: HashSet<String> = tiered.iter().map(|(_, tool)| tool.definition().name.clone()).collect();
-        let mcp_tools =
-            crate::tools::mcp::build_tools_from_settings(&settings.mcp, &mut seen_names, Arc::clone(registry));
-        for tool in mcp_tools {
-            tiered.push((ToolTier::Specialty, tool));
-        }
-    }
-    tiered
-}
-
-fn steel_eval_tool_config(
-    settings: &crate::config::settings::SteelEvalSettings,
-) -> crate::tools::steel_eval::SteelEvalToolConfig {
-    let mut default_profile = steel_eval_profile_config(&settings.profile);
-    default_profile.id.clone_from(&settings.default_profile);
-    let profiles = settings.profiles.iter().map(steel_eval_profile_config).collect();
-    crate::tools::steel_eval::SteelEvalToolConfig::new(default_profile, profiles)
-}
-
-fn steel_eval_profile_config(
-    profile: &crate::config::settings::SteelEvalProfileSettings,
-) -> crate::tools::steel_eval::SteelEvalProfileConfig {
-    crate::tools::steel_eval::SteelEvalProfileConfig {
-        id: profile.id.clone(),
-        max_source_bytes: profile.max_source_bytes,
-        max_output_bytes: profile.max_output_bytes,
-        max_host_calls: profile.max_host_calls,
-        max_steps: profile.max_steps,
-        session_capabilities: profile.session_capabilities.clone(),
-        host_functions: profile.host_functions.iter().map(steel_eval_host_function).collect(),
-    }
-}
-
-fn steel_eval_host_function(
-    host: &crate::config::settings::SteelEvalHostFunctionSettings,
-) -> clankers_runtime::steel_runtime::SteelHostFunctionRegistration {
-    clankers_runtime::steel_runtime::SteelHostFunctionRegistration {
-        name: host.name.clone(),
-        required_capability: host.required_capability.clone(),
-        output: host.output.clone(),
-    }
+    crate::modes::tool_catalog::build_all_tiered_tools(env, plugin_manager)
 }
 
 /// Publish the existing Clankers tool registration as a host-facing runtime catalog.
 ///
 /// This keeps embedders on the same source of truth as the CLI/TUI/daemon path:
 /// built-ins come from [`build_tiered_tools`], plugin tools from [`build_plugin_tools`],
-/// MCP tools from `build_tools_from_settings`, and gateway/optional tools from the
-/// same tiered list above.
+/// MCP and optional runtime tools come from the same tiered catalog owner.
 pub fn runtime_tool_catalog_from_tiered_tools(
     tiered_tools: &[(ToolTier, Arc<dyn Tool>)],
     disabled_tools: &std::collections::HashSet<String>,
@@ -781,10 +392,10 @@ pub fn resolve_tool_tiers(tools_flag: Option<&str>) -> Option<Vec<ToolTier>> {
 
 /// Fire `plugin_init` event to all active plugins that subscribe to it.
 /// Returns the collected UI actions so the caller can apply them to the TUI.
-pub fn fire_plugin_init(plugin_manager: &Arc<Mutex<PluginManager>>) -> Vec<crate::plugin::ui::PluginUiAction> {
-    use crate::plugin::bridge::parse_ui_actions;
+pub fn fire_plugin_init(plugin_manager: &Arc<Mutex<PluginManager>>) -> Vec<clankers_plugin::ui::PluginUiAction> {
+    use clankers_plugin::bridge::parse_ui_actions;
 
-    let host = crate::plugin::PluginHostFacade::new(Arc::clone(plugin_manager));
+    let host = clankers_plugin::PluginHostFacade::new(Arc::clone(plugin_manager));
     let mut actions = Vec::new();
 
     for plugin_info in host.event_subscribers("plugin_init") {
@@ -799,7 +410,7 @@ pub fn fire_plugin_init(plugin_manager: &Arc<Mutex<PluginManager>>) -> Vec<crate
                 if let Ok(parsed) = serde_json::from_str::<serde_json::Value>(&output) {
                     let plugin_actions = parse_ui_actions(&plugin_info.name, &parsed);
                     let plugin_actions =
-                        crate::plugin::sandbox::filter_ui_actions(&plugin_info.manifest.permissions, plugin_actions);
+                        clankers_plugin::sandbox::filter_ui_actions(&plugin_info.manifest.permissions, plugin_actions);
                     actions.extend(plugin_actions);
                 }
             }
@@ -812,9 +423,9 @@ pub fn fire_plugin_init(plugin_manager: &Arc<Mutex<PluginManager>>) -> Vec<crate
     actions
 }
 
-// Provider discovery re-exports (canonical home: `crate::provider::discovery`)
-pub use crate::provider::discovery::build_router;
-pub use crate::provider::discovery::build_router_with_rpc;
+// Provider discovery re-exports (canonical home: `clankers_provider::discovery`)
+pub use clankers_provider::discovery::build_router;
+pub use clankers_provider::discovery::build_router_with_rpc;
 
 // ─── Headless helpers ───────────────────────────────────────────────────────
 
@@ -902,10 +513,10 @@ mod tests {
 
         async fn execute(
             &self,
-            _ctx: &crate::agent::tool::ToolContext,
+            _ctx: &clankers_agent::tool::ToolContext,
             _params: serde_json::Value,
-        ) -> crate::agent::tool::ToolResult {
-            crate::agent::tool::ToolResult::text("ok")
+        ) -> clankers_agent::tool::ToolResult {
+            clankers_agent::tool::ToolResult::text("ok")
         }
     }
 
@@ -1002,7 +613,7 @@ mod tests {
 
     #[test]
     fn runtime_catalog_tracks_mcp_and_disabled_tool_publication() {
-        let mut settings = crate::config::settings::Settings::default();
+        let mut settings = clankers_config::settings::Settings::default();
         settings.mcp.servers.insert("filesystem".to_string(), clankers_config::McpServerConfig {
             enabled: true,
             transport: clankers_config::McpTransport::Stdio,
@@ -1063,7 +674,7 @@ mod tests {
             .collect();
         assert!(!default_names.iter().any(|name| name == "browser"));
 
-        let mut settings = crate::config::settings::Settings::default();
+        let mut settings = clankers_config::settings::Settings::default();
         settings.browser_automation.enabled = true;
         settings.browser_automation.cdp_url = Some("http://127.0.0.1:9222".to_string());
         let env = ToolEnv {
@@ -1081,7 +692,7 @@ mod tests {
 
     #[test]
     fn build_tiered_tools_publishes_steel_eval_by_default_with_explicit_opt_out() {
-        let mut settings = crate::config::settings::Settings::default();
+        let mut settings = clankers_config::settings::Settings::default();
         let env = ToolEnv {
             settings: Some(settings.clone()),
             ..Default::default()
@@ -1104,7 +715,7 @@ mod tests {
 
     #[test]
     fn steel_eval_uses_standard_disabled_tool_filter() {
-        let mut settings = crate::config::settings::Settings::default();
+        let mut settings = clankers_config::settings::Settings::default();
         settings.steel_eval.enabled = true;
         let env = ToolEnv {
             settings: Some(settings),
@@ -1131,7 +742,7 @@ mod tests {
             .collect();
         assert!(!default_names.iter().any(|name| name == "external_memory"));
 
-        let mut settings = crate::config::settings::Settings::default();
+        let mut settings = clankers_config::settings::Settings::default();
         settings.external_memory.enabled = true;
         let env = ToolEnv {
             settings: Some(settings),
@@ -1148,7 +759,7 @@ mod tests {
 
     #[test]
     fn build_tiered_tools_skips_invalid_external_memory_config() {
-        let mut settings = crate::config::settings::Settings::default();
+        let mut settings = clankers_config::settings::Settings::default();
         settings.external_memory.enabled = true;
         settings.external_memory.max_results = 0;
         let env = ToolEnv {
@@ -1163,7 +774,7 @@ mod tests {
 
     #[test]
     fn build_all_tiered_tools_adds_mcp_specialty_tools_from_settings() {
-        let settings = crate::config::settings::Settings {
+        let settings = clankers_config::settings::Settings {
             mcp: serde_json::from_value(serde_json::json!({
                 "servers": {
                     "filesystem": {"transport": "stdio", "command": "fake-mcp", "toolPrefix": "fs"}
@@ -1187,7 +798,7 @@ mod tests {
 
     #[test]
     fn build_all_tiered_tools_skips_mcp_tools_that_collide_with_builtins() {
-        let settings = crate::config::settings::Settings {
+        let settings = clankers_config::settings::Settings {
             mcp: serde_json::from_value(serde_json::json!({
                 "servers": {
                     "filesystem": {"transport": "stdio", "command": "fake-mcp", "toolPrefix": "fs"},

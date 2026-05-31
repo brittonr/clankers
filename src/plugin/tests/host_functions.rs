@@ -1,8 +1,8 @@
 use std::collections::HashMap;
 
-use crate::plugin::host::HostCall;
-use crate::plugin::host::HostCallResult;
-use crate::plugin::host::HostFunctions;
+use clankers_plugin::host::HostCall;
+use clankers_plugin::host::HostCallResult;
+use clankers_plugin::host::HostFunctions;
 
 // ── log ──────────────────────────────────────────────────────────
 

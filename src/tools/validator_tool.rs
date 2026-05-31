@@ -11,7 +11,7 @@ use async_trait::async_trait;
 use clanker_tui_types::SubagentEvent;
 use serde_json::Value;
 
-use crate::plugin::PluginManager;
+use clankers_plugin::PluginManager;
 use crate::tools::Tool;
 use crate::tools::ToolContext;
 use crate::tools::ToolDefinition;

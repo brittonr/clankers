@@ -23,7 +23,7 @@ pub trait DbWorktreeExt {
     fn worktrees(&self) -> registry::WorktreeRegistry<'_>;
 }
 
-impl DbWorktreeExt for crate::db::Db {
+impl DbWorktreeExt for clankers_db::Db {
     fn worktrees(&self) -> registry::WorktreeRegistry<'_> {
         registry::WorktreeRegistry::new(self)
     }

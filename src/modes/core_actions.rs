@@ -6,19 +6,19 @@ use std::sync::Arc;
 
 use clanker_tui_types::AppState;
 
-use crate::config::keybindings::CoreAction;
-use crate::config::keybindings::InputMode;
-use crate::tui::app::App;
+use clankers_config::keybindings::CoreAction;
+use clankers_config::keybindings::InputMode;
+use clankers_tui::app::App;
 
 /// Handle a resolved `CoreAction`.
 pub(crate) fn handle_core_action(
     app: &mut App,
     action: CoreAction,
     cmd_tx: &tokio::sync::mpsc::UnboundedSender<super::interactive::AgentCommand>,
-    plugin_manager: Option<&Arc<std::sync::Mutex<crate::plugin::PluginManager>>>,
-    panel_tx: &tokio::sync::mpsc::UnboundedSender<crate::tui::components::subagent_event::SubagentEvent>,
-    db: &Option<crate::db::Db>,
-    session_manager: &mut Option<crate::session::SessionManager>,
+    plugin_manager: Option<&Arc<std::sync::Mutex<clankers_plugin::PluginManager>>>,
+    panel_tx: &tokio::sync::mpsc::UnboundedSender<clankers_tui::components::subagent_event::SubagentEvent>,
+    db: &Option<clankers_db::Db>,
+    session_manager: &mut Option<clankers_session::SessionManager>,
     slash_registry: &crate::slash_commands::SlashRegistry,
 ) {
     match action {
@@ -105,7 +105,7 @@ pub(crate) fn handle_core_action(
 
         // ── Clipboard paste ──────────────────────────
         CoreAction::PasteImage => {
-            crate::tui::clipboard::paste_from_clipboard(app);
+            clankers_tui::clipboard::paste_from_clipboard(app);
         }
     }
 }
@@ -115,10 +115,10 @@ pub(crate) fn handle_core_action(
 fn handle_submit(
     app: &mut App,
     cmd_tx: &tokio::sync::mpsc::UnboundedSender<super::interactive::AgentCommand>,
-    plugin_manager: Option<&Arc<std::sync::Mutex<crate::plugin::PluginManager>>>,
-    panel_tx: &tokio::sync::mpsc::UnboundedSender<crate::tui::components::subagent_event::SubagentEvent>,
-    db: &Option<crate::db::Db>,
-    session_manager: &mut Option<crate::session::SessionManager>,
+    plugin_manager: Option<&Arc<std::sync::Mutex<clankers_plugin::PluginManager>>>,
+    panel_tx: &tokio::sync::mpsc::UnboundedSender<clankers_tui::components::subagent_event::SubagentEvent>,
+    db: &Option<clankers_db::Db>,
+    session_manager: &mut Option<clankers_session::SessionManager>,
     slash_registry: &crate::slash_commands::SlashRegistry,
 ) {
     if app.state != AppState::Idle {

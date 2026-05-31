@@ -8,8 +8,8 @@ use super::Tool;
 use super::ToolContext;
 use super::ToolDefinition;
 use super::ToolResult;
-use crate::procmon::ProcessMonitorHandle;
-use crate::procmon::ProcessState;
+use clankers_procmon::ProcessMonitorHandle;
+use clankers_procmon::ProcessState;
 
 pub struct ProcmonTool {
     definition: ToolDefinition,
@@ -280,10 +280,10 @@ mod tests {
     use tokio_util::sync::CancellationToken;
 
     use super::*;
-    use crate::procmon::ProcessMeta;
-    use crate::procmon::ProcessMonitor;
-    use crate::procmon::ProcessMonitorConfig;
-    use crate::procmon::ResourceSnapshot;
+    use clankers_procmon::ProcessMeta;
+    use clankers_procmon::ProcessMonitor;
+    use clankers_procmon::ProcessMonitorConfig;
+    use clankers_procmon::ResourceSnapshot;
     use crate::tools::ToolResultContent;
 
     fn test_ctx() -> ToolContext {

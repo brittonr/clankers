@@ -8,7 +8,7 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::Instant;
 
-use clankers::config::model_roles::ModelRoles;
+use clankers_config::model_roles::ModelRoles;
 use clankers::tools::Tool;
 use clankers::tools::ToolContext;
 use clankers::tools::ToolResultContent;

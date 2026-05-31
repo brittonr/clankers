@@ -54,7 +54,7 @@ pub struct DelegateTool {
     /// Persistent endpoint shared across all remote delegations
     shared_endpoint: SharedEndpoint,
     /// Process monitor for tracking spawned workers
-    process_monitor: Option<crate::procmon::ProcessMonitorHandle>,
+    process_monitor: Option<clankers_procmon::ProcessMonitorHandle>,
     /// When set, spawn in-process agent actors instead of subprocesses.
     actor_ctx: Option<crate::tools::subagent::ActorContext>,
 }
@@ -125,7 +125,7 @@ impl DelegateTool {
     }
 
     /// Attach a process monitor to track spawned workers.
-    pub fn with_process_monitor(mut self, monitor: crate::procmon::ProcessMonitorHandle) -> Self {
+    pub fn with_process_monitor(mut self, monitor: clankers_procmon::ProcessMonitorHandle) -> Self {
         self.process_monitor = Some(monitor);
         self
     }

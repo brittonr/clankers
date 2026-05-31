@@ -35,7 +35,7 @@ fn set_test_socket_dir(dir: &std::path::Path) {
 struct MockProvider;
 
 #[async_trait::async_trait]
-impl clankers::provider::Provider for MockProvider {
+impl clankers_provider::Provider for MockProvider {
     async fn complete(
         &self,
         _request: clankers_provider::CompletionRequest,

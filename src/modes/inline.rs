@@ -15,10 +15,10 @@ use rat_inline::InlineView;
 use ratatui::style::Modifier;
 use ratatui::style::Style;
 
-use crate::agent::builder::AgentBuilder;
-use crate::agent::events::AgentEvent;
+use clankers_agent::builder::AgentBuilder;
+use clankers_agent::events::AgentEvent;
 use crate::error::Result;
-use crate::provider::streaming::ContentDelta;
+use clankers_provider::streaming::ContentDelta;
 
 /// Options controlling inline output behaviour.
 #[derive(Debug, Clone, Default)]
@@ -30,7 +30,7 @@ pub struct InlineOptions {
     /// Show tool calls and results
     pub show_tools: bool,
     /// Extended thinking configuration
-    pub thinking: Option<crate::provider::ThinkingConfig>,
+    pub thinking: Option<clankers_provider::ThinkingConfig>,
 }
 
 // ---------------------------------------------------------------------------
@@ -113,7 +113,7 @@ impl InlineState {
             }
 
             AgentEvent::ContentBlockStart { content_block, .. } => {
-                use crate::provider::message::Content;
+                use clankers_provider::message::Content;
                 match content_block {
                     Content::Thinking { .. } => {
                         self.current_blocks_mut().push(Block::Thinking { content: String::new() });
@@ -309,9 +309,9 @@ impl InlineState {
 )]
 pub async fn run_inline_with_options(
     prompt: &str,
-    provider: Arc<dyn crate::provider::Provider>,
+    provider: Arc<dyn clankers_provider::Provider>,
     tools: Vec<Arc<dyn crate::tools::Tool>>,
-    settings: crate::config::settings::Settings,
+    settings: clankers_config::settings::Settings,
     model: String,
     system_prompt: String,
     opts: InlineOptions,
@@ -334,7 +334,7 @@ pub async fn run_inline_with_options(
     // Spawn the agent on a Send-compatible task; render on the current
     // thread because InlineRenderer contains non-Send dyn trait objects.
     let cwd = std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("."));
-    let expanded = crate::util::at_file::expand_at_refs_with_images(prompt, &cwd.to_string_lossy());
+    let expanded = clankers_util::at_file::expand_at_refs_with_images(prompt, &cwd.to_string_lossy());
     let prompt_owned = expanded.text;
     let images = expanded.images;
     let agent_handle = tokio::spawn(async move { agent.prompt_with_images(&prompt_owned, images).await });
@@ -430,7 +430,7 @@ fn truncate_tool_output(s: &str, max_lines: usize) -> String {
     }
 }
 
-fn extract_tool_text(result: &crate::agent::tool::ToolResult) -> String {
+fn extract_tool_text(result: &clankers_agent::tool::ToolResult) -> String {
     use crate::tools::ToolResultContent;
     result
         .content
@@ -455,9 +455,9 @@ mod tests {
     use serde_json::json;
 
     use super::*;
-    use crate::agent::events::AgentEvent;
-    use crate::agent::tool::ToolResult;
-    use crate::provider::streaming::ContentDelta;
+    use clankers_agent::events::AgentEvent;
+    use clankers_agent::tool::ToolResult;
+    use clankers_provider::streaming::ContentDelta;
 
     fn text_delta(text: &str) -> AgentEvent {
         AgentEvent::MessageUpdate {
@@ -619,13 +619,13 @@ mod tests {
         state.apply(&AgentEvent::TurnStart { index: 0 });
         state.apply(&text_delta("hi"));
         state.apply(&AgentEvent::UsageUpdate {
-            turn_usage: crate::provider::Usage {
+            turn_usage: clankers_provider::Usage {
                 input_tokens: 10,
                 output_tokens: 5,
                 cache_read_input_tokens: 0,
                 cache_creation_input_tokens: 0,
             },
-            cumulative_usage: crate::provider::Usage {
+            cumulative_usage: clankers_provider::Usage {
                 input_tokens: 100,
                 output_tokens: 50,
                 cache_read_input_tokens: 0,

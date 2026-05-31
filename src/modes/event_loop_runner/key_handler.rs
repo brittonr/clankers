@@ -7,16 +7,16 @@ use crossterm::event::KeyCode;
 use crossterm::event::KeyModifiers;
 
 use super::EventLoopRunner;
-use crate::config::keybindings::Action;
-use crate::config::keybindings::InputMode;
+use clankers_config::keybindings::Action;
+use clankers_config::keybindings::InputMode;
 use crate::modes::event_handlers;
 use crate::modes::interactive::AgentCommand;
 use crate::modes::peers_background;
-use crate::tui::clipboard;
-use crate::tui::selectors;
+use clankers_tui::clipboard;
+use clankers_tui::selectors;
 
 fn resume_selected_session(
-    app: &mut crate::tui::app::App,
+    app: &mut clankers_tui::app::App,
     cmd_tx: &tokio::sync::mpsc::UnboundedSender<AgentCommand>,
     controller: &mut clankers_controller::SessionController,
     file_path: std::path::PathBuf,
@@ -158,7 +158,7 @@ impl<'a> EventLoopRunner<'a> {
         // Resolve through keymap
         let action = self.keymap.resolve(self.app.input_mode, &key);
         if let Some(action) = action {
-            if matches!(&action, Action::Extended(crate::config::keybindings::ExtendedAction::OpenEditor)) {
+            if matches!(&action, Action::Extended(clankers_config::keybindings::ExtendedAction::OpenEditor)) {
                 clipboard::open_external_editor(self.terminal, self.app);
                 return;
             }
@@ -182,7 +182,7 @@ impl<'a> EventLoopRunner<'a> {
                 && let Ok(tree) = sm.load_tree()
             {
                 let active_leaf = sm.active_leaf_id().cloned();
-                let branch_msgs = crate::session::context::build_messages_for_branch(&tree, active_leaf.as_ref());
+                let branch_msgs = clankers_session::context::build_messages_for_branch(&tree, active_leaf.as_ref());
                 if checkpoint > 0 && checkpoint <= branch_msgs.len() {
                     let fork_msg_id = branch_msgs[checkpoint - 1].id().clone();
                     sm.record_branch(fork_msg_id, "User edited prompt").ok();
@@ -392,7 +392,7 @@ impl<'a> EventLoopRunner<'a> {
         match (key.code, key.modifiers) {
             (KeyCode::Char('x'), m) if m.is_empty() => {
                 self.panel_tx
-                    .send(crate::tui::components::subagent_event::SubagentEvent::KillRequest {
+                    .send(clankers_tui::components::subagent_event::SubagentEvent::KillRequest {
                         id: subagent_id.clone(),
                     })
                     .ok();
@@ -401,7 +401,7 @@ impl<'a> EventLoopRunner<'a> {
             (KeyCode::Char('q'), m) if m.is_empty() => {
                 if let Some(pane_id) = self.app.layout.subagent_panes.remove(subagent_id) {
                     if let Some(new_root) =
-                        crate::tui::panes::remove_pane_from_tree(self.app.layout.tiling.root().clone(), pane_id)
+                        clankers_tui::panes::remove_pane_from_tree(self.app.layout.tiling.root().clone(), pane_id)
                     {
                         self.app.layout.tiling.set_root(new_root).ok();
                     }
@@ -437,7 +437,7 @@ impl<'a> EventLoopRunner<'a> {
         use clanker_tui_types::PanelId;
         match (focused_id, key.code, key.modifiers) {
             (PanelId::Subagents, KeyCode::Char('x'), m) if m.is_empty() => {
-                use crate::tui::components::subagent_panel::SubagentPanel;
+                use clankers_tui::components::subagent_panel::SubagentPanel;
                 if let Some(id) = self
                     .app
                     .panels
@@ -445,16 +445,16 @@ impl<'a> EventLoopRunner<'a> {
                     .expect("subagent panel registered at startup")
                     .selected_id()
                 {
-                    self.panel_tx.send(crate::tui::components::subagent_event::SubagentEvent::KillRequest { id }).ok();
+                    self.panel_tx.send(clankers_tui::components::subagent_event::SubagentEvent::KillRequest { id }).ok();
                 }
                 true
             }
             (PanelId::Peers, KeyCode::Char('p'), m) if m.is_empty() => {
                 let peers_panel = super::peers_panel(self.app);
                 if let Some(peer) = peers_panel.selected_peer().cloned() {
-                    peers_panel.update_status(&peer.node_id, crate::tui::components::peers_panel::PeerStatus::Probing);
+                    peers_panel.update_status(&peer.node_id, clankers_tui::components::peers_panel::PeerStatus::Probing);
                     let node_id = peer.node_id.clone();
-                    let paths = crate::config::ClankersPaths::get();
+                    let paths = clankers_config::ClankersPaths::get();
                     let registry_path = crate::modes::rpc::peers::registry_path(paths);
                     let identity_path = crate::modes::rpc::iroh::identity_path(paths);
                     let ptx = self.panel_tx.clone();
@@ -487,7 +487,7 @@ impl<'a> EventLoopRunner<'a> {
     /// Apply tool toggle changes: update disabled_tools, persist if needed,
     /// and send a rebuild command to the agent.
     pub(super) fn apply_tool_toggle(&mut self) {
-        use crate::tui::components::tool_toggle::ToolToggleScope;
+        use clankers_tui::components::tool_toggle::ToolToggleScope;
 
         let disabled = self.app.overlays.tool_toggle.disabled_set();
         let scope = self.app.overlays.tool_toggle.scope;
@@ -501,11 +501,11 @@ impl<'a> EventLoopRunner<'a> {
                 // No persistence — disabled_tools only lives in app state
             }
             ToolToggleScope::Project => {
-                let project_paths = crate::config::ProjectPaths::resolve(std::path::Path::new(&self.app.cwd));
+                let project_paths = clankers_config::ProjectPaths::resolve(std::path::Path::new(&self.app.cwd));
                 Self::persist_disabled_tools(&project_paths.settings, &disabled);
             }
             ToolToggleScope::Global => {
-                let paths = crate::config::ClankersPaths::get();
+                let paths = clankers_config::ClankersPaths::get();
                 Self::persist_disabled_tools(&paths.global_settings, &disabled);
             }
         }
@@ -560,7 +560,7 @@ impl<'a> EventLoopRunner<'a> {
     }
 
     pub(super) fn handle_merge_confirmed(&mut self) {
-        use crate::provider::message::MessageId;
+        use clankers_provider::message::MessageId;
         let selected: Vec<MessageId> =
             self.app.branching.merge_interactive.selected_ids().into_iter().map(MessageId::from).collect();
         let source: Option<MessageId> =
@@ -600,18 +600,18 @@ mod tests {
     use tokio::time::timeout;
 
     use super::resume_selected_session;
-    use crate::agent::Agent;
+    use clankers_agent::Agent;
     use crate::modes::agent_task::spawn_agent_task;
     use crate::modes::common::ToolEnv;
     use crate::modes::interactive::AgentCommand;
     use crate::modes::interactive::TaskResult;
-    use crate::provider::Model;
-    use crate::provider::Provider;
-    use crate::provider::message::AgentMessage;
-    use crate::provider::message::Content;
-    use crate::provider::message::MessageId;
-    use crate::provider::message::UserMessage;
-    use crate::provider::router::RouterCompatAdapter;
+    use clankers_provider::Model;
+    use clankers_provider::Provider;
+    use clankers_provider::message::AgentMessage;
+    use clankers_provider::message::Content;
+    use clankers_provider::message::MessageId;
+    use clankers_provider::message::UserMessage;
+    use clankers_provider::router::RouterCompatAdapter;
 
     struct CapturingRouterProvider {
         captured: Mutex<Option<clanker_router::CompletionRequest>>,
@@ -656,7 +656,7 @@ mod tests {
 
     fn persisted_session_file(tmp: &tempfile::TempDir) -> (std::path::PathBuf, String, String) {
         let cwd = tmp.path().to_string_lossy().to_string();
-        let mut mgr = crate::session::SessionManager::create(tmp.path(), &cwd, "test-model", None, None, None)
+        let mut mgr = clankers_session::SessionManager::create(tmp.path(), &cwd, "test-model", None, None, None)
             .expect("session create should succeed");
         let session_id = mgr.session_id().to_string();
         mgr.append_message(
@@ -688,7 +688,7 @@ mod tests {
         let agent = Agent::new(
             provider,
             vec![],
-            crate::config::settings::Settings::default(),
+            clankers_config::settings::Settings::default(),
             "test-model".to_string(),
             "You are a test assistant.".to_string(),
         );
@@ -713,7 +713,7 @@ mod tests {
             None,
         );
 
-        let mut app = crate::tui::app::App::new("test-model".to_string(), cwd, crate::tui::theme::Theme::dark());
+        let mut app = clankers_tui::app::App::new("test-model".to_string(), cwd, clankers_tui::theme::Theme::dark());
         app.session_id = "stale-app-session".to_string();
 
         let mut controller =

@@ -435,8 +435,8 @@ fn test_registry_dispatch_unknown_falls_through() {
 
     let model = "test-model".to_string();
     let cwd = std::env::current_dir().expect("failed to get current dir").to_string_lossy().to_string();
-    let theme = crate::tui::theme::Theme::dark();
-    let mut app = crate::tui::app::App::new(model, cwd, theme);
+    let theme = clankers_tui::theme::Theme::dark();
+    let mut app = clankers_tui::app::App::new(model, cwd, theme);
 
     let mut ctx = handlers::SlashContext {
         app: &mut app,

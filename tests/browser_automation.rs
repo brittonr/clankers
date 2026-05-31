@@ -37,7 +37,7 @@ async fn spawn_fake_cdp_server(requests: usize) -> String {
 }
 
 fn browser_env(cdp_url: String, allowed_origins: Vec<String>) -> ToolEnv {
-    let mut settings = clankers::config::settings::Settings::default();
+    let mut settings = clankers_config::settings::Settings::default();
     settings.browser_automation.enabled = true;
     settings.browser_automation.cdp_url = Some(cdp_url);
     settings.browser_automation.allowed_origins = allowed_origins;

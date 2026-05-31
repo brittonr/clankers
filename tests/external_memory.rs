@@ -1,6 +1,6 @@
-use clankers::db::Db;
-use clankers::db::memory::MemoryEntry;
-use clankers::db::memory::MemoryScope;
+use clankers_db::Db;
+use clankers_db::memory::MemoryEntry;
+use clankers_db::memory::MemoryScope;
 use clankers::modes::common::ToolEnv;
 use clankers::modes::common::ToolSet;
 use clankers::modes::common::ToolTier;
@@ -12,7 +12,7 @@ use serde_json::json;
 use tokio_util::sync::CancellationToken;
 
 fn external_memory_env(enabled: bool) -> ToolEnv {
-    let mut settings = clankers::config::settings::Settings::default();
+    let mut settings = clankers_config::settings::Settings::default();
     settings.external_memory.enabled = enabled;
     settings.external_memory.name = Some("integration-memory".to_string());
     settings.external_memory.max_results = 2;

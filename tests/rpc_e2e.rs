@@ -12,15 +12,15 @@ mod tests {
     use async_trait::async_trait;
     use clankers::modes::rpc::iroh::*;
     use clankers::modes::rpc::protocol::Request;
-    use clankers::provider::CompletionRequest;
-    use clankers::provider::Model;
-    use clankers::provider::Provider;
-    use clankers::provider::Usage;
-    use clankers::provider::message::AgentMessage;
-    use clankers::provider::message::Content;
-    use clankers::provider::streaming::ContentDelta;
-    use clankers::provider::streaming::MessageMetadata;
-    use clankers::provider::streaming::StreamEvent;
+    use clankers_provider::CompletionRequest;
+    use clankers_provider::Model;
+    use clankers_provider::Provider;
+    use clankers_provider::Usage;
+    use clankers_provider::message::AgentMessage;
+    use clankers_provider::message::Content;
+    use clankers_provider::streaming::ContentDelta;
+    use clankers_provider::streaming::MessageMetadata;
+    use clankers_provider::streaming::StreamEvent;
     use serde_json::json;
     use tokio::sync::mpsc;
 
@@ -35,7 +35,7 @@ mod tests {
             &self,
             request: CompletionRequest,
             tx: mpsc::Sender<StreamEvent>,
-        ) -> clankers::provider::error::Result<()> {
+        ) -> clankers_provider::error::Result<()> {
             // Extract the last user message
             let user_text = request
                 .messages
@@ -167,7 +167,7 @@ mod tests {
 
     fn agent_state() -> Arc<ServerState> {
         let provider: Arc<dyn Provider> = Arc::new(EchoProvider);
-        let settings = clankers::config::settings::Settings::default();
+        let settings = clankers_config::settings::Settings::default();
         Arc::new(ServerState {
             meta: NodeMeta {
                 tags: vec!["test".to_string(), "echo".to_string()],

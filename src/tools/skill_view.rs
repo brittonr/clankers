@@ -358,7 +358,7 @@ fn view_linked_file(record: &SkillRecord, file_path: &str) -> ToolResult {
 }
 
 pub fn project_skills_dir_from_cwd() -> Option<PathBuf> {
-    std::env::current_dir().ok().map(|cwd| crate::config::ProjectPaths::resolve(&cwd).skills_dir)
+    std::env::current_dir().ok().map(|cwd| clankers_config::ProjectPaths::resolve(&cwd).skills_dir)
 }
 
 #[cfg(test)]

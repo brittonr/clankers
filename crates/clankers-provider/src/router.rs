@@ -66,7 +66,7 @@ impl Provider for MissingExplicitProvider {
 
 // ── Adapter for clanker_router providers ───────────────────────────────────
 
-/// Wraps a `clanker_router::Provider` to implement `clankers::provider::Provider`.
+/// Wraps a `clanker_router::Provider` to implement `clankers_provider::Provider`.
 ///
 /// This adapter converts between the two CompletionRequest formats
 /// (clankers uses AgentMessage, router uses serde_json::Value).

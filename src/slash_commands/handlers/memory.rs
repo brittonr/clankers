@@ -166,10 +166,10 @@ pub struct MemoryHandler;
 
 impl MemoryHandler {
     /// Format a memory entry for display.
-    fn format_memory_entry(entry: &crate::db::memory::MemoryEntry) -> String {
+    fn format_memory_entry(entry: &clankers_db::memory::MemoryEntry) -> String {
         let scope_label = match &entry.scope {
-            crate::db::memory::MemoryScope::Global => "global".to_string(),
-            crate::db::memory::MemoryScope::Project { path } => format!("project:{}", path),
+            clankers_db::memory::MemoryScope::Global => "global".to_string(),
+            clankers_db::memory::MemoryScope::Project { path } => format!("project:{}", path),
         };
         let tags = if entry.tags.is_empty() {
             String::new()
@@ -179,7 +179,7 @@ impl MemoryHandler {
         format!("  `{}` ({}) {}{}\n", entry.id, scope_label, entry.text, tags)
     }
 
-    fn handle_list(ctx: &mut SlashContext<'_>, mem: &crate::db::memory::MemoryStore) {
+    fn handle_list(ctx: &mut SlashContext<'_>, mem: &clankers_db::memory::MemoryStore) {
         match mem.list(None) {
             Ok(entries) if entries.is_empty() => {
                 ctx.app
@@ -199,7 +199,7 @@ impl MemoryHandler {
         }
     }
 
-    fn handle_add(ctx: &mut SlashContext<'_>, mem: &crate::db::memory::MemoryStore, args: &str) {
+    fn handle_add(ctx: &mut SlashContext<'_>, mem: &clankers_db::memory::MemoryStore, args: &str) {
         if args.is_empty() {
             ctx.app.push_system("Usage: /memory add [--project] <text>".to_string(), true);
         } else {
@@ -210,17 +210,17 @@ impl MemoryHandler {
                     return;
                 }
                 (
-                    crate::db::memory::MemoryScope::Project {
+                    clankers_db::memory::MemoryScope::Project {
                         path: ctx.app.cwd.clone(),
                     },
                     rest.to_string(),
                 )
             } else {
-                (crate::db::memory::MemoryScope::Global, args.to_string())
+                (clankers_db::memory::MemoryScope::Global, args.to_string())
             };
 
-            let entry = crate::db::memory::MemoryEntry::new(&text, scope.clone())
-                .with_source(crate::db::memory::MemorySource::User);
+            let entry = clankers_db::memory::MemoryEntry::new(&text, scope.clone())
+                .with_source(clankers_db::memory::MemorySource::User);
             let id = entry.id;
             match mem.save(&entry) {
                 Ok(()) => {
@@ -233,7 +233,7 @@ impl MemoryHandler {
         }
     }
 
-    fn handle_edit(ctx: &mut SlashContext<'_>, mem: &crate::db::memory::MemoryStore, args: &str) {
+    fn handle_edit(ctx: &mut SlashContext<'_>, mem: &clankers_db::memory::MemoryStore, args: &str) {
         if args.is_empty() {
             ctx.app.push_system("Usage: /memory edit <id> <new text>".to_string(), true);
         } else {
@@ -277,7 +277,7 @@ impl MemoryHandler {
         }
     }
 
-    fn handle_remove(ctx: &mut SlashContext<'_>, mem: &crate::db::memory::MemoryStore, args: &str) {
+    fn handle_remove(ctx: &mut SlashContext<'_>, mem: &clankers_db::memory::MemoryStore, args: &str) {
         if args.is_empty() {
             ctx.app.push_system("Usage: /memory remove <id>".to_string(), true);
         } else if let Ok(id) = args.parse::<u64>() {
@@ -297,7 +297,7 @@ impl MemoryHandler {
         }
     }
 
-    fn handle_search(ctx: &mut SlashContext<'_>, mem: &crate::db::memory::MemoryStore, query: &str) {
+    fn handle_search(ctx: &mut SlashContext<'_>, mem: &clankers_db::memory::MemoryStore, query: &str) {
         if query.is_empty() {
             ctx.app.push_system("Usage: /memory search <query>".to_string(), true);
         } else {
@@ -319,7 +319,7 @@ impl MemoryHandler {
         }
     }
 
-    fn handle_clear(ctx: &mut SlashContext<'_>, mem: &crate::db::memory::MemoryStore) {
+    fn handle_clear(ctx: &mut SlashContext<'_>, mem: &clankers_db::memory::MemoryStore) {
         match mem.clear() {
             Ok(count) => {
                 ctx.app.push_system(format!("Cleared {} memory/memories.", count), false);

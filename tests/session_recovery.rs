@@ -6,25 +6,25 @@
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use clankers::message::AgentMessage;
-use clankers::message::AssistantMessage;
-use clankers::message::Content;
-use clankers::message::MessageId;
-use clankers::message::StopReason;
-use clankers::message::Usage;
-use clankers::message::UserMessage;
+use clanker_message::AgentMessage;
+use clanker_message::AssistantMessage;
+use clanker_message::Content;
+use clanker_message::MessageId;
+use clanker_message::StopReason;
+use clanker_message::Usage;
+use clanker_message::UserMessage;
 use clankers::modes::daemon::agent_process::get_or_create_keyed_session;
 use clankers::modes::daemon::agent_process::prompt_and_collect;
 use clankers::modes::daemon::session_store::SessionCatalog;
 use clankers::modes::daemon::session_store::SessionCatalogEntry;
 use clankers::modes::daemon::session_store::SessionLifecycle;
 use clankers::modes::daemon::socket_bridge::SessionFactory;
-use clankers::provider::CompletionRequest;
-use clankers::provider::Model;
-use clankers::provider::Provider;
-use clankers::provider::streaming::ContentDelta;
-use clankers::provider::streaming::MessageMetadata;
-use clankers::provider::streaming::StreamEvent;
+use clankers_provider::CompletionRequest;
+use clankers_provider::Model;
+use clankers_provider::Provider;
+use clankers_provider::streaming::ContentDelta;
+use clankers_provider::streaming::MessageMetadata;
+use clankers_provider::streaming::StreamEvent;
 use clankers_controller::transport::DaemonState;
 use clankers_controller::transport::SessionHandle;
 use clankers_protocol::SessionKey;
@@ -282,7 +282,7 @@ impl Provider for RecoveryEchoProvider {
         &self,
         request: CompletionRequest,
         tx: tokio::sync::mpsc::Sender<StreamEvent>,
-    ) -> clankers::provider::error::Result<()> {
+    ) -> clankers_provider::error::Result<()> {
         let saw_old_user = request.messages.iter().any(|msg| match msg {
             AgentMessage::User(user) => user
                 .content
@@ -376,7 +376,7 @@ async fn keyed_matrix_prompt_recovers_suspended_session_before_replying() {
     let sessions_dir = home.join(".clankers").join("agent").join("sessions");
     std::fs::create_dir_all(&sessions_dir).unwrap();
 
-    let mut mgr = clankers::clankers_session::SessionManager::create(
+    let mut mgr = clankers_session::SessionManager::create(
         &sessions_dir,
         "/tmp/matrix-recovery",
         "test-model",
@@ -444,7 +444,7 @@ async fn keyed_matrix_prompt_recovers_suspended_session_before_replying() {
             observed_requests: Arc::clone(&observed_requests),
         }),
         tools: vec![],
-        settings: clankers::config::settings::Settings::default(),
+        settings: clankers_config::settings::Settings::default(),
         default_model: "test-model".to_string(),
         default_system_prompt: "You are a test.".to_string(),
         registry: None,

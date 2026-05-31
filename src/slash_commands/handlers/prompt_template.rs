@@ -22,9 +22,9 @@ impl SlashHandler for PromptTemplateHandler {
 
     fn handle(&self, args: &str, ctx: &mut SlashContext<'_>) {
         // Look up the prompt template from the discovered resources
-        let global_dir = &crate::config::paths::ClankersPaths::get().global_prompts_dir;
+        let global_dir = &clankers_config::paths::ClankersPaths::get().global_prompts_dir;
         let project_dir =
-            crate::config::paths::ProjectPaths::resolve(&std::env::current_dir().unwrap_or_default()).prompts_dir;
+            clankers_config::paths::ProjectPaths::resolve(&std::env::current_dir().unwrap_or_default()).prompts_dir;
         let prompts = clankers_prompts::discover_prompts(global_dir, Some(&project_dir));
         if let Some(template) = prompts.iter().find(|p| p.name == self.template_name) {
             let mut vars = std::collections::HashMap::new();

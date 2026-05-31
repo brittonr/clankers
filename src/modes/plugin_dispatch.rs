@@ -4,27 +4,27 @@ use std::sync::Arc;
 
 use clankers_protocol::DaemonEvent;
 
-use crate::agent::events::AgentEvent;
+use clankers_agent::events::AgentEvent;
 
 /// Convert a `PluginUiAction` into its corresponding `DaemonEvent`.
-pub(crate) fn ui_action_to_daemon_event(action: crate::plugin::ui::PluginUiAction) -> DaemonEvent {
+pub(crate) fn ui_action_to_daemon_event(action: clankers_plugin::ui::PluginUiAction) -> DaemonEvent {
     match action {
-        crate::plugin::ui::PluginUiAction::SetWidget { plugin, widget } => DaemonEvent::PluginWidget {
+        clankers_plugin::ui::PluginUiAction::SetWidget { plugin, widget } => DaemonEvent::PluginWidget {
             plugin,
             widget: Some(serde_json::to_value(widget).unwrap_or_default()),
         },
-        crate::plugin::ui::PluginUiAction::ClearWidget { plugin } => DaemonEvent::PluginWidget { plugin, widget: None },
-        crate::plugin::ui::PluginUiAction::SetStatus { plugin, text, color } => DaemonEvent::PluginStatus {
+        clankers_plugin::ui::PluginUiAction::ClearWidget { plugin } => DaemonEvent::PluginWidget { plugin, widget: None },
+        clankers_plugin::ui::PluginUiAction::SetStatus { plugin, text, color } => DaemonEvent::PluginStatus {
             plugin,
             text: Some(text),
             color,
         },
-        crate::plugin::ui::PluginUiAction::ClearStatus { plugin } => DaemonEvent::PluginStatus {
+        clankers_plugin::ui::PluginUiAction::ClearStatus { plugin } => DaemonEvent::PluginStatus {
             plugin,
             text: None,
             color: None,
         },
-        crate::plugin::ui::PluginUiAction::Notify { plugin, message, level } => {
+        clankers_plugin::ui::PluginUiAction::Notify { plugin, message, level } => {
             DaemonEvent::PluginNotify { plugin, message, level }
         }
     }
@@ -35,19 +35,19 @@ pub(crate) struct PluginDispatchResult {
     /// Messages to surface to the user
     pub messages: Vec<(String, String)>,
     /// UI actions to apply
-    pub ui_actions: Vec<crate::plugin::ui::PluginUiAction>,
+    pub ui_actions: Vec<clankers_plugin::ui::PluginUiAction>,
 }
 
 pub(crate) fn drain_stdio_runtime_outputs(
-    plugin_manager: &Arc<std::sync::Mutex<crate::plugin::PluginManager>>,
+    plugin_manager: &Arc<std::sync::Mutex<clankers_plugin::PluginManager>>,
 ) -> PluginDispatchResult {
     let mut messages = Vec::new();
     let mut ui_actions = Vec::new();
 
-    for event in crate::plugin::drain_stdio_host_events(plugin_manager) {
+    for event in clankers_plugin::drain_stdio_host_events(plugin_manager) {
         match event {
-            crate::plugin::StdioHostEvent::Ui(action) => ui_actions.push(action),
-            crate::plugin::StdioHostEvent::Display { plugin, message } => messages.push((plugin, message)),
+            clankers_plugin::StdioHostEvent::Ui(action) => ui_actions.push(action),
+            clankers_plugin::StdioHostEvent::Display { plugin, message } => messages.push((plugin, message)),
         }
     }
 
@@ -55,13 +55,13 @@ pub(crate) fn drain_stdio_runtime_outputs(
 }
 
 fn forward_stdio_event_subscribers(
-    host: &crate::plugin::PluginHostFacade,
-    plugin_manager: &Arc<std::sync::Mutex<crate::plugin::PluginManager>>,
+    host: &clankers_plugin::PluginHostFacade,
+    plugin_manager: &Arc<std::sync::Mutex<clankers_plugin::PluginManager>>,
     event_kind: &str,
     data: &serde_json::Value,
 ) {
     for info in host.stdio_event_subscribers(event_kind) {
-        if let Err(error) = crate::plugin::send_stdio_event(plugin_manager, &info.name, event_kind, data.clone()) {
+        if let Err(error) = clankers_plugin::send_stdio_event(plugin_manager, &info.name, event_kind, data.clone()) {
             tracing::debug!("Plugin '{}' stdio event dispatch error: {}", info.name, error);
         }
     }
@@ -70,12 +70,12 @@ fn forward_stdio_event_subscribers(
 /// Dispatch an agent event to all subscribed plugins.
 /// Returns messages to surface and UI actions to apply.
 pub(crate) fn dispatch_event_to_plugins(
-    plugin_manager: &Arc<std::sync::Mutex<crate::plugin::PluginManager>>,
+    plugin_manager: &Arc<std::sync::Mutex<clankers_plugin::PluginManager>>,
     event: &AgentEvent,
 ) -> PluginDispatchResult {
-    use crate::plugin::sandbox;
+    use clankers_plugin::sandbox;
 
-    let host = crate::plugin::PluginHostFacade::new(Arc::clone(plugin_manager));
+    let host = clankers_plugin::PluginHostFacade::new(Arc::clone(plugin_manager));
     let mut messages = Vec::new();
     let mut ui_actions = Vec::new();
     let event_kind = event.event_kind();
@@ -120,7 +120,7 @@ pub(crate) fn dispatch_event_to_plugins(
                     }
 
                     // Parse UI actions, then enforce permission
-                    let actions = crate::plugin::bridge::parse_ui_actions(&info.name, &parsed);
+                    let actions = clankers_plugin::bridge::parse_ui_actions(&info.name, &parsed);
                     let actions = sandbox::filter_ui_actions(&info.manifest.permissions, actions);
                     ui_actions.extend(actions);
                 }
@@ -186,12 +186,12 @@ fn daemon_event_to_plugin_payload(event: &DaemonEvent) -> Option<serde_json::Val
 /// Used by the daemon's event loop where we have `DaemonEvent`s instead
 /// of `AgentEvent`s. Maps events to the same plugin protocol.
 pub(crate) fn dispatch_daemon_events_to_plugins(
-    plugin_manager: &Arc<std::sync::Mutex<crate::plugin::PluginManager>>,
+    plugin_manager: &Arc<std::sync::Mutex<clankers_plugin::PluginManager>>,
     events: &[DaemonEvent],
 ) -> PluginDispatchResult {
-    use crate::plugin::sandbox;
+    use clankers_plugin::sandbox;
 
-    let host = crate::plugin::PluginHostFacade::new(Arc::clone(plugin_manager));
+    let host = clankers_plugin::PluginHostFacade::new(Arc::clone(plugin_manager));
     let mut messages = Vec::new();
     let mut ui_actions = Vec::new();
 
@@ -229,7 +229,7 @@ pub(crate) fn dispatch_daemon_events_to_plugins(
                                 messages.push((info.name.clone(), trimmed.to_string()));
                             }
                         }
-                        let actions = crate::plugin::bridge::parse_ui_actions(&info.name, &parsed);
+                        let actions = clankers_plugin::bridge::parse_ui_actions(&info.name, &parsed);
                         let actions = sandbox::filter_ui_actions(&info.manifest.permissions, actions);
                         ui_actions.extend(actions);
                     } else if event_kind == "schedule_fire" {
@@ -385,7 +385,7 @@ mod tests {
     fn set_widget_maps_to_plugin_widget() {
         use clanker_tui_types::Widget;
 
-        use crate::plugin::ui::PluginUiAction;
+        use clankers_plugin::ui::PluginUiAction;
         let action = PluginUiAction::SetWidget {
             plugin: "test".into(),
             widget: Widget::Text {
@@ -406,7 +406,7 @@ mod tests {
 
     #[test]
     fn clear_widget_maps_to_none() {
-        use crate::plugin::ui::PluginUiAction;
+        use clankers_plugin::ui::PluginUiAction;
         let action = PluginUiAction::ClearWidget { plugin: "test".into() };
         let event = ui_action_to_daemon_event(action);
         match event {
@@ -417,7 +417,7 @@ mod tests {
 
     #[test]
     fn set_status_maps_to_plugin_status() {
-        use crate::plugin::ui::PluginUiAction;
+        use clankers_plugin::ui::PluginUiAction;
         let action = PluginUiAction::SetStatus {
             plugin: "test".into(),
             text: "busy".into(),
@@ -436,7 +436,7 @@ mod tests {
 
     #[test]
     fn clear_status_maps_to_none_text() {
-        use crate::plugin::ui::PluginUiAction;
+        use clankers_plugin::ui::PluginUiAction;
         let action = PluginUiAction::ClearStatus { plugin: "test".into() };
         let event = ui_action_to_daemon_event(action);
         match event {
@@ -450,7 +450,7 @@ mod tests {
 
     #[test]
     fn notify_maps_to_plugin_notify() {
-        use crate::plugin::ui::PluginUiAction;
+        use clankers_plugin::ui::PluginUiAction;
         let action = PluginUiAction::Notify {
             plugin: "test".into(),
             message: "done!".into(),

@@ -9,7 +9,6 @@ description = "Configuration loading and path resolution for clankers"
 clankers-agent-defs = { version = "0.1.0", path = "../clankers-agent-defs" }
 clankers-hooks = { version = "0.1.0", path = "../clankers-hooks" }
 clankers-model-selection = { version = "0.1.0", path = "../clankers-model-selection" }
-clankers-tui = { version = "0.1.0", path = "../clankers-tui" }
 clanker-tui-types = { workspace = true }
 clankers-ucan = { version = "0.1.0", path = "../clankers-ucan" }
 clanker-router = { workspace = true }
@@ -17,10 +16,8 @@ chrono = { workspace = true }
 dirs = "6"
 indexmap = { version = "2.13.0", features = ["serde"] }
 nickel-lang = { version = "2.0", optional = true }
-ratatui = "0.30"
 serde = { workspace = true }
 serde_json = { workspace = true }
-terminal-colorsaurus = "1.0"
 
 [dev-dependencies]
 tempfile = "3"

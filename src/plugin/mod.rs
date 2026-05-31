@@ -1,42 +1,16 @@
-//! Plugin system (Extism WASM) — re-exported from `clankers-plugin`.
-
-// Re-export core types from the extracted crate
-pub use clankers_plugin::PluginHostFacade;
-pub use clankers_plugin::PluginInfo;
-pub use clankers_plugin::PluginManager;
-pub use clankers_plugin::PluginRuntimeMode;
-pub use clankers_plugin::PluginRuntimeSummary;
-pub use clankers_plugin::PluginState;
-pub use clankers_plugin::StdioHostEvent;
-pub use clankers_plugin::StdioToolCallEvent;
-pub use clankers_plugin::abandon_stdio_tool_call;
-// Re-export sub-modules
-pub use clankers_plugin::bridge;
-pub use clankers_plugin::cancel_stdio_tool_call;
-pub use clankers_plugin::configure_stdio_runtime;
-pub use clankers_plugin::drain_stdio_host_events;
-pub use clankers_plugin::enable_plugin;
-pub use clankers_plugin::hooks;
-pub use clankers_plugin::host;
-pub use clankers_plugin::load_plugins_from_dir;
-pub use clankers_plugin::manifest;
-pub use clankers_plugin::registry;
-pub use clankers_plugin::reload_all_plugins;
-pub use clankers_plugin::reload_plugin;
-pub use clankers_plugin::sandbox;
-pub use clankers_plugin::send_stdio_event;
-pub use clankers_plugin::shutdown_plugin_runtime;
-pub use clankers_plugin::start_stdio_plugins;
-pub use clankers_plugin::start_stdio_tool_call;
-pub use clankers_plugin::ui;
+//! Main-crate plugin adapters that cannot live in `clankers-plugin`.
+//!
+//! Runtime/plugin types are imported from `clankers-plugin` directly by call sites.
+//! This module keeps only main-crate glue: trait contributions and protocol summary
+//! projection.
 
 // Contributions stay in the main crate (they impl main-crate traits on PluginManager)
 pub mod contributions;
 
 pub fn build_protocol_plugin_summaries(
-    plugin_manager: &std::sync::Arc<std::sync::Mutex<PluginManager>>,
+    plugin_manager: &std::sync::Arc<std::sync::Mutex<clankers_plugin::PluginManager>>,
 ) -> Vec<clankers_protocol::PluginSummary> {
-    PluginHostFacade::new(std::sync::Arc::clone(plugin_manager))
+    clankers_plugin::PluginHostFacade::new(std::sync::Arc::clone(plugin_manager))
         .summaries()
         .into_iter()
         .map(|summary| clankers_protocol::PluginSummary {

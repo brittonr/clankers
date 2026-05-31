@@ -1,6 +1,6 @@
-use crate::plugin::bridge::PluginEvent;
-use crate::plugin::bridge::{self};
-use crate::plugin::ui;
+use clankers_plugin::bridge::PluginEvent;
+use clankers_plugin::bridge::{self};
+use clankers_plugin::ui;
 
 // ── Bridge event parsing tests ───────────────────────────────────
 

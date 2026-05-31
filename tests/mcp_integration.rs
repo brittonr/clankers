@@ -54,7 +54,7 @@ impl McpRuntimeRegistry for IntegrationMcpRegistry {
 
 #[tokio::test]
 async fn configured_mcp_tool_is_available_and_executes() {
-    let settings = clankers::config::settings::Settings {
+    let settings = clankers_config::settings::Settings {
         mcp: serde_json::from_value(json!({
             "servers": {
                 "filesystem": {"transport": "stdio", "command": "fake-mcp", "toolPrefix": "fs"}
@@ -98,7 +98,7 @@ async fn configured_mcp_tool_is_available_and_executes() {
 
 #[tokio::test]
 async fn configured_mcp_tool_failure_is_actionable() {
-    let settings = clankers::config::settings::Settings {
+    let settings = clankers_config::settings::Settings {
         mcp: serde_json::from_value(json!({
             "servers": {
                 "filesystem": {"transport": "stdio", "command": "fake-mcp", "toolPrefix": "fs"}

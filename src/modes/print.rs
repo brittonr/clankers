@@ -4,10 +4,10 @@ use std::fmt::Write as _;
 use std::io::Write;
 use std::sync::Arc;
 
-use crate::agent::builder::AgentBuilder;
-use crate::agent::events::AgentEvent;
+use clankers_agent::builder::AgentBuilder;
+use clankers_agent::events::AgentEvent;
 use crate::error::Result;
-use crate::provider::streaming::ContentDelta;
+use clankers_provider::streaming::ContentDelta;
 
 /// Options controlling headless print behaviour
 #[derive(Debug, Clone, Default)]
@@ -21,7 +21,7 @@ pub struct PrintOptions {
     /// Output format
     pub format: PrintFormat,
     /// Extended thinking configuration
-    pub thinking: Option<crate::provider::ThinkingConfig>,
+    pub thinking: Option<clankers_provider::ThinkingConfig>,
 }
 
 /// Output format for print mode
@@ -41,9 +41,9 @@ pub enum PrintFormat {
 )]
 pub async fn run_print_with_options(
     prompt: &str,
-    provider: Arc<dyn crate::provider::Provider>,
+    provider: Arc<dyn clankers_provider::Provider>,
     tools: Vec<Arc<dyn crate::tools::Tool>>,
-    settings: crate::config::settings::Settings,
+    settings: clankers_config::settings::Settings,
     model: String,
     system_prompt: String,
     opts: PrintOptions,
@@ -186,7 +186,7 @@ pub async fn run_print_with_options(
     });
 
     let cwd = std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("."));
-    let expanded = crate::util::at_file::expand_at_refs_with_images(prompt, &cwd.to_string_lossy());
+    let expanded = clankers_util::at_file::expand_at_refs_with_images(prompt, &cwd.to_string_lossy());
     agent.prompt_with_images(&expanded.text, expanded.images).await?;
     print_handle.await.ok();
     Ok(())

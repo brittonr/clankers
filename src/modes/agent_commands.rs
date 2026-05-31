@@ -5,23 +5,23 @@ pub(crate) enum AgentCommand {
     Prompt(String),
     PromptWithImages {
         text: String,
-        images: Vec<crate::tui::app::PendingImage>,
+        images: Vec<clankers_tui::app::PendingImage>,
     },
     /// Rewrite/improve the prompt before sending it to the agent.
     RewriteAndPrompt(String),
     /// Rewrite/improve the prompt (with images) before sending it to the agent.
     RewriteAndPromptWithImages {
         text: String,
-        images: Vec<crate::tui::app::PendingImage>,
+        images: Vec<clankers_tui::app::PendingImage>,
     },
     Abort,
     ResetCancel,
     SetModel(String),
     ClearHistory,
     TruncateMessages(usize),
-    SetThinkingLevel(crate::provider::ThinkingLevel),
+    SetThinkingLevel(clankers_provider::ThinkingLevel),
     CycleThinkingLevel,
-    SeedMessages(Vec<crate::provider::message::AgentMessage>),
+    SeedMessages(Vec<clankers_provider::message::AgentMessage>),
     SetSessionId(String),
     SetCompactionSummary(Option<String>),
     Quit,
@@ -55,6 +55,6 @@ pub(crate) enum AgentCommand {
 pub(crate) enum TaskResult {
     PromptDone(Option<crate::error::Error>),
     LoginDone(std::result::Result<String, String>),
-    ThinkingToggled(String, crate::provider::ThinkingLevel),
+    ThinkingToggled(String, clankers_provider::ThinkingLevel),
     AccountSwitched(std::result::Result<String, String>),
 }

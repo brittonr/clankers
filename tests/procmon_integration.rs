@@ -3,10 +3,10 @@
 use std::sync::Arc;
 use std::time::Duration;
 
-use clankers::procmon::ProcessEvent;
-use clankers::procmon::ProcessMeta;
-use clankers::procmon::ProcessMonitor;
-use clankers::procmon::ProcessMonitorConfig;
+use clankers_procmon::ProcessEvent;
+use clankers_procmon::ProcessMeta;
+use clankers_procmon::ProcessMonitor;
+use clankers_procmon::ProcessMonitorConfig;
 use tokio::sync::broadcast;
 
 /// Spawn a real `sleep` process, register it with the monitor, verify tracking,

@@ -16,8 +16,8 @@ use clankers_plugin::PluginManager;
 /// Wrapper that implements `MenuContributor` for a borrowed `PluginManager`.
 pub struct PluginMenuContributor<'a>(pub &'a PluginManager);
 
-impl crate::tui::components::leader_menu::MenuContributor for PluginMenuContributor<'_> {
-    fn menu_items(&self) -> Vec<crate::tui::components::leader_menu::MenuContribution> {
+impl clankers_tui::components::leader_menu::MenuContributor for PluginMenuContributor<'_> {
+    fn menu_items(&self) -> Vec<clankers_tui::components::leader_menu::MenuContribution> {
         use clanker_tui_types::LeaderAction;
         use clanker_tui_types::MenuContribution;
         use clanker_tui_types::MenuPlacement;

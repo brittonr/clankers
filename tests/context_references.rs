@@ -4,13 +4,13 @@ use std::net::TcpListener;
 use std::process::Command;
 use std::thread;
 
-use clankers::clankers_session::SessionManager;
-use clankers::clankers_session::entry::SessionEntry;
-use clankers::util::at_file::ContextReferenceKind;
-use clankers::util::at_file::ContextReferencePolicy;
-use clankers::util::at_file::ContextReferenceStatus;
-use clankers::util::at_file::expand_at_refs_with_images;
-use clankers::util::at_file::expand_at_refs_with_policy;
+use clankers_session::SessionManager;
+use clankers_session::entry::SessionEntry;
+use clankers_util::at_file::ContextReferenceKind;
+use clankers_util::at_file::ContextReferencePolicy;
+use clankers_util::at_file::ContextReferenceStatus;
+use clankers_util::at_file::expand_at_refs_with_images;
+use clankers_util::at_file::expand_at_refs_with_policy;
 
 #[test]
 fn context_reference_primary_path_expands_file_and_persists_metadata() {

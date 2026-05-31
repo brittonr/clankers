@@ -635,7 +635,7 @@ fn discover_agent_names(ctx: &CommandContext) -> Vec<String> {
 
 /// Build the agent context for RPC server (provider + tools).
 fn build_agent_context(ctx: &CommandContext) -> Result<crate::modes::rpc::iroh::RpcContext> {
-    let provider = crate::provider::discovery::build_router(
+    let provider = clankers_provider::discovery::build_router(
         ctx.api_key.as_deref(),
         ctx.api_base.clone(),
         &ctx.paths.global_auth,
@@ -643,8 +643,8 @@ fn build_agent_context(ctx: &CommandContext) -> Result<crate::modes::rpc::iroh::
         ctx.account.as_deref(),
     )?;
     let rpc_process_monitor = {
-        let config = crate::procmon::ProcessMonitorConfig::default();
-        let monitor = std::sync::Arc::new(crate::procmon::ProcessMonitor::new(config, None));
+        let config = clankers_procmon::ProcessMonitorConfig::default();
+        let monitor = std::sync::Arc::new(clankers_procmon::ProcessMonitor::new(config, None));
         monitor.clone().start();
         monitor
     };

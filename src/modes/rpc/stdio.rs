@@ -6,13 +6,13 @@
 
 use std::sync::Arc;
 
-use crate::provider::Provider;
+use clankers_provider::Provider;
 
 /// Context needed to build agents for prompt execution.
 pub struct RpcContext {
     pub provider: Arc<dyn Provider>,
     pub tools: Vec<Arc<dyn crate::tools::Tool>>,
-    pub settings: crate::config::settings::Settings,
+    pub settings: clankers_config::settings::Settings,
     pub model: String,
     pub system_prompt: String,
 }

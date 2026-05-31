@@ -38,7 +38,7 @@ use iroh::Endpoint;
 use iroh::PublicKey;
 use iroh::SecretKey;
 
-use crate::provider::Provider;
+use clankers_provider::Provider;
 use crate::tools::Tool;
 
 pub mod client;
@@ -74,7 +74,7 @@ pub struct NodeMeta {
 pub struct RpcContext {
     pub provider: Arc<dyn Provider>,
     pub tools: Vec<Arc<dyn Tool>>,
-    pub settings: crate::config::settings::Settings,
+    pub settings: clankers_config::settings::Settings,
     pub model: String,
     pub system_prompt: String,
 }
@@ -118,7 +118,7 @@ impl AccessControl {
 
 // ── Allowlist persistence ───────────────────────────────────────────────────
 
-pub fn allowlist_path(paths: &crate::config::ClankersPaths) -> PathBuf {
+pub fn allowlist_path(paths: &clankers_config::ClankersPaths) -> PathBuf {
     paths.global_config_dir.join("allowed_peers.json")
 }
 
@@ -184,7 +184,7 @@ impl Identity {
     }
 }
 
-pub fn identity_path(paths: &crate::config::ClankersPaths) -> PathBuf {
+pub fn identity_path(paths: &clankers_config::ClankersPaths) -> PathBuf {
     paths.global_config_dir.join("identity.key")
 }
 

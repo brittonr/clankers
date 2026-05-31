@@ -1,6 +1,6 @@
 //! Daemon configuration types.
 
-use crate::config::settings::Settings;
+use clankers_config::settings::Settings;
 
 /// Chat ALPN — conversational sessions with persistent memory.
 pub const ALPN_CHAT: &[u8] = b"clankers/chat/1";
@@ -48,9 +48,9 @@ impl Default for DaemonConfig {
     fn default() -> Self {
         Self {
             model: "openai-codex/gpt-5.5".to_string(),
-            system_prompt: crate::agent::system_prompt::default_system_prompt(
-                &crate::agent::system_prompt::PromptFeatures {
-                    nix_available: crate::agent::system_prompt::detect_nix(),
+            system_prompt: clankers_agent::system_prompt::default_system_prompt(
+                &clankers_agent::system_prompt::PromptFeatures {
+                    nix_available: clankers_agent::system_prompt::detect_nix(),
                     multi_model: true,
                     daemon_mode: true,
                     process_monitor: true,

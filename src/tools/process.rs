@@ -80,7 +80,7 @@ use super::Tool;
 use super::ToolContext;
 use super::ToolDefinition;
 use super::ToolResult;
-use crate::util::ansi::strip_ansi;
+use clankers_util::ansi::strip_ansi;
 
 mod adapter;
 use adapter::ProcessToolJsonAdapter;
@@ -1885,7 +1885,7 @@ async fn stop_native_entry_for_restart(entry: &ProcessEntry) -> bool {
 async fn restart_native_process_job(
     id: ProcessJobId,
     db: Option<clankers_db::Db>,
-    process_monitor: Option<&crate::procmon::ProcessMonitorHandle>,
+    process_monitor: Option<&clankers_procmon::ProcessMonitorHandle>,
     call_id: Option<&str>,
 ) -> Result<ProcessJobReceipt, RuntimeError> {
     let old_entry = native_entry(&id)?;
@@ -1928,7 +1928,7 @@ async fn restart_native_process_job(
     if let Some(monitor) = process_monitor
         && let Some(pid) = pid
     {
-        monitor.register(pid, crate::procmon::ProcessMeta {
+        monitor.register(pid, clankers_procmon::ProcessMeta {
             tool_name: "process".to_string(),
             command: ProcessJobRedactionPolicy::default().safe_command_preview(&new_entry.command),
             call_id: call_id.unwrap_or("process-restart").to_string(),
@@ -2516,7 +2516,7 @@ fn format_log_refs(refs: &[StoredProcessJobLogRef]) -> String {
 
 pub struct ProcessTool {
     definition: ToolDefinition,
-    process_monitor: Option<crate::procmon::ProcessMonitorHandle>,
+    process_monitor: Option<clankers_procmon::ProcessMonitorHandle>,
 }
 
 impl ProcessTool {
@@ -2635,7 +2635,7 @@ impl ProcessTool {
         }
     }
 
-    pub fn with_process_monitor(mut self, monitor: crate::procmon::ProcessMonitorHandle) -> Self {
+    pub fn with_process_monitor(mut self, monitor: clankers_procmon::ProcessMonitorHandle) -> Self {
         self.process_monitor = Some(monitor);
         self
     }
@@ -2882,7 +2882,7 @@ impl ProcessTool {
             && let Some(pid) = pid
         {
             let command_preview: String = display_command.chars().take(MAX_COMMAND_PREVIEW_LEN).collect();
-            monitor.register(pid, crate::procmon::ProcessMeta {
+            monitor.register(pid, clankers_procmon::ProcessMeta {
                 tool_name: "process".to_string(),
                 command: command_preview,
                 call_id: ctx.call_id.clone(),
@@ -4862,7 +4862,7 @@ mod tests {
     #[tokio::test]
     async fn native_restart_registers_relaunched_pid_with_process_monitor() {
         let monitor =
-            Arc::new(crate::procmon::ProcessMonitor::new(crate::procmon::ProcessMonitorConfig::default(), None));
+            Arc::new(clankers_procmon::ProcessMonitor::new(clankers_procmon::ProcessMonitorConfig::default(), None));
         let tool = ProcessTool::new().with_process_monitor(monitor.clone());
         let ctx = make_ctx();
         let started = tool.execute(&ctx, json!({"action": "start", "command": "cat"})).await;

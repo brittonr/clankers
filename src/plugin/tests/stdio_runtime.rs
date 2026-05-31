@@ -10,9 +10,9 @@ use tempfile::tempdir;
 use tokio::sync::broadcast;
 use tokio_util::sync::CancellationToken;
 
-use crate::agent::events::AgentEvent;
-use crate::plugin::PluginRuntimeMode;
-use crate::plugin::PluginState;
+use clankers_agent::events::AgentEvent;
+use clankers_plugin::PluginRuntimeMode;
+use clankers_plugin::PluginState;
 use crate::tools::ToolContext;
 
 const HELPER_SOURCE: &str = r#"
@@ -709,7 +709,7 @@ pub(crate) fn write_stdio_plugin_manifest_with_restricted_policy(
 }
 
 pub(crate) async fn wait_for_plugin_state(
-    manager: &Arc<Mutex<crate::plugin::PluginManager>>,
+    manager: &Arc<Mutex<clankers_plugin::PluginManager>>,
     name: &str,
     timeout: Duration,
     predicate: impl Fn(&PluginState) -> bool,
@@ -729,7 +729,7 @@ pub(crate) async fn wait_for_plugin_state(
 }
 
 pub(crate) async fn wait_for_live_tool(
-    manager: &Arc<Mutex<crate::plugin::PluginManager>>,
+    manager: &Arc<Mutex<clankers_plugin::PluginManager>>,
     plugin_name: &str,
     tool_name: &str,
     timeout: Duration,
@@ -750,14 +750,14 @@ pub(crate) async fn wait_for_live_tool(
 }
 
 async fn wait_for_stdio_host_events(
-    manager: &Arc<Mutex<crate::plugin::PluginManager>>,
+    manager: &Arc<Mutex<clankers_plugin::PluginManager>>,
     timeout: Duration,
-    predicate: impl Fn(&[crate::plugin::StdioHostEvent]) -> bool,
-) -> Vec<crate::plugin::StdioHostEvent> {
+    predicate: impl Fn(&[clankers_plugin::StdioHostEvent]) -> bool,
+) -> Vec<clankers_plugin::StdioHostEvent> {
     let deadline = tokio::time::Instant::now() + timeout;
     let mut collected = Vec::new();
     loop {
-        let mut drained = crate::plugin::drain_stdio_host_events(manager);
+        let mut drained = clankers_plugin::drain_stdio_host_events(manager);
         if !drained.is_empty() {
             collected.append(&mut drained);
             if predicate(&collected) {
@@ -770,7 +770,7 @@ async fn wait_for_stdio_host_events(
 }
 
 async fn sample_plugin_states(
-    manager: &Arc<Mutex<crate::plugin::PluginManager>>,
+    manager: &Arc<Mutex<clankers_plugin::PluginManager>>,
     name: &str,
     duration: Duration,
     interval: Duration,
@@ -799,7 +799,7 @@ fn tool_result_text(result: &crate::tools::ToolResult) -> String {
 }
 
 async fn execute_plugin_tool(
-    manager: &Arc<Mutex<crate::plugin::PluginManager>>,
+    manager: &Arc<Mutex<clankers_plugin::PluginManager>>,
     tool_name: &str,
     input: serde_json::Value,
 ) -> crate::tools::ToolResult {
@@ -815,7 +815,7 @@ pub(crate) fn init_manager_with_restart_delays(
     dir: &Path,
     mode: PluginRuntimeMode,
     delays_ms: &str,
-) -> Arc<Mutex<crate::plugin::PluginManager>> {
+) -> Arc<Mutex<clankers_plugin::PluginManager>> {
     let _guard = RestartDelayGuard::set(delays_ms);
     crate::modes::common::init_plugin_manager_for_mode(dir, None, &[], mode, dir)
 }
@@ -834,7 +834,7 @@ async fn standalone_stdio_plugin_launches_and_registers_live_tools() {
     assert_eq!(state, PluginState::Active);
     wait_for_live_tool(&manager, "stdio-standalone", "stdio_standalone_tool", Duration::from_secs(2)).await;
 
-    crate::plugin::shutdown_plugin_runtime(&manager, "test shutdown").await;
+    clankers_plugin::shutdown_plugin_runtime(&manager, "test shutdown").await;
 }
 
 #[tokio::test]
@@ -850,7 +850,7 @@ async fn daemon_stdio_plugin_launches_with_daemon_mode_hello() {
     .await;
     assert_eq!(state, PluginState::Active);
 
-    crate::plugin::shutdown_plugin_runtime(&manager, "test shutdown").await;
+    clankers_plugin::shutdown_plugin_runtime(&manager, "test shutdown").await;
 }
 
 #[tokio::test]
@@ -900,7 +900,7 @@ async fn active_stdio_crash_enters_backoff_then_restarts() {
     assert_eq!(std::fs::read_to_string(&counter).unwrap().trim(), "2");
     wait_for_live_tool(&manager, "stdio-restart", "stdio_restart_tool", Duration::from_secs(5)).await;
 
-    crate::plugin::shutdown_plugin_runtime(&manager, "test shutdown").await;
+    clankers_plugin::shutdown_plugin_runtime(&manager, "test shutdown").await;
 }
 
 #[tokio::test]
@@ -924,7 +924,7 @@ async fn shutdown_sends_shutdown_frame_and_clears_live_tools() {
     .await;
     wait_for_live_tool(&manager, "stdio-shutdown", "stdio_shutdown_tool", Duration::from_secs(2)).await;
 
-    crate::plugin::shutdown_plugin_runtime(&manager, "test shutdown").await;
+    clankers_plugin::shutdown_plugin_runtime(&manager, "test shutdown").await;
 
     let state = wait_for_plugin_state(&manager, "stdio-shutdown", Duration::from_secs(2), |state| {
         matches!(state, PluginState::Loaded)
@@ -960,7 +960,7 @@ async fn shutdown_kills_unresponsive_plugin_after_grace_period() {
     wait_for_live_tool(&manager, "stdio-stuck-shutdown", "stdio_stuck_shutdown_tool", Duration::from_secs(2)).await;
 
     let start = std::time::Instant::now();
-    crate::plugin::shutdown_plugin_runtime(&manager, "test shutdown").await;
+    clankers_plugin::shutdown_plugin_runtime(&manager, "test shutdown").await;
     assert!(start.elapsed() < Duration::from_secs(2), "shutdown should not hang indefinitely");
 
     let state = wait_for_plugin_state(&manager, "stdio-stuck-shutdown", Duration::from_secs(2), |state| {
@@ -1020,7 +1020,7 @@ async fn host_shutdown_stops_stdio_plugin_without_scheduling_restart() {
     })
     .await;
 
-    crate::plugin::shutdown_plugin_runtime(&manager, "test shutdown").await;
+    clankers_plugin::shutdown_plugin_runtime(&manager, "test shutdown").await;
     wait_for_plugin_state(&manager, "stdio-shutdown-no-restart", Duration::from_secs(2), |state| {
         matches!(state, PluginState::Loaded)
     })
@@ -1059,14 +1059,14 @@ async fn disable_then_enable_stdio_plugin_restarts_runtime() {
     })
     .await;
 
-    crate::plugin::enable_plugin(&manager, "stdio-enable").unwrap();
+    clankers_plugin::enable_plugin(&manager, "stdio-enable").unwrap();
     wait_for_plugin_state(&manager, "stdio-enable", Duration::from_secs(2), |state| {
         matches!(state, PluginState::Active)
     })
     .await;
     wait_for_live_tool(&manager, "stdio-enable", "stdio_enable_tool", Duration::from_secs(2)).await;
 
-    crate::plugin::shutdown_plugin_runtime(&manager, "test shutdown").await;
+    clankers_plugin::shutdown_plugin_runtime(&manager, "test shutdown").await;
 }
 
 #[tokio::test]
@@ -1090,7 +1090,7 @@ async fn reload_recovers_stdio_plugin_after_crash_loop_error() {
     .await;
     assert!(matches!(state, PluginState::Error(message) if message.contains("ready before hello")));
 
-    crate::plugin::reload_plugin(&manager, "stdio-reload-recovery").unwrap();
+    clankers_plugin::reload_plugin(&manager, "stdio-reload-recovery").unwrap();
     wait_for_plugin_state(&manager, "stdio-reload-recovery", Duration::from_secs(2), |state| {
         matches!(state, PluginState::Active)
     })
@@ -1098,7 +1098,7 @@ async fn reload_recovers_stdio_plugin_after_crash_loop_error() {
     wait_for_live_tool(&manager, "stdio-reload-recovery", "stdio_reload_recovery_tool", Duration::from_secs(2)).await;
     assert_eq!(std::fs::read_to_string(&counter).unwrap().trim(), "6");
 
-    crate::plugin::shutdown_plugin_runtime(&manager, "test shutdown").await;
+    clankers_plugin::shutdown_plugin_runtime(&manager, "test shutdown").await;
 }
 
 #[tokio::test]
@@ -1124,7 +1124,7 @@ async fn successful_ready_resets_consecutive_failure_counter() {
     wait_for_live_tool(&manager, "stdio-reset-counter", "stdio_reset_counter_tool", Duration::from_secs(2)).await;
     assert_eq!(std::fs::read_to_string(&counter).unwrap().trim(), "7");
 
-    crate::plugin::shutdown_plugin_runtime(&manager, "test shutdown").await;
+    clankers_plugin::shutdown_plugin_runtime(&manager, "test shutdown").await;
 }
 
 #[tokio::test]
@@ -1160,7 +1160,7 @@ async fn inherit_mode_launch_filters_env_and_uses_project_root_cwd() {
     assert!(snapshot.contains("SHOULD_NOT_LEAK=<unset>"), "snapshot: {snapshot}");
     assert!(snapshot.contains("PATH=<unset>"), "snapshot: {snapshot}");
 
-    crate::plugin::shutdown_plugin_runtime(&manager, "test shutdown").await;
+    clankers_plugin::shutdown_plugin_runtime(&manager, "test shutdown").await;
 }
 
 #[tokio::test]
@@ -1196,7 +1196,7 @@ async fn inherit_mode_launch_uses_plugin_dir_when_requested() {
     assert!(snapshot.contains("SHOULD_NOT_LEAK=<unset>"), "snapshot: {snapshot}");
     assert!(snapshot.contains("PATH=<unset>"), "snapshot: {snapshot}");
 
-    crate::plugin::shutdown_plugin_runtime(&manager, "test shutdown").await;
+    clankers_plugin::shutdown_plugin_runtime(&manager, "test shutdown").await;
 }
 
 #[tokio::test]
@@ -1299,7 +1299,7 @@ async fn restricted_sandbox_bounds_writes_and_creates_state_dir() {
     assert!(allowed_path.exists(), "expected allowed restricted write at {}", allowed_path.display());
     assert!(!denied_path.exists(), "unexpected write outside restricted roots at {}", denied_path.display());
 
-    crate::plugin::shutdown_plugin_runtime(&manager, "test shutdown").await;
+    clankers_plugin::shutdown_plugin_runtime(&manager, "test shutdown").await;
 }
 
 #[cfg(target_os = "linux")]
@@ -1342,7 +1342,7 @@ async fn restricted_sandbox_denies_network_without_allow_network() {
     );
     assert!(tokio::time::timeout(Duration::from_millis(200), listener.accept()).await.is_err());
 
-    crate::plugin::shutdown_plugin_runtime(&manager, "test shutdown").await;
+    clankers_plugin::shutdown_plugin_runtime(&manager, "test shutdown").await;
 }
 
 #[cfg(target_os = "linux")]
@@ -1382,7 +1382,7 @@ async fn restricted_sandbox_allows_network_when_permission_and_policy_allow() {
     assert!(text.contains("network=ok"), "result: {text}");
     tokio::time::timeout(Duration::from_secs(2), accept).await.unwrap().unwrap().unwrap();
 
-    crate::plugin::shutdown_plugin_runtime(&manager, "test shutdown").await;
+    clankers_plugin::shutdown_plugin_runtime(&manager, "test shutdown").await;
 }
 
 #[tokio::test]
@@ -1453,7 +1453,7 @@ async fn additive_register_tools_calls_keep_earlier_stdio_tools_active() {
     assert!(tool_names.contains(&"stdio_additive_tools_tool".to_string()));
     assert!(tool_names.contains(&"stdio_additive_tools_tool_extra".to_string()));
 
-    crate::plugin::shutdown_plugin_runtime(&manager, "test shutdown").await;
+    clankers_plugin::shutdown_plugin_runtime(&manager, "test shutdown").await;
 }
 
 #[tokio::test]
@@ -1516,7 +1516,7 @@ async fn mixed_runtime_host_preserves_extism_behavior_and_stdio_visibility() {
     assert!(!result.is_error, "stdio fixture should still work: {:?}", result);
     assert_eq!(tool_result_text(&result), "fixture:mixed hi");
 
-    let host = crate::plugin::PluginHostFacade::new(Arc::clone(&manager));
+    let host = clankers_plugin::PluginHostFacade::new(Arc::clone(&manager));
     let extism_subscribers: Vec<String> =
         host.event_subscribers("tool_call").into_iter().map(|info| info.name).collect();
     let stdio_subscribers: Vec<String> =
@@ -1542,8 +1542,8 @@ async fn mixed_runtime_host_preserves_extism_behavior_and_stdio_visibility() {
         let events = wait_for_stdio_host_events(&manager, Duration::from_secs(2), |events| events.len() >= 4).await;
         for event in events {
             match event {
-                crate::plugin::StdioHostEvent::Display { plugin, message } => messages.push((plugin, message)),
-                crate::plugin::StdioHostEvent::Ui(action) => ui_actions.push(action),
+                clankers_plugin::StdioHostEvent::Display { plugin, message } => messages.push((plugin, message)),
+                clankers_plugin::StdioHostEvent::Ui(action) => ui_actions.push(action),
             }
         }
     }
@@ -1555,7 +1555,7 @@ async fn mixed_runtime_host_preserves_extism_behavior_and_stdio_visibility() {
     );
     assert!(ui_actions.len() >= 3, "expected stdio UI actions, got: {ui_actions:?}");
 
-    crate::plugin::shutdown_plugin_runtime(&manager, "test shutdown").await;
+    clankers_plugin::shutdown_plugin_runtime(&manager, "test shutdown").await;
 }
 
 #[tokio::test]
@@ -1606,7 +1606,7 @@ async fn mixed_runtime_rejects_cross_kind_tool_name_collision_deterministically(
     assert!(!result.is_error, "extism tool should keep ownership: {:?}", result);
     assert_eq!(tool_result_text(&result), "still extism");
 
-    crate::plugin::shutdown_plugin_runtime(&manager, "test shutdown").await;
+    clankers_plugin::shutdown_plugin_runtime(&manager, "test shutdown").await;
 }
 
 #[tokio::test]
@@ -1640,7 +1640,7 @@ async fn reference_stdio_fixture_exercises_invoke_cancel_and_shutdown_end_to_end
     assert!(result.is_error, "fixture cancel should surface error: {:?}", result);
     assert!(tool_result_text(&result).contains("cancelled"));
 
-    crate::plugin::shutdown_plugin_runtime(&manager, "test shutdown").await;
+    clankers_plugin::shutdown_plugin_runtime(&manager, "test shutdown").await;
     wait_for_plugin_state(&manager, "clankers-stdio-echo", Duration::from_secs(2), |state| {
         matches!(state, PluginState::Loaded)
     })
@@ -1688,7 +1688,7 @@ async fn live_stdio_tool_builds_and_executes_real_tool_adapter() {
     }
     assert!(saw_progress, "expected helper progress event");
 
-    crate::plugin::shutdown_plugin_runtime(&manager, "test shutdown").await;
+    clankers_plugin::shutdown_plugin_runtime(&manager, "test shutdown").await;
 }
 
 #[tokio::test]
@@ -1723,7 +1723,7 @@ async fn colliding_stdio_tool_registration_rejects_builtin_name() {
     assert!(tool_names.contains(&"stdio_collision_tool".to_string()));
     assert!(!tool_names.contains(&"read".to_string()));
 
-    crate::plugin::shutdown_plugin_runtime(&manager, "test shutdown").await;
+    clankers_plugin::shutdown_plugin_runtime(&manager, "test shutdown").await;
 }
 
 #[tokio::test]
@@ -1753,7 +1753,7 @@ async fn cancelled_stdio_tool_call_sends_cancel_and_returns_cancelled_error() {
     assert!(result.is_error, "cancelled tool should surface error: {:?}", result);
     assert!(tool_result_text(&result).contains("cancelled"));
 
-    crate::plugin::shutdown_plugin_runtime(&manager, "test shutdown").await;
+    clankers_plugin::shutdown_plugin_runtime(&manager, "test shutdown").await;
 }
 
 #[tokio::test]
@@ -1778,7 +1778,7 @@ async fn hung_stdio_tool_call_times_out() {
     assert!(result.is_error, "hung tool should time out: {:?}", result);
     assert!(tool_result_text(&result).contains("timed out"));
 
-    crate::plugin::shutdown_plugin_runtime(&manager, "test shutdown").await;
+    clankers_plugin::shutdown_plugin_runtime(&manager, "test shutdown").await;
 }
 
 #[tokio::test]
@@ -1811,10 +1811,10 @@ async fn restarted_stdio_plugin_must_resubscribe_before_receiving_events_again()
     assert!(immediate.ui_actions.is_empty(), "unexpected immediate ui actions: {:?}", immediate.ui_actions);
 
     tokio::time::sleep(Duration::from_millis(150)).await;
-    let drained = crate::plugin::drain_stdio_host_events(&manager);
+    let drained = clankers_plugin::drain_stdio_host_events(&manager);
     assert!(drained.is_empty(), "unexpected stdio host events after restart without resubscribe: {drained:?}");
 
-    crate::plugin::shutdown_plugin_runtime(&manager, "test shutdown").await;
+    clankers_plugin::shutdown_plugin_runtime(&manager, "test shutdown").await;
 }
 
 #[tokio::test]
@@ -1841,8 +1841,8 @@ async fn subscribed_stdio_plugin_receives_tool_call_event_and_emits_ui_and_displ
         let events = wait_for_stdio_host_events(&manager, Duration::from_secs(2), |events| events.len() >= 4).await;
         for event in events {
             match event {
-                crate::plugin::StdioHostEvent::Display { plugin, message } => messages.push((plugin, message)),
-                crate::plugin::StdioHostEvent::Ui(action) => ui_actions.push(action),
+                clankers_plugin::StdioHostEvent::Display { plugin, message } => messages.push((plugin, message)),
+                clankers_plugin::StdioHostEvent::Ui(action) => ui_actions.push(action),
             }
         }
     }
@@ -1856,7 +1856,7 @@ async fn subscribed_stdio_plugin_receives_tool_call_event_and_emits_ui_and_displ
     assert!(
         ui_actions.iter().any(|action| matches!(
             action,
-            crate::plugin::ui::PluginUiAction::SetStatus { plugin, text, color }
+            clankers_plugin::ui::PluginUiAction::SetStatus { plugin, text, color }
                 if plugin == "stdio-event-ui" && text == "tool bash" && color.as_deref() == Some("green")
         )),
         "expected set_status action, got: {ui_actions:?}"
@@ -1864,7 +1864,7 @@ async fn subscribed_stdio_plugin_receives_tool_call_event_and_emits_ui_and_displ
     assert!(
         ui_actions.iter().any(|action| matches!(
             action,
-            crate::plugin::ui::PluginUiAction::Notify { plugin, message, level }
+            clankers_plugin::ui::PluginUiAction::Notify { plugin, message, level }
                 if plugin == "stdio-event-ui" && message == "note bash" && level == "info"
         )),
         "expected notify action, got: {ui_actions:?}"
@@ -1872,13 +1872,13 @@ async fn subscribed_stdio_plugin_receives_tool_call_event_and_emits_ui_and_displ
     assert!(
         ui_actions.iter().any(|action| matches!(
             action,
-            crate::plugin::ui::PluginUiAction::SetWidget { plugin, widget: crate::plugin::ui::Widget::Text { content, .. } }
+            clankers_plugin::ui::PluginUiAction::SetWidget { plugin, widget: clankers_plugin::ui::Widget::Text { content, .. } }
                 if plugin == "stdio-event-ui" && content == "widget bash"
         )),
         "expected set_widget action, got: {ui_actions:?}"
     );
 
-    crate::plugin::shutdown_plugin_runtime(&manager, "test shutdown").await;
+    clankers_plugin::shutdown_plugin_runtime(&manager, "test shutdown").await;
 }
 
 #[tokio::test]
@@ -1909,10 +1909,10 @@ async fn unsubscribed_stdio_plugin_does_not_receive_tool_call_event() {
     assert!(immediate.ui_actions.is_empty(), "unexpected immediate ui actions: {:?}", immediate.ui_actions);
 
     tokio::time::sleep(Duration::from_millis(150)).await;
-    let drained = crate::plugin::drain_stdio_host_events(&manager);
+    let drained = clankers_plugin::drain_stdio_host_events(&manager);
     assert!(drained.is_empty(), "unexpected stdio host events: {drained:?}");
 
-    crate::plugin::shutdown_plugin_runtime(&manager, "test shutdown").await;
+    clankers_plugin::shutdown_plugin_runtime(&manager, "test shutdown").await;
 }
 
 #[tokio::test]
@@ -1924,23 +1924,23 @@ async fn capability_gate_blocks_stdio_tool_calls_in_turn_loop() {
     use clankers_ucan::Capability;
     use tokio::sync::mpsc;
 
-    use crate::message::AgentMessage;
-    use crate::message::Content;
-    use crate::provider::Usage;
-    use crate::provider::streaming::MessageMetadata;
-    use crate::provider::streaming::StreamEvent;
+    use clanker_message::AgentMessage;
+    use clanker_message::Content;
+    use clankers_provider::Usage;
+    use clankers_provider::streaming::MessageMetadata;
+    use clankers_provider::streaming::StreamEvent;
 
     struct ToolUseProvider {
         calls: AtomicUsize,
     }
 
     #[async_trait::async_trait]
-    impl crate::provider::Provider for ToolUseProvider {
+    impl clankers_provider::Provider for ToolUseProvider {
         async fn complete(
             &self,
-            _request: crate::provider::CompletionRequest,
+            _request: clankers_provider::CompletionRequest,
             tx: mpsc::Sender<StreamEvent>,
-        ) -> crate::provider::error::Result<()> {
+        ) -> clankers_provider::error::Result<()> {
             let usage = Usage {
                 input_tokens: 10,
                 output_tokens: 2,
@@ -1993,7 +1993,7 @@ async fn capability_gate_blocks_stdio_tool_calls_in_turn_loop() {
                 .ok();
                 tx.send(StreamEvent::ContentBlockDelta {
                     index: 0,
-                    delta: crate::provider::streaming::ContentDelta::TextDelta { text: "done".into() },
+                    delta: clankers_provider::streaming::ContentDelta::TextDelta { text: "done".into() },
                 })
                 .await
                 .ok();
@@ -2009,7 +2009,7 @@ async fn capability_gate_blocks_stdio_tool_calls_in_turn_loop() {
             Ok(())
         }
 
-        fn models(&self) -> &[crate::provider::Model] {
+        fn models(&self) -> &[clankers_provider::Model] {
             &[]
         }
 
@@ -2028,20 +2028,20 @@ async fn capability_gate_blocks_stdio_tool_calls_in_turn_loop() {
     wait_for_live_tool(&manager, "stdio-capability", "stdio_capability_tool", Duration::from_secs(2)).await;
 
     let tools = crate::modes::common::build_plugin_tools(&[], &manager, None);
-    let settings = crate::config::Settings {
-        steel_turn_planning: crate::config::SteelTurnPlanningSettings {
+    let settings = clankers_config::Settings {
+        steel_turn_planning: clankers_config::SteelTurnPlanningSettings {
             enabled: false,
-            ..crate::config::SteelTurnPlanningSettings::default()
+            ..clankers_config::SteelTurnPlanningSettings::default()
         },
         no_cache: true,
         max_tokens: 100,
-        ..crate::config::Settings::default()
+        ..clankers_config::Settings::default()
     };
-    let gate: Arc<dyn crate::agent::CapabilityGate> =
+    let gate: Arc<dyn clankers_agent::CapabilityGate> =
         Arc::new(crate::capability_gate::UcanCapabilityGate::new(vec![Capability::Prompt, Capability::ToolUse {
             tool_pattern: "read,bash".to_string(),
         }]));
-    let mut agent = crate::agent::Agent::new(
+    let mut agent = clankers_agent::Agent::new(
         Arc::new(ToolUseProvider {
             calls: AtomicUsize::new(0),
         }),
@@ -2069,7 +2069,7 @@ async fn capability_gate_blocks_stdio_tool_calls_in_turn_loop() {
         other => panic!("expected text tool result, got {:?}", other),
     }
 
-    crate::plugin::shutdown_plugin_runtime(&manager, "test shutdown").await;
+    clankers_plugin::shutdown_plugin_runtime(&manager, "test shutdown").await;
 }
 
 #[tokio::test]
@@ -2081,23 +2081,23 @@ async fn capability_gate_allows_stdio_tool_calls_in_turn_loop() {
     use clankers_ucan::Capability;
     use tokio::sync::mpsc;
 
-    use crate::message::AgentMessage;
-    use crate::message::Content;
-    use crate::provider::Usage;
-    use crate::provider::streaming::MessageMetadata;
-    use crate::provider::streaming::StreamEvent;
+    use clanker_message::AgentMessage;
+    use clanker_message::Content;
+    use clankers_provider::Usage;
+    use clankers_provider::streaming::MessageMetadata;
+    use clankers_provider::streaming::StreamEvent;
 
     struct ToolUseProvider {
         calls: AtomicUsize,
     }
 
     #[async_trait::async_trait]
-    impl crate::provider::Provider for ToolUseProvider {
+    impl clankers_provider::Provider for ToolUseProvider {
         async fn complete(
             &self,
-            _request: crate::provider::CompletionRequest,
+            _request: clankers_provider::CompletionRequest,
             tx: mpsc::Sender<StreamEvent>,
-        ) -> crate::provider::error::Result<()> {
+        ) -> clankers_provider::error::Result<()> {
             let usage = Usage {
                 input_tokens: 10,
                 output_tokens: 2,
@@ -2150,7 +2150,7 @@ async fn capability_gate_allows_stdio_tool_calls_in_turn_loop() {
                 .ok();
                 tx.send(StreamEvent::ContentBlockDelta {
                     index: 0,
-                    delta: crate::provider::streaming::ContentDelta::TextDelta { text: "done".into() },
+                    delta: clankers_provider::streaming::ContentDelta::TextDelta { text: "done".into() },
                 })
                 .await
                 .ok();
@@ -2166,7 +2166,7 @@ async fn capability_gate_allows_stdio_tool_calls_in_turn_loop() {
             Ok(())
         }
 
-        fn models(&self) -> &[crate::provider::Model] {
+        fn models(&self) -> &[clankers_provider::Model] {
             &[]
         }
 
@@ -2185,20 +2185,20 @@ async fn capability_gate_allows_stdio_tool_calls_in_turn_loop() {
     wait_for_live_tool(&manager, "stdio-capability", "stdio_capability_tool", Duration::from_secs(2)).await;
 
     let tools = crate::modes::common::build_plugin_tools(&[], &manager, None);
-    let settings = crate::config::Settings {
-        steel_turn_planning: crate::config::SteelTurnPlanningSettings {
+    let settings = clankers_config::Settings {
+        steel_turn_planning: clankers_config::SteelTurnPlanningSettings {
             enabled: false,
-            ..crate::config::SteelTurnPlanningSettings::default()
+            ..clankers_config::SteelTurnPlanningSettings::default()
         },
         no_cache: true,
         max_tokens: 100,
-        ..crate::config::Settings::default()
+        ..clankers_config::Settings::default()
     };
-    let gate: Arc<dyn crate::agent::CapabilityGate> =
+    let gate: Arc<dyn clankers_agent::CapabilityGate> =
         Arc::new(crate::capability_gate::UcanCapabilityGate::new(vec![Capability::Prompt, Capability::ToolUse {
             tool_pattern: "stdio_capability_tool".to_string(),
         }]));
-    let mut agent = crate::agent::Agent::new(
+    let mut agent = clankers_agent::Agent::new(
         Arc::new(ToolUseProvider {
             calls: AtomicUsize::new(0),
         }),
@@ -2226,5 +2226,5 @@ async fn capability_gate_allows_stdio_tool_calls_in_turn_loop() {
         other => panic!("expected text tool result, got {:?}", other),
     }
 
-    crate::plugin::shutdown_plugin_runtime(&manager, "test shutdown").await;
+    clankers_plugin::shutdown_plugin_runtime(&manager, "test shutdown").await;
 }

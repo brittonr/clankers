@@ -8,7 +8,7 @@ use super::WorktreeManager;
 use super::WorktreeStatus;
 use crate::error::Result;
 use crate::tools::git_ops;
-use crate::util::id::generate_id;
+use clankers_util::id::generate_id;
 
 impl WorktreeManager {
     /// Create a new worktree for a session

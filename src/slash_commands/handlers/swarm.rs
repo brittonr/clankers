@@ -6,8 +6,8 @@ use tokio_util::sync::CancellationToken;
 use super::SlashContext;
 use super::SlashHandler;
 // Helper functions for safe panel access
-use crate::tui::components::peers_panel::PeersPanel;
-use crate::tui::components::subagent_panel::SubagentPanel;
+use clankers_tui::components::peers_panel::PeersPanel;
+use clankers_tui::components::subagent_panel::SubagentPanel;
 
 /// Get a mutable reference to the peers panel, panicking if not found.
 /// Centralizes the expect call to make it easier to audit and replace.
@@ -153,7 +153,7 @@ impl SlashHandler for SubagentsHandler {
                         let running: Vec<String> = subagent_panel
                             .entries
                             .iter()
-                            .filter(|e| e.status == crate::tui::components::subagent_panel::SubagentStatus::Running)
+                            .filter(|e| e.status == clankers_tui::components::subagent_panel::SubagentStatus::Running)
                             .map(|e| e.id.clone())
                             .collect();
                         if running.is_empty() {
@@ -161,7 +161,7 @@ impl SlashHandler for SubagentsHandler {
                         } else {
                             for id in &running {
                                 ctx.panel_tx
-                                    .send(crate::tui::components::subagent_event::SubagentEvent::KillRequest {
+                                    .send(clankers_tui::components::subagent_event::SubagentEvent::KillRequest {
                                         id: id.clone(),
                                     })
                                     .ok();
@@ -180,7 +180,7 @@ impl SlashHandler for SubagentsHandler {
                             .map(|e| e.id.clone());
                         if let Some(id) = matched {
                             ctx.panel_tx
-                                .send(crate::tui::components::subagent_event::SubagentEvent::KillRequest {
+                                .send(clankers_tui::components::subagent_event::SubagentEvent::KillRequest {
                                     id: id.clone(),
                                 })
                                 .ok();
@@ -223,10 +223,10 @@ impl SlashHandler for SubagentsHandler {
 // Helper functions for PeersHandler subcommands
 
 fn handle_peers_status(ctx: &mut SlashContext<'_>) {
-    let paths = crate::config::ClankersPaths::get();
+    let paths = clankers_config::ClankersPaths::get();
     let registry_path = crate::modes::rpc::peers::registry_path(paths);
     let registry = crate::modes::rpc::peers::PeerRegistry::load(&registry_path);
-    let entries = crate::tui::components::peers_panel::entries_from_registry(
+    let entries = clankers_tui::components::peers_panel::entries_from_registry(
         &crate::modes::rpc::peers::peer_info_views(&registry),
         chrono::Duration::minutes(5),
     );
@@ -242,7 +242,7 @@ fn handle_peers_add(subcmd_args: &str, ctx: &mut SlashContext<'_>) {
     } else {
         let node_id = parts[0].trim();
         let name = parts[1].trim();
-        let paths = crate::config::ClankersPaths::get();
+        let paths = clankers_config::ClankersPaths::get();
         let registry_path = crate::modes::rpc::peers::registry_path(paths);
         let mut registry = crate::modes::rpc::peers::PeerRegistry::load(&registry_path);
         registry.add(node_id, name);
@@ -250,7 +250,7 @@ fn handle_peers_add(subcmd_args: &str, ctx: &mut SlashContext<'_>) {
             Ok(()) => {
                 ctx.app
                     .push_system(format!("Added peer '{}' ({}…)", name, &node_id[..12.min(node_id.len())]), false);
-                let entries = crate::tui::components::peers_panel::entries_from_registry(
+                let entries = clankers_tui::components::peers_panel::entries_from_registry(
                     &crate::modes::rpc::peers::peer_info_views(&registry),
                     chrono::Duration::minutes(5),
                 );
@@ -265,7 +265,7 @@ fn handle_peers_remove(subcmd_args: &str, ctx: &mut SlashContext<'_>) {
     if subcmd_args.is_empty() {
         ctx.app.push_system("Usage: /peers remove <name-or-id>".to_string(), true);
     } else {
-        let paths = crate::config::ClankersPaths::get();
+        let paths = clankers_config::ClankersPaths::get();
         let registry_path = crate::modes::rpc::peers::registry_path(paths);
         let mut registry = crate::modes::rpc::peers::PeerRegistry::load(&registry_path);
         // Try as node_id first, then by name
@@ -282,7 +282,7 @@ fn handle_peers_remove(subcmd_args: &str, ctx: &mut SlashContext<'_>) {
         if was_removed {
             registry.save(&registry_path).ok();
             ctx.app.push_system(format!("Removed peer '{}'.", subcmd_args), false);
-            let entries = crate::tui::components::peers_panel::entries_from_registry(
+            let entries = clankers_tui::components::peers_panel::entries_from_registry(
                 &crate::modes::rpc::peers::peer_info_views(&registry),
                 chrono::Duration::minutes(5),
             );
@@ -294,7 +294,7 @@ fn handle_peers_remove(subcmd_args: &str, ctx: &mut SlashContext<'_>) {
 }
 
 fn handle_peers_probe(subcmd_args: &str, ctx: &mut SlashContext<'_>) {
-    let paths = crate::config::ClankersPaths::get();
+    let paths = clankers_config::ClankersPaths::get();
     let registry_path = crate::modes::rpc::peers::registry_path(paths);
     let identity_path = crate::modes::rpc::iroh::identity_path(paths);
 
@@ -307,7 +307,7 @@ fn handle_peers_probe(subcmd_args: &str, ctx: &mut SlashContext<'_>) {
         } else {
             ctx.app.push_system(format!("Probing {} peer(s)...", peer_ids.len()), false);
             for nid in &peer_ids {
-                peers_panel_mut(ctx).update_status(nid, crate::tui::components::peers_panel::PeerStatus::Probing);
+                peers_panel_mut(ctx).update_status(nid, clankers_tui::components::peers_panel::PeerStatus::Probing);
             }
             let ptx = ctx.panel_tx.clone();
             let rp = registry_path.clone();
@@ -330,7 +330,7 @@ fn handle_peers_probe(subcmd_args: &str, ctx: &mut SlashContext<'_>) {
             .find(|p| p.name == subcmd_args)
             .map(|p| p.node_id.clone())
             .unwrap_or_else(|| subcmd_args.to_string());
-        peers_panel_mut(ctx).update_status(&node_id, crate::tui::components::peers_panel::PeerStatus::Probing);
+        peers_panel_mut(ctx).update_status(&node_id, clankers_tui::components::peers_panel::PeerStatus::Probing);
         ctx.app.push_system(format!("Probing {}...", &node_id[..12.min(node_id.len())]), false);
         let ptx = ctx.panel_tx.clone();
         tokio::spawn(async move {
@@ -341,7 +341,7 @@ fn handle_peers_probe(subcmd_args: &str, ctx: &mut SlashContext<'_>) {
 
 fn handle_peers_discover(ctx: &mut SlashContext<'_>) {
     ctx.app.push_system("Scanning LAN via mDNS (5s)...".to_string(), false);
-    let paths = crate::config::ClankersPaths::get();
+    let paths = clankers_config::ClankersPaths::get();
     let registry_path = crate::modes::rpc::peers::registry_path(paths);
     let identity_path = crate::modes::rpc::iroh::identity_path(paths);
     let ptx = ctx.panel_tx.clone();
@@ -354,7 +354,7 @@ fn handle_peers_allow(subcmd_args: &str, ctx: &mut SlashContext<'_>) {
     if subcmd_args.is_empty() {
         ctx.app.push_system("Usage: /peers allow <node-id>".to_string(), true);
     } else {
-        let paths = crate::config::ClankersPaths::get();
+        let paths = clankers_config::ClankersPaths::get();
         let acl_path = crate::modes::rpc::iroh::allowlist_path(paths);
         let mut allowed = crate::modes::rpc::iroh::load_allowlist(&acl_path);
         allowed.insert(subcmd_args.to_string());
@@ -371,7 +371,7 @@ fn handle_peers_deny(subcmd_args: &str, ctx: &mut SlashContext<'_>) {
     if subcmd_args.is_empty() {
         ctx.app.push_system("Usage: /peers deny <node-id>".to_string(), true);
     } else {
-        let paths = crate::config::ClankersPaths::get();
+        let paths = clankers_config::ClankersPaths::get();
         let acl_path = crate::modes::rpc::iroh::allowlist_path(paths);
         let mut allowed = crate::modes::rpc::iroh::load_allowlist(&acl_path);
         if allowed.remove(subcmd_args) {

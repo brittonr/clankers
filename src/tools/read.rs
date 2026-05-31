@@ -14,7 +14,7 @@ use super::ToolContext;
 use super::ToolDefinition;
 use super::ToolResult;
 use super::ToolResultContent;
-use crate::util::fs::is_binary_file;
+use clankers_util::fs::is_binary_file;
 
 /// File type classification for reading.
 enum FileType {
@@ -119,7 +119,7 @@ impl Tool for ReadTool {
             use std::os::unix::fs::MetadataExt;
             let mtime = metadata.mtime();
             let size = metadata.len();
-            if let Ok(crate::db::file_cache::CacheLookup::Hit(cached)) =
+            if let Ok(clankers_db::file_cache::CacheLookup::Hit(cached)) =
                 db.file_cache().check(ctx.session_id(), path_str, mtime, size)
             {
                 ctx.emit_progress(&format!(
@@ -157,7 +157,7 @@ impl Tool for ReadTool {
                             }
                         })
                         .sum();
-                    let entry = crate::db::file_cache::CachedFileRead {
+                    let entry = clankers_db::file_cache::CachedFileRead {
                         session_id: ctx.session_id().to_string(),
                         path: path_str.to_string(),
                         mtime_secs: metadata.mtime(),

@@ -18,7 +18,7 @@ use ratatui::style::Modifier;
 use ratatui::style::Style;
 use tracing::warn;
 
-use crate::config::settings::Settings;
+use clankers_config::settings::Settings;
 use crate::error::Error;
 use crate::error::Result;
 

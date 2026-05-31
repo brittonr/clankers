@@ -9,7 +9,9 @@ use crate::modes::session_command_policy::LocalSessionEffect;
 use crate::modes::session_command_policy::SessionAckPolicy;
 use crate::modes::session_command_policy::SessionCommandEffect;
 use crate::slash_commands;
-use crate::tui::app::App;
+use crate::slash_commands::effects::SlashEffect;
+use crate::slash_commands::effects::SlashPluginEffect;
+use clankers_tui::app::App;
 
 /// Attach-side slash routing.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -163,7 +165,7 @@ pub(super) fn submit_input_attach(
         dispatch_attach_slash(app, client, &command, &args, slash_registry, parity_tracker);
     } else {
         // Regular prompt — expand @file/context references, then send text plus any image blocks.
-        let expanded = crate::util::at_file::expand_at_refs_with_images(text, &app.cwd);
+        let expanded = clankers_util::at_file::expand_at_refs_with_images(text, &app.cwd);
         if !expanded.references.is_empty() {
             tracing::info!(
                 metadata = %serde_json::json!({
@@ -178,8 +180,8 @@ pub(super) fn submit_input_attach(
             .images
             .into_iter()
             .filter_map(|content| match content {
-                crate::provider::message::Content::Image {
-                    source: crate::provider::message::ImageSource::Base64 { media_type, data },
+                clankers_provider::message::Content::Image {
+                    source: clankers_provider::message::ImageSource::Base64 { media_type, data },
                 } => Some(clankers_protocol::ImageData { data, media_type }),
                 _ => None,
             })
@@ -197,59 +199,73 @@ pub(crate) fn dispatch_attach_slash(
     parity_tracker: &mut AttachParityTracker,
 ) {
     match route_attach_slash(command, args) {
-        AttachSlashRoute::CustomLocal => handle_client_side_slash(app, command, args),
+        AttachSlashRoute::CustomLocal => {
+            apply_attach_slash_effects(
+                app,
+                client,
+                parity_tracker,
+                slash_commands::effects::attach_client_effects(command, args),
+            );
+        }
         AttachSlashRoute::RegistryLocal => {
             handle_attach_registry_slash(app, client, command, args, slash_registry, parity_tracker);
         }
         AttachSlashRoute::GetPlugins => {
-            client.send(SessionCommand::GetPlugins);
+            apply_attach_slash_effect(app, client, parity_tracker, slash_commands::effects::plugin_list_effect());
         }
         AttachSlashRoute::ForwardToDaemon => {
-            client.send(SessionCommand::SlashCommand {
-                command: command.to_string(),
-                args: args.to_string(),
-            });
+            apply_attach_slash_effect(
+                app,
+                client,
+                parity_tracker,
+                slash_commands::effects::forward_to_daemon_effect(command, args),
+            );
         }
     }
 }
 
 /// Handle a client-side slash command locally.
 pub(crate) fn handle_client_side_slash(app: &mut App, command: &str, args: &str) {
-    match command {
-        "quit" | "q" => {
-            app.should_quit = true;
-        }
-        "detach" => {
-            app.should_quit = true;
-            app.push_system("Detaching from session.".to_string(), false);
-        }
-        "zoom" => {
-            app.zoom_toggle();
-        }
-        "help" => {
-            app.push_system("Attach mode — locally handled slash commands include:".to_string(), false);
-            app.push_system(
-                "  /status /usage /version /router /model (no args) /role (no args) /session [list|delete|purge] /cd /shell /export"
-                    .to_string(),
-                false,
-            );
-            app.push_system(
-                "  /layout /preview /editor /todo /tools /think [level] /compact /compress /plugin".to_string(),
-                false,
-            );
-            app.push_system(
-                "  /think with no args cycles level; /plugin fetches daemon plugin inventory; /quit /detach /zoom stay client-side."
-                    .to_string(),
-                false,
-            );
-            app.push_system("  Unlisted commands generally forward to daemon.".to_string(), false);
-        }
-        _ => {
-            app.push_system(format!("Client command /{command} not implemented in attach mode."), true);
-        }
-    }
+    let (client, _cmd_rx) = tokio::sync::mpsc::unbounded_channel();
+    let (_event_tx, event_rx) = tokio::sync::mpsc::unbounded_channel();
+    let client = ClientAdapter::from_channels(client, event_rx);
+    let mut parity_tracker = AttachParityTracker::default();
+    apply_attach_slash_effects(
+        app,
+        &client,
+        &mut parity_tracker,
+        slash_commands::effects::attach_client_effects(command, args),
+    );
+}
 
-    let _ = args;
+fn apply_attach_slash_effects(
+    app: &mut App,
+    client: &ClientAdapter,
+    parity_tracker: &mut AttachParityTracker,
+    effects: Vec<SlashEffect>,
+) {
+    for effect in effects {
+        apply_attach_slash_effect(app, client, parity_tracker, effect);
+    }
+}
+
+fn apply_attach_slash_effect(
+    app: &mut App,
+    client: &ClientAdapter,
+    parity_tracker: &mut AttachParityTracker,
+    effect: SlashEffect,
+) {
+    match effect {
+        SlashEffect::Ui(effect) => slash_commands::effects::apply_ui_effect(app, effect),
+        SlashEffect::Session(effect) => dispatch_session_command_effect(app, client, parity_tracker, effect),
+        SlashEffect::SendSessionCommand(command) => {
+            client.send(command);
+        }
+        SlashEffect::Plugin(SlashPluginEffect::List) => {
+            client.send(SessionCommand::GetPlugins);
+        }
+        SlashEffect::Noop { message, is_error } => app.push_system(message, is_error),
+    }
 }
 
 fn handle_attach_registry_slash(
@@ -262,7 +278,7 @@ fn handle_attach_registry_slash(
 ) {
     let (cmd_tx, mut cmd_rx) = tokio::sync::mpsc::unbounded_channel();
     let (panel_tx, _panel_rx) = tokio::sync::mpsc::unbounded_channel();
-    let db: Option<crate::db::Db> = None;
+    let db: Option<clankers_db::Db> = None;
     let mut session_manager = None;
     let mut ctx = slash_commands::handlers::SlashContext {
         app,
@@ -284,46 +300,10 @@ fn flush_attach_agent_commands(
     parity_tracker: &mut AttachParityTracker,
 ) {
     while let Ok(agent_cmd) = cmd_rx.try_recv() {
-        match agent_cmd {
-            crate::modes::interactive::AgentCommand::SetThinkingLevel(level) => {
-                dispatch_session_command_effect(
-                    app,
-                    client,
-                    parity_tracker,
-                    session_command_policy::set_thinking_level_effect(level),
-                );
-            }
-            crate::modes::interactive::AgentCommand::CycleThinkingLevel => {
-                dispatch_session_command_effect(
-                    app,
-                    client,
-                    parity_tracker,
-                    session_command_policy::cycle_thinking_level_effect(app.thinking_level),
-                );
-            }
-            crate::modes::interactive::AgentCommand::SetDisabledTools(disabled) => {
-                dispatch_session_command_effect(
-                    app,
-                    client,
-                    parity_tracker,
-                    session_command_policy::disabled_tools_effect(disabled),
-                );
-            }
-            crate::modes::interactive::AgentCommand::CompressContext => {
-                dispatch_session_command_effect(
-                    app,
-                    client,
-                    parity_tracker,
-                    session_command_policy::manual_compaction_effect(),
-                );
-            }
-            other => {
-                if let Some(session_command) = translate_attach_agent_command(other) {
-                    client.send(session_command);
-                } else {
-                    warn!("attach local slash /{command} emitted unsupported agent command");
-                }
-            }
+        if let Some(effect) = slash_commands::effects::agent_command_effect(agent_cmd, app.thinking_level) {
+            apply_attach_slash_effect(app, client, parity_tracker, effect);
+        } else {
+            warn!("attach local slash /{command} emitted unsupported agent command");
         }
     }
 }
@@ -333,7 +313,7 @@ pub(super) fn bridge_attach_thinking_level_change(
     client: &ClientAdapter,
     parity_tracker: &mut AttachParityTracker,
     session_command: SessionCommand,
-    level: crate::provider::ThinkingLevel,
+    level: clankers_provider::ThinkingLevel,
 ) {
     let mut effect = session_command_policy::set_thinking_level_effect(level);
     effect.command = Some(session_command);
@@ -353,18 +333,8 @@ fn dispatch_session_command_effect(
     }
 }
 
-fn apply_local_session_effect(app: &mut App, effect: Option<LocalSessionEffect>) {
-    match effect {
-        Some(LocalSessionEffect::ThinkingLevel { level, message }) => {
-            app.thinking_enabled = level.is_enabled();
-            app.thinking_level = level;
-            app.push_system(message, false);
-        }
-        Some(LocalSessionEffect::DisabledTools { tools }) => {
-            app.disabled_tools = tools.into_iter().collect();
-        }
-        None => {}
-    }
+fn apply_local_session_effect(app: &mut App, effect: Option<crate::modes::session_command_policy::LocalSessionEffect>) {
+    slash_commands::effects::apply_local_session_effect(app, effect);
 }
 
 pub(super) fn apply_standalone_disabled_tools(
@@ -381,23 +351,16 @@ pub(super) fn apply_standalone_disabled_tools(
 }
 
 #[cfg(test)]
-pub(super) fn apply_standalone_thinking_level(app: &mut App, level: crate::provider::ThinkingLevel) {
+pub(super) fn apply_standalone_thinking_level(app: &mut App, level: clankers_provider::ThinkingLevel) {
     let effect = session_command_policy::set_thinking_level_effect(level);
     apply_local_session_effect(app, effect.local);
 }
 
 #[cfg(test)]
-pub(crate) fn format_attach_thinking_message(level: crate::provider::ThinkingLevel) -> String {
+pub(crate) fn format_attach_thinking_message(level: clankers_provider::ThinkingLevel) -> String {
     session_command_policy::thinking_level_message(level)
 }
 
 pub(crate) fn confirm_bash_command(request_id: String, approved: bool) -> SessionCommand {
     SessionCommand::ConfirmBash { request_id, approved }
-}
-
-fn translate_attach_agent_command(agent_cmd: crate::modes::interactive::AgentCommand) -> Option<SessionCommand> {
-    match agent_cmd {
-        crate::modes::interactive::AgentCommand::SetModel(model) => Some(SessionCommand::SetModel { model }),
-        _ => None,
-    }
 }

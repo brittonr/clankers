@@ -6,7 +6,7 @@
 use serde::Deserialize;
 use serde::Serialize;
 
-use crate::plugin::ui::Widget;
+use clankers_plugin::ui::Widget;
 
 /// UI update from host to client
 #[derive(Debug, Clone, Serialize, Deserialize)]

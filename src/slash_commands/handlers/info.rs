@@ -157,7 +157,7 @@ impl SlashHandler for LeaderHandler {
     }
 }
 
-fn format_leader_action(action: &crate::tui::components::leader_menu::LeaderAction) -> String {
+fn format_leader_action(action: &clankers_tui::components::leader_menu::LeaderAction) -> String {
     use clanker_tui_types::LeaderAction;
     match action {
         LeaderAction::Action(a) => format!("→ {:?}", a),
@@ -189,9 +189,9 @@ impl SlashHandler for RouterHandler {
 
         // Connection mode
         let mode = match status {
-            crate::tui::app::RouterStatus::Connected => "RPC daemon (clanker-router)",
-            crate::tui::app::RouterStatus::Local => "in-process",
-            crate::tui::app::RouterStatus::Disconnected => "disconnected",
+            clankers_tui::app::RouterStatus::Connected => "RPC daemon (clanker-router)",
+            clankers_tui::app::RouterStatus::Local => "in-process",
+            clankers_tui::app::RouterStatus::Disconnected => "disconnected",
         };
         writeln!(out, "Router: {} ({})", info.provider_type, mode).ok();
 
@@ -264,7 +264,7 @@ impl SlashHandler for ExportHandler {
             let cwd_path = std::path::Path::new(&ctx.app.cwd);
             let exports_dir = cwd_path.join(".clankers").join("exports");
             std::fs::create_dir_all(&exports_dir).ok();
-            crate::util::fs::ensure_gitignore_entry(cwd_path, ".clankers/exports");
+            clankers_util::fs::ensure_gitignore_entry(cwd_path, ".clankers/exports");
             exports_dir.join(&filename)
         } else {
             std::path::Path::new(&ctx.app.cwd).join(&filename)
@@ -406,14 +406,14 @@ impl SlashHandler for MetricsHandler {
         // Current session report
         let session_id = &ctx.app.session_id;
         let current = match store.current_session_report(session_id) {
-            Ok(Some(report)) => crate::db::metrics::format::format_current_session(&report),
+            Ok(Some(report)) => clankers_db::metrics::format::format_current_session(&report),
             Ok(None) => "No metrics recorded for this session yet.".to_string(),
             Err(e) => format!("Failed to read session metrics: {e}"),
         };
 
         // Historical report
         let historical = match store.historical_report(days) {
-            Ok(report) if report.total_sessions > 0 => crate::db::metrics::format::format_historical(&report),
+            Ok(report) if report.total_sessions > 0 => clankers_db::metrics::format::format_historical(&report),
             Ok(_) => String::new(),
             Err(e) => format!("Failed to read historical metrics: {e}"),
         };

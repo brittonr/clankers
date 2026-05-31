@@ -5,9 +5,9 @@
 use clanker_tui_types::AppState;
 use clanker_tui_types::BlockEntry;
 
-use crate::config::keybindings::ExtendedAction;
-use crate::config::keybindings::InputMode;
-use crate::tui::app::App;
+use clankers_config::keybindings::ExtendedAction;
+use clankers_config::keybindings::InputMode;
+use clankers_tui::app::App;
 
 /// Handle a resolved `ExtendedAction`.
 #[cfg_attr(
@@ -18,7 +18,7 @@ pub(crate) fn handle_extended_action(
     app: &mut App,
     action: ExtendedAction,
     cmd_tx: &tokio::sync::mpsc::UnboundedSender<super::interactive::AgentCommand>,
-    panel_tx: &tokio::sync::mpsc::UnboundedSender<crate::tui::components::subagent_event::SubagentEvent>,
+    panel_tx: &tokio::sync::mpsc::UnboundedSender<clankers_tui::components::subagent_event::SubagentEvent>,
 ) {
     match action {
         // ── Search ───────────────────────────────────
@@ -238,7 +238,7 @@ fn handle_directional_focus(app: &mut App, towards: ratatui_hypertile::Towards) 
 fn handle_panel_scroll(app: &mut App, up: bool) {
     use clanker_tui_types::PanelId;
 
-    use crate::tui::components::subagent_panel::SubagentPanel;
+    use clankers_tui::components::subagent_panel::SubagentPanel;
     if let Some(sp) = app.panels.downcast_mut::<SubagentPanel>(PanelId::Subagents) {
         if up {
             sp.scroll.scroll_up(3);
@@ -251,7 +251,7 @@ fn handle_panel_scroll(app: &mut App, up: bool) {
 fn handle_panel_clear_done(app: &mut App) {
     use clanker_tui_types::PanelId;
 
-    use crate::tui::components::subagent_panel::SubagentPanel;
+    use clankers_tui::components::subagent_panel::SubagentPanel;
     if let Some(subagent_panel) = app.panels.downcast_mut::<SubagentPanel>(PanelId::Subagents) {
         subagent_panel.clear_done();
         if !subagent_panel.is_visible() {
@@ -262,22 +262,22 @@ fn handle_panel_clear_done(app: &mut App) {
 
 fn handle_panel_kill(
     app: &mut App,
-    panel_tx: &tokio::sync::mpsc::UnboundedSender<crate::tui::components::subagent_event::SubagentEvent>,
+    panel_tx: &tokio::sync::mpsc::UnboundedSender<clankers_tui::components::subagent_event::SubagentEvent>,
 ) {
     use clanker_tui_types::PanelId;
 
-    use crate::tui::components::subagent_panel::SubagentPanel;
+    use clankers_tui::components::subagent_panel::SubagentPanel;
     if let Some(sp) = app.panels.downcast_ref::<SubagentPanel>(PanelId::Subagents)
         && let Some(id) = sp.selected_id()
     {
-        panel_tx.send(crate::tui::components::subagent_event::SubagentEvent::KillRequest { id }).ok();
+        panel_tx.send(clankers_tui::components::subagent_event::SubagentEvent::KillRequest { id }).ok();
     }
 }
 
 fn handle_panel_remove(app: &mut App) {
     use clanker_tui_types::PanelId;
 
-    use crate::tui::components::subagent_panel::SubagentPanel;
+    use clankers_tui::components::subagent_panel::SubagentPanel;
     if let Some(sp) = app.panels.downcast_mut::<SubagentPanel>(PanelId::Subagents) {
         sp.remove_selected();
     }
@@ -297,7 +297,7 @@ fn handle_toggle_session_popup(app: &mut App) {
 fn handle_toggle_branch_panel(app: &mut App) {
     use clanker_tui_types::PanelId;
 
-    use crate::tui::components::branch_panel::BranchPanel;
+    use clankers_tui::components::branch_panel::BranchPanel;
 
     if app.layout.focused_panel == Some(PanelId::Branches) {
         app.unfocus_panel();
@@ -315,19 +315,19 @@ fn handle_open_model_selector(app: &mut App) {
     if models.is_empty() {
         app.push_system("No models available.".to_string(), true);
     } else {
-        app.overlays.model_selector = crate::tui::components::model_selector::ModelSelector::new(models);
+        app.overlays.model_selector = clankers_tui::components::model_selector::ModelSelector::new(models);
         app.overlays.model_selector.open();
     }
 }
 
 fn handle_open_account_selector(app: &mut App) {
-    use crate::provider::auth::AuthStoreExt;
-    let paths = crate::config::ClankersPaths::get();
-    let store = crate::provider::auth::AuthStore::load(&paths.global_auth);
-    let accounts: Vec<crate::tui::components::account_selector::AccountItem> = store
+    use clankers_provider::auth::AuthStoreExt;
+    let paths = clankers_config::ClankersPaths::get();
+    let store = clankers_provider::auth::AuthStore::load(&paths.global_auth);
+    let accounts: Vec<clankers_tui::components::account_selector::AccountItem> = store
         .list_anthropic_accounts()
         .into_iter()
-        .map(|info| crate::tui::components::account_selector::AccountItem {
+        .map(|info| clankers_tui::components::account_selector::AccountItem {
             name: info.name,
             label: info.label,
             is_active: info.is_active,

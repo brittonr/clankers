@@ -156,9 +156,9 @@ fn uninstall_git_hooks(ctx: &mut SlashContext<'_>) {
 
 /// Load hooks config by reading the merged settings.
 fn load_hooks_config() -> clankers_hooks::HooksConfig {
-    let paths = crate::config::ClankersPaths::get();
-    let project_paths = crate::config::ProjectPaths::resolve(&std::env::current_dir().unwrap_or_default());
-    let settings = crate::config::settings::Settings::load(&paths.global_settings, &project_paths.settings);
+    let paths = clankers_config::ClankersPaths::get();
+    let project_paths = clankers_config::ProjectPaths::resolve(&std::env::current_dir().unwrap_or_default());
+    let settings = clankers_config::settings::Settings::load(&paths.global_settings, &project_paths.settings);
     settings.hooks
 }
 

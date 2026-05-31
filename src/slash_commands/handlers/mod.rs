@@ -36,8 +36,8 @@ use std::sync::Mutex;
 use clanker_tui_types::SubagentEvent;
 
 use crate::modes::interactive::AgentCommand;
-use crate::plugin::PluginManager;
-use crate::tui::app::App;
+use clankers_plugin::PluginManager;
+use clankers_tui::app::App;
 
 /// Context passed to every slash command handler.
 #[allow(private_interfaces)] // AgentCommand is pub(crate) by design
@@ -46,8 +46,8 @@ pub struct SlashContext<'a> {
     pub cmd_tx: &'a tokio::sync::mpsc::UnboundedSender<AgentCommand>,
     pub plugin_manager: Option<&'a Arc<Mutex<PluginManager>>>,
     pub panel_tx: &'a tokio::sync::mpsc::UnboundedSender<SubagentEvent>,
-    pub db: &'a Option<crate::db::Db>,
-    pub session_manager: &'a mut Option<crate::session::SessionManager>,
+    pub db: &'a Option<clankers_db::Db>,
+    pub session_manager: &'a mut Option<clankers_session::SessionManager>,
 }
 
 /// A slash command handler.

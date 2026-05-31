@@ -22,14 +22,14 @@ use ratatui::backend::CrosstermBackend;
 
 use super::interactive::AgentCommand;
 use super::interactive::TaskResult;
-use crate::agent::events::AgentEvent;
-use crate::config::keybindings::InputMode;
-use crate::config::keybindings::Keymap;
+use clankers_agent::events::AgentEvent;
+use clankers_config::keybindings::InputMode;
 use crate::error::Result;
-use crate::tui::app::App;
-use crate::tui::event as tui_event;
-use crate::tui::event::AppEvent;
-use crate::tui::render;
+use clankers_tui::app::App;
+use clankers_tui::event as tui_event;
+use clankers_tui::event::AppEvent;
+use clankers_tui::keymap::Keymap;
+use clankers_tui::render;
 
 mod key_handler;
 
@@ -50,18 +50,18 @@ pub(crate) struct EventLoopRunner<'a> {
     cmd_tx: tokio::sync::mpsc::UnboundedSender<AgentCommand>,
     done_rx: tokio::sync::mpsc::UnboundedReceiver<TaskResult>,
     event_rx: tokio::sync::broadcast::Receiver<AgentEvent>,
-    panel_rx: &'a mut tokio::sync::mpsc::UnboundedReceiver<crate::tui::components::subagent_event::SubagentEvent>,
+    panel_rx: &'a mut tokio::sync::mpsc::UnboundedReceiver<clankers_tui::components::subagent_event::SubagentEvent>,
     todo_rx: &'a mut tokio::sync::mpsc::UnboundedReceiver<(
         crate::tools::todo::TodoAction,
         tokio::sync::oneshot::Sender<crate::tools::todo::TodoResponse>,
     )>,
     bash_confirm_rx: &'a mut crate::tools::bash::ConfirmRx,
-    panel_tx: tokio::sync::mpsc::UnboundedSender<crate::tui::components::subagent_event::SubagentEvent>,
+    panel_tx: tokio::sync::mpsc::UnboundedSender<clankers_tui::components::subagent_event::SubagentEvent>,
     // Config
     keymap: Keymap,
-    plugin_manager: Option<Arc<std::sync::Mutex<crate::plugin::PluginManager>>>,
-    db: Option<crate::db::Db>,
-    settings: &'a crate::config::settings::Settings,
+    plugin_manager: Option<Arc<std::sync::Mutex<clankers_plugin::PluginManager>>>,
+    db: Option<clankers_db::Db>,
+    settings: &'a clankers_config::settings::Settings,
     // Slash command dispatch
     pub(crate) slash_registry: crate::slash_commands::SlashRegistry,
     // Session controller (handles audit, persistence, hooks, loop, auto-test).
@@ -88,17 +88,17 @@ impl<'a> EventLoopRunner<'a> {
         terminal: &'a mut Terminal<CrosstermBackend<io::Stdout>>,
         app: &'a mut App,
         event_rx: tokio::sync::broadcast::Receiver<AgentEvent>,
-        panel_rx: &'a mut tokio::sync::mpsc::UnboundedReceiver<crate::tui::components::subagent_event::SubagentEvent>,
+        panel_rx: &'a mut tokio::sync::mpsc::UnboundedReceiver<clankers_tui::components::subagent_event::SubagentEvent>,
         todo_rx: &'a mut tokio::sync::mpsc::UnboundedReceiver<(
             crate::tools::todo::TodoAction,
             tokio::sync::oneshot::Sender<crate::tools::todo::TodoResponse>,
         )>,
         bash_confirm_rx: &'a mut crate::tools::bash::ConfirmRx,
-        panel_tx: tokio::sync::mpsc::UnboundedSender<crate::tui::components::subagent_event::SubagentEvent>,
+        panel_tx: tokio::sync::mpsc::UnboundedSender<clankers_tui::components::subagent_event::SubagentEvent>,
         keymap: Keymap,
-        plugin_manager: Option<Arc<std::sync::Mutex<crate::plugin::PluginManager>>>,
-        db: Option<crate::db::Db>,
-        settings: &'a crate::config::settings::Settings,
+        plugin_manager: Option<Arc<std::sync::Mutex<clankers_plugin::PluginManager>>>,
+        db: Option<clankers_db::Db>,
+        settings: &'a clankers_config::settings::Settings,
         cmd_tx: tokio::sync::mpsc::UnboundedSender<AgentCommand>,
         done_rx: tokio::sync::mpsc::UnboundedReceiver<TaskResult>,
         slash_registry: crate::slash_commands::SlashRegistry,
@@ -149,12 +149,12 @@ impl<'a> EventLoopRunner<'a> {
             self.drain_bash_confirms();
             self.refresh_peers();
             self.handle_task_results();
-            crate::tui::clipboard::poll_clipboard_result(self.app);
+            clankers_tui::clipboard::poll_clipboard_result(self.app);
             self.handle_terminal_events()?;
 
             if self.app.open_editor_requested {
                 self.app.open_editor_requested = false;
-                crate::tui::clipboard::open_external_editor(self.terminal, self.app);
+                clankers_tui::clipboard::open_external_editor(self.terminal, self.app);
             }
         }
         Ok(())
@@ -204,7 +204,7 @@ impl<'a> EventLoopRunner<'a> {
         if let AgentEvent::UsageUpdate { turn_usage, .. } = event
             && let Some(ref db) = self.db
         {
-            let req = crate::db::usage::RequestUsage::new(
+            let req = clankers_db::usage::RequestUsage::new(
                 &self.app.model,
                 turn_usage.input_tokens as u64,
                 turn_usage.output_tokens as u64,
@@ -252,7 +252,7 @@ impl<'a> EventLoopRunner<'a> {
             let call_id = call_id.clone();
             let is_error = *is_error;
             db.spawn_write(move |db| {
-                let entry = crate::db::tool_results::StoredToolResult {
+                let entry = clankers_db::tool_results::StoredToolResult {
                     session_id,
                     call_id,
                     tool_name,
@@ -279,7 +279,7 @@ impl<'a> EventLoopRunner<'a> {
             self.app.push_system(format!("🔌 {}: {}", plugin_name, message), false);
         }
         for action in result.ui_actions {
-            crate::plugin::ui::apply_ui_action(&mut self.app.plugin_ui, action);
+            clankers_plugin::ui::apply_ui_action(&mut self.app.plugin_ui, action);
         }
     }
 
@@ -292,7 +292,7 @@ impl<'a> EventLoopRunner<'a> {
             self.app.push_system(format!("🔌 {}: {}", plugin_name, message), false);
         }
         for action in result.ui_actions {
-            crate::plugin::ui::apply_ui_action(&mut self.app.plugin_ui, action);
+            clankers_plugin::ui::apply_ui_action(&mut self.app.plugin_ui, action);
         }
     }
 
@@ -373,8 +373,8 @@ impl<'a> EventLoopRunner<'a> {
                             pid,
                             &mut self.app.layout.tiling,
                         );
-                        self.app.layout.pane_registry.register(pane_id, crate::tui::panes::PaneKind::Subagent(id));
-                        crate::tui::panes::auto_split_for_subagent(
+                        self.app.layout.pane_registry.register(pane_id, clankers_tui::panes::PaneKind::Subagent(id));
+                        clankers_tui::panes::auto_split_for_subagent(
                             &mut self.app.layout.tiling,
                             &self.app.layout.pane_registry,
                             pane_id,
@@ -408,12 +408,12 @@ impl<'a> EventLoopRunner<'a> {
             .layout
             .subagent_panes
             .get(id)
-            .filter(|s| s.status == crate::tui::components::subagent_panel::SubagentStatus::Running)
+            .filter(|s| s.status == clankers_tui::components::subagent_panel::SubagentStatus::Running)
             .and_then(|s| s.pid)
             .or_else(|| {
                 subagent_panel(self.app)
                     .get_by_id(id)
-                    .filter(|e| e.status == crate::tui::components::subagent_panel::SubagentStatus::Running)
+                    .filter(|e| e.status == clankers_tui::components::subagent_panel::SubagentStatus::Running)
                     .and_then(|e| e.pid)
             });
 
@@ -466,9 +466,9 @@ impl<'a> EventLoopRunner<'a> {
         let peers = peers_panel(self.app);
         if count.is_multiple_of(200) && peers.server_running {
             let registry = crate::modes::rpc::peers::PeerRegistry::load(&crate::modes::rpc::peers::registry_path(
-                crate::config::ClankersPaths::get(),
+                clankers_config::ClankersPaths::get(),
             ));
-            let entries = crate::tui::components::peers_panel::entries_from_registry(
+            let entries = clankers_tui::components::peers_panel::entries_from_registry(
                 &crate::modes::rpc::peers::peer_info_views(&registry),
                 chrono::Duration::minutes(5),
             );
@@ -677,24 +677,24 @@ impl<'a> EventLoopRunner<'a> {
                     self.handle_key_event(key);
                 }
                 AppEvent::MouseDown(button, col, row) => {
-                    crate::tui::mouse::handle_mouse_down(self.app, button, col, row);
+                    clankers_tui::mouse::handle_mouse_down(self.app, button, col, row);
                 }
                 AppEvent::MouseDrag(button, col, row) => {
-                    crate::tui::mouse::handle_mouse_drag(self.app, button, col, row);
+                    clankers_tui::mouse::handle_mouse_drag(self.app, button, col, row);
                 }
                 AppEvent::MouseUp(button, col, row) => {
-                    crate::tui::mouse::handle_mouse_up(self.app, button, col, row);
+                    clankers_tui::mouse::handle_mouse_up(self.app, button, col, row);
                 }
                 AppEvent::ScrollUp(col, row, n) => {
-                    crate::tui::mouse::handle_mouse_scroll(self.app, col, row, true, n);
+                    clankers_tui::mouse::handle_mouse_scroll(self.app, col, row, true, n);
                 }
                 AppEvent::ScrollDown(col, row, n) => {
-                    crate::tui::mouse::handle_mouse_scroll(self.app, col, row, false, n);
+                    clankers_tui::mouse::handle_mouse_scroll(self.app, col, row, false, n);
                 }
                 AppEvent::Resize(_, _) => {}
                 AppEvent::FocusGained => {
                     if self.app.auto_theme {
-                        self.app.theme = crate::config::theme::detect_theme();
+                        self.app.theme = crate::tui_config::detect_theme();
                     }
                 }
                 _ => {}
@@ -707,12 +707,12 @@ impl<'a> EventLoopRunner<'a> {
 // ── Todo action processor ───────────────────────────────────────────
 
 fn process_todo_action(
-    panel: &mut crate::tui::components::todo_panel::TodoPanel,
+    panel: &mut clankers_tui::components::todo_panel::TodoPanel,
     action: crate::tools::todo::TodoAction,
 ) -> crate::tools::todo::TodoResponse {
     use crate::tools::todo::TodoAction;
     use crate::tools::todo::TodoResponse;
-    use crate::tui::components::todo_panel::TodoStatus;
+    use clankers_tui::components::todo_panel::TodoStatus;
 
     match action {
         TodoAction::Add { text } => {
@@ -768,23 +768,23 @@ fn process_todo_action(
 // ── Panel accessor helpers ──────────────────────────────────────────
 
 #[cfg_attr(dylint_lib = "tigerstyle", allow(no_unwrap, reason = "panel registered at startup"))]
-pub(super) fn subagent_panel(app: &mut App) -> &mut crate::tui::components::subagent_panel::SubagentPanel {
+pub(super) fn subagent_panel(app: &mut App) -> &mut clankers_tui::components::subagent_panel::SubagentPanel {
     app.panels
-        .downcast_mut::<crate::tui::components::subagent_panel::SubagentPanel>(crate::tui::panel::PanelId::Subagents)
+        .downcast_mut::<clankers_tui::components::subagent_panel::SubagentPanel>(clankers_tui::panel::PanelId::Subagents)
         .expect("subagent panel registered at startup")
 }
 
 #[cfg_attr(dylint_lib = "tigerstyle", allow(no_unwrap, reason = "panel registered at startup"))]
-pub(super) fn todo_panel(app: &mut App) -> &mut crate::tui::components::todo_panel::TodoPanel {
+pub(super) fn todo_panel(app: &mut App) -> &mut clankers_tui::components::todo_panel::TodoPanel {
     app.panels
-        .downcast_mut::<crate::tui::components::todo_panel::TodoPanel>(crate::tui::panel::PanelId::Todo)
+        .downcast_mut::<clankers_tui::components::todo_panel::TodoPanel>(clankers_tui::panel::PanelId::Todo)
         .expect("todo panel registered at startup")
 }
 
 #[cfg_attr(dylint_lib = "tigerstyle", allow(no_unwrap, reason = "panel registered at startup"))]
-pub(super) fn peers_panel(app: &mut App) -> &mut crate::tui::components::peers_panel::PeersPanel {
+pub(super) fn peers_panel(app: &mut App) -> &mut clankers_tui::components::peers_panel::PeersPanel {
     app.panels
-        .downcast_mut::<crate::tui::components::peers_panel::PeersPanel>(crate::tui::panel::PanelId::Peers)
+        .downcast_mut::<clankers_tui::components::peers_panel::PeersPanel>(clankers_tui::panel::PanelId::Peers)
         .expect("peers panel registered at startup")
 }
 
@@ -804,10 +804,10 @@ mod tests {
     use super::EventLoopRunner;
     use super::MAX_AGENT_EVENTS_PER_DRAIN;
     use super::sync_controller_session_id;
-    use crate::config::keybindings::Keymap;
     use crate::modes::interactive::AgentCommand;
     use crate::modes::interactive::TaskResult;
-    use crate::tui::app::App;
+    use clankers_tui::app::App;
+    use clankers_tui::keymap::Keymap;
 
     struct RunnerHarness {
         terminal: Terminal<CrosstermBackend<io::Stdout>>,
@@ -816,10 +816,10 @@ mod tests {
         cmd_rx: tokio::sync::mpsc::UnboundedReceiver<AgentCommand>,
         done_tx: tokio::sync::mpsc::UnboundedSender<TaskResult>,
         done_rx: Option<tokio::sync::mpsc::UnboundedReceiver<TaskResult>>,
-        event_tx: tokio::sync::broadcast::Sender<crate::agent::events::AgentEvent>,
-        event_rx: Option<tokio::sync::broadcast::Receiver<crate::agent::events::AgentEvent>>,
-        panel_tx: tokio::sync::mpsc::UnboundedSender<crate::tui::components::subagent_event::SubagentEvent>,
-        panel_rx: Option<tokio::sync::mpsc::UnboundedReceiver<crate::tui::components::subagent_event::SubagentEvent>>,
+        event_tx: tokio::sync::broadcast::Sender<clankers_agent::events::AgentEvent>,
+        event_rx: Option<tokio::sync::broadcast::Receiver<clankers_agent::events::AgentEvent>>,
+        panel_tx: tokio::sync::mpsc::UnboundedSender<clankers_tui::components::subagent_event::SubagentEvent>,
+        panel_rx: Option<tokio::sync::mpsc::UnboundedReceiver<clankers_tui::components::subagent_event::SubagentEvent>>,
         todo_rx: Option<
             tokio::sync::mpsc::UnboundedReceiver<(
                 crate::tools::todo::TodoAction,
@@ -827,7 +827,7 @@ mod tests {
             )>,
         >,
         bash_confirm_rx: Option<crate::tools::bash::ConfirmRx>,
-        settings: crate::config::settings::Settings,
+        settings: clankers_config::settings::Settings,
         controller: Option<SessionController>,
         schedule_rx: Option<tokio::sync::broadcast::Receiver<ScheduleEvent>>,
     }
@@ -835,14 +835,14 @@ mod tests {
     impl RunnerHarness {
         fn new(controller: SessionController) -> Self {
             let terminal = Terminal::new(CrosstermBackend::new(io::stdout())).expect("terminal should initialize");
-            let mut app = App::new("test-model".to_string(), "/tmp".to_string(), crate::tui::theme::Theme::dark());
+            let mut app = App::new("test-model".to_string(), "/tmp".to_string(), clankers_tui::theme::Theme::dark());
             app.session_id = "test-session".to_string();
 
             let (cmd_tx, cmd_rx) = tokio::sync::mpsc::unbounded_channel();
             let (done_tx, done_rx) = tokio::sync::mpsc::unbounded_channel();
             let (event_tx, event_rx) = tokio::sync::broadcast::channel(MAX_AGENT_EVENTS_PER_DRAIN + 8);
             let (panel_tx, panel_rx) =
-                tokio::sync::mpsc::unbounded_channel::<crate::tui::components::subagent_event::SubagentEvent>();
+                tokio::sync::mpsc::unbounded_channel::<clankers_tui::components::subagent_event::SubagentEvent>();
             let (_todo_tx, todo_rx) = tokio::sync::mpsc::unbounded_channel::<(
                 crate::tools::todo::TodoAction,
                 tokio::sync::oneshot::Sender<crate::tools::todo::TodoResponse>,
@@ -863,7 +863,7 @@ mod tests {
                 panel_rx: Some(panel_rx),
                 todo_rx: Some(todo_rx),
                 bash_confirm_rx: Some(bash_confirm_rx),
-                settings: crate::config::settings::Settings::default(),
+                settings: clankers_config::settings::Settings::default(),
                 controller: Some(controller),
                 schedule_rx: Some(schedule_rx),
             }
@@ -956,7 +956,7 @@ mod tests {
     #[test]
     fn sync_controller_session_id_updates_stale_controller_state() {
         let mut app =
-            crate::tui::app::App::new("test-model".to_string(), "/tmp".to_string(), crate::tui::theme::Theme::dark());
+            clankers_tui::app::App::new("test-model".to_string(), "/tmp".to_string(), clankers_tui::theme::Theme::dark());
         app.session_id = "session-from-app".to_string();
 
         let mut controller =
@@ -976,7 +976,7 @@ mod tests {
         for index in 0..=MAX_AGENT_EVENTS_PER_DRAIN {
             harness
                 .event_tx
-                .send(crate::agent::events::AgentEvent::MessageUpdate {
+                .send(clankers_agent::events::AgentEvent::MessageUpdate {
                     index: 0,
                     delta: ContentDelta::TextDelta {
                         text: format!("token-{index} "),

@@ -84,7 +84,7 @@ pub fn spawn_agent_process(
     //   4. Neither                       → no gate, full access
     let effective_caps = merge_capabilities(capabilities.as_deref(), factory.settings.default_capabilities.as_deref());
 
-    let mut builder = crate::agent::builder::AgentBuilder::new(
+    let mut builder = clankers_agent::builder::AgentBuilder::new(
         Arc::clone(&factory.provider),
         factory.settings.clone(),
         model.clone(),
@@ -109,7 +109,7 @@ pub fn spawn_agent_process(
     // (same as standalone mode). Without this, conversation history is
     // lost when the daemon stops.
     let (session_manager, automerge_path) = {
-        let paths = crate::config::ClankersPaths::get();
+        let paths = clankers_config::ClankersPaths::get();
         let cwd = std::env::current_dir().unwrap_or_default().to_string_lossy().into_owned();
         match clankers_session::SessionManager::create(&paths.global_sessions_dir, &cwd, &model, None, None, None) {
             Ok(mgr) => {
@@ -198,7 +198,7 @@ async fn run_agent_actor(
     mut panel_rx: mpsc::UnboundedReceiver<SubagentEvent>,
     mut bash_confirm_rx: crate::tools::bash::ConfirmRx,
     signal_rx: &mut mpsc::UnboundedReceiver<Signal>,
-    plugin_manager: Option<std::sync::Arc<std::sync::Mutex<crate::plugin::PluginManager>>>,
+    plugin_manager: Option<std::sync::Arc<std::sync::Mutex<clankers_plugin::PluginManager>>>,
 ) -> DeathReason {
     info!("agent process started: {session_id}");
 
@@ -334,7 +334,7 @@ async fn handle_actor_session_command(
     cmd_rx: &mut mpsc::UnboundedReceiver<SessionCommand>,
     event_tx: &broadcast::Sender<DaemonEvent>,
     panel_rx: &mut mpsc::UnboundedReceiver<SubagentEvent>,
-    plugin_manager: Option<&Arc<std::sync::Mutex<crate::plugin::PluginManager>>>,
+    plugin_manager: Option<&Arc<std::sync::Mutex<clankers_plugin::PluginManager>>>,
     pending_commands: &mut VecDeque<SessionCommand>,
 ) -> bool {
     let is_disconnect = matches!(cmd, SessionCommand::Disconnect);
@@ -394,7 +394,7 @@ async fn handle_controller_command_with_interrupts(
     cmd_rx: &mut mpsc::UnboundedReceiver<SessionCommand>,
     event_tx: &broadcast::Sender<DaemonEvent>,
     panel_rx: &mut mpsc::UnboundedReceiver<SubagentEvent>,
-    plugin_manager: Option<&Arc<std::sync::Mutex<crate::plugin::PluginManager>>>,
+    plugin_manager: Option<&Arc<std::sync::Mutex<clankers_plugin::PluginManager>>>,
     pending_commands: &mut VecDeque<SessionCommand>,
 ) {
     let cancel_token = if is_prompt_command(&cmd) {
@@ -615,73 +615,6 @@ pub async fn prompt_and_collect(
     collected
 }
 
-fn load_recovery_seed_messages(
-    entry: &super::session_store::SessionCatalogEntry,
-) -> Vec<clankers_protocol::SerializedMessage> {
-    if entry.automerge_path.exists() {
-        match clankers_session::SessionManager::open(entry.automerge_path.clone()) {
-            Ok(mgr) => match mgr.build_context() {
-                Ok(msgs) => {
-                    let serialized: Vec<_> = msgs
-                        .iter()
-                        .filter_map(|m| {
-                            let (role, content, model) = match m {
-                                clanker_message::AgentMessage::User(u) => {
-                                    let text = u
-                                        .content
-                                        .iter()
-                                        .filter_map(|c| match c {
-                                            clanker_message::Content::Text { text } => Some(text.as_str()),
-                                            _ => None,
-                                        })
-                                        .collect::<Vec<_>>()
-                                        .join("\n");
-                                    ("user", text, None)
-                                }
-                                clanker_message::AgentMessage::Assistant(a) => {
-                                    let text = a
-                                        .content
-                                        .iter()
-                                        .filter_map(|c| match c {
-                                            clanker_message::Content::Text { text } => Some(text.as_str()),
-                                            _ => None,
-                                        })
-                                        .collect::<Vec<_>>()
-                                        .join("\n");
-                                    ("assistant", text, Some(a.model.clone()))
-                                }
-                                _ => return None,
-                            };
-                            if content.is_empty() {
-                                return None;
-                            }
-                            Some(clankers_protocol::SerializedMessage {
-                                role: role.to_string(),
-                                content,
-                                model,
-                                timestamp: None,
-                            })
-                        })
-                        .collect();
-                    info!("loaded {} recovery messages from {:?}", serialized.len(), entry.automerge_path);
-                    serialized
-                }
-                Err(e) => {
-                    warn!("failed to build recovery context from {:?}: {e} — starting fresh", entry.automerge_path);
-                    Vec::new()
-                }
-            },
-            Err(e) => {
-                warn!("failed to open recovery automerge at {:?}: {e} — starting fresh", entry.automerge_path);
-                Vec::new()
-            }
-        }
-    } else {
-        warn!("recovery automerge file missing at {:?} — starting fresh", entry.automerge_path);
-        Vec::new()
-    }
-}
-
 /// Get or create an actor session for a transport key.
 ///
 /// Looks up the session in `DaemonState` by key. If not found, spawns a
@@ -721,89 +654,75 @@ pub async fn get_or_create_keyed_session(
         }
     }
 
+    let builder = super::session_builder::SessionBuilder::from_global_paths(factory.default_model.clone());
+
     if let Some(session_id) = suspended_session_id
         && let Some(catalog) = factory.catalog.as_ref()
         && let Some(entry) = catalog.get_session(&session_id)
     {
-        let seed_messages = load_recovery_seed_messages(&entry);
+        let mut plan = builder.plan_recovered_keyed_session(key, &entry, public_auth.clone());
         let spawned = spawn_agent_process(
             registry,
             factory,
-            session_id.clone(),
-            Some(entry.model.clone()),
+            plan.spawn.session_id.clone(),
+            plan.spawn.model.clone(),
+            plan.spawn.system_prompt.clone(),
             None,
-            None,
-            None,
-            public_auth.clone(),
+            plan.spawn.capabilities.take(),
+            plan.spawn.public_auth.take(),
         );
         let cmd_tx = spawned.cmd_tx;
         let event_tx = spawned.event_tx;
 
-        if !seed_messages.is_empty() {
-            cmd_tx
-                .send(SessionCommand::SeedMessages {
-                    messages: seed_messages,
-                })
-                .ok();
+        if let Some(command) = plan.seed_command() {
+            cmd_tx.send(command).ok();
         }
 
         {
             let mut st = state.lock().await;
-            if let Some(handle) = st.sessions.get_mut(&session_id) {
-                handle.model.clone_from(&entry.model);
+            if let Some(handle) = st.sessions.get_mut(&plan.session_id) {
+                handle.model.clone_from(&plan.resolved_model);
                 handle.cmd_tx = Some(cmd_tx.clone());
                 handle.event_tx = Some(event_tx.clone());
                 handle.state = "active".to_string();
             }
         }
 
-        catalog.set_state(&session_id, super::session_store::SessionLifecycle::Active);
-        info!("recovered keyed session {} for {}", session_id, key);
-        return (session_id, cmd_tx, event_tx);
+        catalog.set_state(&plan.session_id, super::session_store::SessionLifecycle::Active);
+        info!("recovered keyed session {} for {}", plan.session_id, key);
+        return (plan.session_id, cmd_tx, event_tx);
     }
 
-    // Slow path: create a new session
-    let session_id = clanker_message::generate_id();
-    let spawned =
-        spawn_agent_process(registry, factory, session_id.clone(), None, None, None, capabilities, public_auth);
+    // Slow path: create a new session.
+    let mut plan = builder.plan_new_keyed_session(key, capabilities, public_auth);
+    let spawned = spawn_agent_process(
+        registry,
+        factory,
+        plan.spawn.session_id.clone(),
+        plan.spawn.model.clone(),
+        plan.spawn.system_prompt.clone(),
+        None,
+        plan.spawn.capabilities.take(),
+        plan.spawn.public_auth.take(),
+    );
     let cmd_tx = spawned.cmd_tx;
     let event_tx = spawned.event_tx;
 
-    let socket_path = clankers_controller::transport::session_socket_path(&session_id);
-
     {
         let mut st = state.lock().await;
-        st.sessions.insert(session_id.clone(), clankers_controller::transport::SessionHandle {
-            session_id: session_id.clone(),
-            model: factory.default_model.clone(),
-            turn_count: 0,
-            last_active: chrono::Utc::now().to_rfc3339(),
-            client_count: 0,
-            cmd_tx: Some(cmd_tx.clone()),
-            event_tx: Some(event_tx.clone()),
-            socket_path,
-            state: "active".to_string(),
-        });
-        st.register_key(key.clone(), session_id.clone());
+        st.sessions.insert(plan.session_id.clone(), plan.session_handle(cmd_tx.clone(), event_tx.clone()));
+        st.register_key(key.clone(), plan.session_id.clone());
     }
 
-    // Write catalog entry + key mapping
+    // Write catalog entry + key mapping.
     if let Some(ref catalog) = factory.catalog {
         let now = chrono::Utc::now().to_rfc3339();
-        catalog.insert_session(&super::session_store::SessionCatalogEntry {
-            session_id: session_id.clone(),
-            automerge_path: spawned.automerge_path.clone().unwrap_or_default(),
-            model: factory.default_model.clone(),
-            created_at: now.clone(),
-            last_active: now,
-            turn_count: 0,
-            state: super::session_store::SessionLifecycle::Active,
-        });
-        catalog.insert_key(key, &session_id);
+        catalog.insert_session(&plan.catalog_entry(spawned.automerge_path.clone().unwrap_or_default(), now));
+        catalog.insert_key(key, &plan.session_id);
     }
 
-    info!("created keyed session {} for {}", session_id, key);
-    (session_id, cmd_tx, event_tx)
+    info!("created keyed session {} for {}", plan.session_id, key);
+    (plan.session_id, cmd_tx, event_tx)
 }
 
 /// Lazily recover a suspended session: open the automerge file, spawn
@@ -828,30 +747,25 @@ pub fn recover_session(
     let catalog = factory.catalog.as_ref().ok_or("no session catalog")?;
     let entry = catalog.get_session(session_id).ok_or_else(|| format!("session '{session_id}' not in catalog"))?;
 
-    // Load seed messages from automerge
-    let seed_messages = load_recovery_seed_messages(&entry);
+    let builder = super::session_builder::SessionBuilder::from_global_paths(factory.default_model.clone());
+    let mut plan = builder.plan_recovered_catalog_session(&entry, None);
 
-    // Spawn the actor
+    // Spawn the actor.
     let spawned = spawn_agent_process(
         registry,
         factory,
-        session_id.to_string(),
-        Some(entry.model.clone()),
+        plan.spawn.session_id.clone(),
+        plan.spawn.model.clone(),
+        plan.spawn.system_prompt.clone(),
         None,
-        None,
-        None,
-        None,
+        plan.spawn.capabilities.take(),
+        plan.spawn.public_auth.take(),
     );
     let cmd_tx = spawned.cmd_tx;
     let event_tx = spawned.event_tx;
 
-    // Seed messages
-    if !seed_messages.is_empty() {
-        cmd_tx
-            .send(SessionCommand::SeedMessages {
-                messages: seed_messages,
-            })
-            .ok();
+    if let Some(command) = plan.seed_command() {
+        cmd_tx.send(command).ok();
     }
 
     // Bind session socket before publishing recovered session.
@@ -942,7 +856,7 @@ impl clankers_controller::ToolRebuilder for DaemonToolRebuilder {
 
 /// Build plugin summaries from the shared plugin manager for protocol responses.
 fn build_plugin_summaries(
-    plugin_manager: Option<&std::sync::Arc<std::sync::Mutex<crate::plugin::PluginManager>>>,
+    plugin_manager: Option<&std::sync::Arc<std::sync::Mutex<clankers_plugin::PluginManager>>>,
 ) -> Vec<clankers_protocol::PluginSummary> {
     let Some(pm) = plugin_manager else {
         return Vec::new();
@@ -962,7 +876,7 @@ fn sync_tool_inventory(controller: &mut SessionController, event_tx: &broadcast:
 
 fn drain_plugin_runtime_events(
     event_tx: &broadcast::Sender<DaemonEvent>,
-    plugin_manager: Option<&std::sync::Arc<std::sync::Mutex<crate::plugin::PluginManager>>>,
+    plugin_manager: Option<&std::sync::Arc<std::sync::Mutex<clankers_plugin::PluginManager>>>,
 ) {
     let Some(pm) = plugin_manager else {
         return;
@@ -990,8 +904,8 @@ fn drain_plugin_runtime_events(
     allow(unbounded_loop, reason = "event loop; bounded by channel close")
 )]
 fn build_session_hook_pipeline(
-    settings: &crate::config::settings::Settings,
-    plugin_manager: Option<&std::sync::Arc<std::sync::Mutex<crate::plugin::PluginManager>>>,
+    settings: &clankers_config::settings::Settings,
+    plugin_manager: Option<&std::sync::Arc<std::sync::Mutex<clankers_plugin::PluginManager>>>,
 ) -> Option<std::sync::Arc<clankers_hooks::HookPipeline>> {
     if !settings.hooks.enabled {
         return None;
@@ -1023,7 +937,7 @@ fn build_session_hook_pipeline(
 
     // Plugin hooks
     if let Some(pm) = plugin_manager {
-        pipeline.register(std::sync::Arc::new(crate::plugin::hooks::PluginHookHandler::new(std::sync::Arc::clone(pm))));
+        pipeline.register(std::sync::Arc::new(clankers_plugin::hooks::PluginHookHandler::new(std::sync::Arc::clone(pm))));
     }
 
     Some(std::sync::Arc::new(pipeline))
@@ -1084,15 +998,15 @@ mod factory_plugin_tests {
     }
 
     #[async_trait::async_trait]
-    impl crate::provider::Provider for StubProvider {
+    impl clankers_provider::Provider for StubProvider {
         async fn complete(
             &self,
-            _req: crate::provider::CompletionRequest,
-            _tx: tokio::sync::mpsc::Sender<crate::provider::streaming::StreamEvent>,
-        ) -> std::result::Result<(), crate::provider::error::ProviderError> {
+            _req: clankers_provider::CompletionRequest,
+            _tx: tokio::sync::mpsc::Sender<clankers_provider::streaming::StreamEvent>,
+        ) -> std::result::Result<(), clankers_provider::error::ProviderError> {
             Ok(())
         }
-        fn models(&self) -> &[crate::provider::Model] {
+        fn models(&self) -> &[clankers_provider::Model] {
             &[]
         }
         fn name(&self) -> &str {
@@ -1101,14 +1015,14 @@ mod factory_plugin_tests {
     }
 
     #[async_trait::async_trait]
-    impl crate::provider::Provider for DelayedStreamingProvider {
+    impl clankers_provider::Provider for DelayedStreamingProvider {
         async fn complete(
             &self,
-            _req: crate::provider::CompletionRequest,
-            tx: tokio::sync::mpsc::Sender<crate::provider::streaming::StreamEvent>,
-        ) -> std::result::Result<(), crate::provider::error::ProviderError> {
-            tx.send(crate::provider::streaming::StreamEvent::MessageStart {
-                message: crate::provider::streaming::MessageMetadata {
+            _req: clankers_provider::CompletionRequest,
+            tx: tokio::sync::mpsc::Sender<clankers_provider::streaming::StreamEvent>,
+        ) -> std::result::Result<(), clankers_provider::error::ProviderError> {
+            tx.send(clankers_provider::streaming::StreamEvent::MessageStart {
+                message: clankers_provider::streaming::MessageMetadata {
                     id: "delayed-message".to_string(),
                     model: "test".to_string(),
                     role: "assistant".to_string(),
@@ -1116,7 +1030,7 @@ mod factory_plugin_tests {
             })
             .await
             .ok();
-            tx.send(crate::provider::streaming::StreamEvent::ContentBlockStart {
+            tx.send(clankers_provider::streaming::StreamEvent::ContentBlockStart {
                 index: 0,
                 content_block: clanker_message::Content::Thinking {
                     thinking: String::new(),
@@ -1125,24 +1039,24 @@ mod factory_plugin_tests {
             })
             .await
             .ok();
-            tx.send(crate::provider::streaming::StreamEvent::ContentBlockDelta {
+            tx.send(clankers_provider::streaming::StreamEvent::ContentBlockDelta {
                 index: 0,
-                delta: crate::provider::streaming::ContentDelta::ThinkingDelta {
+                delta: clankers_provider::streaming::ContentDelta::ThinkingDelta {
                     thinking: "actor thought".to_string(),
                 },
             })
             .await
             .ok();
-            tx.send(crate::provider::streaming::StreamEvent::ContentBlockStop { index: 0 }).await.ok();
-            tx.send(crate::provider::streaming::StreamEvent::ContentBlockStart {
+            tx.send(clankers_provider::streaming::StreamEvent::ContentBlockStop { index: 0 }).await.ok();
+            tx.send(clankers_provider::streaming::StreamEvent::ContentBlockStart {
                 index: 1,
                 content_block: clanker_message::Content::Text { text: String::new() },
             })
             .await
             .ok();
-            tx.send(crate::provider::streaming::StreamEvent::ContentBlockDelta {
+            tx.send(clankers_provider::streaming::StreamEvent::ContentBlockDelta {
                 index: 1,
-                delta: crate::provider::streaming::ContentDelta::TextDelta {
+                delta: clankers_provider::streaming::ContentDelta::TextDelta {
                     text: "actor stream".to_string(),
                 },
             })
@@ -1151,18 +1065,18 @@ mod factory_plugin_tests {
             self.streamed.notify_waiters();
             self.release.notified().await;
             self.returned.store(true, Ordering::SeqCst);
-            tx.send(crate::provider::streaming::StreamEvent::ContentBlockStop { index: 1 }).await.ok();
-            tx.send(crate::provider::streaming::StreamEvent::MessageDelta {
+            tx.send(clankers_provider::streaming::StreamEvent::ContentBlockStop { index: 1 }).await.ok();
+            tx.send(clankers_provider::streaming::StreamEvent::MessageDelta {
                 stop_reason: Some("end_turn".to_string()),
                 usage: clanker_message::Usage::default(),
             })
             .await
             .ok();
-            tx.send(crate::provider::streaming::StreamEvent::MessageStop).await.ok();
+            tx.send(clankers_provider::streaming::StreamEvent::MessageStop).await.ok();
             Ok(())
         }
 
-        fn models(&self) -> &[crate::provider::Model] {
+        fn models(&self) -> &[clankers_provider::Model] {
             &[]
         }
 
@@ -1171,18 +1085,18 @@ mod factory_plugin_tests {
         }
     }
 
-    fn make_factory(plugin_manager: Option<Arc<Mutex<crate::plugin::PluginManager>>>) -> SessionFactory {
+    fn make_factory(plugin_manager: Option<Arc<Mutex<clankers_plugin::PluginManager>>>) -> SessionFactory {
         make_factory_with_provider(Arc::new(StubProvider), plugin_manager)
     }
 
     fn make_factory_with_provider(
-        provider: Arc<dyn crate::provider::Provider>,
-        plugin_manager: Option<Arc<Mutex<crate::plugin::PluginManager>>>,
+        provider: Arc<dyn clankers_provider::Provider>,
+        plugin_manager: Option<Arc<Mutex<clankers_plugin::PluginManager>>>,
     ) -> SessionFactory {
         SessionFactory {
             provider,
             tools: vec![],
-            settings: crate::config::settings::Settings::default(),
+            settings: clankers_config::settings::Settings::default(),
             default_model: "test".to_string(),
             default_system_prompt: String::new(),
             registry: None,
@@ -1516,14 +1430,14 @@ mod factory_plugin_tests {
         );
         let pm = crate::plugin::tests::stdio_runtime::init_manager_with_restart_delays(
             dir.path(),
-            crate::plugin::PluginRuntimeMode::Daemon,
+            clankers_plugin::PluginRuntimeMode::Daemon,
             "5,10,15,20,25",
         );
         crate::plugin::tests::stdio_runtime::wait_for_plugin_state(
             &pm,
             "stdio-daemon-factory",
             Duration::from_secs(2),
-            |state| matches!(state, crate::plugin::PluginState::Active),
+            |state| matches!(state, clankers_plugin::PluginState::Active),
         )
         .await;
         crate::plugin::tests::stdio_runtime::wait_for_live_tool(
@@ -1540,7 +1454,7 @@ mod factory_plugin_tests {
         let names: Vec<String> = tools.iter().map(|t| t.definition().name.clone()).collect();
         assert!(names.contains(&"stdio_daemon_factory_tool".to_string()), "Should have stdio tool, got: {names:?}");
 
-        crate::plugin::shutdown_plugin_runtime(&pm, "test shutdown").await;
+        clankers_plugin::shutdown_plugin_runtime(&pm, "test shutdown").await;
     }
 
     #[tokio::test]
@@ -1556,14 +1470,14 @@ mod factory_plugin_tests {
         );
         let pm = crate::plugin::tests::stdio_runtime::init_manager_with_restart_delays(
             dir.path(),
-            crate::plugin::PluginRuntimeMode::Daemon,
+            clankers_plugin::PluginRuntimeMode::Daemon,
             "5,10,15,20,25",
         );
         crate::plugin::tests::stdio_runtime::wait_for_plugin_state(
             &pm,
             "stdio-daemon-events",
             Duration::from_secs(2),
-            |state| matches!(state, crate::plugin::PluginState::Active),
+            |state| matches!(state, clankers_plugin::PluginState::Active),
         )
         .await;
 
@@ -1614,7 +1528,7 @@ mod factory_plugin_tests {
         assert!(saw_notify, "expected plugin notify event in daemon event stream");
         assert!(saw_widget, "expected plugin widget event in daemon event stream");
 
-        crate::plugin::shutdown_plugin_runtime(&pm, "test shutdown").await;
+        clankers_plugin::shutdown_plugin_runtime(&pm, "test shutdown").await;
     }
 
     #[tokio::test]
@@ -1634,14 +1548,14 @@ mod factory_plugin_tests {
         );
         let pm = crate::plugin::tests::stdio_runtime::init_manager_with_restart_delays(
             dir.path(),
-            crate::plugin::PluginRuntimeMode::Daemon,
+            clankers_plugin::PluginRuntimeMode::Daemon,
             "5,10,15,20,25",
         );
         crate::plugin::tests::stdio_runtime::wait_for_plugin_state(
             &pm,
             "stdio-shared-host",
             Duration::from_secs(2),
-            |state| matches!(state, crate::plugin::PluginState::Active),
+            |state| matches!(state, clankers_plugin::PluginState::Active),
         )
         .await;
         crate::plugin::tests::stdio_runtime::wait_for_live_tool(
@@ -1683,12 +1597,12 @@ mod factory_plugin_tests {
         assert!(unchanged_b.iter().any(|tool| tool.name == "stdio_shared_host_tool"));
 
         let guard = pm.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
-        assert_eq!(guard.get("stdio-shared-host").unwrap().state, crate::plugin::PluginState::Active);
+        assert_eq!(guard.get("stdio-shared-host").unwrap().state, clankers_plugin::PluginState::Active);
         drop(guard);
 
         shutdown_spawned_session(&registry, &session_a);
         shutdown_spawned_session(&registry, &session_b);
-        crate::plugin::shutdown_plugin_runtime(&pm, "test shutdown").await;
+        clankers_plugin::shutdown_plugin_runtime(&pm, "test shutdown").await;
     }
 
     #[tokio::test]
@@ -1704,14 +1618,14 @@ mod factory_plugin_tests {
         );
         let pm = crate::plugin::tests::stdio_runtime::init_manager_with_restart_delays(
             dir.path(),
-            crate::plugin::PluginRuntimeMode::Daemon,
+            clankers_plugin::PluginRuntimeMode::Daemon,
             "5,10,15,20,25",
         );
         crate::plugin::tests::stdio_runtime::wait_for_plugin_state(
             &pm,
             "stdio-shared-restart",
             Duration::from_secs(2),
-            |state| matches!(state, crate::plugin::PluginState::Active),
+            |state| matches!(state, clankers_plugin::PluginState::Active),
         )
         .await;
         crate::plugin::tests::stdio_runtime::wait_for_live_tool(
@@ -1769,13 +1683,13 @@ mod factory_plugin_tests {
         wait_for_tool_visibility(&mut event_rx_a, "stdio_shared_restart_tool", false, Duration::from_secs(2)).await;
         wait_for_tool_visibility(&mut event_rx_b, "stdio_shared_restart_tool", false, Duration::from_secs(2)).await;
 
-        crate::plugin::enable_plugin(&pm, "stdio-shared-restart").unwrap();
+        clankers_plugin::enable_plugin(&pm, "stdio-shared-restart").unwrap();
         wait_for_tool_visibility(&mut event_rx_a, "stdio_shared_restart_tool", true, Duration::from_secs(2)).await;
         wait_for_tool_visibility(&mut event_rx_b, "stdio_shared_restart_tool", true, Duration::from_secs(2)).await;
 
         shutdown_spawned_session(&registry, &session_a);
         shutdown_spawned_session(&registry, &session_b);
-        crate::plugin::shutdown_plugin_runtime(&pm, "test shutdown").await;
+        clankers_plugin::shutdown_plugin_runtime(&pm, "test shutdown").await;
     }
 
     #[tokio::test]
@@ -1791,14 +1705,14 @@ mod factory_plugin_tests {
         );
         let pm = crate::plugin::tests::stdio_runtime::init_manager_with_restart_delays(
             dir.path(),
-            crate::plugin::PluginRuntimeMode::Daemon,
+            clankers_plugin::PluginRuntimeMode::Daemon,
             "5,10,15,20,25",
         );
         crate::plugin::tests::stdio_runtime::wait_for_plugin_state(
             &pm,
             "stdio-daemon-plugin-list",
             Duration::from_secs(2),
-            |state| matches!(state, crate::plugin::PluginState::Active),
+            |state| matches!(state, clankers_plugin::PluginState::Active),
         )
         .await;
         crate::plugin::tests::stdio_runtime::wait_for_live_tool(
@@ -1836,7 +1750,7 @@ mod factory_plugin_tests {
         assert!(plugin.last_error.is_none());
 
         shutdown_spawned_session(&registry, &spawned);
-        crate::plugin::shutdown_plugin_runtime(&pm, "test shutdown").await;
+        clankers_plugin::shutdown_plugin_runtime(&pm, "test shutdown").await;
     }
 }
 

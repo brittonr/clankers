@@ -2,10 +2,10 @@ use crate::cli::ExportFormat;
 use crate::cli::SessionAction;
 use crate::commands::CommandContext;
 use crate::error::Result;
-use crate::session::automerge_store;
-use crate::session::export;
-use crate::session::store;
-use crate::util::fs;
+use clankers_session::automerge_store;
+use clankers_session::export;
+use clankers_session::store;
+use clankers_util::fs;
 
 pub fn run(ctx: &CommandContext, action: SessionAction) -> Result<()> {
     match action {

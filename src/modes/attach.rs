@@ -16,15 +16,15 @@ use ratatui::backend::CrosstermBackend;
 use tracing::info;
 use tracing::warn;
 
-use crate::config::keybindings::InputMode;
-use crate::config::keybindings::Keymap;
-use crate::config::settings::Settings;
-use crate::config::theme::load_theme;
+use clankers_config::keybindings::InputMode;
+use clankers_config::settings::Settings;
 use crate::error::Result;
 use crate::slash_commands;
-use crate::tui::app::App;
-use crate::tui::event as tui_event;
-use crate::tui::event::AppEvent;
+use clankers_tui::app::App;
+use clankers_tui::event as tui_event;
+use clankers_tui::event::AppEvent;
+use clankers_tui::keymap::Keymap;
+use crate::tui_config::load_theme;
 
 mod client_loop;
 mod events;
@@ -97,14 +97,14 @@ pub async fn run_attach(
     };
 
     let cwd = std::env::current_dir().unwrap_or_default().to_string_lossy().into_owned();
-    let paths = crate::config::ClankersPaths::get();
+    let paths = clankers_config::ClankersPaths::get();
     let theme = load_theme(settings.theme.as_deref(), &paths.global_themes_dir);
-    let keymap = settings.keymap.clone().into_keymap();
+    let keymap = crate::tui_config::keymap_from_config(&settings.keymap);
 
     let mut app = App::new(display_model.clone(), cwd, theme);
-    app.auto_theme = crate::config::theme::is_auto_theme(settings.theme.as_deref());
+    app.auto_theme = clankers_config::theme::is_auto_theme(settings.theme.as_deref());
     app.session_id = resolved_session_id.clone();
-    app.highlighter = Box::new(crate::util::syntax::SyntectHighlighter);
+    app.highlighter = Box::new(clankers_util::syntax::SyntectHighlighter);
 
     // Minimal slash registry for client-side commands only
     let slash_registry = build_client_slash_registry();
@@ -173,24 +173,24 @@ pub(crate) fn handle_terminal_events(
                 handle_key_event(app, client, terminal, key, keymap, slash_registry, parity_tracker);
             }
             AppEvent::MouseDown(button, col, row) => {
-                crate::tui::mouse::handle_mouse_down(app, button, col, row);
+                clankers_tui::mouse::handle_mouse_down(app, button, col, row);
             }
             AppEvent::MouseDrag(button, col, row) => {
-                crate::tui::mouse::handle_mouse_drag(app, button, col, row);
+                clankers_tui::mouse::handle_mouse_drag(app, button, col, row);
             }
             AppEvent::MouseUp(button, col, row) => {
-                crate::tui::mouse::handle_mouse_up(app, button, col, row);
+                clankers_tui::mouse::handle_mouse_up(app, button, col, row);
             }
             AppEvent::ScrollUp(col, row, n) => {
-                crate::tui::mouse::handle_mouse_scroll(app, col, row, true, n);
+                clankers_tui::mouse::handle_mouse_scroll(app, col, row, true, n);
             }
             AppEvent::ScrollDown(col, row, n) => {
-                crate::tui::mouse::handle_mouse_scroll(app, col, row, false, n);
+                clankers_tui::mouse::handle_mouse_scroll(app, col, row, false, n);
             }
             AppEvent::Resize(_, _) => {}
             AppEvent::FocusGained => {
                 if app.auto_theme {
-                    app.theme = crate::config::theme::detect_theme();
+                    app.theme = crate::tui_config::detect_theme();
                 }
             }
             _ => {}
@@ -220,10 +220,10 @@ fn handle_key_event(
     use crossterm::event::KeyCode;
     use crossterm::event::KeyModifiers;
 
-    use crate::config::keybindings::Action;
-    use crate::config::keybindings::CoreAction;
-    use crate::config::keybindings::ExtendedAction;
-    use crate::tui::selectors;
+    use clankers_config::keybindings::Action;
+    use clankers_config::keybindings::CoreAction;
+    use clankers_config::keybindings::ExtendedAction;
+    use clankers_tui::selectors;
 
     app.selection = None;
 
@@ -286,7 +286,7 @@ fn handle_key_event(
 
     // Account selector overlay
     if app.overlays.account_selector.visible {
-        let (consumed, action) = crate::tui::selectors::handle_account_selector_key(app, &key);
+        let (consumed, action) = clankers_tui::selectors::handle_account_selector_key(app, &key);
         if let Some(clanker_tui_types::SelectorAction::SwitchAccount(name)) = action {
             client.send(SessionCommand::SwitchAccount { account: name });
         }
@@ -297,7 +297,7 @@ fn handle_key_event(
 
     // Tool toggle overlay
     if app.overlays.tool_toggle.visible {
-        let (consumed, dirty) = crate::tui::selectors::handle_tool_toggle_key(app, &key);
+        let (consumed, dirty) = clankers_tui::selectors::handle_tool_toggle_key(app, &key);
         if dirty {
             let disabled = apply_standalone_disabled_tools(app, app.overlays.tool_toggle.disabled_set());
             parity_tracker.expect_disabled_tools_message();
@@ -339,7 +339,7 @@ fn handle_key_event(
     let action = keymap.resolve(app.input_mode, &key);
     if let Some(action) = action {
         if matches!(&action, Action::Extended(ExtendedAction::OpenEditor)) {
-            crate::tui::clipboard::open_external_editor(terminal, app);
+            clankers_tui::clipboard::open_external_editor(terminal, app);
             return;
         }
 
@@ -432,8 +432,8 @@ fn handle_slash_menu_key_attach(
 ) -> bool {
     use crossterm::event::KeyCode;
 
-    use crate::config::keybindings::Action;
-    use crate::config::keybindings::CoreAction;
+    use clankers_config::keybindings::Action;
+    use clankers_config::keybindings::CoreAction;
 
     // Menu navigation keys
     match key.code {
@@ -497,7 +497,7 @@ fn handle_slash_menu_key_attach(
 fn handle_local_action(
     app: &mut App,
     client: &ClientAdapter,
-    action: &crate::config::keybindings::Action,
+    action: &clankers_config::keybindings::Action,
     _key: &crossterm::event::KeyEvent,
     parity_tracker: &mut AttachParityTracker,
 ) {
@@ -507,9 +507,9 @@ fn handle_local_action(
     use ratatui_hypertile::HypertileAction;
     use ratatui_hypertile::Towards;
 
-    use crate::config::keybindings::Action;
-    use crate::config::keybindings::CoreAction;
-    use crate::config::keybindings::ExtendedAction;
+    use clankers_config::keybindings::Action;
+    use clankers_config::keybindings::CoreAction;
+    use clankers_config::keybindings::ExtendedAction;
 
     match action {
         // ── Mode switching ──────────────────────────
@@ -652,7 +652,7 @@ fn handle_local_action(
                     })
                     .collect();
                 if let Some(bp) =
-                    app.panels.downcast_mut::<crate::tui::components::branch_panel::BranchPanel>(PanelId::Branches)
+                    app.panels.downcast_mut::<clankers_tui::components::branch_panel::BranchPanel>(PanelId::Branches)
                 {
                     bp.refresh(&app.conversation.all_blocks.clone(), &active_ids);
                 }
@@ -745,7 +745,7 @@ fn handle_local_action(
         Action::Extended(ExtendedAction::PanelScrollUp) => {
             use clanker_tui_types::PanelId;
             if let Some(sp) =
-                app.panels.downcast_mut::<crate::tui::components::subagent_panel::SubagentPanel>(PanelId::Subagents)
+                app.panels.downcast_mut::<clankers_tui::components::subagent_panel::SubagentPanel>(PanelId::Subagents)
             {
                 sp.scroll.scroll_up(3);
             }
@@ -753,7 +753,7 @@ fn handle_local_action(
         Action::Extended(ExtendedAction::PanelScrollDown) => {
             use clanker_tui_types::PanelId;
             if let Some(sp) =
-                app.panels.downcast_mut::<crate::tui::components::subagent_panel::SubagentPanel>(PanelId::Subagents)
+                app.panels.downcast_mut::<clankers_tui::components::subagent_panel::SubagentPanel>(PanelId::Subagents)
             {
                 sp.scroll.scroll_down(3);
             }
@@ -761,7 +761,7 @@ fn handle_local_action(
         Action::Extended(ExtendedAction::PanelClearDone) => {
             use clanker_tui_types::PanelId;
             if let Some(sp) =
-                app.panels.downcast_mut::<crate::tui::components::subagent_panel::SubagentPanel>(PanelId::Subagents)
+                app.panels.downcast_mut::<clankers_tui::components::subagent_panel::SubagentPanel>(PanelId::Subagents)
             {
                 sp.clear_done();
                 if !sp.is_visible() {
@@ -775,7 +775,7 @@ fn handle_local_action(
         Action::Extended(ExtendedAction::PanelRemove) => {
             use clanker_tui_types::PanelId;
             if let Some(sp) =
-                app.panels.downcast_mut::<crate::tui::components::subagent_panel::SubagentPanel>(PanelId::Subagents)
+                app.panels.downcast_mut::<clankers_tui::components::subagent_panel::SubagentPanel>(PanelId::Subagents)
             {
                 sp.remove_selected();
             }
@@ -788,18 +788,18 @@ fn handle_local_action(
             if models.is_empty() {
                 app.push_system("No models available.".to_string(), true);
             } else {
-                app.overlays.model_selector = crate::tui::components::model_selector::ModelSelector::new(models);
+                app.overlays.model_selector = clankers_tui::components::model_selector::ModelSelector::new(models);
                 app.overlays.model_selector.open();
             }
         }
         Action::Extended(ExtendedAction::OpenAccountSelector) => {
-            use crate::provider::auth::AuthStoreExt;
-            let paths = crate::config::ClankersPaths::get();
-            let store = crate::provider::auth::AuthStore::load(&paths.global_auth);
-            let accounts: Vec<crate::tui::components::account_selector::AccountItem> = store
+            use clankers_provider::auth::AuthStoreExt;
+            let paths = clankers_config::ClankersPaths::get();
+            let store = clankers_provider::auth::AuthStore::load(&paths.global_auth);
+            let accounts: Vec<clankers_tui::components::account_selector::AccountItem> = store
                 .list_anthropic_accounts()
                 .into_iter()
-                .map(|info| crate::tui::components::account_selector::AccountItem {
+                .map(|info| clankers_tui::components::account_selector::AccountItem {
                     name: info.name,
                     label: info.label,
                     is_active: info.is_active,
@@ -988,7 +988,7 @@ mod tests {
     }
 
     fn test_app() -> App {
-        let mut app = App::new("test-model".to_string(), "/tmp".to_string(), crate::config::theme::detect_theme());
+        let mut app = App::new("test-model".to_string(), "/tmp".to_string(), crate::tui_config::detect_theme());
         app.session_id = "session-123".to_string();
         app.total_tokens = 321;
         app.total_cost = 1.25;
@@ -1120,7 +1120,7 @@ mod tests {
     #[derive(Debug, Clone, PartialEq, Eq)]
     struct LayoutSnapshot {
         pane_kinds: Vec<String>,
-        focused_panel: Option<crate::tui::panel::PanelId>,
+        focused_panel: Option<clankers_tui::panel::PanelId>,
         zoomed: bool,
     }
 
@@ -1150,7 +1150,7 @@ mod tests {
 
     fn todo_summary(app: &App) -> String {
         app.panels
-            .downcast_ref::<crate::tui::components::todo_panel::TodoPanel>(crate::tui::panel::PanelId::Todo)
+            .downcast_ref::<clankers_tui::components::todo_panel::TodoPanel>(clankers_tui::panel::PanelId::Todo)
             .expect("todo panel registered at startup")
             .summary()
     }
@@ -1159,7 +1159,7 @@ mod tests {
         let registry = crate::modes::interactive::build_slash_registry(None);
         let (cmd_tx, mut cmd_rx) = tokio::sync::mpsc::unbounded_channel();
         let (panel_tx, _panel_rx) = tokio::sync::mpsc::unbounded_channel();
-        let db: Option<crate::db::Db> = None;
+        let db: Option<clankers_db::Db> = None;
         let mut session_manager = None;
         let (command, args) = crate::slash_commands::parse_command(text).expect("slash command parses");
         {
@@ -1863,7 +1863,7 @@ mod tests {
 
     #[test]
     fn plugin_list_event_renders_stdio_metadata_in_attach_mode() {
-        let mut app = App::new("test-model".to_string(), ".".to_string(), crate::config::theme::detect_theme());
+        let mut app = App::new("test-model".to_string(), ".".to_string(), crate::tui_config::detect_theme());
         let client = dummy_client();
         let mut is_replaying_history = false;
         let mut parity_tracker = super::AttachParityTracker::default();
@@ -1900,7 +1900,7 @@ mod tests {
 
     #[test]
     fn plugin_runtime_events_update_attach_plugin_ui_state() {
-        let mut app = App::new("test-model".to_string(), ".".to_string(), crate::config::theme::detect_theme());
+        let mut app = App::new("test-model".to_string(), ".".to_string(), crate::tui_config::detect_theme());
         let client = dummy_client();
         let mut is_replaying_history = false;
         let mut parity_tracker = super::AttachParityTracker::default();

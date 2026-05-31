@@ -5,8 +5,8 @@ use clankers_protocol::SessionCommand;
 use tracing::debug;
 
 use super::commands::AttachParityTracker;
-use crate::tui::app::App;
-use crate::tui::app::AppState;
+use clankers_tui::app::App;
+use clankers_tui::app::AppState;
 
 pub(crate) const MAX_DAEMON_EVENTS_PER_DRAIN: usize = 64;
 
@@ -133,8 +133,8 @@ pub(crate) fn process_daemon_event(
 
         // ── Subagent events ─────────────────────────
         DaemonEvent::SubagentStarted { id, name, task, pid } => {
-            if let Some(panel) = app.panels.downcast_mut::<crate::tui::components::subagent_panel::SubagentPanel>(
-                crate::tui::panel::PanelId::Subagents,
+            if let Some(panel) = app.panels.downcast_mut::<clankers_tui::components::subagent_panel::SubagentPanel>(
+                clankers_tui::panel::PanelId::Subagents,
             ) {
                 panel.add(id.clone(), name.clone(), task.clone(), *pid);
             }
@@ -147,29 +147,29 @@ pub(crate) fn process_daemon_event(
                     *pid,
                     &mut app.layout.tiling,
                 );
-                app.layout.pane_registry.register(pane_id, crate::tui::panes::PaneKind::Subagent(id.clone()));
-                crate::tui::panes::auto_split_for_subagent(&mut app.layout.tiling, &app.layout.pane_registry, pane_id);
+                app.layout.pane_registry.register(pane_id, clankers_tui::panes::PaneKind::Subagent(id.clone()));
+                clankers_tui::panes::auto_split_for_subagent(&mut app.layout.tiling, &app.layout.pane_registry, pane_id);
             }
         }
         DaemonEvent::SubagentOutput { id, line } => {
-            if let Some(panel) = app.panels.downcast_mut::<crate::tui::components::subagent_panel::SubagentPanel>(
-                crate::tui::panel::PanelId::Subagents,
+            if let Some(panel) = app.panels.downcast_mut::<clankers_tui::components::subagent_panel::SubagentPanel>(
+                clankers_tui::panel::PanelId::Subagents,
             ) {
                 panel.append_output(id, line);
             }
             app.layout.subagent_panes.append_output(id, line);
         }
         DaemonEvent::SubagentDone { id } => {
-            if let Some(panel) = app.panels.downcast_mut::<crate::tui::components::subagent_panel::SubagentPanel>(
-                crate::tui::panel::PanelId::Subagents,
+            if let Some(panel) = app.panels.downcast_mut::<clankers_tui::components::subagent_panel::SubagentPanel>(
+                clankers_tui::panel::PanelId::Subagents,
             ) {
                 panel.mark_done(id);
             }
             app.layout.subagent_panes.mark_done(id);
         }
         DaemonEvent::SubagentError { id, message } => {
-            if let Some(panel) = app.panels.downcast_mut::<crate::tui::components::subagent_panel::SubagentPanel>(
-                crate::tui::panel::PanelId::Subagents,
+            if let Some(panel) = app.panels.downcast_mut::<clankers_tui::components::subagent_panel::SubagentPanel>(
+                clankers_tui::panel::PanelId::Subagents,
             ) {
                 panel.mark_error(id);
                 panel.append_output(id, &format!("Error: {message}"));

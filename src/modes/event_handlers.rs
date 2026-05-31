@@ -10,12 +10,12 @@ use std::sync::Arc;
 use crossterm::event::KeyCode;
 use crossterm::event::KeyModifiers;
 
-use crate::config::keybindings::Action;
-use crate::config::keybindings::ExtendedAction;
-use crate::config::keybindings::InputMode;
-use crate::config::keybindings::Keymap;
+use clankers_config::keybindings::Action;
+use clankers_config::keybindings::ExtendedAction;
+use clankers_config::keybindings::InputMode;
 use crate::slash_commands;
-use crate::tui::app::App;
+use clankers_tui::app::App;
+use clankers_tui::keymap::Keymap;
 
 // ---------------------------------------------------------------------------
 // Action dispatcher
@@ -26,10 +26,10 @@ pub(crate) fn handle_action(
     action: Action,
     _key: &crossterm::event::KeyEvent,
     cmd_tx: &tokio::sync::mpsc::UnboundedSender<super::interactive::AgentCommand>,
-    plugin_manager: Option<&Arc<std::sync::Mutex<crate::plugin::PluginManager>>>,
-    panel_tx: &tokio::sync::mpsc::UnboundedSender<crate::tui::components::subagent_event::SubagentEvent>,
-    db: &Option<crate::db::Db>,
-    session_manager: &mut Option<crate::session::SessionManager>,
+    plugin_manager: Option<&Arc<std::sync::Mutex<clankers_plugin::PluginManager>>>,
+    panel_tx: &tokio::sync::mpsc::UnboundedSender<clankers_tui::components::subagent_event::SubagentEvent>,
+    db: &Option<clankers_db::Db>,
+    session_manager: &mut Option<clankers_session::SessionManager>,
     slash_registry: &crate::slash_commands::SlashRegistry,
 ) {
     // When a panel is focused, intercept navigation actions and let
@@ -68,7 +68,7 @@ fn handle_panel_focused_action(
     use ratatui_hypertile::HypertileAction;
     use ratatui_hypertile::Towards;
 
-    use crate::config::keybindings::CoreAction;
+    use clankers_config::keybindings::CoreAction;
 
     let is_global = match action {
         Action::Core(c) => {
@@ -163,12 +163,12 @@ fn handle_panel_focused_action(
 
 pub(crate) fn handle_leader_action(
     app: &mut App,
-    action: crate::tui::components::leader_menu::LeaderAction,
+    action: clankers_tui::components::leader_menu::LeaderAction,
     cmd_tx: &tokio::sync::mpsc::UnboundedSender<super::interactive::AgentCommand>,
-    plugin_manager: Option<&Arc<std::sync::Mutex<crate::plugin::PluginManager>>>,
-    panel_tx: &tokio::sync::mpsc::UnboundedSender<crate::tui::components::subagent_event::SubagentEvent>,
-    db: &Option<crate::db::Db>,
-    session_manager: &mut Option<crate::session::SessionManager>,
+    plugin_manager: Option<&Arc<std::sync::Mutex<clankers_plugin::PluginManager>>>,
+    panel_tx: &tokio::sync::mpsc::UnboundedSender<clankers_tui::components::subagent_event::SubagentEvent>,
+    db: &Option<clankers_db::Db>,
+    session_manager: &mut Option<clankers_session::SessionManager>,
     slash_registry: &crate::slash_commands::SlashRegistry,
 ) {
     use clanker_tui_types::LeaderAction;
@@ -254,13 +254,13 @@ pub(crate) fn handle_slash_menu_key(
     key: &crossterm::event::KeyEvent,
     keymap: &Keymap,
     cmd_tx: &tokio::sync::mpsc::UnboundedSender<super::interactive::AgentCommand>,
-    plugin_manager: Option<&Arc<std::sync::Mutex<crate::plugin::PluginManager>>>,
-    panel_tx: &tokio::sync::mpsc::UnboundedSender<crate::tui::components::subagent_event::SubagentEvent>,
-    db: &Option<crate::db::Db>,
-    session_manager: &mut Option<crate::session::SessionManager>,
+    plugin_manager: Option<&Arc<std::sync::Mutex<clankers_plugin::PluginManager>>>,
+    panel_tx: &tokio::sync::mpsc::UnboundedSender<clankers_tui::components::subagent_event::SubagentEvent>,
+    db: &Option<clankers_db::Db>,
+    session_manager: &mut Option<clankers_session::SessionManager>,
     slash_registry: &crate::slash_commands::SlashRegistry,
 ) -> bool {
-    use crate::config::keybindings::CoreAction;
+    use clankers_config::keybindings::CoreAction;
 
     if let Some(action) = keymap.resolve(InputMode::Insert, key) {
         match action {
@@ -328,7 +328,7 @@ pub(crate) fn handle_slash_menu_key(
 // ---------------------------------------------------------------------------
 
 pub(crate) fn handle_session_popup_key(app: &mut App, key: &crossterm::event::KeyEvent, keymap: &Keymap) -> bool {
-    use crate::config::keybindings::CoreAction;
+    use clankers_config::keybindings::CoreAction;
 
     let action = keymap.resolve(app.input_mode, key);
 
@@ -420,10 +420,10 @@ pub(crate) fn handle_input_with_plugins(
     app: &mut App,
     text: &str,
     cmd_tx: &tokio::sync::mpsc::UnboundedSender<super::interactive::AgentCommand>,
-    plugin_manager: Option<&Arc<std::sync::Mutex<crate::plugin::PluginManager>>>,
-    panel_tx: &tokio::sync::mpsc::UnboundedSender<crate::tui::components::subagent_event::SubagentEvent>,
-    db: &Option<crate::db::Db>,
-    session_manager: &mut Option<crate::session::SessionManager>,
+    plugin_manager: Option<&Arc<std::sync::Mutex<clankers_plugin::PluginManager>>>,
+    panel_tx: &tokio::sync::mpsc::UnboundedSender<clankers_tui::components::subagent_event::SubagentEvent>,
+    db: &Option<clankers_db::Db>,
+    session_manager: &mut Option<clankers_session::SessionManager>,
     slash_registry: &crate::slash_commands::SlashRegistry,
 ) {
     if let Some((command, args)) = slash_commands::parse_command(text) {
@@ -440,7 +440,7 @@ pub(crate) fn handle_input_with_plugins(
         cmd_tx.send(super::interactive::AgentCommand::ResetCancel).ok();
         let mut pending_images = app.take_pending_images();
 
-        let expanded = crate::util::at_file::expand_at_refs_with_images(text, &app.cwd);
+        let expanded = clankers_util::at_file::expand_at_refs_with_images(text, &app.cwd);
         if !expanded.references.is_empty() {
             let data = serde_json::json!({
                 "source": "context_references",
@@ -457,17 +457,17 @@ pub(crate) fn handle_input_with_plugins(
         }
         let prompt_text = expanded.text;
 
-        let at_file_images: Vec<crate::tui::app::PendingImage> = expanded
+        let at_file_images: Vec<clankers_tui::app::PendingImage> = expanded
             .images
             .into_iter()
             .filter_map(|c| match c {
-                crate::provider::message::Content::Image {
-                    source: crate::provider::message::ImageSource::Base64 { media_type, data },
+                clankers_provider::message::Content::Image {
+                    source: clankers_provider::message::ImageSource::Base64 { media_type, data },
                 } => {
                     let size = base64::Engine::decode(&base64::engine::general_purpose::STANDARD, &data)
                         .map(|b| b.len())
                         .unwrap_or(0);
-                    Some(crate::tui::app::PendingImage { data, media_type, size })
+                    Some(clankers_tui::app::PendingImage { data, media_type, size })
                 }
                 _ => None,
             })

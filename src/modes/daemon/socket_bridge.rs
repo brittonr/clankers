@@ -10,8 +10,6 @@ use clanker_actor::ProcessRegistry;
 use clanker_tui_types::SubagentEvent;
 use clankers_controller::SessionController;
 use clankers_controller::transport::DaemonState;
-use clankers_controller::transport::SessionHandle;
-use clankers_controller::transport::session_socket_path;
 use clankers_controller::transport_convert::control_attached;
 use clankers_controller::transport_convert::control_created;
 use clankers_controller::transport_convert::control_error;
@@ -36,8 +34,8 @@ use tracing::error;
 use tracing::info;
 use tracing::warn;
 
-use crate::config::settings::Settings;
-use crate::provider::Provider;
+use clankers_config::settings::Settings;
+use clankers_provider::Provider;
 use crate::tools::Tool;
 
 /// Resources needed to create new sessions.
@@ -52,7 +50,7 @@ pub struct SessionFactory {
     /// Shared schedule engine — persists across sessions.
     pub schedule_engine: Option<std::sync::Arc<clanker_scheduler::ScheduleEngine>>,
     /// Shared plugin manager — plugins loaded once at daemon startup.
-    pub plugin_manager: Option<std::sync::Arc<std::sync::Mutex<crate::plugin::PluginManager>>>,
+    pub plugin_manager: Option<std::sync::Arc<std::sync::Mutex<clankers_plugin::PluginManager>>>,
 }
 
 impl SessionFactory {
@@ -184,75 +182,58 @@ async fn handle_control(
             cwd,
             thinking_level,
         } => {
-            // If resuming, try to load seed messages from the session file.
-            let (session_id, seed_messages) =
-                resolve_session_resume(resume_id.as_deref(), continue_last, cwd.as_deref());
-            let resolved_model = model.clone().unwrap_or_else(|| factory.default_model.clone());
+            let builder = super::session_builder::SessionBuilder::from_global_paths(factory.default_model.clone());
+            let mut plan = builder.plan_create_session(super::session_builder::CreateSessionPlanRequest {
+                model,
+                system_prompt,
+                resume_id,
+                continue_last,
+                cwd,
+                thinking_level,
+            });
 
-            // Spawn as an actor process in the registry
+            // Spawn as an actor process in the registry.
             let spawned = super::agent_process::spawn_agent_process(
                 &registry,
                 &factory,
-                session_id.clone(),
-                model,
-                system_prompt,
+                plan.spawn.session_id.clone(),
+                plan.spawn.model.clone(),
+                plan.spawn.system_prompt.clone(),
                 None,
-                None, // local sessions get full access
-                None,
+                plan.spawn.capabilities.take(),
+                plan.spawn.public_auth.take(),
             );
             let cmd_tx = spawned.cmd_tx;
             let event_tx = spawned.event_tx;
 
-            if let Some(level) = thinking_level.filter(|level| !level.trim().is_empty()) {
-                cmd_tx.send(SessionCommand::SetThinkingLevel { level }).ok();
+            if let Some(command) = plan.thinking_command() {
+                cmd_tx.send(command).ok();
             }
 
-            let socket_path = session_socket_path(&session_id);
-
-            // Register in daemon state
             {
                 let mut st = state.lock().await;
-                st.sessions.insert(session_id.clone(), SessionHandle {
-                    session_id: session_id.clone(),
-                    model: resolved_model.clone(),
-                    turn_count: 0,
-                    last_active: chrono::Utc::now().to_rfc3339(),
-                    client_count: 0,
-                    cmd_tx: Some(cmd_tx.clone()),
-                    event_tx: Some(event_tx.clone()),
-                    socket_path: socket_path.clone(),
-                    state: "active".to_string(),
-                });
+                st.sessions.insert(plan.session_id.clone(), plan.session_handle(cmd_tx.clone(), event_tx.clone()));
             }
 
-            // Write catalog entry for recovery
             if let Some(ref catalog) = factory.catalog {
                 let now = chrono::Utc::now().to_rfc3339();
-                catalog.insert_session(&super::session_store::SessionCatalogEntry {
-                    session_id: session_id.clone(),
-                    automerge_path: spawned.automerge_path.clone().unwrap_or_default(),
-                    model: resolved_model.clone(),
-                    created_at: now.clone(),
-                    last_active: now,
-                    turn_count: 0,
-                    state: super::session_store::SessionLifecycle::Active,
-                });
+                catalog.insert_session(&plan.catalog_entry(spawned.automerge_path.clone().unwrap_or_default(), now));
             }
 
             // Bind the session socket before replying so attaches cannot race it.
-            let listener = match clankers_controller::transport::bind_session_socket(&session_id) {
+            let listener = match clankers_controller::transport::bind_session_socket(&plan.session_id) {
                 Ok(listener) => listener,
                 Err(e) => {
                     {
                         let mut st = state.lock().await;
-                        st.remove_session(&session_id);
+                        st.remove_session(&plan.session_id);
                     }
                     if let Some(ref catalog) = factory.catalog {
-                        catalog.set_state(&session_id, super::session_store::SessionLifecycle::Tombstoned);
+                        catalog.set_state(&plan.session_id, super::session_store::SessionLifecycle::Tombstoned);
                     }
                     return frame::write_frame(
                         &mut writer,
-                        &control_error(format!("failed to bind session socket for {session_id}: {e}")),
+                        &control_error(format!("failed to bind session socket for {}: {e}", plan.session_id)),
                     )
                     .await;
                 }
@@ -260,7 +241,7 @@ async fn handle_control(
             let sock_shutdown = shutdown.clone();
             let sock_cmd_tx = cmd_tx.clone();
             let sock_event_tx = event_tx.clone();
-            let sock_session_id = session_id.clone();
+            let sock_session_id = plan.session_id.clone();
             tokio::spawn(async move {
                 clankers_controller::transport::run_session_socket_with_listener(
                     listener,
@@ -272,20 +253,18 @@ async fn handle_control(
                 .await;
             });
 
-            // Seed resumed messages if any
-            if !seed_messages.is_empty() {
-                let count = seed_messages.len();
-                cmd_tx
-                    .send(SessionCommand::SeedMessages {
-                        messages: seed_messages,
-                    })
-                    .ok();
-                info!("created session {session_id} (model: {resolved_model}, resumed {count} messages)");
+            if let Some(command) = plan.seed_command() {
+                let count = plan.seed_messages.len();
+                cmd_tx.send(command).ok();
+                info!(
+                    "created session {} (model: {}, resumed {count} messages)",
+                    plan.session_id, plan.resolved_model
+                );
             } else {
-                info!("created session {session_id} (model: {resolved_model})");
+                info!("created session {} (model: {})", plan.session_id, plan.resolved_model);
             }
 
-            control_created(&session_id, &socket_path)
+            control_created(&plan.session_id, &plan.socket_path)
         }
 
         ControlCommand::AttachSession { session_id } => {
@@ -384,7 +363,7 @@ pub fn drain_and_broadcast(
     controller: &mut SessionController,
     event_tx: &broadcast::Sender<DaemonEvent>,
     panel_rx: &mut mpsc::UnboundedReceiver<SubagentEvent>,
-    plugin_manager: Option<&std::sync::Arc<std::sync::Mutex<crate::plugin::PluginManager>>>,
+    plugin_manager: Option<&std::sync::Arc<std::sync::Mutex<clankers_plugin::PluginManager>>>,
 ) {
     let events = controller.drain_events();
     broadcast_events(events, event_tx, panel_rx, plugin_manager);
@@ -395,7 +374,7 @@ pub fn broadcast_events(
     events: Vec<DaemonEvent>,
     event_tx: &broadcast::Sender<DaemonEvent>,
     panel_rx: &mut mpsc::UnboundedReceiver<SubagentEvent>,
-    plugin_manager: Option<&std::sync::Arc<std::sync::Mutex<crate::plugin::PluginManager>>>,
+    plugin_manager: Option<&std::sync::Arc<std::sync::Mutex<clankers_plugin::PluginManager>>>,
 ) {
     // Dispatch to plugins before broadcasting (plugins may produce UI actions)
     if let Some(pm) = plugin_manager.filter(|_| !events.is_empty()) {
@@ -435,96 +414,6 @@ pub fn broadcast_events(
     }
 }
 
-/// Resolve session resume: look up an existing session file by ID or
-/// most-recent, returning seed messages to inject. Falls back to a
-/// fresh session (new ID, empty messages) if nothing matches.
-fn resolve_session_resume(
-    resume_id: Option<&str>,
-    continue_last: bool,
-    cwd: Option<&str>,
-) -> (String, Vec<clankers_protocol::SerializedMessage>) {
-    let paths = crate::config::ClankersPaths::get();
-    let sessions_dir = &paths.global_sessions_dir;
-    let effective_cwd = cwd.unwrap_or(".");
-
-    let try_open = |file: std::path::PathBuf| -> Option<(String, Vec<clankers_protocol::SerializedMessage>)> {
-        let mgr = clankers_session::SessionManager::open(file).ok()?;
-        let msgs = mgr.build_context().ok()?;
-        let session_id = mgr.session_id().to_string();
-        let serialized = msgs
-            .iter()
-            .map(|m| {
-                let (role, content, model) = match m {
-                    clanker_message::AgentMessage::User(u) => {
-                        let text = u
-                            .content
-                            .iter()
-                            .filter_map(|c| match c {
-                                clanker_message::Content::Text { text } => Some(text.as_str()),
-                                _ => None,
-                            })
-                            .collect::<Vec<_>>()
-                            .join("\n");
-                        ("user", text, None)
-                    }
-                    clanker_message::AgentMessage::Assistant(a) => {
-                        let text = a
-                            .content
-                            .iter()
-                            .filter_map(|c| match c {
-                                clanker_message::Content::Text { text } => Some(text.as_str()),
-                                _ => None,
-                            })
-                            .collect::<Vec<_>>()
-                            .join("\n");
-                        ("assistant", text, Some(a.model.clone()))
-                    }
-                    _ => {
-                        return clankers_protocol::SerializedMessage {
-                            role: "user".to_string(),
-                            content: String::new(),
-                            model: None,
-                            timestamp: None,
-                        };
-                    }
-                };
-                clankers_protocol::SerializedMessage {
-                    role: role.to_string(),
-                    content,
-                    model,
-                    timestamp: None,
-                }
-            })
-            .filter(|m| !m.content.is_empty())
-            .collect();
-        Some((session_id, serialized))
-    };
-
-    // Try resume by ID
-    if let Some(id) = resume_id {
-        let files = clankers_session::store::list_sessions(sessions_dir, effective_cwd);
-        if let Some(file) =
-            files.into_iter().find(|f| f.file_name().and_then(|n| n.to_str()).is_some_and(|n| n.contains(id)))
-            && let Some(result) = try_open(file)
-        {
-            return result;
-        }
-    }
-
-    // Try continue last
-    if continue_last {
-        let files = clankers_session::store::list_sessions(sessions_dir, effective_cwd);
-        if let Some(file) = files.into_iter().next()
-            && let Some(result) = try_open(file)
-        {
-            return result;
-        }
-    }
-
-    // New session
-    (clanker_message::generate_id(), Vec::new())
-}
-
 async fn shutdown_signal(shutdown: &tokio::sync::watch::Receiver<bool>) {
     let mut rx = shutdown.clone();
     while !*rx.borrow_and_update() {
@@ -551,16 +440,16 @@ mod tests {
     struct StubProvider;
 
     #[async_trait::async_trait]
-    impl crate::provider::Provider for StubProvider {
+    impl clankers_provider::Provider for StubProvider {
         async fn complete(
             &self,
-            _req: crate::provider::CompletionRequest,
-            _tx: tokio::sync::mpsc::Sender<crate::provider::streaming::StreamEvent>,
-        ) -> std::result::Result<(), crate::provider::error::ProviderError> {
+            _req: clankers_provider::CompletionRequest,
+            _tx: tokio::sync::mpsc::Sender<clankers_provider::streaming::StreamEvent>,
+        ) -> std::result::Result<(), clankers_provider::error::ProviderError> {
             Ok(())
         }
 
-        fn models(&self) -> &[crate::provider::Model] {
+        fn models(&self) -> &[clankers_provider::Model] {
             &[]
         }
 
@@ -570,13 +459,13 @@ mod tests {
     }
 
     fn make_factory(
-        plugin_manager: Option<Arc<Mutex<crate::plugin::PluginManager>>>,
+        plugin_manager: Option<Arc<Mutex<clankers_plugin::PluginManager>>>,
         registry: Option<ProcessRegistry>,
     ) -> SessionFactory {
         SessionFactory {
             provider: Arc::new(StubProvider),
             tools: vec![],
-            settings: crate::config::settings::Settings::default(),
+            settings: clankers_config::settings::Settings::default(),
             default_model: "test".to_string(),
             default_system_prompt: String::new(),
             registry,
@@ -622,7 +511,7 @@ mod tests {
             dir.path(),
             None,
             &[],
-            crate::plugin::PluginRuntimeMode::Daemon,
+            clankers_plugin::PluginRuntimeMode::Daemon,
             dir.path(),
         );
         let state = Arc::new(tokio::sync::Mutex::new(DaemonState::new()));
@@ -662,14 +551,14 @@ mod tests {
 
         let plugin_manager = crate::plugin::tests::stdio_runtime::init_manager_with_restart_delays(
             dir.path(),
-            crate::plugin::PluginRuntimeMode::Daemon,
+            clankers_plugin::PluginRuntimeMode::Daemon,
             "5,10,15,20,25",
         );
         crate::plugin::tests::stdio_runtime::wait_for_plugin_state(
             &plugin_manager,
             "stdio-list-active",
             Duration::from_secs(2),
-            |state| matches!(state, crate::plugin::PluginState::Active),
+            |state| matches!(state, clankers_plugin::PluginState::Active),
         )
         .await;
         crate::plugin::tests::stdio_runtime::wait_for_live_tool(
@@ -700,6 +589,6 @@ mod tests {
             other => panic!("expected plugins response, got {other:?}"),
         }
 
-        crate::plugin::shutdown_plugin_runtime(&plugin_manager, "test shutdown").await;
+        clankers_plugin::shutdown_plugin_runtime(&plugin_manager, "test shutdown").await;
     }
 }

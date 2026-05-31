@@ -127,7 +127,7 @@ impl PeerRegistry {
 }
 
 /// Default path for the peer registry
-pub fn registry_path(paths: &crate::config::ClankersPaths) -> PathBuf {
+pub fn registry_path(paths: &clankers_config::ClankersPaths) -> PathBuf {
     paths.global_config_dir.join("peers.json")
 }
 

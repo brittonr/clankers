@@ -1555,6 +1555,7 @@ dependencies = [
  "similar",
  "snafu 0.8.9",
  "tempfile",
+ "terminal-colorsaurus",
  "thiserror 2.0.18",
  "tokio",
  "tokio-stream",
@@ -1665,16 +1666,13 @@ dependencies = [
  "clankers-agent-defs",
  "clankers-hooks",
  "clankers-model-selection",
- "clankers-tui",
  "clankers-ucan",
  "dirs 6.0.0",
  "indexmap 2.14.0",
  "nickel-lang",
- "ratatui",
  "serde",
  "serde_json",
  "tempfile",
- "terminal-colorsaurus",
 ]
 
 [[package]]

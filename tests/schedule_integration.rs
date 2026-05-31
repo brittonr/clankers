@@ -9,8 +9,8 @@ use std::time::Duration;
 use clanker_scheduler::Schedule;
 use clanker_scheduler::ScheduleEngine;
 use clanker_scheduler::ScheduleStatus;
-use clankers::agent::tool::Tool;
-use clankers::agent::tool::ToolContext;
+use clankers_agent::tool::Tool;
+use clankers_agent::tool::ToolContext;
 use clankers::tools::schedule::ScheduleTool;
 use serde_json::json;
 use tokio_util::sync::CancellationToken;
@@ -19,12 +19,12 @@ fn make_ctx() -> ToolContext {
     ToolContext::new("test-call".into(), CancellationToken::default(), None)
 }
 
-fn result_text(result: &clankers::agent::tool::ToolResult) -> String {
+fn result_text(result: &clankers_agent::tool::ToolResult) -> String {
     result
         .content
         .iter()
         .filter_map(|c| match c {
-            clankers::agent::tool::ToolResultContent::Text { text } => Some(text.clone()),
+            clankers_agent::tool::ToolResultContent::Text { text } => Some(text.clone()),
             _ => None,
         })
         .collect::<String>()

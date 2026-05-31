@@ -10,7 +10,7 @@ use super::super::ToolResult;
 use super::parser::NixOutputState;
 use super::parser::format_nix_result;
 use super::parser::process_nix_line;
-use crate::util::ansi::strip_ansi;
+use clankers_util::ansi::strip_ansi;
 
 // ── nom (nix-output-monitor) detection ──────────────────────────────────────
 

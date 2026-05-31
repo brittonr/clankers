@@ -6,7 +6,7 @@ pub(crate) async fn probe_peer_background(
     node_id: String,
     registry_path: std::path::PathBuf,
     identity_path: std::path::PathBuf,
-    _panel_tx: tokio::sync::mpsc::UnboundedSender<crate::tui::components::subagent_event::SubagentEvent>,
+    _panel_tx: tokio::sync::mpsc::UnboundedSender<clankers_tui::components::subagent_event::SubagentEvent>,
 ) {
     use crate::modes::rpc::iroh;
     use crate::modes::rpc::protocol::Request;
@@ -74,7 +74,7 @@ pub(crate) async fn probe_peer_background(
 pub(crate) async fn discover_peers_background(
     registry_path: std::path::PathBuf,
     identity_path: std::path::PathBuf,
-    _panel_tx: tokio::sync::mpsc::UnboundedSender<crate::tui::components::subagent_event::SubagentEvent>,
+    _panel_tx: tokio::sync::mpsc::UnboundedSender<clankers_tui::components::subagent_event::SubagentEvent>,
 ) {
     use crate::modes::rpc::iroh;
 

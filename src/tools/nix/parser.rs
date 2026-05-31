@@ -9,7 +9,7 @@ use serde::Deserialize;
 use serde_json::Value;
 
 use super::super::ToolContext;
-use crate::util::ansi::strip_ansi;
+use clankers_util::ansi::strip_ansi;
 
 // ── Nix internal-json protocol types ────────────────────────────────────────
 

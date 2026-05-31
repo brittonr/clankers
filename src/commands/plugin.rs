@@ -28,12 +28,12 @@ pub async fn run(ctx: &CommandContext, action: PluginAction) -> Result<()> {
         PluginAction::Uninstall { name, project } => handle_uninstall(ctx, &name, project),
     };
 
-    crate::plugin::shutdown_plugin_runtime(&plugin_manager, "plugin command complete").await;
+    clankers_plugin::shutdown_plugin_runtime(&plugin_manager, "plugin command complete").await;
     result
 }
 
 async fn handle_call(
-    pm: &Arc<std::sync::Mutex<crate::plugin::PluginManager>>,
+    pm: &Arc<std::sync::Mutex<clankers_plugin::PluginManager>>,
     plugin_name: &str,
     tool_name: &str,
     args: &str,
@@ -73,7 +73,7 @@ async fn handle_call(
 }
 
 fn call_wasm_plugin_direct(
-    pm: &Arc<std::sync::Mutex<crate::plugin::PluginManager>>,
+    pm: &Arc<std::sync::Mutex<clankers_plugin::PluginManager>>,
     plugin_name: &str,
     tool_name: &str,
     params: &serde_json::Value,
@@ -109,7 +109,7 @@ fn call_wasm_plugin_direct(
 }
 
 fn wait_for_plugin_tool(
-    pm: &Arc<std::sync::Mutex<crate::plugin::PluginManager>>,
+    pm: &Arc<std::sync::Mutex<clankers_plugin::PluginManager>>,
     plugin_name: &str,
     tool_name: &str,
 ) -> Result<Arc<dyn Tool>> {
@@ -149,7 +149,7 @@ fn wait_for_plugin_tool(
 
 fn handle_list(
     ctx: &CommandContext,
-    pm: &Arc<std::sync::Mutex<crate::plugin::PluginManager>>,
+    pm: &Arc<std::sync::Mutex<clankers_plugin::PluginManager>>,
     verbose: bool,
 ) -> Result<()> {
     let mgr = pm.lock().unwrap_or_else(|e| e.into_inner());
@@ -176,11 +176,11 @@ fn handle_list(
                 );
             } else {
                 let state = match &p.state {
-                    crate::plugin::PluginState::Active => "✓",
-                    crate::plugin::PluginState::Loaded | crate::plugin::PluginState::Starting => "○",
-                    crate::plugin::PluginState::Backoff(_) => "↺",
-                    crate::plugin::PluginState::Error(_) => "✗",
-                    crate::plugin::PluginState::Disabled => "−",
+                    clankers_plugin::PluginState::Active => "✓",
+                    clankers_plugin::PluginState::Loaded | clankers_plugin::PluginState::Starting => "○",
+                    clankers_plugin::PluginState::Backoff(_) => "↺",
+                    clankers_plugin::PluginState::Error(_) => "✗",
+                    clankers_plugin::PluginState::Disabled => "−",
                 };
                 println!("{} {} v{} — {}", state, p.name, p.version, p.manifest.description);
             }
@@ -189,7 +189,7 @@ fn handle_list(
     Ok(())
 }
 
-fn handle_show(pm: &Arc<std::sync::Mutex<crate::plugin::PluginManager>>, name: &str) -> Result<()> {
+fn handle_show(pm: &Arc<std::sync::Mutex<clankers_plugin::PluginManager>>, name: &str) -> Result<()> {
     let mgr = pm.lock().unwrap_or_else(|e| e.into_inner());
     let p = mgr.get(name).ok_or_else(|| crate::error::Error::Config {
         message: format!("Plugin '{}' not found.", name),
@@ -232,7 +232,7 @@ fn handle_install(ctx: &CommandContext, source: &str, project: bool) -> Result<(
         });
     }
     let manifest =
-        crate::plugin::manifest::PluginManifest::load(&manifest_path).ok_or_else(|| crate::error::Error::Config {
+        clankers_plugin::manifest::PluginManifest::load(&manifest_path).ok_or_else(|| crate::error::Error::Config {
             message: format!("Failed to parse plugin.json at: {}", manifest_path.display()),
         })?;
     manifest.validate().map_err(|error| crate::error::Error::Config {

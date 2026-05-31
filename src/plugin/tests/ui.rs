@@ -1,4 +1,4 @@
-use crate::plugin::ui;
+use clankers_plugin::ui;
 
 // ── UI widget serialization tests ────────────────────────────────
 

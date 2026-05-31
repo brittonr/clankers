@@ -17,16 +17,17 @@ use tracing::error;
 use tracing::info;
 use tracing::warn;
 
-use crate::config::ClankersPaths;
+use clankers_config::ClankersPaths;
 use crate::error::Result;
 use crate::modes::rpc::iroh;
-use crate::provider::Provider;
+use clankers_provider::Provider;
 use crate::tools::Tool;
 
 pub mod agent_process;
 mod config;
 mod handlers;
 pub mod quic_bridge;
+pub(crate) mod session_builder;
 pub mod session_store;
 pub mod socket_bridge;
 
@@ -60,7 +61,7 @@ pub async fn run_daemon(
     config: DaemonConfig,
     paths: &ClankersPaths,
     schedule_engine: Option<Arc<clanker_scheduler::ScheduleEngine>>,
-    plugin_manager: Option<std::sync::Arc<std::sync::Mutex<crate::plugin::PluginManager>>>,
+    plugin_manager: Option<std::sync::Arc<std::sync::Mutex<clankers_plugin::PluginManager>>>,
 ) -> Result<()> {
     let cancel = CancellationToken::new();
 
@@ -228,7 +229,7 @@ pub async fn run_daemon(
     process_registry.shutdown_all(std::time::Duration::from_secs(5)).await;
 
     if let Some(ref pm) = plugin_manager {
-        crate::plugin::shutdown_plugin_runtime(pm, "daemon shutdown").await;
+        clankers_plugin::shutdown_plugin_runtime(pm, "daemon shutdown").await;
     }
 
     // Transition all active catalog entries to suspended
@@ -302,7 +303,7 @@ pub struct ScheduleEventHandlingResult {
 pub async fn handle_schedule_event(
     sched_event: &clanker_scheduler::ScheduleEvent,
     state: &Arc<tokio::sync::Mutex<clankers_controller::transport::DaemonState>>,
-    plugin_manager: Option<&Arc<std::sync::Mutex<crate::plugin::PluginManager>>>,
+    plugin_manager: Option<&Arc<std::sync::Mutex<clankers_plugin::PluginManager>>>,
 ) -> ScheduleEventHandlingResult {
     let mut result = ScheduleEventHandlingResult::default();
 
@@ -376,7 +377,7 @@ pub async fn handle_schedule_event(
 pub async fn run_schedule_consumer(
     mut rx: tokio::sync::broadcast::Receiver<clanker_scheduler::ScheduleEvent>,
     state: Arc<tokio::sync::Mutex<clankers_controller::transport::DaemonState>>,
-    plugin_manager: Option<Arc<std::sync::Mutex<crate::plugin::PluginManager>>>,
+    plugin_manager: Option<Arc<std::sync::Mutex<clankers_plugin::PluginManager>>>,
     cancel: CancellationToken,
 ) {
     info!("schedule event consumer started");

@@ -16,9 +16,9 @@ use super::DbWorktreeExt;
 use super::SessionType;
 use super::WorktreeManager;
 use super::WorktreeStatus;
-use crate::db::Db;
+use clankers_db::Db;
 use crate::error::Result;
-use crate::provider::Provider;
+use clankers_provider::Provider;
 
 /// Result of setting up a worktree for a session.
 #[derive(Debug, Clone)]

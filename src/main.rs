@@ -77,7 +77,7 @@ async fn main() -> Result<()> {
         tracing::Level::WARN
     };
 
-    let env_filter = clankers::util::logging::build_env_filter(log_level);
+    let env_filter = clankers_util::logging::build_env_filter(log_level);
     let subscriber = tracing_subscriber::fmt().with_env_filter(env_filter);
 
     if let Some(ref log_file) = cli.log_file {
@@ -123,11 +123,11 @@ async fn main() -> Result<()> {
         .cwd
         .clone()
         .unwrap_or_else(|| std::env::current_dir().unwrap_or_default().to_string_lossy().to_string());
-    clankers::util::direnv::load_direnv_if_needed(std::path::Path::new(&cwd));
+    clankers_util::direnv::load_direnv_if_needed(std::path::Path::new(&cwd));
 
-    let paths = clankers::config::ClankersPaths::resolve();
-    let project_paths = clankers::config::ProjectPaths::resolve(std::path::Path::new(&cwd));
-    let settings = clankers::config::Settings::load_with_nickel(
+    let paths = clankers_config::ClankersPaths::resolve();
+    let project_paths = clankers_config::ProjectPaths::resolve(std::path::Path::new(&cwd));
+    let settings = clankers_config::Settings::load_with_nickel(
         paths.pi_settings.as_deref(),
         &paths.global_settings,
         &paths.global_settings_ncl,
@@ -138,7 +138,7 @@ async fn main() -> Result<()> {
     let model = cli.model.clone().unwrap_or(settings.model.clone());
 
     // Detect system capabilities for conditional prompt sections
-    let is_nix_available = clankers::agent::system_prompt::detect_nix();
+    let is_nix_available = clankers_agent::system_prompt::detect_nix();
     let has_multi_model = settings.model_roles.is_configured();
 
     // Build system prompt from multiple sources
@@ -147,8 +147,8 @@ async fn main() -> Result<()> {
         .clone()
         .or_else(|| cli.system_prompt_file.as_ref().and_then(|f| std::fs::read_to_string(f).ok()))
         .unwrap_or_else(|| {
-            use clankers::agent::system_prompt::PromptFeatures;
-            use clankers::agent::system_prompt::default_system_prompt;
+            use clankers_agent::system_prompt::PromptFeatures;
+            use clankers_agent::system_prompt::default_system_prompt;
             // In the main entrypoint we don't know the mode yet (dispatch
             // happens later), so we include interactive-appropriate sections.
             // Daemon mode builds its own system prompt via DaemonConfig.
@@ -160,8 +160,8 @@ async fn main() -> Result<()> {
             })
         });
 
-    let resources = clankers::agent::system_prompt::discover_resources(&paths, &project_paths);
-    let system_prompt = clankers::agent::system_prompt::assemble_system_prompt(
+    let resources = clankers_agent::system_prompt::discover_resources(&paths, &project_paths);
+    let system_prompt = clankers_agent::system_prompt::assemble_system_prompt(
         &base_prompt,
         &resources,
         cli.system_prompt_prefix.as_deref().or(settings.system_prompt_prefix.as_deref()),
@@ -229,7 +229,7 @@ fn validate_cli(cli: &Cli) -> Result<()> {
 async fn dispatch(
     cli: Cli,
     ctx: CommandContext,
-    resources: clankers::agent::system_prompt::PromptResources,
+    resources: clankers_agent::system_prompt::PromptResources,
 ) -> Result<()> {
     match cli.command {
         Some(Commands::Version { verbose }) => {
@@ -347,7 +347,7 @@ async fn dispatch(
 async fn run_agent_mode(
     cli: Cli,
     ctx: CommandContext,
-    resources: clankers::agent::system_prompt::PromptResources,
+    resources: clankers_agent::system_prompt::PromptResources,
 ) -> Result<()> {
     let prompt = if let Some(ref p) = cli.print {
         Some(p.clone())
@@ -399,7 +399,7 @@ async fn run_agent_mode(
         &ctx.paths.global_plugins_dir,
         Some(&ctx.project_paths.plugins_dir),
         &[&ctx.project_paths.plugins_root_dir],
-        clankers::plugin::PluginRuntimeMode::Standalone,
+        clankers_plugin::PluginRuntimeMode::Standalone,
         std::path::Path::new(&ctx.cwd),
     );
 
@@ -409,7 +409,7 @@ async fn run_agent_mode(
         Box::pin(run_interactive(&cli, &ctx, model, system_prompt, resources, &plugin_manager)).await
     };
 
-    clankers::plugin::shutdown_plugin_runtime(&plugin_manager, "host shutdown").await;
+    clankers_plugin::shutdown_plugin_runtime(&plugin_manager, "host shutdown").await;
     result
 }
 
@@ -463,9 +463,9 @@ async fn run_headless(
     model: String,
     system_prompt: String,
     prompt: &str,
-    plugin_manager: &std::sync::Arc<std::sync::Mutex<clankers::plugin::PluginManager>>,
+    plugin_manager: &std::sync::Arc<std::sync::Mutex<clankers_plugin::PluginManager>>,
 ) -> Result<()> {
-    let provider = clankers::provider::discovery::build_router(
+    let provider = clankers_provider::discovery::build_router(
         ctx.api_key.as_deref(),
         ctx.api_base.clone(),
         &ctx.paths.global_auth,
@@ -474,8 +474,8 @@ async fn run_headless(
     )?;
 
     let headless_process_monitor = {
-        let config = clankers::procmon::ProcessMonitorConfig::default();
-        let monitor = std::sync::Arc::new(clankers::procmon::ProcessMonitor::new(config, None));
+        let config = clankers_procmon::ProcessMonitorConfig::default();
+        let monitor = std::sync::Arc::new(clankers_procmon::ProcessMonitor::new(config, None));
         monitor.clone().start();
         monitor
     };
@@ -526,10 +526,10 @@ async fn run_headless(
         settings.max_tokens = max_tokens;
     }
     if cli.enable_routing && settings.routing.is_none() {
-        settings.routing = Some(clankers::model_selection::config::RoutingPolicyConfig::default());
+        settings.routing = Some(clankers_model_selection::config::RoutingPolicyConfig::default());
     }
     if let Some(max_cost) = cli.max_cost {
-        settings.cost_tracking = Some(clankers::model_selection::cost_tracker::CostTrackerConfig {
+        settings.cost_tracking = Some(clankers_model_selection::cost_tracker::CostTrackerConfig {
             soft_limit: Some(max_cost * 0.8),
             hard_limit: Some(max_cost),
             warning_interval: Some(1.0),
@@ -537,7 +537,7 @@ async fn run_headless(
     }
 
     let thinking_config = if cli.thinking || cli.thinking_budget.is_some() {
-        Some(clankers::provider::ThinkingConfig {
+        Some(clankers_provider::ThinkingConfig {
             enabled: true,
             budget_tokens: cli.thinking_budget.or(Some(128_000)),
         })
@@ -629,10 +629,10 @@ async fn run_interactive(
     ctx: &CommandContext,
     model: String,
     system_prompt: String,
-    resources: clankers::agent::system_prompt::PromptResources,
-    plugin_manager: &std::sync::Arc<std::sync::Mutex<clankers::plugin::PluginManager>>,
+    resources: clankers_agent::system_prompt::PromptResources,
+    plugin_manager: &std::sync::Arc<std::sync::Mutex<clankers_plugin::PluginManager>>,
 ) -> Result<()> {
-    let provider = clankers::provider::discovery::build_router_with_rpc(
+    let provider = clankers_provider::discovery::build_router_with_rpc(
         ctx.api_key.as_deref(),
         ctx.api_base.clone(),
         &ctx.paths.global_auth,
@@ -652,10 +652,10 @@ async fn run_interactive(
         settings.cache_ttl = Some(ttl.clone());
     }
     if cli.enable_routing && settings.routing.is_none() {
-        settings.routing = Some(clankers::model_selection::config::RoutingPolicyConfig::default());
+        settings.routing = Some(clankers_model_selection::config::RoutingPolicyConfig::default());
     }
     if let Some(max_cost) = cli.max_cost {
-        settings.cost_tracking = Some(clankers::model_selection::cost_tracker::CostTrackerConfig {
+        settings.cost_tracking = Some(clankers_model_selection::cost_tracker::CostTrackerConfig {
             soft_limit: Some(max_cost * 0.8),
             hard_limit: Some(max_cost),
             warning_interval: Some(1.0),

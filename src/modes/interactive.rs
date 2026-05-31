@@ -12,12 +12,12 @@ use std::sync::Arc;
 use ratatui::Terminal;
 use ratatui::backend::CrosstermBackend;
 
-use crate::agent::Agent;
-use crate::config::keybindings::Keymap;
-use crate::config::theme::load_theme;
+use clankers_agent::Agent;
 use crate::error::Result;
-use crate::provider::auth::AuthStoreExt;
-use crate::tui::app::App;
+use clankers_provider::auth::AuthStoreExt;
+use clankers_tui::app::App;
+use clankers_tui::keymap::Keymap;
+use crate::tui_config::load_theme;
 
 /// Options for resuming a session.
 #[derive(Default)]
@@ -36,23 +36,23 @@ pub struct ResumeOptions {
     allow(function_length, reason = "sequential setup/dispatch logic")
 )]
 pub async fn run_interactive(
-    provider: Arc<dyn crate::provider::Provider>,
-    settings: crate::config::settings::Settings,
+    provider: Arc<dyn clankers_provider::Provider>,
+    settings: clankers_config::settings::Settings,
     model: String,
     system_prompt: String,
     cwd: String,
-    plugin_manager: Option<Arc<std::sync::Mutex<crate::plugin::PluginManager>>>,
+    plugin_manager: Option<Arc<std::sync::Mutex<clankers_plugin::PluginManager>>>,
     resume_opts: ResumeOptions,
 ) -> Result<()> {
     let mut terminal = super::common::init_terminal()?;
 
-    let paths = crate::config::ClankersPaths::get();
+    let paths = clankers_config::ClankersPaths::get();
     let theme = load_theme(settings.theme.as_deref(), &paths.global_themes_dir);
-    let keymap = settings.keymap.clone().into_keymap();
+    let keymap = crate::tui_config::keymap_from_config(&settings.keymap);
 
     let mut app = App::new(model.clone(), cwd.clone(), theme);
-    app.auto_theme = crate::config::theme::is_auto_theme(settings.theme.as_deref());
-    app.highlighter = Box::new(crate::util::syntax::SyntectHighlighter);
+    app.auto_theme = clankers_config::theme::is_auto_theme(settings.theme.as_deref());
+    app.highlighter = Box::new(clankers_util::syntax::SyntectHighlighter);
     super::common::apply_thinking_settings(&mut app, &settings);
 
     // Build slash command registry and set completion source on app
@@ -63,12 +63,12 @@ pub async fn run_interactive(
     rebuild_leader_menu(&mut app, plugin_manager.as_ref(), &settings);
 
     // ── Session persistence setup ────────────────────────────────────
-    let paths = crate::config::ClankersPaths::get();
+    let paths = clankers_config::ClankersPaths::get();
     let original_cwd = cwd.clone();
 
     // Open the global database for worktree registry + GC
     let db_path = paths.global_config_dir.join("clankers.db");
-    let db = crate::db::Db::open(&db_path).ok();
+    let db = clankers_db::Db::open(&db_path).ok();
 
     // Run startup GC in the background if we're in a git repo with worktrees enabled
     if settings.use_worktrees
@@ -92,7 +92,7 @@ pub async fn run_interactive(
     app.push_system(format!("clankers — {} — keymap: {} — press i to start typing", model, keymap.preset), false);
 
     let (panel_tx, mut panel_rx) =
-        tokio::sync::mpsc::unbounded_channel::<crate::tui::components::subagent_event::SubagentEvent>();
+        tokio::sync::mpsc::unbounded_channel::<clankers_tui::components::subagent_event::SubagentEvent>();
     let panel_tx_for_slash = panel_tx.clone();
 
     let (todo_tx, mut todo_rx) = tokio::sync::mpsc::unbounded_channel::<(
@@ -109,9 +109,9 @@ pub async fn run_interactive(
 
     // Set router connection status and info based on provider type
     app.router_status = if provider.name() == "rpc-router" {
-        crate::tui::app::RouterStatus::Connected
+        clankers_tui::app::RouterStatus::Connected
     } else {
-        crate::tui::app::RouterStatus::Local
+        clankers_tui::app::RouterStatus::Local
     };
 
     // Populate detailed router info from the provider's model list
@@ -124,7 +124,7 @@ pub async fn run_interactive(
             .into_iter()
             .collect();
         backend_names.sort();
-        app.router_info = crate::tui::app::RouterInfo {
+        app.router_info = clankers_tui::app::RouterInfo {
             provider_type: provider.name().to_string(),
             backend_names,
             model_count: models.len(),
@@ -133,8 +133,8 @@ pub async fn run_interactive(
 
     // Populate active account name
     {
-        let paths = crate::config::ClankersPaths::get();
-        let store = crate::provider::auth::AuthStore::load(&paths.global_auth);
+        let paths = clankers_config::ClankersPaths::get();
+        let store = clankers_provider::auth::AuthStore::load(&paths.global_auth);
         app.active_account = store.active_account_name().to_string();
     }
 
@@ -280,20 +280,20 @@ async fn run_event_loop(
     terminal: &mut Terminal<CrosstermBackend<io::Stdout>>,
     app: &mut App,
     agent: Agent,
-    event_rx: tokio::sync::broadcast::Receiver<crate::agent::events::AgentEvent>,
-    panel_rx: &mut tokio::sync::mpsc::UnboundedReceiver<crate::tui::components::subagent_event::SubagentEvent>,
+    event_rx: tokio::sync::broadcast::Receiver<clankers_agent::events::AgentEvent>,
+    panel_rx: &mut tokio::sync::mpsc::UnboundedReceiver<clankers_tui::components::subagent_event::SubagentEvent>,
     todo_rx: &mut tokio::sync::mpsc::UnboundedReceiver<(
         crate::tools::todo::TodoAction,
         tokio::sync::oneshot::Sender<crate::tools::todo::TodoResponse>,
     )>,
     bash_confirm_rx: &mut crate::tools::bash::ConfirmRx,
-    panel_tx: tokio::sync::mpsc::UnboundedSender<crate::tui::components::subagent_event::SubagentEvent>,
+    panel_tx: tokio::sync::mpsc::UnboundedSender<clankers_tui::components::subagent_event::SubagentEvent>,
     keymap: Keymap,
-    plugin_manager: Option<Arc<std::sync::Mutex<crate::plugin::PluginManager>>>,
-    seed_messages: Vec<crate::provider::message::AgentMessage>,
+    plugin_manager: Option<Arc<std::sync::Mutex<clankers_plugin::PluginManager>>>,
+    seed_messages: Vec<clankers_provider::message::AgentMessage>,
     latest_compaction_summary: Option<String>,
-    db: Option<crate::db::Db>,
-    settings: &crate::config::settings::Settings,
+    db: Option<clankers_db::Db>,
+    settings: &clankers_config::settings::Settings,
     slash_registry: crate::slash_commands::SlashRegistry,
     controller: clankers_controller::SessionController,
     schedule_engine: Arc<clanker_scheduler::ScheduleEngine>,
@@ -357,16 +357,16 @@ pub(crate) fn resume_session_from_file(
     file_path: std::path::PathBuf,
     _session_id: &str,
     cmd_tx: &tokio::sync::mpsc::UnboundedSender<AgentCommand>,
-    session_manager: &mut Option<crate::session::SessionManager>,
+    session_manager: &mut Option<clankers_session::SessionManager>,
 ) {
-    match crate::session::SessionManager::open(file_path) {
+    match clankers_session::SessionManager::open(file_path) {
         Ok(mut mgr) => {
             let msgs = mgr.build_context().unwrap_or_default();
             let msg_count = msgs.len();
             let resumed_session_id = mgr.session_id().to_string();
             let latest_compaction_summary = mgr.latest_compaction_summary().map(str::to_string);
             app.session_id.clone_from(&resumed_session_id);
-            mgr.record_resume(crate::provider::message::MessageId::new("slash-resume")).ok();
+            mgr.record_resume(clankers_provider::message::MessageId::new("slash-resume")).ok();
             *session_manager = Some(mgr);
 
             cmd_tx.send(AgentCommand::SetCompactionSummary(latest_compaction_summary)).ok();
@@ -499,9 +499,9 @@ use super::rpc_embed::maybe_start_rpc;
 
 /// Build the hook pipeline from settings (script hooks + git hooks + plugin hooks).
 fn build_hook_pipeline(
-    settings: &crate::config::settings::Settings,
+    settings: &clankers_config::settings::Settings,
     cwd: &str,
-    plugin_manager: Option<&Arc<std::sync::Mutex<crate::plugin::PluginManager>>>,
+    plugin_manager: Option<&Arc<std::sync::Mutex<clankers_plugin::PluginManager>>>,
 ) -> Option<Arc<clankers_hooks::HookPipeline>> {
     if !settings.hooks.enabled {
         return None;
@@ -528,7 +528,7 @@ fn build_hook_pipeline(
 
     // Plugin hooks (wraps plugin dispatch as a HookHandler)
     if let Some(pm) = plugin_manager {
-        pipeline.register(Arc::new(crate::plugin::hooks::PluginHookHandler::new(Arc::clone(pm))));
+        pipeline.register(Arc::new(clankers_plugin::hooks::PluginHookHandler::new(Arc::clone(pm))));
     }
 
     Some(Arc::new(pipeline))
@@ -554,11 +554,11 @@ fn find_git_root(start: &std::path::Path) -> Option<std::path::PathBuf> {
 /// Build the leader menu from builtins + slash commands + plugins + user config.
 pub(crate) fn rebuild_leader_menu(
     app: &mut App,
-    plugin_manager: Option<&Arc<std::sync::Mutex<crate::plugin::PluginManager>>>,
-    settings: &crate::config::settings::Settings,
+    plugin_manager: Option<&Arc<std::sync::Mutex<clankers_plugin::PluginManager>>>,
+    settings: &clankers_config::settings::Settings,
 ) {
-    use crate::tui::components::leader_menu::BuiltinKeymapContributor;
-    use crate::tui::components::leader_menu::MenuContributor;
+    use clankers_tui::components::leader_menu::BuiltinKeymapContributor;
+    use clankers_tui::components::leader_menu::MenuContributor;
 
     let builtin = BuiltinKeymapContributor;
     let hidden = settings.leader_menu.hidden_set();
@@ -587,7 +587,7 @@ pub(crate) fn rebuild_leader_menu(
 
 /// Build the slash command registry from builtins + plugins.
 pub(crate) fn build_slash_registry(
-    plugin_manager: Option<&Arc<std::sync::Mutex<crate::plugin::PluginManager>>>,
+    plugin_manager: Option<&Arc<std::sync::Mutex<clankers_plugin::PluginManager>>>,
 ) -> crate::slash_commands::SlashRegistry {
     use crate::slash_commands::BuiltinSlashContributor;
     use crate::slash_commands::SlashContributor;

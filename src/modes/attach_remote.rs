@@ -20,13 +20,13 @@ use super::attach::AttachParityTracker;
 use super::attach::build_client_slash_registry;
 use super::attach::drain_daemon_events;
 use super::attach::handle_terminal_events;
-use crate::config::keybindings::Keymap;
-use crate::config::settings::Settings;
-use crate::config::theme::load_theme;
+use clankers_config::settings::Settings;
 use crate::error::Result;
 use crate::slash_commands;
-use crate::tui::app::App;
-use crate::tui::render;
+use clankers_tui::app::App;
+use clankers_tui::keymap::Keymap;
+use clankers_tui::render;
+use crate::tui_config::load_theme;
 
 // ── QUIC stream adapter ─────────────────────────────────────────────────────
 
@@ -90,7 +90,7 @@ pub async fn run_remote_attach(
     should_create_new: bool,
     model: Option<String>,
     settings: &Settings,
-    paths: &crate::config::ClankersPaths,
+    paths: &clankers_config::ClankersPaths,
 ) -> Result<()> {
     use crate::modes::rpc::iroh;
 
@@ -221,14 +221,14 @@ pub async fn run_remote_attach(
     };
 
     let cwd = std::env::current_dir().unwrap_or_default().to_string_lossy().into_owned();
-    let paths = crate::config::ClankersPaths::get();
+    let paths = clankers_config::ClankersPaths::get();
     let theme = load_theme(settings.theme.as_deref(), &paths.global_themes_dir);
-    let keymap = settings.keymap.clone().into_keymap();
+    let keymap = crate::tui_config::keymap_from_config(&settings.keymap);
 
     let mut app = App::new(display_model.clone(), cwd, theme);
-    app.auto_theme = crate::config::theme::is_auto_theme(settings.theme.as_deref());
+    app.auto_theme = clankers_config::theme::is_auto_theme(settings.theme.as_deref());
     app.session_id = resolved_session_id.clone();
-    app.highlighter = Box::new(crate::util::syntax::SyntectHighlighter);
+    app.highlighter = Box::new(clankers_util::syntax::SyntectHighlighter);
 
     let slash_registry = build_client_slash_registry();
     app.set_completion_source(Box::new(clanker_tui_types::CompletionSnapshot::from_source(&slash_registry)));
@@ -338,7 +338,7 @@ async fn run_remote_attach_loop(
 
         if app.open_editor_requested {
             app.open_editor_requested = false;
-            crate::tui::clipboard::open_external_editor(terminal, app);
+            clankers_tui::clipboard::open_external_editor(terminal, app);
         }
     }
 
@@ -561,7 +561,7 @@ mod tests {
     use super::drain_daemon_events;
 
     fn test_app() -> App {
-        App::new("test-model".to_string(), ".".to_string(), crate::config::theme::detect_theme())
+        App::new("test-model".to_string(), ".".to_string(), crate::tui_config::detect_theme())
     }
 
     fn client_with_events(events: Vec<DaemonEvent>) -> ClientAdapter {

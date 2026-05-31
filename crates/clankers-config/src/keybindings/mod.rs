@@ -1,14 +1,16 @@
-//! Modal keymap configuration — thin wrapper around `clankers_tui::keymap`.
+//! Modal keymap configuration data.
 //!
-//! The keymap engine (Keymap, KeyCombo, presets, defaults) lives in the TUI
-//! crate. This module re-exports those types and provides the settings-layer
-//! `KeymapConfig` for loading from the config file.
+//! The keymap engine (runtime key event parsing, defaults, and action
+//! resolution) lives in the TUI crate. This module owns only the serializable
+//! settings-layer shape loaded from configuration files.
 
-// Re-export everything from the TUI keymap module.
 use std::collections::HashMap;
+use std::fmt;
 use std::path::Path;
 
-// Re-export action types (canonical home is clanker-tui-types).
+// Re-export action types (canonical home is clanker-tui-types) for existing
+// settings and action parsing call sites. The concrete `Keymap` engine remains
+// in `clankers-tui` and is projected by the product shell/TUI adapter.
 pub use clanker_tui_types::Action;
 pub use clanker_tui_types::ActionRegistry;
 pub use clanker_tui_types::CoreAction;
@@ -16,9 +18,26 @@ pub use clanker_tui_types::ExtendedAction;
 pub use clanker_tui_types::ExtendedActionDef;
 pub use clanker_tui_types::InputMode;
 pub use clanker_tui_types::parse_action;
-pub use clankers_tui::keymap::*;
 use serde::Deserialize;
 use serde::Serialize;
+
+/// Which keymap preset to select before TUI projection.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "lowercase")]
+pub enum KeymapPreset {
+    #[default]
+    Helix,
+    Vim,
+}
+
+impl fmt::Display for KeymapPreset {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Helix => write!(f, "helix"),
+            Self::Vim => write!(f, "vim"),
+        }
+    }
+}
 
 // ---------------------------------------------------------------------------
 // Serialisable config (loaded from settings file)
@@ -38,15 +57,15 @@ use serde::Serialize;
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct KeymapConfig {
-    /// Which preset to start from: "helix" (default) or "vim"
+    /// Which preset to start from: "helix" (default) or "vim".
     #[serde(default)]
     pub preset: KeymapPreset,
 
-    /// Per-key overrides for normal mode
+    /// Per-key overrides for normal mode.
     #[serde(default)]
     pub normal: HashMap<String, String>,
 
-    /// Per-key overrides for insert mode
+    /// Per-key overrides for insert mode.
     #[serde(default)]
     pub insert: HashMap<String, String>,
 }
@@ -55,8 +74,40 @@ impl KeymapConfig {
     pub fn load(path: &Path) -> Self {
         std::fs::read_to_string(path).ok().and_then(|s| serde_json::from_str(&s).ok()).unwrap_or_default()
     }
+}
 
-    pub fn into_keymap(self) -> Keymap {
-        Keymap::build(self.preset, &self.normal, &self.insert)
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn default_keymap_config_is_data_only_helix() {
+        let config = KeymapConfig::default();
+
+        assert_eq!(config.preset, KeymapPreset::Helix);
+        assert!(config.normal.is_empty());
+        assert!(config.insert.is_empty());
+    }
+
+    #[test]
+    fn keymap_config_deserializes_without_tui_keymap_engine() {
+        let config: KeymapConfig = serde_json::from_str(
+            r#"{
+                "preset": "vim",
+                "normal": { "x": "quit" },
+                "insert": { "Ctrl+K": "delete_word" }
+            }"#,
+        )
+        .unwrap();
+
+        assert_eq!(config.preset, KeymapPreset::Vim);
+        assert_eq!(config.normal.get("x").map(String::as_str), Some("quit"));
+        assert_eq!(config.insert.get("Ctrl+K").map(String::as_str), Some("delete_word"));
+    }
+
+    #[test]
+    fn keymap_preset_display_matches_settings_surface() {
+        assert_eq!(KeymapPreset::Helix.to_string(), "helix");
+        assert_eq!(KeymapPreset::Vim.to_string(), "vim");
     }
 }

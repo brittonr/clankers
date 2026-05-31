@@ -35,7 +35,7 @@ use tracing::warn;
 use super::daemon::ProactiveConfig;
 use super::daemon::session_store::AuthLayer;
 use super::daemon::socket_bridge::SessionFactory;
-use crate::config::ClankersPaths;
+use clankers_config::ClankersPaths;
 use crate::error::Result;
 
 #[cfg_attr(

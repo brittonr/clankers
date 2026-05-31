@@ -14,8 +14,8 @@ use super::Tool;
 use super::ToolContext;
 use super::ToolDefinition;
 use super::ToolResult;
-use crate::model_selection::cost_tracker::BudgetStatus;
-use crate::model_selection::cost_tracker::CostTracker;
+use clankers_model_selection::cost_tracker::BudgetStatus;
+use clankers_model_selection::cost_tracker::CostTracker;
 
 pub struct CostTool {
     tracker: Arc<CostTracker>,
@@ -159,8 +159,8 @@ mod tests {
     use tokio_util::sync::CancellationToken;
 
     use super::*;
-    use crate::model_selection::cost_tracker::CostTrackerConfig;
-    use crate::model_selection::cost_tracker::ModelPricing;
+    use clankers_model_selection::cost_tracker::CostTrackerConfig;
+    use clankers_model_selection::cost_tracker::ModelPricing;
 
     fn test_pricing() -> HashMap<String, ModelPricing> {
         [

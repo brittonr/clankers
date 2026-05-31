@@ -32,7 +32,7 @@ impl SlashHandler for LayoutHandler {
         allow(catch_all_on_enum, reason = "default handler covers many variants uniformly")
     )]
     fn handle(&self, args: &str, ctx: &mut SlashContext<'_>) {
-        use crate::tui::panes;
+        use clankers_tui::panes;
 
         let sub = args.trim().to_lowercase();
         match sub.as_str() {
@@ -103,7 +103,7 @@ impl SlashHandler for LayoutHandler {
 }
 
 /// Resolve a panel name string to a `PanelId`.
-fn parse_panel_name(name: &str) -> Option<crate::tui::panel::PanelId> {
+fn parse_panel_name(name: &str) -> Option<clankers_tui::panel::PanelId> {
     use clanker_tui_types::PanelId;
     match name {
         "todo" | "todos" => Some(PanelId::Todo),
@@ -120,8 +120,8 @@ fn parse_panel_name(name: &str) -> Option<crate::tui::panel::PanelId> {
 fn handle_toggle(panel_name: &str, ctx: &mut SlashContext<'_>) {
     use ratatui::layout::Direction;
 
-    use crate::tui::panes::PaneKind;
-    use crate::tui::panes::{self};
+    use clankers_tui::panes::PaneKind;
+    use clankers_tui::panes::{self};
 
     // Toggling panels modifies the tree, so exit zoom first.
     ctx.app.zoom_restore();
@@ -187,10 +187,10 @@ fn handle_toggle(panel_name: &str, ctx: &mut SlashContext<'_>) {
 }
 
 /// Return the well-known `PaneId` for a panel type (reuses pane_ids module when possible).
-fn pane_id_for_panel(panel_id: crate::tui::panel::PanelId) -> ratatui_hypertile::PaneId {
+fn pane_id_for_panel(panel_id: clankers_tui::panel::PanelId) -> ratatui_hypertile::PaneId {
     use clanker_tui_types::PanelId;
 
-    use crate::tui::panes::pane_ids;
+    use clankers_tui::panes::pane_ids;
     match panel_id {
         PanelId::Todo => pane_ids::todo(),
         PanelId::Files => pane_ids::files(),
@@ -202,7 +202,7 @@ fn pane_id_for_panel(panel_id: crate::tui::panel::PanelId) -> ratatui_hypertile:
 }
 
 // BSP tree utilities (remove_pane_from_tree, insert_pane_beside, nodes_equal)
-// are now in crate::tui::panes — shared across slash commands, subagent panes, etc.
+// are now in clankers_tui::panes — shared across slash commands, subagent panes, etc.
 
 pub struct PreviewHandler;
 
@@ -246,8 +246,8 @@ impl SlashHandler for PreviewHandler {
         // Create a fake conversation block with the markdown as assistant text
         ctx.app.start_block("(markdown preview)".to_string(), 0);
         if let Some(ref mut block) = ctx.app.conversation.active_block {
-            block.responses.push(crate::tui::app::DisplayMessage {
-                role: crate::tui::app::MessageRole::Assistant,
+            block.responses.push(clankers_tui::app::DisplayMessage {
+                role: clankers_tui::app::MessageRole::Assistant,
                 content,
                 tool_name: None,
                 tool_input: None,
@@ -311,7 +311,7 @@ impl SlashHandler for TodoHandler {
     }
 
     fn handle(&self, args: &str, ctx: &mut SlashContext<'_>) {
-        use crate::tui::components::todo_panel::TodoStatus;
+        use clankers_tui::components::todo_panel::TodoStatus;
 
         if args.is_empty() {
             let summary = todo_panel_ref(ctx.app).summary();
@@ -511,17 +511,17 @@ impl SlashHandler for ImproveHandler {
 
 /// Helper to access the TodoPanel immutably. Panics if panel not registered (should never happen).
 #[cfg_attr(dylint_lib = "tigerstyle", allow(no_unwrap, reason = "panel registered at startup"))]
-fn todo_panel_ref(app: &crate::tui::app::App) -> &crate::tui::components::todo_panel::TodoPanel {
+fn todo_panel_ref(app: &clankers_tui::app::App) -> &clankers_tui::components::todo_panel::TodoPanel {
     app.panels
-        .downcast_ref::<crate::tui::components::todo_panel::TodoPanel>(crate::tui::panel::PanelId::Todo)
+        .downcast_ref::<clankers_tui::components::todo_panel::TodoPanel>(clankers_tui::panel::PanelId::Todo)
         .expect("todo panel registered at startup")
 }
 
 /// Helper to access the TodoPanel mutably. Panics if panel not registered (should never happen).
 #[cfg_attr(dylint_lib = "tigerstyle", allow(no_unwrap, reason = "panel registered at startup"))]
-fn todo_panel_mut(app: &mut crate::tui::app::App) -> &mut crate::tui::components::todo_panel::TodoPanel {
+fn todo_panel_mut(app: &mut clankers_tui::app::App) -> &mut clankers_tui::components::todo_panel::TodoPanel {
     app.panels
-        .downcast_mut::<crate::tui::components::todo_panel::TodoPanel>(crate::tui::panel::PanelId::Todo)
+        .downcast_mut::<clankers_tui::components::todo_panel::TodoPanel>(clankers_tui::panel::PanelId::Todo)
         .expect("todo panel registered at startup")
 }
 

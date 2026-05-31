@@ -143,7 +143,7 @@ impl SlashHandler for PluginHandler {
     }
 }
 
-type PluginMutex = std::sync::Arc<std::sync::Mutex<crate::plugin::PluginManager>>;
+type PluginMutex = std::sync::Arc<std::sync::Mutex<clankers_plugin::PluginManager>>;
 
 fn plugin_toggle(pm: &PluginMutex, name: &str, enable: bool, ctx: &mut SlashContext<'_>) {
     let verb = if enable { "enable" } else { "disable" };
@@ -152,7 +152,7 @@ fn plugin_toggle(pm: &PluginMutex, name: &str, enable: bool, ctx: &mut SlashCont
         return;
     }
     let result = if enable {
-        crate::plugin::enable_plugin(pm, name)
+        clankers_plugin::enable_plugin(pm, name)
     } else {
         let mut mgr = pm.lock().unwrap_or_else(|e| e.into_inner());
         mgr.disable(name)
@@ -169,10 +169,10 @@ fn plugin_toggle(pm: &PluginMutex, name: &str, enable: bool, ctx: &mut SlashCont
 
 fn plugin_reload(pm: &PluginMutex, name: &str, ctx: &mut SlashContext<'_>) {
     if name.is_empty() {
-        crate::plugin::reload_all_plugins(pm);
+        clankers_plugin::reload_all_plugins(pm);
         ctx.app.push_system("All plugins reloaded.".to_string(), false);
     } else {
-        match crate::plugin::reload_plugin(pm, name) {
+        match clankers_plugin::reload_plugin(pm, name) {
             Ok(()) => ctx.app.push_system(format!("Plugin '{}' reloaded.", name), false),
             Err(e) => ctx.app.push_system(format!("Failed to reload '{}': {}", name, e), true),
         }
@@ -182,7 +182,7 @@ fn plugin_reload(pm: &PluginMutex, name: &str, ctx: &mut SlashContext<'_>) {
 fn plugin_list(pm: &PluginMutex, ctx: &mut SlashContext<'_>) {
     use std::fmt::Write;
 
-    let host = crate::plugin::PluginHostFacade::new(std::sync::Arc::clone(pm));
+    let host = clankers_plugin::PluginHostFacade::new(std::sync::Arc::clone(pm));
     let plugins = host.summaries();
     if plugins.is_empty() {
         ctx.app.push_system("No plugins discovered.".to_string(), false);
@@ -253,7 +253,7 @@ fn plugin_show(pm: &PluginMutex, name: &str, ctx: &mut SlashContext<'_>) {
 }
 
 /// Persist the set of disabled plugins to disk.
-fn save_disabled_plugins(mgr: &crate::plugin::PluginManager) {
+fn save_disabled_plugins(mgr: &clankers_plugin::PluginManager) {
     let disabled = mgr.disabled_plugins();
     let config_dir = dirs::config_dir().unwrap_or_else(|| std::path::PathBuf::from(".")).join("clankers");
     std::fs::create_dir_all(&config_dir).ok();

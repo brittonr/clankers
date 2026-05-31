@@ -1,5 +1,5 @@
 use super::*;
-use crate::plugin::manifest;
+use clankers_plugin::manifest;
 
 fn write_plugin_manifest(dir: &std::path::Path, name: &str, manifest: serde_json::Value) {
     let plugin_dir = dir.join(name);
@@ -394,7 +394,7 @@ async fn daemon_mode_plugin_init_handles_empty_dirs_without_plugins() {
     let dir = tempfile::tempdir().unwrap();
     let manager = crate::plugin::tests::stdio_runtime::init_manager_with_restart_delays(
         dir.path(),
-        crate::plugin::PluginRuntimeMode::Daemon,
+        clankers_plugin::PluginRuntimeMode::Daemon,
         "5,10,15,20,25",
     );
     let mgr = manager.lock().unwrap_or_else(|e| e.into_inner());
@@ -431,7 +431,7 @@ async fn daemon_mode_plugin_init_continues_when_some_plugins_fail() {
 
     let manager = crate::plugin::tests::stdio_runtime::init_manager_with_restart_delays(
         dir.path(),
-        crate::plugin::PluginRuntimeMode::Daemon,
+        clankers_plugin::PluginRuntimeMode::Daemon,
         "5,10,15,20,25",
     );
     crate::plugin::tests::stdio_runtime::wait_for_plugin_state(
@@ -456,7 +456,7 @@ async fn daemon_mode_plugin_init_continues_when_some_plugins_fail() {
     assert_eq!(healthy.state, PluginState::Active);
     drop(mgr);
 
-    crate::plugin::shutdown_plugin_runtime(&manager, "test shutdown").await;
+    clankers_plugin::shutdown_plugin_runtime(&manager, "test shutdown").await;
 }
 
 #[test]

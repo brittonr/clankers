@@ -5,9 +5,9 @@
 
 use std::sync::Arc;
 
-use crate::agent::Agent;
-use crate::agent::events::AgentEvent;
-use crate::tui::app::App;
+use clankers_agent::Agent;
+use clankers_agent::events::AgentEvent;
+use clankers_tui::app::App;
 
 /// Build agent with all tools and configuration.
 ///
@@ -16,19 +16,19 @@ use crate::tui::app::App;
 /// optional DB, routing, and cost tracking.
 #[allow(clippy::type_complexity, clippy::too_many_arguments)]
 pub(crate) fn build_agent_with_tools(
-    provider: Arc<dyn crate::provider::Provider>,
-    settings: &crate::config::settings::Settings,
+    provider: Arc<dyn clankers_provider::Provider>,
+    settings: &clankers_config::settings::Settings,
     model: String,
     system_prompt: String,
     app: &mut App,
-    panel_tx: tokio::sync::mpsc::UnboundedSender<crate::tui::components::subagent_event::SubagentEvent>,
+    panel_tx: tokio::sync::mpsc::UnboundedSender<clankers_tui::components::subagent_event::SubagentEvent>,
     todo_tx: tokio::sync::mpsc::UnboundedSender<(
         crate::tools::todo::TodoAction,
         tokio::sync::oneshot::Sender<crate::tools::todo::TodoResponse>,
     )>,
-    plugin_manager: Option<&Arc<std::sync::Mutex<crate::plugin::PluginManager>>>,
-    paths: &crate::config::ClankersPaths,
-    db: &Option<crate::db::Db>,
+    plugin_manager: Option<&Arc<std::sync::Mutex<clankers_plugin::PluginManager>>>,
+    paths: &clankers_config::ClankersPaths,
+    db: &Option<clankers_db::Db>,
     schedule_engine: Option<Arc<clanker_scheduler::ScheduleEngine>>,
 ) -> (Agent, tokio::sync::broadcast::Receiver<AgentEvent>, crate::tools::bash::ConfirmRx) {
     // Create a temporary agent with empty tools to get event_tx for tool construction
@@ -41,7 +41,7 @@ pub(crate) fn build_agent_with_tools(
     let process_monitor = create_process_monitor(event_tx.clone());
 
     // Wire process monitor into the TUI panel
-    *process_panel(app) = crate::tui::components::process_panel::ProcessPanel::new()
+    *process_panel(app) = clankers_tui::components::process_panel::ProcessPanel::new()
         .with_monitor(process_monitor.clone() as Arc<dyn clanker_tui_types::ProcessDataSource>);
 
     let tool_env = crate::modes::common::ToolEnv {
@@ -67,7 +67,7 @@ pub(crate) fn build_agent_with_tools(
     // Fire plugin_init event so plugins can set up their initial UI
     if let Some(pm) = plugin_manager {
         for action in crate::modes::common::fire_plugin_init(pm) {
-            crate::plugin::ui::apply_ui_action(&mut app.plugin_ui, action);
+            clankers_plugin::ui::apply_ui_action(&mut app.plugin_ui, action);
         }
     }
 
@@ -75,7 +75,7 @@ pub(crate) fn build_agent_with_tools(
     let active_tools = crate::tool_gateway::allowed_tools_for_policy(&tiered_tools, &active_tiers, &app.disabled_tools);
 
     // Build the final agent with tools, db, routing, and cost tracking
-    let mut agent_builder = crate::agent::builder::AgentBuilder::new(provider, settings.clone(), model, system_prompt)
+    let mut agent_builder = clankers_agent::builder::AgentBuilder::new(provider, settings.clone(), model, system_prompt)
         .with_tools(active_tools)
         .with_paths(paths.clone());
 
@@ -114,17 +114,17 @@ pub(crate) fn build_agent_with_tools(
     dylint_lib = "tigerstyle",
     allow(unbounded_loop, reason = "traversal loop; bounded by config chain length")
 )]
-fn create_process_monitor(agent_tx: tokio::sync::broadcast::Sender<AgentEvent>) -> Arc<crate::procmon::ProcessMonitor> {
-    let config = crate::procmon::ProcessMonitorConfig::default();
-    let (proc_tx, mut proc_rx) = tokio::sync::broadcast::channel::<crate::procmon::ProcessEvent>(256);
-    let monitor = Arc::new(crate::procmon::ProcessMonitor::new(config, Some(proc_tx)));
+fn create_process_monitor(agent_tx: tokio::sync::broadcast::Sender<AgentEvent>) -> Arc<clankers_procmon::ProcessMonitor> {
+    let config = clankers_procmon::ProcessMonitorConfig::default();
+    let (proc_tx, mut proc_rx) = tokio::sync::broadcast::channel::<clankers_procmon::ProcessEvent>(256);
+    let monitor = Arc::new(clankers_procmon::ProcessMonitor::new(config, Some(proc_tx)));
     monitor.clone().start();
 
     tokio::spawn(async move {
         loop {
             match proc_rx.recv().await {
                 Ok(pe) => {
-                    agent_tx.send(crate::agent::events::process_event_to_agent(pe)).ok();
+                    agent_tx.send(clankers_agent::events::process_event_to_agent(pe)).ok();
                 }
                 Err(tokio::sync::broadcast::error::RecvError::Closed) => break,
                 Err(tokio::sync::broadcast::error::RecvError::Lagged(_)) => {}
@@ -173,8 +173,8 @@ fn populate_tool_info(app: &mut App, tools: &[Arc<dyn crate::tools::Tool>]) {
 
 /// Helper to access the ProcessPanel.
 #[cfg_attr(dylint_lib = "tigerstyle", allow(no_unwrap, reason = "panel registered at startup"))]
-fn process_panel(app: &mut App) -> &mut crate::tui::components::process_panel::ProcessPanel {
+fn process_panel(app: &mut App) -> &mut clankers_tui::components::process_panel::ProcessPanel {
     app.panels
-        .downcast_mut::<crate::tui::components::process_panel::ProcessPanel>(crate::tui::panel::PanelId::Processes)
+        .downcast_mut::<clankers_tui::components::process_panel::ProcessPanel>(clankers_tui::panel::PanelId::Processes)
         .expect("process panel registered at startup")
 }

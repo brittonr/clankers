@@ -1,4 +1,4 @@
-use crate::plugin::registry;
+use clankers_plugin::registry;
 
 // ── Registry tests ───────────────────────────────────────────────
 

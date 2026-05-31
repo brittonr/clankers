@@ -87,7 +87,7 @@ async fn start_foreground(
         });
     }
 
-    let provider = crate::provider::discovery::build_router(
+    let provider = clankers_provider::discovery::build_router(
         ctx.api_key.as_deref(),
         ctx.api_base.clone(),
         &ctx.paths.global_auth,
@@ -96,8 +96,8 @@ async fn start_foreground(
     )?;
 
     let process_monitor = {
-        let config = crate::procmon::ProcessMonitorConfig::default();
-        let monitor = std::sync::Arc::new(crate::procmon::ProcessMonitor::new(config, None));
+        let config = clankers_procmon::ProcessMonitorConfig::default();
+        let monitor = std::sync::Arc::new(clankers_procmon::ProcessMonitor::new(config, None));
         monitor.clone().start();
         monitor
     };
@@ -119,7 +119,7 @@ async fn start_foreground(
         &ctx.paths.global_plugins_dir,
         Some(&ctx.project_paths.plugins_dir),
         &[&ctx.project_paths.plugins_root_dir],
-        crate::plugin::PluginRuntimeMode::Daemon,
+        clankers_plugin::PluginRuntimeMode::Daemon,
         std::path::Path::new(&ctx.cwd),
     );
 
@@ -674,7 +674,7 @@ fn follow_file(mut file: std::fs::File) -> Result<()> {
 pub async fn run_merge_daemon(ctx: &CommandContext, interval: u64, is_once: bool) -> Result<()> {
     let repo_root = std::path::PathBuf::from(&ctx.cwd);
 
-    let provider = crate::provider::discovery::build_router(
+    let provider = clankers_provider::discovery::build_router(
         ctx.api_key.as_deref(),
         ctx.api_base.clone(),
         &ctx.paths.global_auth,
@@ -684,7 +684,7 @@ pub async fn run_merge_daemon(ctx: &CommandContext, interval: u64, is_once: bool
     .ok();
 
     let db_path = ctx.paths.global_config_dir.join("clankers.db");
-    let db = crate::db::Db::open(&db_path).map_err(|e| crate::error::Error::Io {
+    let db = clankers_db::Db::open(&db_path).map_err(|e| crate::error::Error::Io {
         source: std::io::Error::other(format!("failed to open database: {}", e)),
     })?;
     crate::worktree::merge_daemon::run_polling(db, repo_root, interval, is_once, provider, ctx.model.clone()).await;

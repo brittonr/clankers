@@ -48,25 +48,25 @@ pub struct DesktopRuntimeServiceAdapters;
 impl DesktopRuntimeServiceAdapters {
     #[must_use]
     pub fn from_paths(
-        paths: &crate::config::ClankersPaths,
-        project_paths: &crate::config::ProjectPaths,
+        paths: &clankers_config::ClankersPaths,
+        project_paths: &clankers_config::ProjectPaths,
     ) -> RuntimeServices {
         Self::from_paths_with_optional_plugin_manager(paths, project_paths, None)
     }
 
     #[must_use]
     pub fn from_paths_with_plugin_manager(
-        paths: &crate::config::ClankersPaths,
-        project_paths: &crate::config::ProjectPaths,
-        plugin_manager: Arc<std::sync::Mutex<crate::plugin::PluginManager>>,
+        paths: &clankers_config::ClankersPaths,
+        project_paths: &clankers_config::ProjectPaths,
+        plugin_manager: Arc<std::sync::Mutex<clankers_plugin::PluginManager>>,
     ) -> RuntimeServices {
         Self::from_paths_with_optional_extensions(paths, project_paths, None, Some(plugin_manager), None)
     }
 
     #[must_use]
     pub fn from_paths_with_provider_router(
-        paths: &crate::config::ClankersPaths,
-        project_paths: &crate::config::ProjectPaths,
+        paths: &clankers_config::ClankersPaths,
+        project_paths: &clankers_config::ProjectPaths,
         provider_router: Arc<dyn clankers_provider::Provider>,
     ) -> RuntimeServices {
         Self::from_paths_with_optional_extensions(paths, project_paths, Some(provider_router), None, None)
@@ -74,26 +74,26 @@ impl DesktopRuntimeServiceAdapters {
 
     #[must_use]
     pub fn from_paths_with_auth_store(
-        paths: &crate::config::ClankersPaths,
-        project_paths: &crate::config::ProjectPaths,
+        paths: &clankers_config::ClankersPaths,
+        project_paths: &clankers_config::ProjectPaths,
         auth_store: Arc<std::sync::Mutex<clankers_provider::auth::AuthStore>>,
     ) -> RuntimeServices {
         Self::from_paths_with_optional_extensions(paths, project_paths, None, None, Some(auth_store))
     }
 
     fn from_paths_with_optional_plugin_manager(
-        paths: &crate::config::ClankersPaths,
-        project_paths: &crate::config::ProjectPaths,
-        plugin_manager: Option<Arc<std::sync::Mutex<crate::plugin::PluginManager>>>,
+        paths: &clankers_config::ClankersPaths,
+        project_paths: &clankers_config::ProjectPaths,
+        plugin_manager: Option<Arc<std::sync::Mutex<clankers_plugin::PluginManager>>>,
     ) -> RuntimeServices {
         Self::from_paths_with_optional_extensions(paths, project_paths, None, plugin_manager, None)
     }
 
     fn from_paths_with_optional_extensions(
-        paths: &crate::config::ClankersPaths,
-        project_paths: &crate::config::ProjectPaths,
+        paths: &clankers_config::ClankersPaths,
+        project_paths: &clankers_config::ProjectPaths,
         provider_router: Option<Arc<dyn clankers_provider::Provider>>,
-        plugin_manager: Option<Arc<std::sync::Mutex<crate::plugin::PluginManager>>>,
+        plugin_manager: Option<Arc<std::sync::Mutex<clankers_plugin::PluginManager>>>,
         auth_store: Option<Arc<std::sync::Mutex<clankers_provider::auth::AuthStore>>>,
     ) -> RuntimeServices {
         let settings = Arc::new(DesktopSettingsService {
@@ -264,7 +264,7 @@ struct DesktopCredentialPoolPolicyService {
     auth_store: Option<Arc<std::sync::Mutex<clankers_provider::auth::AuthStore>>>,
 }
 struct DesktopExtensionRuntimeService {
-    plugin_manager: Option<Arc<std::sync::Mutex<crate::plugin::PluginManager>>>,
+    plugin_manager: Option<Arc<std::sync::Mutex<clankers_plugin::PluginManager>>>,
 }
 
 impl ProviderRouterService for DesktopProviderRouterService {
@@ -679,7 +679,7 @@ impl ExtensionRuntimeService for DesktopExtensionRuntimeService {
         let Some(plugin_manager) = &self.plugin_manager else {
             return Ok(Vec::new());
         };
-        let host = crate::plugin::PluginHostFacade::new(Arc::clone(plugin_manager));
+        let host = clankers_plugin::PluginHostFacade::new(Arc::clone(plugin_manager));
         let mut descriptors = Vec::new();
         for plugin in host.active_plugins() {
             if !plugin.manifest.kind.uses_wasm_runtime() {
@@ -922,9 +922,9 @@ mod tests {
 
     #[test]
     fn desktop_runtime_skill_service_resolves_explicit_roots_without_content_leaks() {
-        let paths = crate::config::ClankersPaths::resolve();
+        let paths = clankers_config::ClankersPaths::resolve();
         let temp = tempfile::tempdir().expect("temp project root");
-        let project_paths = crate::config::ProjectPaths::resolve(temp.path());
+        let project_paths = clankers_config::ProjectPaths::resolve(temp.path());
         let skill_dir = project_paths.skills_dir.join("review");
         std::fs::create_dir_all(&skill_dir).expect("skill dir");
         std::fs::write(
@@ -952,9 +952,9 @@ mod tests {
 
     #[test]
     fn desktop_runtime_provider_router_fails_closed_without_injection() {
-        let paths = crate::config::ClankersPaths::resolve();
+        let paths = clankers_config::ClankersPaths::resolve();
         let temp = tempfile::tempdir().expect("temp project root");
-        let project_paths = crate::config::ProjectPaths::resolve(temp.path());
+        let project_paths = clankers_config::ProjectPaths::resolve(temp.path());
         let services = DesktopRuntimeServiceAdapters::from_paths(&paths, &project_paths);
 
         let error = services.extensions.provider_router.complete(test_provider_execution_request()).unwrap_err();
@@ -964,9 +964,9 @@ mod tests {
 
     #[test]
     fn desktop_runtime_provider_router_executes_injected_provider_with_safe_receipt() {
-        let paths = crate::config::ClankersPaths::resolve();
+        let paths = clankers_config::ClankersPaths::resolve();
         let temp = tempfile::tempdir().expect("temp project root");
-        let project_paths = crate::config::ProjectPaths::resolve(temp.path());
+        let project_paths = clankers_config::ProjectPaths::resolve(temp.path());
         let provider = Arc::new(RecordingProvider::default());
         let provider_for_assert = Arc::clone(&provider);
         let services = DesktopRuntimeServiceAdapters::from_paths_with_provider_router(&paths, &project_paths, provider);
@@ -1005,9 +1005,9 @@ mod tests {
 
     #[test]
     fn desktop_runtime_provider_router_projects_retryable_and_terminal_failures() {
-        let paths = crate::config::ClankersPaths::resolve();
+        let paths = clankers_config::ClankersPaths::resolve();
         let temp = tempfile::tempdir().expect("temp project root");
-        let project_paths = crate::config::ProjectPaths::resolve(temp.path());
+        let project_paths = clankers_config::ProjectPaths::resolve(temp.path());
 
         let retryable = DesktopRuntimeServiceAdapters::from_paths_with_provider_router(
             &paths,
@@ -1047,9 +1047,9 @@ mod tests {
 
     #[test]
     fn desktop_runtime_provider_router_preserves_codex_and_openai_model_prefixes() {
-        let paths = crate::config::ClankersPaths::resolve();
+        let paths = clankers_config::ClankersPaths::resolve();
         let temp = tempfile::tempdir().expect("temp project root");
-        let project_paths = crate::config::ProjectPaths::resolve(temp.path());
+        let project_paths = clankers_config::ProjectPaths::resolve(temp.path());
         let provider = Arc::new(RecordingProvider::default());
         let provider_for_assert = Arc::clone(&provider);
         let services = DesktopRuntimeServiceAdapters::from_paths_with_provider_router(&paths, &project_paths, provider);
@@ -1074,9 +1074,9 @@ mod tests {
 
     #[test]
     fn desktop_runtime_known_provider_prefix_fails_closed_without_adapter() {
-        let paths = crate::config::ClankersPaths::resolve();
+        let paths = clankers_config::ClankersPaths::resolve();
         let temp = tempfile::tempdir().expect("temp project root");
-        let project_paths = crate::config::ProjectPaths::resolve(temp.path());
+        let project_paths = clankers_config::ProjectPaths::resolve(temp.path());
         let services = DesktopRuntimeServiceAdapters::from_paths(&paths, &project_paths);
 
         let error = services
@@ -1090,9 +1090,9 @@ mod tests {
 
     #[test]
     fn desktop_runtime_provider_router_rejects_missing_messages_before_provider_call() {
-        let paths = crate::config::ClankersPaths::resolve();
+        let paths = clankers_config::ClankersPaths::resolve();
         let temp = tempfile::tempdir().expect("temp project root");
-        let project_paths = crate::config::ProjectPaths::resolve(temp.path());
+        let project_paths = clankers_config::ProjectPaths::resolve(temp.path());
         let provider = Arc::new(RecordingProvider::default());
         let provider_for_assert = Arc::clone(&provider);
         let services = DesktopRuntimeServiceAdapters::from_paths_with_provider_router(&paths, &project_paths, provider);
@@ -1107,9 +1107,9 @@ mod tests {
 
     #[test]
     fn desktop_runtime_auth_services_fail_closed_without_injection() {
-        let paths = crate::config::ClankersPaths::resolve();
+        let paths = clankers_config::ClankersPaths::resolve();
         let temp = tempfile::tempdir().expect("temp project root");
-        let project_paths = crate::config::ProjectPaths::resolve(temp.path());
+        let project_paths = clankers_config::ProjectPaths::resolve(temp.path());
         let services = DesktopRuntimeServiceAdapters::from_paths(&paths, &project_paths);
 
         let auth_error = services.extensions.auth_store.access(lookup_request(Some("primary"))).unwrap_err();
@@ -1121,9 +1121,9 @@ mod tests {
 
     #[test]
     fn desktop_runtime_auth_lookup_uses_injected_store_with_safe_receipt() {
-        let paths = crate::config::ClankersPaths::resolve();
+        let paths = clankers_config::ClankersPaths::resolve();
         let temp = tempfile::tempdir().expect("temp project root");
-        let project_paths = crate::config::ProjectPaths::resolve(temp.path());
+        let project_paths = clankers_config::ProjectPaths::resolve(temp.path());
         let services =
             DesktopRuntimeServiceAdapters::from_paths_with_auth_store(&paths, &project_paths, injected_auth_store());
 
@@ -1144,9 +1144,9 @@ mod tests {
 
     #[test]
     fn desktop_runtime_credential_pool_selects_from_injected_store_with_safe_receipt() {
-        let paths = crate::config::ClankersPaths::resolve();
+        let paths = clankers_config::ClankersPaths::resolve();
         let temp = tempfile::tempdir().expect("temp project root");
-        let project_paths = crate::config::ProjectPaths::resolve(temp.path());
+        let project_paths = clankers_config::ProjectPaths::resolve(temp.path());
         let services =
             DesktopRuntimeServiceAdapters::from_paths_with_auth_store(&paths, &project_paths, injected_auth_store());
 
@@ -1166,9 +1166,9 @@ mod tests {
 
     #[test]
     fn desktop_runtime_auth_mutations_fail_closed_even_with_read_only_store() {
-        let paths = crate::config::ClankersPaths::resolve();
+        let paths = clankers_config::ClankersPaths::resolve();
         let temp = tempfile::tempdir().expect("temp project root");
-        let project_paths = crate::config::ProjectPaths::resolve(temp.path());
+        let project_paths = clankers_config::ProjectPaths::resolve(temp.path());
         let services =
             DesktopRuntimeServiceAdapters::from_paths_with_auth_store(&paths, &project_paths, injected_auth_store());
         let mut refresh = lookup_request(Some("primary"));
@@ -1191,9 +1191,9 @@ mod tests {
 
     #[test]
     fn desktop_runtime_mixed_injected_services_do_not_fall_back_to_ambient() {
-        let paths = crate::config::ClankersPaths::resolve();
+        let paths = clankers_config::ClankersPaths::resolve();
         let temp = tempfile::tempdir().expect("temp project root");
-        let project_paths = crate::config::ProjectPaths::resolve(temp.path());
+        let project_paths = clankers_config::ProjectPaths::resolve(temp.path());
         let provider = Arc::new(RecordingProvider::default());
         let provider_for_assert = Arc::clone(&provider);
         let services = DesktopRuntimeServiceAdapters::from_paths_with_provider_router(&paths, &project_paths, provider);
@@ -1232,9 +1232,9 @@ mod tests {
 
     #[test]
     fn desktop_runtime_services_publish_explicit_capabilities() {
-        let paths = crate::config::ClankersPaths::resolve();
+        let paths = clankers_config::ClankersPaths::resolve();
         let temp = tempfile::tempdir().expect("temp project root");
-        let project_paths = crate::config::ProjectPaths::resolve(temp.path());
+        let project_paths = clankers_config::ProjectPaths::resolve(temp.path());
 
         let services = DesktopRuntimeServiceAdapters::from_paths(&paths, &project_paths);
         let metadata = services.capability_metadata();
@@ -1252,11 +1252,11 @@ mod tests {
 
     #[test]
     fn desktop_runtime_extension_executes_injected_wasm_plugin_with_safe_receipt() {
-        let paths = crate::config::ClankersPaths::resolve();
+        let paths = clankers_config::ClankersPaths::resolve();
         let temp = tempfile::tempdir().expect("temp project root");
-        let project_paths = crate::config::ProjectPaths::resolve(temp.path());
+        let project_paths = clankers_config::ProjectPaths::resolve(temp.path());
         let plugins_dir = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("plugins");
-        let mut plugin_manager = crate::plugin::PluginManager::new(plugins_dir, None);
+        let mut plugin_manager = clankers_plugin::PluginManager::new(plugins_dir, None);
         plugin_manager.discover();
         plugin_manager.load_wasm("clankers-test-plugin").expect("test plugin loads");
         let plugin_manager = Arc::new(Mutex::new(plugin_manager));
@@ -1296,9 +1296,9 @@ mod tests {
 
     #[test]
     fn desktop_runtime_extension_fails_closed_without_injected_plugin_manager() {
-        let paths = crate::config::ClankersPaths::resolve();
+        let paths = clankers_config::ClankersPaths::resolve();
         let temp = tempfile::tempdir().expect("temp project root");
-        let project_paths = crate::config::ProjectPaths::resolve(temp.path());
+        let project_paths = clankers_config::ProjectPaths::resolve(temp.path());
         let services = DesktopRuntimeServiceAdapters::from_paths(&paths, &project_paths);
 
         let error = services

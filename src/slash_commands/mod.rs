@@ -4,6 +4,7 @@
 //! quick access to common operations like clearing context, switching models,
 //! showing help, etc.
 
+pub(crate) mod effects;
 pub mod handlers;
 
 use std::cell::RefCell;

@@ -20,7 +20,7 @@ use super::ToolDefinition;
 use super::ToolResult;
 use super::progress::ResultChunk;
 use super::progress::ToolProgress;
-use crate::util::ansi::strip_ansi;
+use clankers_util::ansi::strip_ansi;
 
 const DEFAULT_TIMEOUT_SECS: u64 = 300;
 const MAX_LINES: usize = 2000;

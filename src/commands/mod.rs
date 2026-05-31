@@ -25,9 +25,9 @@ pub mod share;
 pub mod steel;
 pub mod token;
 
-use crate::config::ClankersPaths;
-use crate::config::ProjectPaths;
-use crate::config::Settings;
+use clankers_config::ClankersPaths;
+use clankers_config::ProjectPaths;
+use clankers_config::Settings;
 
 /// Shared context passed to every subcommand handler.
 ///

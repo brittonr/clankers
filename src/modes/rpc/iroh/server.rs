@@ -12,10 +12,10 @@ use tracing::warn;
 use super::ServerState;
 use super::protocol::read_frame;
 use super::protocol::write_frame;
-use crate::agent::events::AgentEvent;
+use clankers_agent::events::AgentEvent;
 use crate::modes::rpc::protocol::Request;
 use crate::modes::rpc::protocol::Response;
-use crate::provider::streaming::ContentDelta;
+use clankers_provider::streaming::ContentDelta;
 
 // ── Server: accept connections ──────────────────────────────────────────────
 
@@ -337,7 +337,7 @@ pub async fn handle_prompt_streaming_pub(request: &Request, state: &ServerState,
 
     // Create agent and set up event streaming
     let mut builder =
-        crate::agent::builder::AgentBuilder::new(Arc::clone(&ctx.provider), ctx.settings.clone(), model, system_prompt)
+        clankers_agent::builder::AgentBuilder::new(Arc::clone(&ctx.provider), ctx.settings.clone(), model, system_prompt)
             .with_tools(ctx.tools.clone());
     if let Some(caps) = &ctx.settings.default_capabilities {
         let gate = std::sync::Arc::new(crate::capability_gate::UcanCapabilityGate::new(caps.clone()));

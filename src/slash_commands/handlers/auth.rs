@@ -3,7 +3,7 @@
 use super::SlashContext;
 use super::SlashHandler;
 use crate::modes::interactive::AgentCommand;
-use crate::provider::auth::AuthStoreExt;
+use clankers_provider::auth::AuthStoreExt;
 
 pub struct LoginHandler;
 
@@ -52,7 +52,7 @@ fn parse_login_args(args: &str) -> (String, String, String) {
     let trimmed = remaining_args.trim();
 
     if trimmed.is_empty() {
-        return (crate::provider::auth::DEFAULT_OAUTH_PROVIDER.to_string(), account_name, String::new());
+        return (clankers_provider::auth::DEFAULT_OAUTH_PROVIDER.to_string(), account_name, String::new());
     }
 
     if let Some(split_at) = trimmed.find(char::is_whitespace) {
@@ -65,11 +65,11 @@ fn parse_login_args(args: &str) -> (String, String, String) {
         return (trimmed.to_string(), account_name, String::new());
     }
 
-    (crate::provider::auth::DEFAULT_OAUTH_PROVIDER.to_string(), account_name, trimmed.to_string())
+    (clankers_provider::auth::DEFAULT_OAUTH_PROVIDER.to_string(), account_name, trimmed.to_string())
 }
 
 fn handle_login_start(ctx: &mut SlashContext<'_>, provider_name: &str, account_name: &str) {
-    let oauth_flow = match crate::provider::auth::OAuthFlow::from_provider(Some(provider_name)) {
+    let oauth_flow = match clankers_provider::auth::OAuthFlow::from_provider(Some(provider_name)) {
         Ok(flow) => flow,
         Err(e) => {
             ctx.app.push_system(e.to_string(), true);
@@ -85,14 +85,14 @@ fn handle_login_start(ctx: &mut SlashContext<'_>, provider_name: &str, account_n
         }
     };
 
-    let pending = crate::provider::auth::PendingOAuthLogin::new(provider_name, account_name, verifier);
+    let pending = clankers_provider::auth::PendingOAuthLogin::new(provider_name, account_name, verifier);
     ctx.app
         .login_verifiers
         .insert((pending.provider.clone(), pending.account.clone()), pending.verifier.clone());
 
-    let paths = crate::config::ClankersPaths::get();
+    let paths = clankers_config::ClankersPaths::get();
     let verifier_path =
-        crate::provider::auth::pending_oauth_login_path(&paths.global_config_dir, &pending.provider, &pending.account);
+        clankers_provider::auth::pending_oauth_login_path(&paths.global_config_dir, &pending.provider, &pending.account);
     if let Err(e) = pending.save(&verifier_path) {
         ctx.app.push_system(format!("Failed to persist login verifier: {e}"), true);
         return;
@@ -143,12 +143,12 @@ fn handle_login_complete(ctx: &mut SlashContext<'_>, input: &str, verifier: Stri
 fn handle_login_complete_from_disk(ctx: &mut SlashContext<'_>, input: &str, provider: &str, account: &str) {
     // No in-memory verifier — try recovering from disk (e.g. login started in another clankers
     // instance)
-    let paths = crate::config::ClankersPaths::get();
-    let verifier_path = crate::provider::auth::pending_oauth_login_path(&paths.global_config_dir, provider, account);
-    let legacy_path = crate::provider::auth::legacy_pending_oauth_login_path(&paths.global_config_dir);
+    let paths = clankers_config::ClankersPaths::get();
+    let verifier_path = clankers_provider::auth::pending_oauth_login_path(&paths.global_config_dir, provider, account);
+    let legacy_path = clankers_provider::auth::legacy_pending_oauth_login_path(&paths.global_config_dir);
 
-    if let Some(pending) = crate::provider::auth::PendingOAuthLogin::load(&verifier_path)
-        .or_else(|| crate::provider::auth::PendingOAuthLogin::load(&legacy_path))
+    if let Some(pending) = clankers_provider::auth::PendingOAuthLogin::load(&verifier_path)
+        .or_else(|| clankers_provider::auth::PendingOAuthLogin::load(&legacy_path))
     {
         if let Some((code, state)) = crate::modes::interactive::parse_oauth_input(input) {
             ctx.app.push_system(
@@ -215,8 +215,8 @@ impl SlashHandler for AccountHandler {
     }
 
     fn handle(&self, args: &str, ctx: &mut SlashContext<'_>) {
-        let paths = crate::config::ClankersPaths::get();
-        let mut store = crate::provider::auth::AuthStore::load(&paths.global_auth);
+        let paths = clankers_config::ClankersPaths::get();
+        let mut store = clankers_provider::auth::AuthStore::load(&paths.global_auth);
         let trimmed = args.trim();
 
         if trimmed.is_empty() || trimmed == "list" {
@@ -259,28 +259,28 @@ impl SlashHandler for AccountHandler {
 }
 
 fn account_status_detail(
-    store: &crate::provider::auth::AuthStore,
+    store: &clankers_provider::auth::AuthStore,
     provider: &str,
     account: &str,
-    cred: &crate::provider::auth::StoredCredential,
+    cred: &clankers_provider::auth::StoredCredential,
 ) -> String {
     let base = crate::commands::auth::describe_credential(cred);
-    if provider == crate::provider::openai_codex::OPENAI_CODEX_PROVIDER
-        && let Some(suffix) = crate::provider::openai_codex::codex_status_suffix(store, account)
+    if provider == clankers_provider::openai_codex::OPENAI_CODEX_PROVIDER
+        && let Some(suffix) = clankers_provider::openai_codex::codex_status_suffix(store, account)
     {
         return format!("{}; {}", base, suffix);
     }
     base
 }
 
-fn handle_account_list(ctx: &mut SlashContext<'_>, store: &crate::provider::auth::AuthStore, all: bool) {
+fn handle_account_list(ctx: &mut SlashContext<'_>, store: &clankers_provider::auth::AuthStore, all: bool) {
     use std::fmt::Write;
 
     if all {
-        let pi_store = crate::config::ClankersPaths::get()
+        let pi_store = clankers_config::ClankersPaths::get()
             .pi_auth
             .as_ref()
-            .map(|path| crate::provider::auth::AuthStore::load(path));
+            .map(|path| clankers_provider::auth::AuthStore::load(path));
         ctx.app
             .push_system(crate::commands::auth::render_grouped_status_with_fallback(store, pi_store.as_ref()), false);
         return;
@@ -307,18 +307,18 @@ fn handle_account_list(ctx: &mut SlashContext<'_>, store: &crate::provider::auth
     }
 }
 
-fn handle_account_switch(ctx: &mut SlashContext<'_>, store: &crate::provider::auth::AuthStore, args: &str) {
+fn handle_account_switch(ctx: &mut SlashContext<'_>, store: &clankers_provider::auth::AuthStore, args: &str) {
     let (provider, remainder) = crate::commands::auth::split_provider_prefix(args);
     let account = remainder.trim();
     if account.is_empty() {
         let names: Vec<String> = store.list_provider_accounts(&provider).iter().map(|a| a.name.clone()).collect();
-        let usage = if provider == crate::provider::auth::DEFAULT_OAUTH_PROVIDER {
+        let usage = if provider == clankers_provider::auth::DEFAULT_OAUTH_PROVIDER {
             "Usage: /account switch <name>"
         } else {
             "Usage: /account switch <provider> <name>"
         };
         ctx.app.push_system(format!("{}\n\nAvailable: {}", usage, names.join(", ")), true);
-    } else if provider == crate::provider::auth::DEFAULT_OAUTH_PROVIDER {
+    } else if provider == clankers_provider::auth::DEFAULT_OAUTH_PROVIDER {
         ctx.cmd_tx.send(AgentCommand::SwitchAccount(account.to_string())).ok();
     } else {
         ctx.cmd_tx
@@ -330,14 +330,14 @@ fn handle_account_switch(ctx: &mut SlashContext<'_>, store: &crate::provider::au
     }
 }
 
-fn handle_account_login(ctx: &mut SlashContext<'_>, store: &crate::provider::auth::AuthStore, args: &str) {
+fn handle_account_login(ctx: &mut SlashContext<'_>, store: &clankers_provider::auth::AuthStore, args: &str) {
     let (provider, remainder) = crate::commands::auth::split_provider_prefix(args);
     let account_name = if remainder.trim().is_empty() {
         store.active_account_name_for(&provider).to_string()
     } else {
         remainder.trim().to_string()
     };
-    let login_args = if provider == crate::provider::auth::DEFAULT_OAUTH_PROVIDER {
+    let login_args = if provider == clankers_provider::auth::DEFAULT_OAUTH_PROVIDER {
         format!("--account {}", account_name)
     } else {
         format!("{} --account {}", provider, account_name)
@@ -347,8 +347,8 @@ fn handle_account_login(ctx: &mut SlashContext<'_>, store: &crate::provider::aut
 
 fn handle_account_logout(
     ctx: &mut SlashContext<'_>,
-    store: &mut crate::provider::auth::AuthStore,
-    paths: &crate::config::ClankersPaths,
+    store: &mut clankers_provider::auth::AuthStore,
+    paths: &clankers_config::ClankersPaths,
     args: &str,
 ) {
     let (provider, remainder) = crate::commands::auth::split_provider_prefix(args);
@@ -362,10 +362,10 @@ fn handle_account_logout(
         if let Err(e) = store.save(&paths.global_auth) {
             ctx.app.push_system(format!("Failed to save: {}", e), true);
         } else {
-            crate::provider::openai_codex::reset_entitlement(&provider, None);
+            clankers_provider::openai_codex::reset_entitlement(&provider, None);
             ctx.cmd_tx.send(AgentCommand::ReloadCredentials).ok();
             let new_active = store.active_account_name_for(&provider).to_string();
-            if provider == crate::provider::auth::DEFAULT_OAUTH_PROVIDER {
+            if provider == clankers_provider::auth::DEFAULT_OAUTH_PROVIDER {
                 ctx.app.push_system(format!("Logged out '{}'. Active account: '{}'.", name, new_active), false);
             } else {
                 ctx.app.push_system(
@@ -374,7 +374,7 @@ fn handle_account_logout(
                 );
             }
         }
-    } else if provider == crate::provider::auth::DEFAULT_OAUTH_PROVIDER {
+    } else if provider == clankers_provider::auth::DEFAULT_OAUTH_PROVIDER {
         ctx.app.push_system(format!("No account '{}'.", name), true);
     } else {
         ctx.app.push_system(format!("No account '{}' for provider '{}'.", name, provider), true);
@@ -383,13 +383,13 @@ fn handle_account_logout(
 
 fn handle_account_remove(
     ctx: &mut SlashContext<'_>,
-    store: &mut crate::provider::auth::AuthStore,
-    paths: &crate::config::ClankersPaths,
+    store: &mut clankers_provider::auth::AuthStore,
+    paths: &clankers_config::ClankersPaths,
     args: &str,
 ) {
     let (provider, remainder) = crate::commands::auth::split_provider_prefix(args);
     if remainder.trim().is_empty() {
-        if provider == crate::provider::auth::DEFAULT_OAUTH_PROVIDER {
+        if provider == clankers_provider::auth::DEFAULT_OAUTH_PROVIDER {
             ctx.app.push_system("Usage: /account remove <name>".to_string(), true);
         } else {
             ctx.app.push_system("Usage: /account remove <provider> <name>".to_string(), true);
@@ -402,28 +402,28 @@ fn handle_account_remove(
         if let Err(e) = store.save(&paths.global_auth) {
             ctx.app.push_system(format!("Failed to save: {}", e), true);
         } else {
-            crate::provider::openai_codex::reset_entitlement(&provider, None);
+            clankers_provider::openai_codex::reset_entitlement(&provider, None);
             ctx.cmd_tx.send(AgentCommand::ReloadCredentials).ok();
-            if provider == crate::provider::auth::DEFAULT_OAUTH_PROVIDER {
+            if provider == clankers_provider::auth::DEFAULT_OAUTH_PROVIDER {
                 ctx.app.push_system(format!("Removed account '{}'.", name), false);
             } else {
                 ctx.app.push_system(format!("Removed account '{}' from provider '{}'.", name, provider), false);
             }
         }
-    } else if provider == crate::provider::auth::DEFAULT_OAUTH_PROVIDER {
+    } else if provider == clankers_provider::auth::DEFAULT_OAUTH_PROVIDER {
         ctx.app.push_system(format!("No account '{}'.", name), true);
     } else {
         ctx.app.push_system(format!("No account '{}' for provider '{}'.", name, provider), true);
     }
 }
 
-fn handle_account_status(ctx: &mut SlashContext<'_>, store: &crate::provider::auth::AuthStore, args: &str) {
+fn handle_account_status(ctx: &mut SlashContext<'_>, store: &clankers_provider::auth::AuthStore, args: &str) {
     let trimmed = args.trim();
     if trimmed == "--all" || trimmed == "all" {
-        let pi_store = crate::config::ClankersPaths::get()
+        let pi_store = clankers_config::ClankersPaths::get()
             .pi_auth
             .as_ref()
-            .map(|path| crate::provider::auth::AuthStore::load(path));
+            .map(|path| clankers_provider::auth::AuthStore::load(path));
         ctx.app
             .push_system(crate::commands::auth::render_grouped_status_with_fallback(store, pi_store.as_ref()), false);
         return;
@@ -444,10 +444,10 @@ fn handle_account_status(ctx: &mut SlashContext<'_>, store: &crate::provider::au
         return;
     }
 
-    let pi_store = crate::config::ClankersPaths::get()
+    let pi_store = clankers_config::ClankersPaths::get()
         .pi_auth
         .as_ref()
-        .map(|path| crate::provider::auth::AuthStore::load(path));
+        .map(|path| clankers_provider::auth::AuthStore::load(path));
     if let Some(pi_store) = pi_store.as_ref()
         && let Some(cred) = pi_store.credential_for(&provider, &name)
     {
@@ -462,7 +462,7 @@ fn handle_account_status(ctx: &mut SlashContext<'_>, store: &crate::provider::au
         );
     } else if let Some(summary) = crate::commands::auth::provider_status_summary(store, &provider, pi_store.as_ref()) {
         ctx.app.push_system(summary, false);
-    } else if provider == crate::provider::auth::DEFAULT_OAUTH_PROVIDER {
+    } else if provider == clankers_provider::auth::DEFAULT_OAUTH_PROVIDER {
         ctx.app.push_system(format!("No account '{}'.", name), true);
     } else {
         ctx.app.push_system(format!("No account '{}' for provider '{}'.", name, provider), true);
@@ -473,10 +473,10 @@ fn handle_account_status(ctx: &mut SlashContext<'_>, store: &crate::provider::au
 mod tests {
     use super::*;
     use crate::modes::interactive::AgentCommand;
-    use crate::provider::auth::AuthStoreExt;
+    use clankers_provider::auth::AuthStoreExt;
 
-    fn test_paths(root: &std::path::Path) -> crate::config::ClankersPaths {
-        crate::config::ClankersPaths {
+    fn test_paths(root: &std::path::Path) -> clankers_config::ClankersPaths {
+        clankers_config::ClankersPaths {
             global_config_dir: root.join("agent"),
             global_settings: root.join("agent/settings.json"),
             global_settings_ncl: root.join("agent/settings.ncl"),
@@ -494,11 +494,11 @@ mod tests {
     }
 
     fn test_context<'a>(
-        app: &'a mut crate::tui::app::App,
+        app: &'a mut clankers_tui::app::App,
         cmd_tx: &'a tokio::sync::mpsc::UnboundedSender<AgentCommand>,
-        panel_tx: &'a tokio::sync::mpsc::UnboundedSender<crate::tui::components::subagent_event::SubagentEvent>,
-        db: &'a Option<crate::db::Db>,
-        session_manager: &'a mut Option<crate::session::SessionManager>,
+        panel_tx: &'a tokio::sync::mpsc::UnboundedSender<clankers_tui::components::subagent_event::SubagentEvent>,
+        db: &'a Option<clankers_db::Db>,
+        session_manager: &'a mut Option<clankers_session::SessionManager>,
     ) -> SlashContext<'a> {
         SlashContext {
             app,
@@ -510,13 +510,13 @@ mod tests {
         }
     }
 
-    fn latest_system_message(app: &crate::tui::app::App) -> String {
+    fn latest_system_message(app: &clankers_tui::app::App) -> String {
         app.conversation
             .blocks
             .iter()
             .rev()
             .find_map(|entry| match entry {
-                crate::tui::components::block::BlockEntry::System(msg) => Some(msg.content.clone()),
+                clankers_tui::components::block::BlockEntry::System(msg) => Some(msg.content.clone()),
                 _ => None,
             })
             .expect("system message should exist")
@@ -555,7 +555,7 @@ mod tests {
     #[test]
     fn login_complete_dispatches_provider_scoped_agent_command() {
         let mut app =
-            crate::tui::app::App::new("test-model".to_string(), "/tmp".to_string(), crate::tui::theme::Theme::dark());
+            clankers_tui::app::App::new("test-model".to_string(), "/tmp".to_string(), clankers_tui::theme::Theme::dark());
         let (cmd_tx, mut cmd_rx) = tokio::sync::mpsc::unbounded_channel();
         let (panel_tx, _panel_rx) = tokio::sync::mpsc::unbounded_channel();
         let db = None;
@@ -588,8 +588,8 @@ mod tests {
         let dir = tempfile::TempDir::new().expect("tempdir should exist");
         let paths = test_paths(dir.path());
         std::fs::create_dir_all(&paths.global_config_dir).expect("config dir should exist");
-        let mut store = crate::provider::auth::AuthStore::default();
-        store.set_provider_credentials("openai-codex", "work", crate::provider::auth::OAuthCredentials {
+        let mut store = clankers_provider::auth::AuthStore::default();
+        store.set_provider_credentials("openai-codex", "work", clankers_provider::auth::OAuthCredentials {
             access: "not-a-valid-jwt".to_string(),
             refresh: "refresh".to_string(),
             expires: chrono::Utc::now().timestamp_millis() + 3_600_000,
@@ -598,7 +598,7 @@ mod tests {
         store.save(&paths.global_auth).expect("auth store should save");
 
         let mut app =
-            crate::tui::app::App::new("test-model".to_string(), "/tmp".to_string(), crate::tui::theme::Theme::dark());
+            clankers_tui::app::App::new("test-model".to_string(), "/tmp".to_string(), clankers_tui::theme::Theme::dark());
         let (cmd_tx, mut cmd_rx) = tokio::sync::mpsc::unbounded_channel();
         let (panel_tx, _panel_rx) = tokio::sync::mpsc::unbounded_channel();
         let db = None;
@@ -612,7 +612,7 @@ mod tests {
             _ => panic!("expected AgentCommand::ReloadCredentials"),
         }
         assert!(latest_system_message(&app).contains("Logged out 'work' from provider 'openai-codex'."));
-        let reloaded = crate::provider::auth::AuthStore::load(&paths.global_auth);
+        let reloaded = clankers_provider::auth::AuthStore::load(&paths.global_auth);
         assert!(reloaded.credential_for("openai-codex", "work").is_none());
     }
 }

@@ -30,7 +30,7 @@ use tracing::info;
 use tracing::warn;
 
 use super::DbWorktreeExt;
-use crate::db::Db;
+use clankers_db::Db;
 use crate::tools::git_ops;
 
 /// Summary of what GC did.

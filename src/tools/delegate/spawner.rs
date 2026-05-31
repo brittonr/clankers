@@ -19,7 +19,7 @@ pub async fn run_worker_subprocess(
     cwd: Option<&str>,
     panel_tx: Option<&PanelTx>,
     signal: CancellationToken,
-    process_monitor: Option<&crate::procmon::ProcessMonitorHandle>,
+    process_monitor: Option<&clankers_procmon::ProcessMonitorHandle>,
 ) -> ToolResult {
     let sub_id = format!("worker:{}", worker_name);
     let task_preview: String = task.chars().take(TASK_PREVIEW_SHORT_LEN).collect();
@@ -97,7 +97,7 @@ fn spawn_worker_process(
 
 /// Register the spawned process with the process monitor
 fn register_with_process_monitor(
-    process_monitor: Option<&crate::procmon::ProcessMonitorHandle>,
+    process_monitor: Option<&clankers_procmon::ProcessMonitorHandle>,
     child_pid: Option<u32>,
     worker_name: &str,
     task: &str,
@@ -106,7 +106,7 @@ fn register_with_process_monitor(
         && let Some(pid) = child_pid
     {
         let task_preview_full: String = task.chars().take(TASK_PREVIEW_FULL_LEN).collect();
-        monitor.register(pid, crate::procmon::ProcessMeta {
+        monitor.register(pid, clankers_procmon::ProcessMeta {
             tool_name: "delegate".to_string(),
             command: format!("worker:{} {}", worker_name, task_preview_full),
             call_id: format!("worker:{}", worker_name),

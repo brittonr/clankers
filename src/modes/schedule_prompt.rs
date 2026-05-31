@@ -83,8 +83,8 @@ fn load_requested_skills(payload: &Value, cwd: &Path) -> Result<Vec<LoadedSkill>
         return Err("schedule payload field 'skills' must be an array of strings".to_string());
     };
 
-    let paths = crate::config::ClankersPaths::get();
-    let project_skills_dir = crate::config::ProjectPaths::resolve(cwd).skills_dir;
+    let paths = clankers_config::ClankersPaths::get();
+    let project_skills_dir = clankers_config::ProjectPaths::resolve(cwd).skills_dir;
     let records = discover_skill_records(&paths.global_skills_dir, Some(&project_skills_dir));
 
     let mut loaded = Vec::with_capacity(skill_names.len());

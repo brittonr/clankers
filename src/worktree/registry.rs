@@ -10,8 +10,8 @@ use redb::TableDefinition;
 
 use super::WorktreeInfo;
 use super::WorktreeStatus;
-use crate::db::Db;
-use crate::db::db_err;
+use clankers_db::Db;
+use clankers_db::db_err;
 use crate::error::Result;
 
 /// Table: branch_name (string) → serialized WorktreeInfo (bytes).

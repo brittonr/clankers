@@ -1,6 +1,6 @@
-use crate::plugin::sandbox::Permission;
-use crate::plugin::sandbox::filter_ui_actions;
-use crate::plugin::sandbox::has_permission;
+use clankers_plugin::sandbox::Permission;
+use clankers_plugin::sandbox::filter_ui_actions;
+use clankers_plugin::sandbox::has_permission;
 
 // ── Sandbox permission tests ─────────────────────────────────────
 

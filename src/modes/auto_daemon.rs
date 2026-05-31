@@ -17,10 +17,10 @@ use super::attach::build_client_slash_registry;
 use super::attach::connect_session_socket;
 use super::attach::run_attach_with_reconnect;
 use super::attach::send_control;
-use crate::config::settings::Settings;
-use crate::config::theme::load_theme;
+use clankers_config::settings::Settings;
 use crate::error::Result;
-use crate::tui::app::App;
+use clankers_tui::app::App;
+use crate::tui_config::load_theme;
 
 // ── Options ─────────────────────────────────────────────────────────────────
 
@@ -146,14 +146,14 @@ pub async fn run_auto_daemon_attach(opts: AutoDaemonOptions) -> Result<()> {
     };
 
     let recovery_cwd = opts.cwd.clone();
-    let paths = crate::config::ClankersPaths::get();
+    let paths = clankers_config::ClankersPaths::get();
     let theme = load_theme(opts.settings.theme.as_deref(), &paths.global_themes_dir);
-    let keymap = opts.settings.keymap.clone().into_keymap();
+    let keymap = crate::tui_config::keymap_from_config(&opts.settings.keymap);
 
     let mut app = App::new(display_model.clone(), opts.cwd, theme);
-    app.auto_theme = crate::config::theme::is_auto_theme(opts.settings.theme.as_deref());
+    app.auto_theme = clankers_config::theme::is_auto_theme(opts.settings.theme.as_deref());
     app.session_id = session_id.clone();
-    app.highlighter = Box::new(crate::util::syntax::SyntectHighlighter);
+    app.highlighter = Box::new(clankers_util::syntax::SyntectHighlighter);
     super::common::apply_thinking_settings(&mut app, &opts.settings);
     if opts.thinking {
         app.thinking_enabled = true;

@@ -1370,7 +1370,7 @@ impl Settings {
             thinking_level: self.thinking_level.clone(),
             theme: self.theme.clone().map(ThemeSelection::named),
             keymap: NeutralKeymapConfig {
-                preset: format!("{:?}", self.keymap.preset).to_ascii_lowercase(),
+                preset: self.keymap.preset.to_string(),
                 normal: self.keymap.normal.iter().map(|(key, value)| (key.clone(), value.clone())).collect(),
                 insert: self.keymap.insert.iter().map(|(key, value)| (key.clone(), value.clone())).collect(),
             },

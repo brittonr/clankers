@@ -6,9 +6,9 @@
 use clanker_tui_types::DisplayImage;
 use clanker_tui_types::TuiEvent;
 
-use crate::agent::events::AgentEvent;
-use crate::provider::message::Content;
-use crate::provider::streaming::ContentDelta;
+use clankers_agent::events::AgentEvent;
+use clankers_provider::message::Content;
+use clankers_provider::streaming::ContentDelta;
 use crate::tools::ToolResultContent;
 
 /// Translate an AgentEvent into zero or more TuiEvents.
@@ -141,12 +141,12 @@ mod tests {
     use serde_json::json;
 
     use super::*;
-    use crate::provider::Usage;
-    use crate::provider::message::AssistantMessage;
-    use crate::provider::message::Content;
-    use crate::provider::message::MessageId;
-    use crate::provider::message::StopReason;
-    use crate::provider::streaming::ContentDelta;
+    use clankers_provider::Usage;
+    use clankers_provider::message::AssistantMessage;
+    use clankers_provider::message::Content;
+    use clankers_provider::message::MessageId;
+    use clankers_provider::message::StopReason;
+    use clankers_provider::streaming::ContentDelta;
     use crate::tools::ToolResult;
 
     #[test]

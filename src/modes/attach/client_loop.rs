@@ -12,11 +12,11 @@ use super::handle_terminal_events;
 use super::session::RecoveryMode;
 use super::session::try_reconnect;
 use super::session::try_recover_daemon;
-use crate::config::keybindings::Keymap;
 use crate::error::Result;
 use crate::slash_commands;
-use crate::tui::app::App;
-use crate::tui::render;
+use clankers_tui::app::App;
+use clankers_tui::keymap::Keymap;
+use clankers_tui::render;
 
 /// Run the attach event loop with automatic reconnection on disconnect.
 #[cfg_attr(
@@ -120,7 +120,7 @@ pub(crate) async fn run_attach_with_reconnect(
 
         if app.open_editor_requested {
             app.open_editor_requested = false;
-            crate::tui::clipboard::open_external_editor(terminal, app);
+            clankers_tui::clipboard::open_external_editor(terminal, app);
         }
     }
 
@@ -158,7 +158,7 @@ mod tests {
     use crate::modes::attach::drain_daemon_events;
 
     fn test_app() -> App {
-        App::new("test-model".to_string(), ".".to_string(), crate::config::theme::detect_theme())
+        App::new("test-model".to_string(), ".".to_string(), crate::tui_config::detect_theme())
     }
 
     fn client_with_events(events: Vec<DaemonEvent>) -> ClientAdapter {

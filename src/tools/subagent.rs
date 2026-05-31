@@ -20,7 +20,7 @@ type PanelTx = tokio::sync::mpsc::UnboundedSender<SubagentEvent>;
 pub struct SubagentTool {
     definition: ToolDefinition,
     panel_tx: Option<PanelTx>,
-    process_monitor: Option<crate::procmon::ProcessMonitorHandle>,
+    process_monitor: Option<clankers_procmon::ProcessMonitorHandle>,
     /// When set, spawn in-process agent actors instead of subprocesses.
     actor_ctx: Option<ActorContext>,
 }
@@ -54,7 +54,7 @@ impl SubagentTool {
     }
 
     /// Attach a process monitor to track spawned subagents.
-    pub fn with_process_monitor(mut self, monitor: crate::procmon::ProcessMonitorHandle) -> Self {
+    pub fn with_process_monitor(mut self, monitor: clankers_procmon::ProcessMonitorHandle) -> Self {
         self.process_monitor = Some(monitor);
         self
     }
@@ -188,7 +188,7 @@ async fn run_single(
     panel_tx: Option<&PanelTx>,
     call_id: &str,
     signal: CancellationToken,
-    process_monitor: Option<&crate::procmon::ProcessMonitorHandle>,
+    process_monitor: Option<&clankers_procmon::ProcessMonitorHandle>,
     actor_ctx: Option<&ActorContext>,
 ) -> ToolResult {
     let result = if let Some(ctx) = actor_ctx {
@@ -221,7 +221,7 @@ async fn run_parallel(
     panel_tx: Option<&PanelTx>,
     call_id: &str,
     signal: CancellationToken,
-    process_monitor: Option<&crate::procmon::ProcessMonitorHandle>,
+    process_monitor: Option<&clankers_procmon::ProcessMonitorHandle>,
     actor_ctx: Option<&ActorContext>,
 ) -> ToolResult {
     if tasks.len() > 8 {
@@ -291,7 +291,7 @@ async fn run_chain(
     panel_tx: Option<&PanelTx>,
     call_id: &str,
     signal: CancellationToken,
-    process_monitor: Option<&crate::procmon::ProcessMonitorHandle>,
+    process_monitor: Option<&clankers_procmon::ProcessMonitorHandle>,
     actor_ctx: Option<&ActorContext>,
 ) -> ToolResult {
     let mut previous_output = String::new();
@@ -397,13 +397,13 @@ fn register_subprocess(
     short_name: &str,
     task_preview: &str,
     panel_tx: Option<&PanelTx>,
-    process_monitor: Option<&crate::procmon::ProcessMonitorHandle>,
+    process_monitor: Option<&clankers_procmon::ProcessMonitorHandle>,
 ) {
     if let Some(monitor) = process_monitor
         && let Some(pid) = child_pid
     {
         let full_preview: String = task.chars().take(200).collect();
-        monitor.register(pid, crate::procmon::ProcessMeta {
+        monitor.register(pid, clankers_procmon::ProcessMeta {
             tool_name: "subagent".to_string(),
             command: format!("subagent: {}", full_preview),
             call_id: call_id.to_string(),
@@ -484,7 +484,7 @@ async fn spawn_subprocess(
     panel_tx: Option<&PanelTx>,
     call_id: &str,
     signal: CancellationToken,
-    process_monitor: Option<&crate::procmon::ProcessMonitorHandle>,
+    process_monitor: Option<&clankers_procmon::ProcessMonitorHandle>,
 ) -> Result<String, String> {
     let (sub_id, short_name, task_preview) = subagent_display_names(call_id, task);
 

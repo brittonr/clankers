@@ -2,9 +2,9 @@
 
 use tokio_util::sync::CancellationToken;
 
-use crate::config::Settings;
+use clankers_config::Settings;
 use crate::error::Result;
-use crate::tui::app::App;
+use clankers_tui::app::App;
 
 /// Configuration for the embedded RPC server that runs inside the TUI process.
 pub struct EmbeddedRpcConfig {
@@ -37,15 +37,15 @@ impl Default for EmbeddedRpcConfig {
 /// optionally runs a heartbeat to probe known peers.
 pub async fn start_embedded_rpc(
     config: EmbeddedRpcConfig,
-    provider: Option<std::sync::Arc<dyn crate::provider::Provider>>,
+    provider: Option<std::sync::Arc<dyn clankers_provider::Provider>>,
     tools: Vec<std::sync::Arc<dyn crate::tools::Tool>>,
-    settings: crate::config::settings::Settings,
+    settings: clankers_config::settings::Settings,
     model: String,
     system_prompt: String,
 ) -> Result<(String, CancellationToken)> {
     use crate::modes::rpc::iroh;
 
-    let paths = crate::config::ClankersPaths::get();
+    let paths = clankers_config::ClankersPaths::get();
     let identity_path = iroh::identity_path(paths);
     let identity = iroh::Identity::load_or_generate(&identity_path);
     let node_id = identity.public_key().to_string();
@@ -119,7 +119,7 @@ pub async fn start_embedded_rpc(
 /// Makes this instance discoverable on the LAN via mDNS. Skipped in test
 /// environments or when `CLANKERS_NO_RPC` is set. Returns a cancellation
 /// token if the server started successfully.
-pub(super) async fn maybe_start_rpc(app: &mut App, paths: &crate::config::ClankersPaths) -> Option<CancellationToken> {
+pub(super) async fn maybe_start_rpc(app: &mut App, paths: &clankers_config::ClankersPaths) -> Option<CancellationToken> {
     if cfg!(test) || std::env::var("CLANKERS_NO_RPC").is_ok() {
         return None;
     }
@@ -143,7 +143,7 @@ pub(super) async fn maybe_start_rpc(app: &mut App, paths: &crate::config::Clanke
             pp.server_running = true;
             let registry =
                 crate::modes::rpc::peers::PeerRegistry::load(&crate::modes::rpc::peers::registry_path(paths));
-            let entries = crate::tui::components::peers_panel::entries_from_registry(
+            let entries = clankers_tui::components::peers_panel::entries_from_registry(
                 &crate::modes::rpc::peers::peer_info_views(&registry),
                 chrono::Duration::minutes(5),
             );
@@ -159,8 +159,8 @@ pub(super) async fn maybe_start_rpc(app: &mut App, paths: &crate::config::Clanke
 
 /// Helper to access the PeersPanel.
 #[cfg_attr(dylint_lib = "tigerstyle", allow(no_unwrap, reason = "panel registered at startup"))]
-fn peers_panel(app: &mut App) -> &mut crate::tui::components::peers_panel::PeersPanel {
+fn peers_panel(app: &mut App) -> &mut clankers_tui::components::peers_panel::PeersPanel {
     app.panels
-        .downcast_mut::<crate::tui::components::peers_panel::PeersPanel>(crate::tui::panel::PanelId::Peers)
+        .downcast_mut::<clankers_tui::components::peers_panel::PeersPanel>(clankers_tui::panel::PanelId::Peers)
         .expect("peers panel registered at startup")
 }

@@ -15,7 +15,7 @@ use super::ToolDefinition;
 use super::ToolResult;
 use super::progress::ResultChunk;
 use super::progress::ToolProgress;
-use crate::util::ansi::strip_ansi;
+use clankers_util::ansi::strip_ansi;
 
 /// A structured request sent on the confirmation channel.
 pub struct ConfirmRequest {
@@ -127,7 +127,7 @@ pub fn check_dangerous(command: &str) -> Option<&'static str> {
 pub struct BashTool {
     definition: ToolDefinition,
     confirm_tx: Option<ConfirmTx>,
-    process_monitor: Option<crate::procmon::ProcessMonitorHandle>,
+    process_monitor: Option<clankers_procmon::ProcessMonitorHandle>,
 }
 
 impl BashTool {
@@ -164,7 +164,7 @@ impl BashTool {
     }
 
     /// Attach a process monitor to track spawned processes.
-    pub fn with_process_monitor(mut self, monitor: crate::procmon::ProcessMonitorHandle) -> Self {
+    pub fn with_process_monitor(mut self, monitor: clankers_procmon::ProcessMonitorHandle) -> Self {
         self.process_monitor = Some(monitor);
         self
     }
@@ -364,7 +364,7 @@ impl Tool for BashTool {
             && let Some(pid) = child.id()
         {
             let command_preview: String = command.chars().take(COMMAND_PREVIEW_LEN).collect();
-            monitor.register(pid, crate::procmon::ProcessMeta {
+            monitor.register(pid, clankers_procmon::ProcessMeta {
                 tool_name: "bash".to_string(),
                 command: command_preview,
                 call_id: ctx.call_id.clone(),
@@ -434,7 +434,7 @@ mod tests {
     use super::confirm_channel;
     use crate::tools::ToolResult;
     use crate::tools::ToolResultContent;
-    use crate::util::ansi::strip_ansi;
+    use clankers_util::ansi::strip_ansi;
 
     fn result_text(result: &ToolResult) -> String {
         result

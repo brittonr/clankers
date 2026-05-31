@@ -6,7 +6,7 @@
 use clanker_message::AgentMessage;
 use clanker_message::Content;
 
-use crate::session::entry::MessageEntry;
+use clankers_session::entry::MessageEntry;
 
 /// Convert a `MessageEntry` into a `MergeMessageView` for the TUI merge overlay.
 pub fn to_merge_view(entry: &MessageEntry) -> clanker_tui_types::MergeMessageView {
