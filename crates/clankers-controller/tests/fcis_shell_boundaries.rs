@@ -35,6 +35,8 @@ const CORE_INPUT_SEGMENT: &str = "CoreInput";
 const CORE_OUTCOME_SEGMENT: &str = "CoreOutcome";
 const CORE_STATE_SEGMENT: &str = "CoreState";
 const TUI_EVENT_SEGMENT: &str = "TuiEvent";
+const CONTROLLER_DISPLAY_DTO_REQUIREMENT: &str =
+    "r[controller-display-protocol-dto-drain.boundary-rails.owner-diagnostics]";
 const AGENT_EVENT_TO_DAEMON_FUNCTION: &str = "agent_event_to_daemon_event";
 const DAEMON_EVENT_TO_TUI_FUNCTION: &str = "daemon_event_to_tui_event";
 const AGENT_MESSAGE_TO_TUI_FUNCTION: &str = "agent_message_to_tui_events";
@@ -88,6 +90,24 @@ const AUTO_TEST_REQUIRED_INPUT_PATHS: [&str; 4] = [
     "clankers_core::CoreInput::EvaluatePostPrompt",
     "clankers_core::CoreInput::FollowUpDispatchAcknowledged",
     "clankers_core::CoreInput::LoopFollowUpCompleted",
+];
+const CONTROLLER_FORBIDDEN_DISPLAY_DTO_PATHS: [(&str, &str); 2] = [
+    (
+        "clanker_tui_types::ThinkingLevel",
+        "TUI/attach projection edge; controller command policy must use CoreThinkingLevel",
+    ),
+    (
+        "clanker_tui_types::LoopDisplayState",
+        "TUI event-loop projection edge; controller auto-test policy must use ControllerLoopStatus",
+    ),
+];
+const COMMAND_SEMANTIC_OUTPUT_REQUIRED_PATHS: [&str; 2] = [
+    "semantic_error_message_to_daemon_event",
+    "SemanticErrorClass::InvalidInput",
+];
+const CONVERT_SEMANTIC_OUTPUT_REQUIRED_PATHS: [&str; 2] = [
+    "SemanticEvent::Error",
+    "DaemonEvent::SystemMessage",
 ];
 const EVENT_TRANSLATION_REQUIRED_FUNCTIONS: [&str; 3] = [
     AGENT_EVENT_TO_DAEMON_FUNCTION,
@@ -1165,6 +1185,24 @@ fn assert_exact_path_absent(relative_path: &str, paths: &BTreeSet<String>, exact
     );
 }
 
+fn assert_display_dto_absent_with_owner(
+    relative_path: &str,
+    paths: &BTreeSet<String>,
+    dto_path: &str,
+    allowed_owner: &str,
+) {
+    let offending_paths = find_exact_path(paths, dto_path);
+    assert!(
+        offending_paths.is_empty(),
+        "{} crossed {} with display DTO `{}`; allowed owner: {}; offending paths: {:?}",
+        relative_path,
+        CONTROLLER_DISPLAY_DTO_REQUIREMENT,
+        dto_path,
+        allowed_owner,
+        offending_paths
+    );
+}
+
 fn assert_source_text_absent(relative_path: &str, forbidden_text: &[&str]) {
     let source = read_relative_file(relative_path);
     for forbidden in forbidden_text {
@@ -1559,6 +1597,48 @@ fn controller_input_translation_stays_in_controller_translation_files() {
         CONTROLLER_INPUT_TRANSLATION_FILES[1],
         &auto_test_paths,
         &AUTO_TEST_REQUIRED_INPUT_PATHS,
+    );
+}
+
+#[test]
+fn controller_display_inputs_stay_neutral_before_policy() {
+    for relative_path in rust_source_files_under(CONTROLLER_SOURCE_DIR) {
+        let paths = collect_non_test_paths(&relative_path);
+        for (dto_path, allowed_owner) in CONTROLLER_FORBIDDEN_DISPLAY_DTO_PATHS {
+            assert_display_dto_absent_with_owner(&relative_path, &paths, dto_path, allowed_owner);
+        }
+    }
+
+    let command_paths = collect_non_test_paths(CONTROLLER_INPUT_TRANSLATION_FILES[0]);
+    assert_required_paths_present(
+        CONTROLLER_INPUT_TRANSLATION_FILES[0],
+        &command_paths,
+        &["CoreThinkingLevel", "CoreThinkingLevelInput"],
+    );
+
+    let auto_test_source = read_relative_file(CONTROLLER_INPUT_TRANSLATION_FILES[1]);
+    assert!(
+        auto_test_source.contains("pub struct ControllerLoopStatus"),
+        "{} must own neutral ControllerLoopStatus instead of clanker_tui_types::LoopDisplayState for {}",
+        CONTROLLER_INPUT_TRANSLATION_FILES[1],
+        CONTROLLER_DISPLAY_DTO_REQUIREMENT
+    );
+}
+
+#[test]
+fn controller_command_user_visible_error_projects_through_semantic_owner() {
+    let command_paths = collect_non_test_paths(CONTROLLER_INPUT_TRANSLATION_FILES[0]);
+    assert_required_paths_present(
+        CONTROLLER_INPUT_TRANSLATION_FILES[0],
+        &command_paths,
+        &COMMAND_SEMANTIC_OUTPUT_REQUIRED_PATHS,
+    );
+
+    let convert_paths = collect_non_test_paths(CONTROLLER_EVENT_TRANSLATION_FILE);
+    assert_required_paths_present(
+        CONTROLLER_EVENT_TRANSLATION_FILE,
+        &convert_paths,
+        &CONVERT_SEMANTIC_OUTPUT_REQUIRED_PATHS,
     );
 }
 

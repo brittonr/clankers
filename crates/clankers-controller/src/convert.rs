@@ -5,7 +5,9 @@
 
 use chrono::DateTime;
 use chrono::Utc;
+use clanker_message::SemanticErrorClass;
 use clanker_message::SemanticEvent;
+use clanker_message::SemanticEventMetadata;
 use clanker_message::SemanticToolStatus;
 use clankers_agent::events::AgentEvent;
 use clankers_protocol::event::DaemonEvent;
@@ -130,6 +132,19 @@ fn semantic_tool_event_to_daemon_event(event: &SemanticEvent) -> Option<DaemonEv
         }),
         _ => None,
     }
+}
+
+pub(crate) fn semantic_error_message_to_daemon_event(
+    session_id: &str,
+    message: String,
+    error_class: SemanticErrorClass,
+) -> DaemonEvent {
+    let event = SemanticEvent::Error {
+        message,
+        error_class,
+        metadata: SemanticEventMetadata::empty().with_session_id(session_id),
+    };
+    semantic_event_to_daemon_event(&event).expect("semantic errors always project to daemon system messages")
 }
 
 pub fn semantic_event_to_tui_event(event: &SemanticEvent) -> Option<clanker_tui_types::TuiEvent> {
@@ -538,6 +553,21 @@ mod tests {
                 agent_msg_count: AGENT_MESSAGE_COUNT,
                 timestamp: parsed_timestamp,
             }) if text == "hello" && parsed_timestamp == parse_user_input_timestamp(&timestamp)
+        ));
+    }
+
+    #[test]
+    fn semantic_error_message_projects_through_daemon_system_message() {
+        let event = semantic_error_message_to_daemon_event(
+            "session-1",
+            "Unknown thinking level: bogus".to_string(),
+            SemanticErrorClass::InvalidInput,
+        );
+
+        assert!(matches!(
+            event,
+            DaemonEvent::SystemMessage { text, is_error: true }
+                if text == "Unknown thinking level: bogus"
         ));
     }
 

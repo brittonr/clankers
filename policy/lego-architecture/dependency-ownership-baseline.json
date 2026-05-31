@@ -266,6 +266,28 @@
       "tui_references_in_domain_module": 0,
       "typed_rail_kind": "Rust AST function, path, alias, and forbidden edge-dependency checks"
     },
+    "controller_display_protocol_dtos": {
+      "auto_test_policy_module": "crates/clankers-controller/src/auto_test.rs",
+      "command_policy_module": "crates/clankers-controller/src/command.rs",
+      "command_semantic_projection": "semantic_error_message_to_daemon_event",
+      "forbidden_display_dtos": [
+        {
+          "allowed_owner": "TUI/attach projection edge",
+          "dto": "clanker_tui_types::ThinkingLevel",
+          "requirement": "controller-display-protocol-dto-drain.neutral-inputs.thinking"
+        },
+        {
+          "allowed_owner": "TUI event-loop projection edge",
+          "dto": "clanker_tui_types::LoopDisplayState",
+          "requirement": "controller-display-protocol-dto-drain.neutral-inputs.loop-state"
+        }
+      ],
+      "neutral_loop_status_owner": "clankers-controller::auto_test::ControllerLoopStatus",
+      "neutral_thinking_owner": "clankers-core::CoreThinkingLevel",
+      "projection_owner": "crates/clankers-controller/src/convert.rs",
+      "protocol_projection_owner": "convert::semantic_error_message_to_daemon_event",
+      "typed_rail_kind": "Rust AST path, struct, function, and owner-diagnostic checks for display/protocol DTO drains"
+    },
     "controller_effect_interpretation": {
       "agent_runtime_references": 0,
       "interpretation_module": "crates/clankers-controller/src/effect_interpretation.rs",

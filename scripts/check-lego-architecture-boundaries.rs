@@ -50,6 +50,8 @@ const AGENT_TURN_STEEL_PLANNING: &str = "crates/clankers-agent/src/turn/steel_pl
 const AGENT_TURN_STEEL_TOOL_SUBSTRATE: &str = "crates/clankers-agent/src/turn/steel_tool_substrate.rs";
 const AGENT_TURN_TRANSCRIPT: &str = "crates/clankers-agent/src/turn/transcript.rs";
 const AGENT_TURN_USAGE: &str = "crates/clankers-agent/src/turn/usage.rs";
+const CONTROLLER_COMMAND: &str = "crates/clankers-controller/src/command.rs";
+const CONTROLLER_AUTO_TEST: &str = "crates/clankers-controller/src/auto_test.rs";
 const CONTROLLER_CORE_EFFECTS: &str = "crates/clankers-controller/src/core_effects.rs";
 const CONTROLLER_CONVERT: &str = "crates/clankers-controller/src/convert.rs";
 const CONTROLLER_DOMAIN_EVENT: &str = "crates/clankers-controller/src/domain_event.rs";
@@ -123,6 +125,7 @@ fn run() -> Result<PathBuf, String> {
     let controller_effect_interpretation = controller_effect_interpretation_signature()?;
     let provider_router_bridge = provider_router_bridge_signature()?;
     let controller_domain_event = controller_domain_event_signature()?;
+    let controller_display_protocol_dtos = controller_display_protocol_dto_signature()?;
     let session_command_policy = session_command_policy_signature()?;
 
     require_nonempty(&root_internal, "root internal dependency inventory")?;
@@ -160,6 +163,7 @@ fn run() -> Result<PathBuf, String> {
         "controller_effect_interpretation": controller_effect_interpretation,
         "provider_router_bridge": provider_router_bridge,
         "controller_domain_event": controller_domain_event,
+        "controller_display_protocol_dtos": controller_display_protocol_dtos,
         "session_command_policy": session_command_policy,
     });
     validate_baseline(&signature)?;
@@ -211,6 +215,8 @@ fn run() -> Result<PathBuf, String> {
             hash_artifact(Path::new(PROVIDER_ROUTER_BRIDGE))?,
             hash_artifact(Path::new(PROVIDER_ROUTER_ADAPTER))?,
             hash_artifact(Path::new(PROVIDER_RPC_ADAPTER))?,
+            hash_artifact(Path::new(CONTROLLER_COMMAND))?,
+            hash_artifact(Path::new(CONTROLLER_AUTO_TEST))?,
             hash_artifact(Path::new(SESSION_COMMAND_POLICY))?,
             hash_artifact(Path::new(ATTACH_COMMANDS))?,
             hash_artifact(Path::new(SLASH_EFFECTS))?,
@@ -889,6 +895,104 @@ fn controller_domain_event_signature() -> Result<Value, String> {
         "tui_references_in_domain_module": 0,
         "protocol_projection_owner": "convert::semantic_event_to_daemon_event",
         "typed_rail_kind": "Rust AST function, path, alias, and forbidden edge-dependency checks"
+    }))
+}
+
+fn controller_display_protocol_dto_signature() -> Result<Value, String> {
+    let command_file = read_rust_file(CONTROLLER_COMMAND)?;
+    let auto_test_file = read_rust_file(CONTROLLER_AUTO_TEST)?;
+    let convert_file = read_rust_file(CONTROLLER_CONVERT)?;
+    let command = &command_file.source;
+    let auto_test = &auto_test_file.source;
+    let forbidden_display_dtos = [
+        (
+            "clanker_tui_types::ThinkingLevel",
+            "controller-display-protocol-dto-drain.neutral-inputs.thinking",
+            "TUI/attach projection edge; controller command policy must use CoreThinkingLevel",
+        ),
+        (
+            "clanker_tui_types::LoopDisplayState",
+            "controller-display-protocol-dto-drain.neutral-inputs.loop-state",
+            "TUI event-loop projection edge; controller auto-test policy must use ControllerLoopStatus",
+        ),
+    ];
+
+    for (dto, requirement, allowed_owner) in forbidden_display_dtos {
+        forbid_rust_path(
+            &command_file,
+            dto,
+            &format!("{requirement}: {dto} belongs to {allowed_owner}, not controller command policy"),
+        )?;
+        forbid_rust_path(
+            &auto_test_file,
+            dto,
+            &format!("{requirement}: {dto} belongs to {allowed_owner}, not controller auto-test policy"),
+        )?;
+        forbid_contains(
+            command,
+            dto,
+            &format!("{requirement}: {dto} belongs to {allowed_owner}, not controller command policy"),
+        )?;
+        forbid_contains(
+            auto_test,
+            dto,
+            &format!("{requirement}: {dto} belongs to {allowed_owner}, not controller auto-test policy"),
+        )?;
+    }
+
+    require_rust_path(&command_file, "CoreThinkingLevel", "neutral controller thinking DTO")?;
+    require_rust_path(&command_file, "CoreThinkingLevelInput", "neutral controller thinking input DTO")?;
+    require_rust_struct(&auto_test_file, "ControllerLoopStatus", "neutral controller loop status DTO")?;
+    require_rust_path(
+        &command_file,
+        "semantic_error_message_to_daemon_event",
+        "command user-visible error semantic projection call",
+    )?;
+    require_rust_path(
+        &command_file,
+        "SemanticErrorClass::InvalidInput",
+        "invalid thinking-level semantic error classification",
+    )?;
+    require_rust_fn(
+        &convert_file,
+        "semantic_error_message_to_daemon_event",
+        "semantic error protocol projection owner",
+    )?;
+    require_rust_path(&convert_file, "SemanticEvent::Error", "semantic error protocol projection owner")?;
+    require_rust_path(&convert_file, "DaemonEvent::SystemMessage", "daemon system-message projection owner")?;
+    require_contains(
+        command,
+        "controller_thinking_parser_uses_core_levels_without_tui_dto",
+        "neutral thinking parser fixture",
+    )?;
+    require_contains(auto_test, "ControllerLoopStatus", "neutral loop status edge DTO")?;
+    require_contains(
+        &convert_file.source,
+        "semantic_error_message_projects_through_daemon_system_message",
+        "semantic error projection parity fixture",
+    )?;
+
+    Ok(json!({
+        "command_policy_module": CONTROLLER_COMMAND,
+        "auto_test_policy_module": CONTROLLER_AUTO_TEST,
+        "projection_owner": CONTROLLER_CONVERT,
+        "neutral_thinking_owner": "clankers-core::CoreThinkingLevel",
+        "neutral_loop_status_owner": "clankers-controller::auto_test::ControllerLoopStatus",
+        "forbidden_display_dtos": [
+            {
+                "dto": "clanker_tui_types::ThinkingLevel",
+                "allowed_owner": "TUI/attach projection edge",
+                "requirement": "controller-display-protocol-dto-drain.neutral-inputs.thinking"
+            },
+            {
+                "dto": "clanker_tui_types::LoopDisplayState",
+                "allowed_owner": "TUI event-loop projection edge",
+                "requirement": "controller-display-protocol-dto-drain.neutral-inputs.loop-state"
+            }
+        ],
+        "command_semantic_projection": "semantic_error_message_to_daemon_event",
+        "protocol_projection_owner": "convert::semantic_error_message_to_daemon_event",
+        "typed_rail_kind": "Rust AST path, struct, function, and owner-diagnostic checks for display/protocol DTO drains"
     }))
 }
 

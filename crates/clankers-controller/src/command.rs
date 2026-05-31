@@ -6,6 +6,7 @@ use clanker_message::AgentMessage;
 use clanker_message::AssistantMessage;
 use clanker_message::Content;
 use clanker_message::MessageId;
+use clanker_message::SemanticErrorClass;
 use clanker_message::StopReason;
 use clanker_message::UserMessage;
 use clankers_agent::AgentError;
@@ -28,6 +29,7 @@ use tracing::warn;
 
 use crate::SessionController;
 use crate::command_images::prompt_images_to_provider_content;
+use crate::convert::semantic_error_message_to_daemon_event;
 use crate::convert::semantic_event_to_daemon_event;
 use crate::runtime_adapter::ControllerRuntimeAdapter;
 use crate::runtime_adapter::RuntimeControlRequest;
@@ -370,10 +372,12 @@ impl SessionController {
                 error: clankers_core::CoreError::InvalidThinkingLevel { raw },
                 ..
             } => {
-                self.emit(DaemonEvent::SystemMessage {
-                    text: format!("Unknown thinking level: {raw}"),
-                    is_error: true,
-                });
+                let event = semantic_error_message_to_daemon_event(
+                    &self.session_id,
+                    format!("Unknown thinking level: {raw}"),
+                    SemanticErrorClass::InvalidInput,
+                );
+                self.emit(event);
             }
             CoreOutcome::Rejected { .. } => unreachable!("thinking-level input should only reject as invalid"),
         }
@@ -2128,6 +2132,14 @@ mod tests {
         // Should just log a warning, not crash
         let events = ctrl.drain_events();
         assert!(events.is_empty());
+    }
+
+    #[test]
+    fn controller_thinking_parser_uses_core_levels_without_tui_dto() {
+        assert_eq!(SessionController::parse_core_thinking_level("off"), Some(CoreThinkingLevel::Off));
+        assert_eq!(SessionController::parse_core_thinking_level("medium"), Some(CoreThinkingLevel::Medium));
+        assert_eq!(SessionController::parse_core_thinking_level("xhigh"), Some(CoreThinkingLevel::Max));
+        assert_eq!(SessionController::parse_core_thinking_level("bogus"), None);
     }
 
     #[tokio::test]
