@@ -3,6 +3,7 @@
 ## Corrections
 | Date | Source | What Went Wrong | What To Do Instead |
 |------|--------|----------------|-------------------|
+| 2026-05-31 | self | Closeout nextest partitions surfaced two stale rails outside the main slice: provider-contract docs still anchored a deleted helper and artifact golden hash expected an old `SkillReference` digest | Treat broad closeout failures as validation drift until proven otherwise: fix focused anchors/fixtures, rerun the focused test, then rerun the failed partition before claiming full-suite pass. |
 | 2026-05-31 | self | Re-ran the multi-package focused nextest bundle with a 180s Steel timeout after root recompilation; every listed test printed PASS, but the tool still timed out before the final status line | For evidence that needs an actual exit status, run long root-package nextest filters individually or give the bundle a timeout above the expected rebuild time. |
 | 2026-05-31 | self | Ran `rustfmt --check` on `scripts/check-lego-architecture-boundaries.rs` after a small rail tweak and it wanted to reformat large pre-existing owner tables | Keep script rail edits minimal; do not include cargo-script files in touched-file rustfmt evidence unless intentionally accepting broad script formatting churn. |
 | 2026-05-31 | self | Ran `nix run .#cairn -- archive --help`; Cairn parsed `--help` as the change name and returned `change not found: --help` | Use `nix run .#cairn -- --help` for global Cairn help; archive syntax is `archive <change> [--root PATH] [--execute]`. |

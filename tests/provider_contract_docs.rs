@@ -38,7 +38,7 @@ fn provider_contracts_doc_tracks_existing_source_anchors() {
         (PROVIDER_LIB, "completion_request_constructor_inventory_requires_extra_params"),
         (PROVIDER_LIB, "provider_and_router_request_shared_schema_fields_stay_in_parity"),
         (PROVIDER_LIB, "provider_and_router_request_omit_empty_extra_params_consistently"),
-        (RPC_PROVIDER, "fn build_router_request(request: CompletionRequest)"),
+        (RPC_PROVIDER, "crate::router_request_bridge::build_router_request(request)"),
         (ROUTER_REQUEST_BRIDGE, "fn messages_to_router_json(messages: &[AgentMessage])"),
         (ROUTER_CODEX, "text/event-stream"),
     ] {

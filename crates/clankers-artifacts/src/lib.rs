@@ -1160,7 +1160,7 @@ mod tests {
                 ArtifactKind::SkillReference,
                 RedactionClass::MetadataOnly,
                 json!({"name":"cairn","version":"1","updated_at":"ignored"}),
-                "b3:788a07609fb4d550e1309c211bf4af2a79c438127acc5b7fa0e7f2bf05a82ad7",
+                "b3:f3c5b29781629a865ed2bd444907badde994e57b1b20e50ab267d02a2fca929a",
             ),
             (
                 ArtifactKind::SessionBlock,
