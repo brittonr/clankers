@@ -1554,6 +1554,7 @@ dependencies = [
  "sha2 0.10.9",
  "similar",
  "snafu 0.8.9",
+ "syn 2.0.117",
  "tempfile",
  "terminal-colorsaurus",
  "thiserror 2.0.18",

@@ -194,6 +194,7 @@ parking_lot = "0.12"
 vt100 = "0.16"
 insta = { version = "1.46", features = ["glob"] }
 image = "0.25.10"
+syn = { version = "2", features = ["full", "visit"] }
 
 [lints]
 workspace = true
