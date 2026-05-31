@@ -10,6 +10,14 @@ use crate::ShellFollowUpDispatch;
 use crate::ShellPromptCompletion;
 use crate::loop_mode::LoopConfig;
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ControllerLoopStatus {
+    pub name: String,
+    pub prompt: Option<String>,
+    pub max_iterations: u32,
+    pub break_text: Option<String>,
+}
+
 impl SessionController {
     /// Start a prompt in embedded mode through the reducer-backed prompt path.
     pub fn start_embedded_prompt(&mut self, prompt_text: &str, image_count: u32) -> bool {
@@ -212,11 +220,12 @@ impl SessionController {
         }
     }
 
-    /// Sync loop state from the TUI's loop_status.
+    /// Sync loop state from an edge-projected loop status.
     ///
     /// Called before `check_post_prompt(false)` to ensure the controller's
-    /// loop engine matches the TUI's `/loop` command state.
-    pub fn sync_loop_from_tui(&mut self, loop_status: Option<&clanker_tui_types::LoopDisplayState>) {
+    /// loop engine matches the UI `/loop` command state without depending on
+    /// display DTOs in controller policy.
+    pub fn sync_loop_status(&mut self, loop_status: Option<&ControllerLoopStatus>) {
         match (loop_status, &self.active_loop_id) {
             // TUI has loop but controller doesn't → register it
             (Some(ls), None) => {
@@ -266,8 +275,8 @@ impl SessionController {
 #[cfg(test)]
 mod tests {
     use clanker_loop::LoopId;
-    use clanker_tui_types::LoopDisplayState;
 
+    use super::ControllerLoopStatus;
     use crate::PendingWorkId;
     use crate::PostPromptAction;
     use crate::ShellFollowUpDispatch;
@@ -914,42 +923,40 @@ mod tests {
     }
 
     #[test]
-    fn test_sync_loop_from_tui_starts_loop() {
+    fn test_sync_loop_status_starts_loop() {
         let mut ctrl = make_test_controller();
 
-        let loop_state = LoopDisplayState {
+        let loop_state = ControllerLoopStatus {
             name: "test-loop".to_string(),
             prompt: Some("test prompt".to_string()),
             max_iterations: 5,
             break_text: Some("done".to_string()),
-            iteration: 1,
-            active: true,
         };
 
-        // Controller has no loop, TUI has loop → should start it
-        ctrl.sync_loop_from_tui(Some(&loop_state));
+        // Controller has no loop, edge-projected status has loop → should start it
+        ctrl.sync_loop_status(Some(&loop_state));
         assert!(ctrl.active_loop_id.is_some());
     }
 
     #[test]
-    fn test_sync_loop_from_tui_clears_loop() {
+    fn test_sync_loop_status_clears_loop() {
         let mut ctrl = make_test_controller();
 
         // Set up active loop in controller
         ctrl.active_loop_id = Some(LoopId("existing-loop".to_string()));
 
-        // TUI has no loop → should clear controller's loop
-        ctrl.sync_loop_from_tui(None);
+        // Edge has no loop → should clear controller's loop
+        ctrl.sync_loop_status(None);
         assert!(ctrl.active_loop_id.is_none());
         assert!(ctrl.loop_turn_output.is_empty());
     }
 
     #[test]
-    fn test_sync_loop_from_tui_both_none() {
+    fn test_sync_loop_status_both_none() {
         let mut ctrl = make_test_controller();
 
-        // Both controller and TUI have no loop → no change
-        ctrl.sync_loop_from_tui(None);
+        // Both controller and edge have no loop → no change
+        ctrl.sync_loop_status(None);
         assert!(ctrl.active_loop_id.is_none());
     }
 

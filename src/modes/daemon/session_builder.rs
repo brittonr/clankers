@@ -7,6 +7,9 @@
 
 use std::path::Path;
 use std::path::PathBuf;
+use std::sync::Arc;
+use std::sync::Mutex;
+use std::time::Duration;
 
 use clankers_controller::transport::SessionHandle;
 use clankers_controller::transport::session_socket_path;
@@ -51,6 +54,51 @@ pub(crate) struct SessionBuildPlan {
 }
 
 /// Builder that owns session-construction policy while callers own IO/spawn.
+/// Build a hook pipeline for a daemon session from settings.
+///
+/// This is session assembly policy rather than actor-loop multiplexing. Tests
+/// can exercise it without binding daemon sockets or spawning an actor.
+#[cfg_attr(
+    dylint_lib = "tigerstyle",
+    allow(unbounded_loop, reason = "bounded upward directory walk looking for .git")
+)]
+pub(crate) fn build_session_hook_pipeline(
+    settings: &clankers_config::settings::Settings,
+    plugin_manager: Option<&Arc<Mutex<clankers_plugin::PluginManager>>>,
+) -> Option<Arc<clankers_hooks::HookPipeline>> {
+    if !settings.hooks.enabled {
+        return None;
+    }
+
+    let cwd = std::env::current_dir().unwrap_or_default();
+    let mut pipeline = clankers_hooks::HookPipeline::new();
+    pipeline.set_disabled_hooks(settings.hooks.disabled_hooks.iter().cloned());
+
+    let hooks_dir = settings.hooks.resolve_hooks_dir(&cwd);
+    let timeout = Duration::from_secs(settings.hooks.script_timeout_secs);
+    pipeline.register(Arc::new(clankers_hooks::script::ScriptHookHandler::new(hooks_dir, timeout)));
+
+    if settings.hooks.manage_git_hooks {
+        let mut current = cwd.as_path();
+        loop {
+            if current.join(".git").exists() {
+                pipeline.register(Arc::new(clankers_hooks::git::GitHookHandler::new(current.to_path_buf())));
+                break;
+            }
+            match current.parent() {
+                Some(parent) => current = parent,
+                None => break,
+            }
+        }
+    }
+
+    if let Some(plugin_manager) = plugin_manager {
+        pipeline.register(Arc::new(clankers_plugin::hooks::PluginHookHandler::new(Arc::clone(plugin_manager))));
+    }
+
+    Some(Arc::new(pipeline))
+}
+
 pub(crate) struct SessionBuilder {
     default_model: String,
     sessions_dir: PathBuf,

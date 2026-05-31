@@ -17,6 +17,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use clankers_controller::SessionController;
+use clankers_controller::auto_test::ControllerLoopStatus;
 use ratatui::Terminal;
 use ratatui::backend::CrosstermBackend;
 
@@ -573,8 +574,14 @@ impl<'a> EventLoopRunner<'a> {
                     };
 
                     if !completed_dispatched_follow_up {
-                        // Sync TUI loop state to controller before post-prompt planning only for ordinary prompts.
-                        self.controller.sync_loop_from_tui(self.app.loop_status.as_ref());
+                        // Sync edge-projected TUI loop state to controller before post-prompt planning only for ordinary prompts.
+                        let controller_loop_status = self.app.loop_status.as_ref().map(|loop_status| ControllerLoopStatus {
+                            name: loop_status.name.clone(),
+                            prompt: loop_status.prompt.clone(),
+                            max_iterations: loop_status.max_iterations,
+                            break_text: loop_status.break_text.clone(),
+                        });
+                        self.controller.sync_loop_status(controller_loop_status.as_ref());
                     }
                     if !self.controller.has_active_loop() {
                         self.app.loop_status = None;

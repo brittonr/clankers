@@ -16,9 +16,9 @@ use clankers_engine_host::EngineRunReport;
 #[cfg(test)]
 use clankers_engine_host::runtime::tool_feedback_input as host_tool_feedback_input;
 #[cfg(test)]
-use clankers_provider::message::StopReason;
+use clanker_message::StopReason;
 #[cfg(test)]
-use clankers_provider::message::ToolResultMessage;
+use clanker_message::ToolResultMessage;
 #[cfg(test)]
 use serde_json::Value;
 #[cfg(test)]

@@ -1,8 +1,10 @@
+use clanker_message::Content;
+use clanker_message::MessageId;
+use clanker_message::ToolResultMessage;
 use clankers_artifacts::ArtifactHash;
 use clankers_config::SteelToolSubstrateFallbackMode as ConfigFallbackMode;
 use clankers_config::SteelToolSubstrateRolloutStage as ConfigRolloutStage;
 use clankers_config::SteelToolSubstrateSettings;
-use clankers_provider::message::ToolResultMessage;
 use clankers_runtime::DEFAULT_TOOL_SUBSTRATE_CALL_SEAM;
 use clankers_runtime::SteelToolExecutorKind;
 use clankers_runtime::SteelToolInvocationInput;
@@ -167,10 +169,10 @@ pub(crate) fn blocked_receipt_to_tool_result(
     receipt: SteelToolInvocationReceipt,
 ) -> ToolResultMessage {
     ToolResultMessage {
-        id: clankers_provider::message::MessageId::generate(),
+        id: MessageId::generate(),
         call_id,
         tool_name,
-        content: vec![clankers_provider::message::Content::Text {
+        content: vec![Content::Text {
             text: format!("Steel tool substrate blocked host execution: {:?} ({:?})", receipt.issue, receipt.status),
         }],
         is_error: true,

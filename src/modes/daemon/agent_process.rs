@@ -28,6 +28,7 @@ use tracing::debug;
 use tracing::info;
 use tracing::warn;
 
+use super::session_builder::build_session_hook_pipeline;
 use super::session_builder::merge_session_capabilities;
 use super::socket_bridge::SessionFactory;
 
@@ -896,54 +897,6 @@ fn drain_plugin_runtime_events(
     for action in result.ui_actions {
         event_tx.send(crate::modes::plugin_dispatch::ui_action_to_daemon_event(action)).ok();
     }
-}
-
-/// Build a hook pipeline for a daemon session from settings.
-///
-/// Includes plugin hooks when a plugin manager is provided.
-#[cfg_attr(
-    dylint_lib = "tigerstyle",
-    allow(unbounded_loop, reason = "event loop; bounded by channel close")
-)]
-fn build_session_hook_pipeline(
-    settings: &clankers_config::settings::Settings,
-    plugin_manager: Option<&std::sync::Arc<std::sync::Mutex<clankers_plugin::PluginManager>>>,
-) -> Option<std::sync::Arc<clankers_hooks::HookPipeline>> {
-    if !settings.hooks.enabled {
-        return None;
-    }
-
-    let cwd = std::env::current_dir().unwrap_or_default();
-    let mut pipeline = clankers_hooks::HookPipeline::new();
-    pipeline.set_disabled_hooks(settings.hooks.disabled_hooks.iter().cloned());
-
-    // Script hooks
-    let hooks_dir = settings.hooks.resolve_hooks_dir(&cwd);
-    let timeout = std::time::Duration::from_secs(settings.hooks.script_timeout_secs);
-    pipeline.register(std::sync::Arc::new(clankers_hooks::script::ScriptHookHandler::new(hooks_dir, timeout)));
-
-    // Git hooks
-    if settings.hooks.manage_git_hooks {
-        let mut current = cwd.as_path();
-        loop {
-            if current.join(".git").exists() {
-                pipeline.register(std::sync::Arc::new(clankers_hooks::git::GitHookHandler::new(current.to_path_buf())));
-                break;
-            }
-            match current.parent() {
-                Some(p) => current = p,
-                None => break,
-            }
-        }
-    }
-
-    // Plugin hooks
-    if let Some(pm) = plugin_manager {
-        pipeline
-            .register(std::sync::Arc::new(clankers_plugin::hooks::PluginHookHandler::new(std::sync::Arc::clone(pm))));
-    }
-
-    Some(std::sync::Arc::new(pipeline))
 }
 
 #[cfg(test)]

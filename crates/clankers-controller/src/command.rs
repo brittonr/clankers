@@ -503,20 +503,22 @@ impl SessionController {
     }
 
     fn parse_core_thinking_level_input(level: &str) -> CoreThinkingLevelInput {
-        if let Some(parsed) = clanker_tui_types::ThinkingLevel::from_str_or_budget(level) {
-            CoreThinkingLevelInput::Level(Self::core_thinking_level(parsed))
-        } else {
-            CoreThinkingLevelInput::Invalid(level.to_string())
+        match Self::parse_core_thinking_level(level) {
+            Some(parsed) => CoreThinkingLevelInput::Level(parsed),
+            None => CoreThinkingLevelInput::Invalid(level.to_string()),
         }
     }
 
-    fn core_thinking_level(level: clanker_tui_types::ThinkingLevel) -> CoreThinkingLevel {
-        match level {
-            clanker_tui_types::ThinkingLevel::Off => CoreThinkingLevel::Off,
-            clanker_tui_types::ThinkingLevel::Low => CoreThinkingLevel::Low,
-            clanker_tui_types::ThinkingLevel::Medium => CoreThinkingLevel::Medium,
-            clanker_tui_types::ThinkingLevel::High => CoreThinkingLevel::High,
-            clanker_tui_types::ThinkingLevel::Max => CoreThinkingLevel::Max,
+    fn parse_core_thinking_level(level: &str) -> Option<CoreThinkingLevel> {
+        match level.trim().to_lowercase().as_str() {
+            "off" | "none" | "disable" | "disabled" => Some(CoreThinkingLevel::Off),
+            "low" | "lo" | "l" => Some(CoreThinkingLevel::Low),
+            "medium" | "med" | "m" => Some(CoreThinkingLevel::Medium),
+            "high" | "hi" | "h" => Some(CoreThinkingLevel::High),
+            "xhigh" | "x-high" | "extra-high" | "max" | "maximum" | "full" | "default" => {
+                Some(CoreThinkingLevel::Max)
+            }
+            _ => None,
         }
     }
 

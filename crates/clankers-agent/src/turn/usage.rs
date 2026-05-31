@@ -1,7 +1,7 @@
 //! Token usage tracking and cost calculation
 
+use clanker_message::Usage;
 use clankers_model_selection::cost_tracker::CostTracker;
-use clankers_provider::Usage;
 use tokio::sync::broadcast;
 
 use crate::events::AgentEvent;

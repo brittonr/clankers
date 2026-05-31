@@ -6,12 +6,14 @@ use clanker_message::SemanticErrorClass;
 use clanker_message::SemanticEvent;
 use clanker_message::SemanticEventMetadata;
 use clanker_message::SemanticImage;
+use clanker_message::AgentMessage;
+use clanker_message::AssistantMessage;
+use clanker_message::Content;
+use clanker_message::MessageId;
 use clanker_message::SemanticToolStatus;
-use clankers_provider::Usage;
-use clankers_provider::message::AgentMessage;
-use clankers_provider::message::AssistantMessage;
-use clankers_provider::message::Content;
-use clankers_provider::message::MessageId;
+use clanker_message::ToolResultMessage;
+use clanker_message::Usage;
+use clanker_message::streaming::StreamDelta;
 use serde_json::Value;
 
 use crate::tool::ToolResult;
@@ -41,7 +43,7 @@ pub enum AgentEvent {
     TurnEnd {
         index: u32,
         message: AssistantMessage,
-        tool_results: Vec<clankers_provider::message::ToolResultMessage>,
+        tool_results: Vec<ToolResultMessage>,
     },
 
     // Message streaming
@@ -56,7 +58,7 @@ pub enum AgentEvent {
     /// Incremental delta for a content block
     MessageUpdate {
         index: usize,
-        delta: clankers_provider::streaming::StreamDelta,
+        delta: StreamDelta,
     },
     /// A content block has finished streaming
     ContentBlockStop {
@@ -310,20 +312,19 @@ impl AgentEvent {
     }
 }
 
-fn stream_delta_to_semantic_event(delta: &clankers_provider::streaming::StreamDelta) -> Option<SemanticEvent> {
+fn stream_delta_to_semantic_event(delta: &StreamDelta) -> Option<SemanticEvent> {
     match delta {
-        clankers_provider::streaming::ContentDelta::TextDelta { text } => Some(SemanticEvent::AssistantDelta {
+        clanker_message::ContentDelta::TextDelta { text } => Some(SemanticEvent::AssistantDelta {
             text: text.clone(),
             metadata: SemanticEventMetadata::empty().with("source", "agent"),
         }),
-        clankers_provider::streaming::ContentDelta::ThinkingDelta { thinking } => {
+        clanker_message::ContentDelta::ThinkingDelta { thinking } => {
             Some(SemanticEvent::ThinkingDelta {
                 text: thinking.clone(),
                 metadata: SemanticEventMetadata::empty().with("source", "agent"),
             })
         }
-        clankers_provider::streaming::ContentDelta::InputJsonDelta { .. }
-        | clankers_provider::streaming::ContentDelta::SignatureDelta { .. } => None,
+        clanker_message::ContentDelta::InputJsonDelta { .. } | clanker_message::ContentDelta::SignatureDelta { .. } => None,
     }
 }
 
@@ -351,7 +352,7 @@ fn tool_result_content_to_semantic_parts(content: &[crate::tool::ToolResultConte
 #[cfg(test)]
 mod tests {
     use clanker_message::SemanticToolStatus;
-    use clankers_provider::streaming::ContentDelta;
+    use clanker_message::ContentDelta;
 
     use super::*;
     use crate::tool::ToolResult;

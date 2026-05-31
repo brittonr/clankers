@@ -2,11 +2,11 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 use async_trait::async_trait;
+use clanker_message::ToolResultMessage;
+use clanker_message::Usage;
 use clankers_model_selection::cost_tracker::CostTracker;
 use clankers_provider::CompletionRequest;
 use clankers_provider::Provider;
-use clankers_provider::Usage;
-use clankers_provider::message::ToolResultMessage;
 use serde_json::Value;
 use tokio::sync::broadcast;
 use tokio_util::sync::CancellationToken;

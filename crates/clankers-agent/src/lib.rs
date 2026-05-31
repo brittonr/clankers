@@ -35,6 +35,7 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 use chrono::Utc;
+use clanker_message::*;
 use clankers_config::model_roles::ModelRoles;
 use clankers_config::settings::Settings;
 use clankers_db::Db;
@@ -46,7 +47,6 @@ use clankers_model_selection::signals::ToolCallSummary;
 use clankers_provider::Provider;
 use clankers_provider::ThinkingConfig;
 use clankers_provider::ThinkingLevel;
-use clankers_provider::message::*;
 use tokio::sync::broadcast;
 use tokio_util::sync::CancellationToken;
 

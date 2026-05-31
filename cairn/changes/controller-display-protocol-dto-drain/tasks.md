@@ -1,0 +1,12 @@
+## Phase 1: DTO ownership drain
+
+- [ ] [serial] I1: Inventory `clankers-controller` display/protocol DTO references by module and classify them as projection-edge, command-policy, auto-test sync, transport conversion, or test-only. r[controller-display-protocol-dto-drain.boundary-rails.owner-diagnostics] [covers=controller-display-protocol-dto-drain.boundary-rails.owner-diagnostics]
+- [ ] [serial] I2: Replace controller command thinking parsing and thinking-level state with `CoreThinkingLevel` or a controller-local neutral DTO, keeping TUI parsing at attach/standalone edges. r[controller-display-protocol-dto-drain.neutral-inputs.thinking] [covers=controller-display-protocol-dto-drain.neutral-inputs.thinking]
+- [ ] [serial] I3: Replace auto-test loop sync use of `clanker_tui_types::LoopDisplayState` with a neutral loop status DTO projected from TUI state at the edge. r[controller-display-protocol-dto-drain.neutral-inputs.loop-state] [covers=controller-display-protocol-dto-drain.neutral-inputs.loop-state]
+- [ ] [serial] I4: Move at least one command-path direct `DaemonEvent` user-visible output branch to semantic/domain event projection through the explicit conversion owner. r[controller-display-protocol-dto-drain.protocol-edge.command-output] [covers=controller-display-protocol-dto-drain.protocol-edge.command-output]
+
+## Phase 2: Verification
+
+- [ ] [serial] V1: Add controller fixtures for neutral thinking parsing, loop status sync, and unchanged projected TUI/protocol events. r[controller-display-protocol-dto-drain.neutral-inputs] r[controller-display-protocol-dto-drain.protocol-edge] [covers=controller-display-protocol-dto-drain.neutral-inputs,controller-display-protocol-dto-drain.protocol-edge]
+- [ ] [serial] V2: Update FCIS/lego rails to allow TUI/protocol DTO constructors only in named projection adapters and to diagnose command-policy violations with expected owners. r[controller-display-protocol-dto-drain.boundary-rails.owner-diagnostics] [covers=controller-display-protocol-dto-drain.boundary-rails.owner-diagnostics]
+- [ ] [serial] V3: Run focused controller conversion/command tests, attach parity tests for touched commands, FCIS shell-boundary rail, lego architecture rail, Cairn gates/validate, and `git diff --check`. r[controller-display-protocol-dto-drain.verification.closeout] [covers=controller-display-protocol-dto-drain.verification.closeout]

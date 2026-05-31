@@ -14,6 +14,7 @@ use clankers_agent::Agent;
 use clankers_agent::events::AgentEvent;
 use clankers_controller::PostPromptAction;
 use clankers_controller::SessionController;
+use clankers_controller::auto_test::ControllerLoopStatus;
 use clankers_controller::config::ControllerConfig;
 use clankers_controller::loop_mode::LoopConfig;
 use clankers_protocol::DaemonEvent;
@@ -644,29 +645,27 @@ fn embedded_loop_signal_break() {
 }
 
 #[test]
-fn embedded_loop_sync_from_tui_starts() {
+fn embedded_loop_sync_from_edge_status_starts() {
     let mut ctrl = make_embedded_controller();
     assert!(!ctrl.has_active_loop());
 
-    // Simulate TUI creating a loop state
-    let ls = clanker_tui_types::LoopDisplayState {
+    // Simulate the TUI edge projecting loop state into a controller-neutral status.
+    let ls = ControllerLoopStatus {
         name: "tui-loop".to_string(),
         prompt: Some("do stuff".to_string()),
         max_iterations: 5,
         break_text: None,
-        iteration: 0,
-        active: true,
     };
 
-    ctrl.sync_loop_from_tui(Some(&ls));
+    ctrl.sync_loop_status(Some(&ls));
     assert!(ctrl.has_active_loop());
 }
 
 #[test]
-fn embedded_loop_sync_from_tui_stops() {
+fn embedded_loop_sync_from_edge_status_stops() {
     let mut ctrl = make_embedded_controller();
 
-    // Start a loop, then sync with None (TUI cleared)
+    // Start a loop, then sync with None (edge cleared)
     ctrl.start_loop(LoopConfig {
         name: "will-stop".to_string(),
         prompt: Some("go".to_string()),
@@ -675,7 +674,7 @@ fn embedded_loop_sync_from_tui_stops() {
     });
     assert!(ctrl.has_active_loop());
 
-    ctrl.sync_loop_from_tui(None);
+    ctrl.sync_loop_status(None);
     assert!(!ctrl.has_active_loop());
 }
 

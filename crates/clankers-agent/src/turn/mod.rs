@@ -59,10 +59,8 @@ use clankers_provider::CompletionRequest;
 use clankers_provider::Provider;
 use clankers_provider::ThinkingConfig;
 #[cfg(test)]
-use clankers_provider::Usage;
-use clankers_provider::message::*;
-#[cfg(test)]
-use clankers_provider::streaming::*;
+use clanker_message::Usage;
+use clanker_message::*;
 use execution::completion_request_from_engine_request;
 use execution::create_error_result;
 use execution::engine_messages_from_agent_messages;

@@ -14,8 +14,13 @@ mod tool_summaries;
 
 use std::time::Duration;
 
+use clanker_message::AgentMessage;
+use clanker_message::Content;
+use clanker_message::MessageId;
+use clanker_message::UserMessage;
+use clanker_message::streaming::ContentDelta;
+use clanker_message::streaming::StreamEvent;
 use clankers_provider::Provider;
-use clankers_provider::message::AgentMessage;
 use clankers_util::token::estimate_tokens;
 use tokio::sync::mpsc;
 pub use tool_summaries::prune_tool_results;
@@ -296,9 +301,9 @@ async fn request_summary(provider: &dyn Provider, model: &str, session_id: &str,
 
     let summary_request = clankers_provider::CompletionRequest {
         model: model.to_string(),
-        messages: vec![AgentMessage::User(clankers_provider::message::UserMessage {
-            id: clankers_provider::message::MessageId::generate(),
-            content: vec![clankers_provider::message::Content::Text {
+        messages: vec![AgentMessage::User(UserMessage {
+            id: MessageId::generate(),
+            content: vec![Content::Text {
                 text: summary_prompt.to_string(),
             }],
             timestamp: chrono::Utc::now(),
@@ -329,8 +334,8 @@ Return factual markdown only, with no preamble or closing note."
     loop {
         let recv_result = tokio::time::timeout(timeout, rx.recv()).await;
         match recv_result {
-            Ok(Some(clankers_provider::streaming::StreamEvent::ContentBlockDelta {
-                delta: clankers_provider::streaming::ContentDelta::TextDelta { text },
+            Ok(Some(StreamEvent::ContentBlockDelta {
+                delta: ContentDelta::TextDelta { text },
                 ..
             })) => summary_text.push_str(&text),
             Ok(Some(_)) => {}
@@ -342,9 +347,9 @@ Return factual markdown only, with no preamble or closing note."
 }
 
 fn make_summary_message(compacted_count: usize, summary_text: &str) -> AgentMessage {
-    AgentMessage::User(clankers_provider::message::UserMessage {
-        id: clankers_provider::message::MessageId::generate(),
-        content: vec![clankers_provider::message::Content::Text {
+    AgentMessage::User(UserMessage {
+        id: MessageId::generate(),
+        content: vec![Content::Text {
             text: format!(
                 "{}\n\n[Conversation summary — {} earlier messages compacted]\n\n{}",
                 SUMMARY_PREFIX, compacted_count, summary_text
@@ -362,7 +367,7 @@ fn extract_role_and_text(msg: &AgentMessage) -> (&'static str, String) {
                 .content
                 .iter()
                 .filter_map(|c| match c {
-                    clankers_provider::message::Content::Text { text } => Some(text.as_str()),
+                    Content::Text { text } => Some(text.as_str()),
                     _ => None,
                 })
                 .collect::<Vec<_>>()
@@ -374,7 +379,7 @@ fn extract_role_and_text(msg: &AgentMessage) -> (&'static str, String) {
                 .content
                 .iter()
                 .filter_map(|c| match c {
-                    clankers_provider::message::Content::Text { text } => Some(text.as_str()),
+                    Content::Text { text } => Some(text.as_str()),
                     _ => None,
                 })
                 .collect::<Vec<_>>()
@@ -386,7 +391,7 @@ fn extract_role_and_text(msg: &AgentMessage) -> (&'static str, String) {
                 .content
                 .iter()
                 .filter_map(|c| match c {
-                    clankers_provider::message::Content::Text { text } => Some(text.as_str()),
+                    Content::Text { text } => Some(text.as_str()),
                     _ => None,
                 })
                 .collect::<Vec<_>>()
@@ -475,9 +480,9 @@ pub fn compact_by_truncation(messages: &[AgentMessage], max_tokens: usize, keep_
     result.extend_from_slice(&messages[..keep_first]);
 
     // Insert compaction marker
-    result.push(AgentMessage::User(clankers_provider::message::UserMessage {
-        id: clankers_provider::message::MessageId::generate(),
-        content: vec![clankers_provider::message::Content::Text {
+    result.push(AgentMessage::User(UserMessage {
+        id: MessageId::generate(),
+        content: vec![Content::Text {
             text: format!(
                 "[Context compacted: {} messages removed to save tokens. Recent context preserved.]",
                 dropped_count,
@@ -508,7 +513,7 @@ mod tests {
     use std::sync::Mutex;
 
     use chrono::Utc;
-    use clankers_provider::message::*;
+    use clanker_message::*;
     use tokio::sync::mpsc;
 
     use super::*;
@@ -548,7 +553,7 @@ mod tests {
         async fn complete(
             &self,
             request: clankers_provider::CompletionRequest,
-            tx: mpsc::Sender<clankers_provider::streaming::StreamEvent>,
+            tx: mpsc::Sender<StreamEvent>,
         ) -> clankers_provider::error::Result<()> {
             let prompt_text = request
                 .messages
@@ -567,9 +572,9 @@ mod tests {
                 return Err(clankers_provider::error::provider_err("summary failed"));
             }
 
-            tx.send(clankers_provider::streaming::StreamEvent::ContentBlockDelta {
+            tx.send(StreamEvent::ContentBlockDelta {
                 index: 0,
-                delta: clankers_provider::streaming::ContentDelta::TextDelta {
+                delta: ContentDelta::TextDelta {
                     text: self.response.to_string(),
                 },
             })
