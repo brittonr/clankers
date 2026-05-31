@@ -10,9 +10,7 @@ Each crate in the `crates/` workspace directory.
 
 ## clanker-auth
 
-UCAN-inspired capability tokens over iroh Ed25519 identity.
-
-**1775** lines of Rust · **21** tests
+**1789** lines of Rust · **21** tests
 
 <details><summary>Public API</summary>
 
@@ -71,9 +69,7 @@ trait RevocationStore
 
 ## clanker-message
 
-Message types for LLM agent conversations
-
-**882** lines of Rust · **25** tests
+**1296** lines of Rust · **27** tests
 
 <details><summary>Public API</summary>
 
@@ -82,10 +78,16 @@ enum AgentMessage
 enum Content
 enum ContentDelta
 enum ImageSource
+enum SemanticErrorClass
+enum SemanticEvent
+enum SemanticStopReason
+enum SemanticToolStatus
 enum StopReason
 enum StreamEvent
 enum ToolResultContent
 fn base64
+fn contains_secret_markers
+fn empty
 fn error
 fn finalize
 fn generate
@@ -94,6 +96,8 @@ fn id
 fn is_assistant
 fn is_user
 fn json
+fn kind
+fn metadata
 fn new
 fn push
 fn push_text
@@ -103,9 +107,12 @@ fn timestamp
 fn total_bytes
 fn total_lines
 fn total_tokens
+fn with
 fn with_config
 fn with_details
+fn with_prompt_id
 fn with_sequence
+fn with_session_id
 struct AssistantMessage
 struct BashExecutionMessage
 struct BranchSummaryMessage
@@ -114,6 +121,9 @@ struct CustomMessage
 struct MessageId
 struct MessageMetadata
 struct ResultChunk
+struct SemanticConfirmationRequest
+struct SemanticEventMetadata
+struct SemanticImage
 struct ThinkingConfig
 struct ToolDefinition
 struct ToolResult
@@ -134,7 +144,7 @@ struct UserMessage
 
 SDK for building [clankers](https://github.com/brittonr/clankers) WASM plugins.
 
-**524** lines of Rust · **0** tests
+**534** lines of Rust · **0** tests
 
 <details><summary>Public API</summary>
 
@@ -173,7 +183,7 @@ trait Args
 
 clanker-router — Model router and auth gateway for LLM providers
 
-**21649** lines of Rust · **382** tests
+**21981** lines of Rust · **385** tests
 
 **Workspace deps:** `clanker-message`
 
@@ -285,6 +295,7 @@ fn huggingface
 fn import_account
 fn in_memory
 fn into_inner
+fn into_provider
 fn into_store
 fn is_alive
 fn is_cooling_down
@@ -544,9 +555,7 @@ trait SseEventHandler
 
 ## clanker-tui-types
 
-Shared types for terminal-agent TUI boundaries.
-
-**1831** lines of Rust · **14** tests
+**1833** lines of Rust · **14** tests
 
 <details><summary>Public API</summary>
 
@@ -640,29 +649,102 @@ trait ProcessDataSource
 
 ---
 
+## clankers-adapters
+
+Shell-free adapter bricks for embedding Clankers engine turns in products.
+
+**703** lines of Rust · **7** tests
+
+**Workspace deps:** `clanker-message`, `clankers-engine`, `clankers-engine-host`, `clankers-tool-host`
+
+<details><summary>Public API</summary>
+
+```
+enum ApprovalPolicy
+enum CatalogValidationError
+enum EmbeddedCapability
+enum EmbeddedToolRuntime
+enum RedactionPolicy
+fn calls
+fn cancel
+fn capabilities
+fn catalog
+fn completed_text
+fn completed_text_with_usage
+fn descriptors
+fn embedding_safe
+fn events
+fn handle
+fn human_approved_shell
+fn into_events
+fn is_explicit_opt_in
+fn networkless_coding
+fn new
+fn observations
+fn operator
+fn project_local_edit
+fn read_only
+fn requests
+fn reset
+fn sleeps
+fn text_error
+fn text_success
+fn tool_request
+fn tool_user
+fn validate
+fn with_limits
+fn with_outcome
+struct AtomicCancellationSource
+struct CapabilityPack
+struct CatalogToolExecutor
+struct CollectingUsageObserver
+struct EmbeddedToolCatalog
+struct EmbeddedToolMetadata
+struct MemoryEventSink
+struct NoopRetrySleeper
+struct ScriptedModelHost
+struct ScriptedToolExecutor
+```
+
+</details>
+
+[Source](https://github.com/brittonr/clankers/tree/main/crates/clankers-adapters/src/)
+
+---
+
 ## clankers-agent
 
 Agent core — turn loop, event bus, tool interface, context management
 
-**8618** lines of Rust · **146** tests
+**12837** lines of Rust · **189** tests
 
-**Workspace deps:** `clanker-loop`, `clanker-message`, `clanker-router`, `clanker-tui-types`, `clankers-config`, `clankers-core`, `clankers-db`, `clankers-engine`, `clankers-engine-host`, `clankers-hooks`, `clankers-model-selection`, `clankers-procmon`, `clankers-prompts`, `clankers-provider`, `clankers-skills`, `clankers-tool-host`, `clankers-util`
+**Workspace deps:** `clanker-loop`, `clanker-message`, `clanker-router`, `clanker-tui-types`, `clankers-adapters`, `clankers-artifacts`, `clankers-config`, `clankers-core`, `clankers-db`, `clankers-engine`, `clankers-engine-host`, `clankers-hooks`, `clankers-model-selection`, `clankers-procmon`, `clankers-prompts`, `clankers-provider`, `clankers-runtime`, `clankers-skills`, `clankers-tool-host`, `clankers-util`
 
 <details><summary>Public API</summary>
 
 ```
 enum AgentError
 enum AgentEvent
+enum AgentTurnExecutionPlanner
 enum CompactionStrategy
 enum InjectionMode
+enum SoulPromptSourceKind
+enum SoulPromptStatus
+enum SteelToolSubstrateActivationError
+enum SteelTurnPlanningActivationError
+enum ToolExecutionBackend
 fn abort
 fn apply_controller_thinking_level
 fn apply_core_filtered_tools
 fn assemble_system_prompt
+fn assemble_system_prompt_sections
 fn build
 fn build_context
 fn build_system_prompt
 fn cancel_token
+fn check_model_switch_authorization
+fn check_prompt_authorization
+fn check_session_manage_authorization
 fn clear_messages
 fn compact_by_truncation
 fn compact_messages
@@ -670,6 +752,7 @@ fn compact_stale_tool_results
 fn compact_structured
 fn compact_tool_results
 fn compact_with_llm
+fn comparison_fixture
 fn cost_tracker
 fn cycle_thinking_level
 fn db
@@ -702,7 +785,6 @@ fn provider
 fn prune_tool_results
 fn reset_cancel
 fn reset_window
-fn run_turn_loop
 fn search_index
 fn seed_messages
 fn select_tail_by_budget
@@ -718,6 +800,8 @@ fn set_user_tool_filter
 fn should_auto_compact
 fn stats
 fn status_code
+fn steel_tool_substrate_config_from_settings
+fn steel_turn_planning_config_from_settings
 fn subscribe
 fn summarize_middle
 fn summarize_tool_result
@@ -726,10 +810,12 @@ fn tail_start_for_recent_tool_results
 fn take_system_additions
 fn take_user_prepends
 fn thinking_level
+fn to_semantic_event
 fn toggle_thinking
 fn tool_definitions
 fn tools
 fn truncate_messages
+fn try_set_model
 fn with_capability_gate
 fn with_cost_tracker
 fn with_db
@@ -740,22 +826,28 @@ fn with_model_switch_slot
 fn with_paths
 fn with_routing_policy
 fn with_search_index
+fn with_session_id
 fn with_thinking
 fn with_tools
 struct Agent
 struct AgentBuilder
 struct AgentContext
+struct AgentToolSteelSubstrateConfig
+struct AgentTurnPlanningOutcome
+struct AgentTurnSteelPlanningConfig
 struct AutoCompactConfig
 struct CompactionResult
 struct ContextFile
+struct LegacyAgentToolExecutor
 struct PromptFeatures
 struct PromptResources
+struct SoulPromptAssembly
+struct SoulPromptMetadata
 struct ToolContext
 struct TtsrEngine
 struct TtsrFiring
 struct TtsrRule
 struct TurnConfig
-struct TurnLoopContext
 trait CapabilityGate
 trait Tool
 ```
@@ -768,9 +860,7 @@ trait Tool
 
 ## clankers-agent-defs
 
-Agent definition system (first-class)
-
-**873** lines of Rust · **29** tests
+**906** lines of Rust · **29** tests
 
 <details><summary>Public API</summary>
 
@@ -815,11 +905,68 @@ struct WorkRecord
 
 ---
 
+## clankers-artifacts
+
+Content-addressed artifact identity and canonicalization types.
+
+**1072** lines of Rust · **20** tests
+
+<details><summary>Public API</summary>
+
+```
+enum ArtifactHashParseError
+enum ArtifactKind
+enum ArtifactStoreError
+enum CanonicalEnvelopeVersion
+enum CanonicalizationError
+enum EffectClass
+enum EffectProfile
+enum ReceiptArtifactRole
+enum RedactionClass
+fn cache_key
+fn canonical_bytes
+fn canonicalize_artifact
+fn digest
+fn evaluate
+fn from_envelope
+fn get
+fn hash
+fn hex
+fn inspect
+fn is_allowed
+fn link_name
+fn new
+fn normalized
+fn prefixed
+fn push
+fn put
+fn resolve_name
+fn sorted
+struct ArtifactEnvelopeHeader
+struct ArtifactHash
+struct ArtifactInspectSummary
+struct ArtifactStore
+struct CacheEligibility
+struct CanonicalArtifactEnvelope
+struct DeterministicInputDeclaration
+struct NamePointer
+struct PureCacheKey
+struct PureCacheReceipt
+struct PureResultCache
+struct ReceiptArtifactRef
+struct ReceiptArtifacts
+struct StoredArtifactRecord
+```
+
+</details>
+
+[Source](https://github.com/brittonr/clankers/tree/main/crates/clankers-artifacts/src/)
+
+---
+
 ## clankers-autoresearch
 
-Autonomous experiment loop — init/run/log workflow with JSONL persistence, metric extraction, confidence scoring, and git integration.
-
-**628** lines of Rust · **19** tests
+**657** lines of Rust · **19** tests
 
 <details><summary>Public API</summary>
 
@@ -859,16 +1006,27 @@ struct RecordOutcome
 
 Configuration loading and path resolution for clankers.
 
-**1702** lines of Rust · **43** tests
+**3163** lines of Rust · **74** tests
 
-**Workspace deps:** `clanker-router`, `clanker-tui-types`, `clankers-agent-defs`, `clankers-hooks`, `clankers-model-selection`, `clankers-tui`, `clankers-ucan`
+**Workspace deps:** `clanker-router`, `clanker-tui-types`, `clankers-agent-defs`, `clankers-hooks`, `clankers-model-selection`, `clankers-ucan`
 
 <details><summary>Public API</summary>
 
 ```
+enum BrowserAutomationBackend
+enum BrowserAutomationConfigError
+enum ExternalMemoryConfigError
+enum ExternalMemoryProvider
+enum KeymapPreset
+enum McpServerConfigError
+enum McpTransport
+enum SteelToolSubstrateConfigError
+enum SteelToolSubstrateFallbackMode
+enum SteelToolSubstrateRolloutStage
+enum SteelTurnPlanningConfigError
+enum SteelTurnPlanningFallbackMode
+enum SteelTurnPlanningRolloutStage
 fn all
-fn detect_theme
-fn detect_theme_mode
 fn eval_ncl_file
 fn eval_ncl_source
 fn eval_ncl_with_contract
@@ -876,34 +1034,57 @@ fn generate_starter_config
 fn get
 fn hidden_set
 fn infer
-fn into_keymap
 fn is_auto_theme
 fn is_configured
 fn load
-fn load_theme
+fn load_theme_def
 fn load_with_nickel
 fn load_with_pi_fallback
 fn merge
+fn named
 fn names
+fn neutral_summary
+fn parsed_thinking_level
+fn permits_origin
+fn published_tool_name
+fn publishes_tool
 fn reset
 fn resolve
+fn safe_provider_name
 fn set_model
 fn summary
+fn uses_bundled_profile
+fn validate
 fn with_defaults
+struct BrowserAutomationSettings
 struct ClankersPaths
 struct CompressionSettings
+struct ExternalMemorySettings
 struct KeymapConfig
 struct LeaderMenuConfig
 struct LeaderMenuHideConfig
 struct LeaderMenuItemConfig
+struct McpServerConfig
+struct McpSettings
 struct MemoryLimits
 struct ModelRoleDef
 struct ModelRoles
+struct NeutralKeymapConfig
+struct NeutralSettingsSummary
 struct NickelError
 struct ProjectPaths
+struct PromptServiceConfig
 struct Settings
+struct SkillServiceConfig
 struct SkillSettings
+struct SteelEvalHostFunctionSettings
+struct SteelEvalProfileSettings
+struct SteelEvalSettings
+struct SteelToolSubstrateSettings
+struct SteelTurnPlanningAuthorityGrantSettings
+struct SteelTurnPlanningSettings
 struct ThemeDef
+struct ThemeSelection
 ```
 
 </details>
@@ -916,7 +1097,7 @@ struct ThemeDef
 
 Transport-agnostic session controller for agent orchestration.
 
-**9244** lines of Rust · **210** tests
+**10645** lines of Rust · **226** tests
 
 **Workspace deps:** `clanker-loop`, `clanker-message`, `clanker-tui-types`, `clankers-agent`, `clankers-config`, `clankers-core`, `clankers-db`, `clankers-engine`, `clankers-hooks`, `clankers-protocol`, `clankers-provider`, `clankers-session`
 
@@ -924,12 +1105,15 @@ Transport-agnostic session controller for agent orchestration.
 
 ```
 enum PostPromptAction
+enum RuntimeControlRequest
+enum RuntimePromptCompletion
 enum ShellFollowUpDispatch
 enum ShellPromptCompletion
 fn abort
 fn ack_follow_up_dispatch
 fn agent_event_to_daemon_event
 fn agent_message_to_tui_events
+fn apply_control_with_runtime_adapter
 fn attach_error
 fn attach_ok
 fn avg_duration_ms
@@ -955,6 +1139,7 @@ fn control_shutting_down
 fn control_socket_path
 fn control_status
 fn control_tree
+fn current_cancel_token
 fn current_tool_infos
 fn daemon_event_to_tui_event
 fn daemon_lock_path
@@ -969,6 +1154,7 @@ fn finish_embedded_prompt
 fn flush_to_db
 fn from_channels
 fn handle_command
+fn handle_command_with_streaming_events
 fn has_active_loop
 fn init_socket_dir
 fn into_summary
@@ -987,12 +1173,14 @@ fn model
 fn new
 fn new_embedded
 fn notify_prompt_done
+fn observability_receipt
 fn pending_count
 fn pending_dispatched_follow_up_id
 fn pid_file_path
 fn process
 fn process_event
 fn prompt
+fn prompt_with_images
 fn record_plugin_error
 fn record_plugin_event
 fn record_plugin_hook_denial
@@ -1010,6 +1198,9 @@ fn run_control_socket
 fn run_session_socket
 fn run_session_socket_with_listener
 fn running_daemon_pid
+fn semantic_event_to_daemon_event
+fn semantic_event_to_json_value
+fn semantic_event_to_tui_event
 fn send
 fn session_by_key
 fn session_id
@@ -1033,6 +1224,8 @@ fn start_embedded_prompt_with_follow_up
 fn start_loop
 fn status
 fn stop_loop
+fn submit_prompt_with_runtime_adapter
+fn succeeded
 fn summary
 fn sync_loop_from_tui
 fn take_outgoing
@@ -1044,13 +1237,19 @@ struct ClientAdapter
 struct ConfirmStore
 struct ControllerConfig
 struct DaemonState
+struct FakeRuntimeAdapter
 struct LoopConfig
 struct MetricsCollector
 struct MockProvider
+struct ObservabilityAuditReceipt
 struct PendingWorkId
+struct RuntimeControlResult
+struct RuntimePromptRequest
+struct RuntimePromptResult
 struct SessionController
 struct SessionHandle
 struct SessionSocketInfo
+trait ControllerRuntimeAdapter
 trait ToolRebuilder
 ```
 
@@ -1062,7 +1261,7 @@ trait ToolRebuilder
 
 ## clankers-core
 
-**1643** lines of Rust · **42** tests
+**1693** lines of Rust · **42** tests
 
 <details><summary>Public API</summary>
 
@@ -1106,7 +1305,7 @@ struct ToolFilterApplied
 
 Embedded database (redb) for structured persistent storage.
 
-**6714** lines of Rust · **207** tests
+**7161** lines of Rust · **212** tests
 
 <details><summary>Public API</summary>
 
@@ -1119,10 +1318,16 @@ enum MetricEvent
 enum MetricEventKind
 enum ResourceKind
 enum SkillOutcome
+enum StoredProcessJobBackendKind
+enum StoredProcessJobCwd
+enum StoredProcessJobOwnerScope
+enum StoredProcessJobStatus
+enum StoredProcessJobStream
 fn add
 fn all_stats
 fn append_recent_event
 fn apply
+fn async_process_jobs
 fn audit
 fn begin_read
 fn begin_write
@@ -1141,6 +1346,7 @@ fn count_for_session
 fn current_session_report
 fn daily
 fn db_err
+fn delete_many
 fn document_count
 fn duration_secs
 fn encode
@@ -1183,11 +1389,13 @@ fn metrics
 fn migrate
 fn most_recent
 fn new
+fn new_native
 fn next_seq
 fn open
 fn other_count
 fn parse
 fn path
+fn process_jobs
 fn recent
 fn recent_daily_rollups
 fn recent_days
@@ -1199,6 +1407,8 @@ fn record_hit
 fn record_load
 fn record_tokens
 fn record_use
+fn redact_command_preview
+fn redact_metadata
 fn registry
 fn remove
 fn save
@@ -1231,6 +1441,7 @@ fn version
 fn with_session
 fn with_source
 fn with_tags
+struct AsyncProcessJobStore
 struct AuditEntry
 struct AuditLog
 struct BackfillResult
@@ -1257,6 +1468,7 @@ struct MetricsStore
 struct ModelEntry
 struct ModelUsage
 struct Overview
+struct ProcessJobStore
 struct RecentEvent
 struct Registry
 struct RegistryEntry
@@ -1270,6 +1482,10 @@ struct SessionMetricsSummary
 struct SkillStats
 struct SkillUsageEntry
 struct SkillUsageStore
+struct StoredProcessJobCapabilitySummary
+struct StoredProcessJobLogRef
+struct StoredProcessJobRecord
+struct StoredProcessJobResourcePolicy
 struct StoredToolResult
 struct SyncReport
 struct ToolEntry
@@ -1288,7 +1504,7 @@ struct UsageTracker
 
 Host-facing reusable engine contracts for model/tool turn policy that compose alongside `clankers-core` through controller/agent adapter seams.
 
-**1481** lines of Rust · **29** tests
+**1966** lines of Rust · **34** tests
 
 **Workspace deps:** `clanker-message`
 
@@ -1301,10 +1517,17 @@ enum EngineInput
 enum EngineMessageRole
 enum EngineRejection
 enum EngineTurnPhase
+fn apply_input
+fn from_outcome
+fn from_state
+fn into_state
 fn new
 fn reduce
+fn state
+fn submit_turn
 fn submit_user_prompt
 fn turn_finished_stop_reason
+struct EmbeddableEngine
 struct EngineBufferedToolResult
 struct EngineCorrelationId
 struct EngineMessage
@@ -1317,6 +1540,9 @@ struct EngineRetryPolicy
 struct EngineState
 struct EngineTerminalFailure
 struct EngineToolCall
+struct EngineTurnReceipt
+struct EngineTurnRequest
+struct EngineTurnResult
 ```
 
 </details>
@@ -1327,9 +1553,7 @@ struct EngineToolCall
 
 ## clankers-engine-host
 
-Reusable async host runner for `clankers-engine` effects.
-
-**1843** lines of Rust · **27** tests
+**2297** lines of Rust · **30** tests
 
 **Workspace deps:** `clanker-message`, `clankers-engine`, `clankers-tool-host`
 
@@ -1356,6 +1580,11 @@ fn tool_completed_input
 fn tool_failed_input
 fn tool_feedback_input
 struct AdapterDiagnostic
+struct EngineCostObservation
+struct EngineHistoryRecord
+struct EngineHookObservation
+struct EnginePersistenceRecord
+struct EnginePromptBundle
 struct EngineRunReport
 struct EngineRunSeed
 struct HostAdapters
@@ -1364,8 +1593,12 @@ struct StreamAccumulator
 struct StreamFoldResult
 struct UsageObservation
 trait CancellationSource
+trait CostAccountingPort
 trait EngineEventSink
+trait HookPort
 trait ModelHost
+trait PersistencePort
+trait PromptHistoryPort
 trait RetrySleeper
 trait UsageObserver
 ```
@@ -1378,15 +1611,18 @@ trait UsageObserver
 
 ## clankers-hooks
 
-**1225** lines of Rust · **32** tests
+**1706** lines of Rust · **49** tests
 
 <details><summary>Public API</summary>
 
 ```
 enum HookData
 enum HookPoint
+enum HookStatus
 enum HookVerdict
 fn all
+fn allows_modify
+fn behavior_label
 fn empty
 fn error
 fn fire
@@ -1401,17 +1637,22 @@ fn is_pre_hook
 fn merge
 fn model_change
 fn new
+fn plugin_event_kind
 fn prompt
+fn prompt_with_metadata
 fn register
 fn resolve_hooks_dir
 fn session
 fn set_disabled_hooks
 fn to_filename
 fn tool
+fn turn
 fn uninstall_hook_shim
 struct GitHookHandler
 struct HookPayload
 struct HookPipeline
+struct HookSafeError
+struct HookUsage
 struct HooksConfig
 struct ScriptHookHandler
 trait HookHandler
@@ -1425,7 +1666,7 @@ trait HookHandler
 
 ## clankers-matrix
 
-**1512** lines of Rust · **8** tests
+**1527** lines of Rust · **8** tests
 
 <details><summary>Public API</summary>
 
@@ -1500,7 +1741,7 @@ struct RpcResponse
 
 Multi-model routing policy
 
-**1501** lines of Rust · **49** tests
+**1524** lines of Rust · **49** tests
 
 **Workspace deps:** `clanker-router`, `clanker-tui-types`
 
@@ -1552,7 +1793,7 @@ struct ToolCallSummary
 
 ## clankers-nix
 
-**1262** lines of Rust · **61** tests
+**1279** lines of Rust · **61** tests
 
 <details><summary>Public API</summary>
 
@@ -1592,7 +1833,7 @@ struct ParsedFlakeRef
 
 Plugin system (Extism WASM)
 
-**3725** lines of Rust · **39** tests
+**3824** lines of Rust · **41** tests
 
 **Workspace deps:** `clanker-tui-types`, `clankers-hooks`
 
@@ -1707,7 +1948,7 @@ struct ToolManifest
 
 Core process monitor for tracking child processes and resource usage.
 
-**468** lines of Rust · **5** tests
+**483** lines of Rust · **5** tests
 
 **Workspace deps:** `clanker-tui-types`
 
@@ -1744,7 +1985,7 @@ struct TrackedProcess
 
 Prompt templates Prompt template scanning and loading
 
-**163** lines of Rust · **5** tests
+**174** lines of Rust · **5** tests
 
 <details><summary>Public API</summary>
 
@@ -1766,7 +2007,7 @@ struct PromptTemplate
 
 Wire protocol types for daemon-client communication.
 
-**2240** lines of Rust · **79** tests
+**2247** lines of Rust · **79** tests
 
 <details><summary>Public API</summary>
 
@@ -1806,13 +2047,14 @@ struct ToolInfo
 
 LLM provider abstraction
 
-**8613** lines of Rust · **168** tests
+**9435** lines of Rust · **177** tests
 
 **Workspace deps:** `clanker-message`, `clanker-router`, `clanker-tui-types`
 
 <details><summary>Public API</summary>
 
 ```
+enum CompletionRequestBridgeMessageRole
 enum EntitlementState
 enum FailoverReason
 enum OAuthFlow
@@ -1828,11 +2070,13 @@ fn classify_api_error
 fn classify_transport_error
 fn codex_models
 fn codex_status_suffix
+fn completion_request_from_bridge_input
 fn connect
 fn ensure_entitlement
 fn entitlement_record
 fn exchange_code
 fn failover_reason
+fn fake_provider_enabled
 fn force_refresh
 fn from_provider
 fn get_credential
@@ -1870,6 +2114,7 @@ fn thinking_level_to_config
 fn token
 fn with_credential_manager
 fn with_credential_pool
+fn with_credential_pool_only
 fn with_db
 fn with_fallbacks
 fn with_retry
@@ -1879,8 +2124,11 @@ struct AnthropicProvider
 struct ClassifiedError
 struct CodexStubProvider
 struct CompletionRequest
+struct CompletionRequestBridgeInput
+struct CompletionRequestBridgeMessage
 struct CredentialManager
 struct EntitlementRecord
+struct FakeProvider
 struct PendingOAuthLogin
 struct ProviderAttempt
 struct ProviderError
@@ -1897,23 +2145,576 @@ trait Provider
 
 ---
 
+## clankers-runtime
+
+Host-facing embedding facade for Clankers.
+
+**16330** lines of Rust · **173** tests
+
+**Workspace deps:** `clanker-message`, `clankers-artifacts`, `clankers-engine`, `clankers-engine-host`, `clankers-tool-host`
+
+<details><summary>Public API</summary>
+
+```
+enum AuthStoreOperation
+enum CapabilityPack
+enum ConfirmationAction
+enum ContextReferenceKind
+enum DynamicRuntimeActionKind
+enum DynamicRuntimeActionReason
+enum DynamicRuntimeActionStatus
+enum DynamicRuntimeKind
+enum DynamicRuntimeRedactionClass
+enum EffectAbilityClass
+enum EffectGate
+enum EffectHandlerMode
+enum EffectResultStatus
+enum ErrorClass
+enum ExtensionRuntimeKind
+enum ExtensionStatus
+enum ExternalProcessJobBackendState
+enum OrchestrationFallbackMode
+enum OrchestrationIssueCode
+enum OrchestrationPlanStatus
+enum OrchestrationPlannerKind
+enum OrchestrationRolloutStage
+enum ProcessJobBackendKind
+enum ProcessJobCwd
+enum ProcessJobErrorCode
+enum ProcessJobLifecycleBucket
+enum ProcessJobLogReconciliationState
+enum ProcessJobLogWriteDisposition
+enum ProcessJobNotificationKind
+enum ProcessJobOperation
+enum ProcessJobOwnerScope
+enum ProcessJobReceiptPayload
+enum ProcessJobReconciliationState
+enum ProcessJobRetentionClass
+enum ProcessJobRetentionEligibility
+enum ProcessJobStatus
+enum ProcessJobStream
+enum ProcessJobToolRequest
+enum ProcessJobToolResult
+enum ProjectProcessJobProfileSourcePrecedence
+enum ProjectProcessJobProfileValidationCode
+enum PromptSourceKind
+enum ProviderMessageRole
+enum ProviderModelStatus
+enum ProviderStreamEvent
+enum RemoteDependencyFailureKind
+enum RemoteExecutionArtifactKind
+enum RemoteExecutionTarget
+enum RuntimeError
+enum RuntimeToolStatus
+enum RuntimeUsageObservationKind
+enum RustNativeFallbackStatus
+enum SessionEvent
+enum SessionLedgerEntry
+enum SessionLedgerRole
+enum SideEffectLevel
+enum SteelAmbientAccessKind
+enum SteelHostCallOutcome
+enum SteelMutationApplyReason
+enum SteelMutationApplyStatus
+enum SteelMutationDecisionOutcome
+enum SteelMutationHostPreflightReason
+enum SteelMutationHostPreflightStatus
+enum SteelMutationIoError
+enum SteelMutationPatchFormat
+enum SteelMutationPolicyParseError
+enum SteelMutationReasonCode
+enum SteelMutationRollbackReason
+enum SteelMutationRollbackStatus
+enum SteelMutationUcanExpiryStatus
+enum SteelMutationVerificationStatus
+enum SteelRuntimeReasonCode
+enum SteelRuntimeStatusCode
+enum SteelToolExecutorKind
+enum SteelToolSubstrateFallbackMode
+enum SteelToolSubstrateIssue
+enum SteelToolSubstrateRolloutStage
+enum SteelToolSubstrateStatus
+enum SteelTurnExecutionStatus
+enum SteelTurnPlanningAuthorityReason
+enum SteelTurnPlanningAuthorityStatus
+enum StopReason
+enum ToolCollisionPolicy
+enum ToolStatus
+enum WasmToolExecutionStatus
+fn all
+fn allows_log_access
+fn allows_operation
+fn apply_steel_mutation_host_function
+fn approve
+fn as_str
+fn assemble
+fn assemble_prompt
+fn assistant
+fn authorize_dynamic_runtime_action
+fn authorize_steel_mutation
+fn authorize_steel_turn_execution
+fn backend_unavailable
+fn body_hash
+fn bounded_log_reader
+fn bounded_watch_patterns
+fn build
+fn builder
+fn bytes
+fn can_access
+fn cancellation_adapter
+fn cancelled
+fn canonical_bytes
+fn capability_metadata
+fn class
+fn classify_summary
+fn classify_write
+fn collision_policy
+fn common
+fn comparison_default
+fn completed
+fn confirmation_broker
+fn contains_secret_markers
+fn contains_tool
+fn create_session
+fn custom_tool
+fn default_deny
+fn default_effect_class
+fn default_enabled
+fn deny
+fn derive_id
+fn descriptors
+fn desktop_default
+fn disabled
+fn disabled_tool
+fn disabled_tools
+fn effect_class
+fn effect_classes
+fn effect_request
+fn eligibility_for_summary
+fn embedding_safe
+fn empty
+fn evaluate_remote_dependency_sync
+fn evaluate_steel_request
+fn event_buffer
+fn event_observer
+fn executed
+fn extension_runtime_tools
+fn failed
+fn failure
+fn for_backend
+fn for_start_request
+fn for_stream
+fn from_capabilities
+fn from_effect_result
+fn from_host
+fn from_identity_envelope
+fn from_json_str
+fn from_metadata
+fn from_static
+fn full_control
+fn full_replace
+fn headless_prompt_parity_fixture
+fn host_context_only
+fn in_memory
+fn initial_effect_handler_subset
+fn initial_subset_deny_by_default
+fn interrupt
+fn into_receipt
+fn into_summary_update
+fn into_tool_receipt
+fn is_allowed
+fn is_authorized
+fn is_blake3_native
+fn is_terminal
+fn label
+fn ledger_entries_from_engine_messages
+fn ledger_messages_from_engine_messages
+fn legacy
+fn matches_owner
+fn message
+fn model_adapter
+fn native
+fn new
+fn observe_only
+fn omissions
+fn operation
+fn pack
+fn packs
+fn parse
+fn parse_steel_mutation_policy
+fn permission_denied
+fn persist_and_deliver_notification
+fn plan_tool_invocation_with_steel_or_fallback
+fn plan_turn_with_steel_or_fallback
+fn preflight_steel_mutation_host_function
+fn project_process_job_list
+fn prompt_assembly
+fn prompt_source_service
+fn protects_active_state
+fn pueue
+fn pure
+fn raw_log_reader
+fn ready
+fn receipt
+fn receipt_hash
+fn reconcile_external_backend_reference
+fn reconcile_persisted_process_jobs
+fn reference_for
+fn refresh_summary
+fn replay
+fn replay_authorized_notifications
+fn replay_context
+fn replay_ledger_entries
+fn request_confirmation
+fn request_confirmation_fail_closed
+fn required_hashes
+fn requires_confirmation
+fn resolve
+fn resolve_from_sources
+fn resolve_with_evidence
+fn resume_session
+fn retry_adapter
+fn retryable
+fn reviewed
+fn rollback_steel_mutation_host_function
+fn route_through_effect_handler
+fn run_confirmed_action
+fn run_cross_layer_fixture
+fn run_effect_fail_closed
+fn run_fake_steel_orchestration
+fn run_fake_wasm_tool_execution
+fn rust_native_turn_plan
+fn safe_command_preview
+fn safe_event_summary
+fn safe_identity_metadata
+fn safe_label
+fn safe_log_excerpt
+fn safe_message
+fn safe_metadata_value
+fn safe_notification_decision
+fn safe_notification_event
+fn services
+fn session_id
+fn set_disabled_tools
+fn set_model
+fn shutdown
+fn skipped
+fn stable_action_key
+fn state_payload
+fn stateless
+fn steel_ambient_access_negative_fixtures
+fn steel_runtime_status
+fn steel_tool_plan_payload
+fn submit_prompt
+fn succeeded
+fn summary
+fn supports_operation
+fn systemd
+fn take_events
+fn terminal
+fn text
+fn text_summary
+fn to_effect_result
+fn to_json
+fn to_semantic_event
+fn tool_adapter
+fn tool_catalog
+fn tool_result
+fn tools
+fn unavailable
+fn unavailable_in_core_crate
+fn unsupported
+fn unsupported_detail
+fn unsupported_receipt
+fn unsupported_with_detail
+fn usage
+fn usage_adapter
+fn user_prompt
+fn user_text
+fn verify_observation
+fn with
+fn with_artifact_dependencies
+fn with_audience
+fn with_capability
+fn with_caveat_ids
+fn with_denial_class
+fn with_dirty_repository
+fn with_disabled_tools
+fn with_error_class
+fn with_input_schema_hash
+fn with_issuer
+fn with_metadata
+fn with_output_artifact
+fn with_prompt_id
+fn with_proof_references
+fn with_replay_status
+fn with_required_artifacts
+fn with_revocation_status
+fn with_safe_metadata
+fn with_session
+fn with_session_capabilities
+fn with_source
+fn with_target_hash
+fn with_ucan_authorization
+struct AdoptProcessJobRequest
+struct AssembledPrompt
+struct AuthStoreAccessRequest
+struct BackendRef
+struct BasaltSteelContractEvidence
+struct ConfirmationDecision
+struct ConfirmationRequest
+struct ContextReferenceRequest
+struct CredentialPoolRequest
+struct CrossLayerFixtureReceipt
+struct DefaultProcessJobNotificationPolicyEngine
+struct DesktopRuntimeServices
+struct DisabledExtensionService
+struct DisabledPromptSourceService
+struct DisabledSessionStore
+struct DynamicRuntimeActionEnvelope
+struct DynamicRuntimeActionReceipt
+struct DynamicRuntimeAuthorizationContext
+struct EchoModelAdapter
+struct EffectCorrelationId
+struct EffectRequest
+struct EffectRequestRef
+struct EffectResult
+struct EventMetadata
+struct ExtensionReceipt
+struct ExtensionRuntimeRequest
+struct ExtensionServices
+struct ExtensionToolDescriptor
+struct ExternalProcessJobReconciliationFacts
+struct FailClosedConfirmationBroker
+struct FakeSteelOrchestrationProfile
+struct FakeSteelOrchestrationReceipt
+struct FakeSteelOrchestrationRequest
+struct GarbageCollectProcessJobsRequest
+struct HostContext
+struct InMemorySessionStore
+struct ListProcessJobsRequest
+struct ModelFailure
+struct ModelRequest
+struct ModelRequestMetadata
+struct ModelResponse
+struct MutateProcessJobRequest
+struct NativeProcessJobIdentity
+struct NativeProcessJobLogLayout
+struct NativeProcessJobObservation
+struct NoopRuntimeCancellationAdapter
+struct NoopRuntimeEventObserver
+struct NoopRuntimeRetryAdapter
+struct NoopRuntimeUsageAdapter
+struct NoopService
+struct OrchestrationCandidate
+struct OrchestrationDecision
+struct OrchestrationPlan
+struct OrchestrationPlanReceipt
+struct PollProcessJobRequest
+struct ProcessJobBackendCapabilities
+struct ProcessJobBackendStart
+struct ProcessJobBackendStatus
+struct ProcessJobCallerScope
+struct ProcessJobCapabilitySet
+struct ProcessJobError
+struct ProcessJobEventId
+struct ProcessJobFilter
+struct ProcessJobGarbageCollectionFailure
+struct ProcessJobGarbageCollectionReceipt
+struct ProcessJobId
+struct ProcessJobIdentityEnvelope
+struct ProcessJobListProjection
+struct ProcessJobLogChunk
+struct ProcessJobLogCursor
+struct ProcessJobLogOverflowPolicy
+struct ProcessJobLogRange
+struct ProcessJobLogRef
+struct ProcessJobLogRetentionPolicy
+struct ProcessJobNotificationDecision
+struct ProcessJobNotificationEvent
+struct ProcessJobNotificationObservation
+struct ProcessJobNotificationPolicy
+struct ProcessJobNotificationPolicyState
+struct ProcessJobProfileReceiptMetadata
+struct ProcessJobProjectionBounds
+struct ProcessJobProjectionItem
+struct ProcessJobReceipt
+struct ProcessJobReceiptCommon
+struct ProcessJobReconciliationOutcome
+struct ProcessJobReconciliationReport
+struct ProcessJobRedactionPolicy
+struct ProcessJobReleasedLogRef
+struct ProcessJobResourcePolicy
+struct ProcessJobRetentionMetadata
+struct ProcessJobRetentionPolicy
+struct ProcessJobSafeCapabilityHints
+struct ProcessJobSummary
+struct ProcessJobToolReceipt
+struct ProjectProcessJobProfile
+struct ProjectProcessJobProfileManifestSource
+struct ProjectProcessJobProfilePolicy
+struct ProjectProcessJobProfileResolution
+struct ProjectProcessJobProfileResolutionEvidence
+struct ProjectProcessJobProfileValidationError
+struct ProjectProcessJobProfiles
+struct PromptAssembler
+struct PromptAssemblyPolicy
+struct PromptId
+struct PromptInput
+struct PromptProvenance
+struct PromptReceipt
+struct PromptReplayEntry
+struct PromptSection
+struct PromptSourceRequest
+struct PromptSources
+struct ProviderMessage
+struct ProviderModelFailure
+struct ProviderModelRequest
+struct ProviderModelResponse
+struct ReadProcessJobLogRequest
+struct RemoteArtifactEnvelope
+struct RemoteDependencyFailure
+struct RemoteDependencySyncReport
+struct RemoteExecutionDependency
+struct RemoteExecutionRequest
+struct ResolvedSkillSnippet
+struct Runtime
+struct RuntimeBuilder
+struct RuntimeRetryRequest
+struct RuntimeServices
+struct RuntimeToolRequest
+struct RuntimeToolResponse
+struct RuntimeUsageObservation
+struct SessionHandle
+struct SessionId
+struct SessionLedgerMessage
+struct SessionLedgerReceipt
+struct SessionLedgerRecord
+struct SessionLedgerReplay
+struct SessionLedgerReplayMetadata
+struct SessionLedgerSummary
+struct SessionLedgerUnsupported
+struct SessionLedgerUsage
+struct SessionOptions
+struct SessionRecord
+struct SkillResolution
+struct SkillResolutionRequest
+struct SkillSnippet
+struct StartProcessJobProfileRequest
+struct StartProcessJobRequest
+struct StaticEffectHandler
+struct StaticPromptSourceService
+struct SteelHostCallReceipt
+struct SteelHostFunctionRegistration
+struct SteelMutationApplyReceipt
+struct SteelMutationApproval
+struct SteelMutationCheckpointPlan
+struct SteelMutationDecision
+struct SteelMutationHostContext
+struct SteelMutationHostPreflightReceipt
+struct SteelMutationPatch
+struct SteelMutationPatchPayload
+struct SteelMutationPolicy
+struct SteelMutationReceiptPolicy
+struct SteelMutationRequest
+struct SteelMutationRollbackReceipt
+struct SteelMutationRuntimeProfile
+struct SteelMutationSafeUcanMetadata
+struct SteelMutationTargetClass
+struct SteelMutationUcanGrant
+struct SteelMutationUcanPolicy
+struct SteelMutationVerbPolicy
+struct SteelMutationVerificationReceipt
+struct SteelOrchestrationProfile
+struct SteelRuntimeProfile
+struct SteelRuntimeReceipt
+struct SteelRuntimeRequest
+struct SteelRuntimeStatus
+struct SteelToolInvocationInput
+struct SteelToolInvocationPlan
+struct SteelToolInvocationReceipt
+struct SteelToolSubstrateProfile
+struct SteelTurnExecutionHostCallPayload
+struct SteelTurnExecutionHostCallReceipt
+struct SteelTurnExecutionInput
+struct SteelTurnExecutionReceipt
+struct SteelTurnPlanHostCallPayload
+struct SteelTurnPlanningAuthorityGrant
+struct SteelTurnPlanningAuthorityReceipt
+struct ToolCatalog
+struct ToolCatalogBuilder
+struct ToolCatalogOmission
+struct ToolDescriptor
+struct ToolEffectReceipt
+struct TurnPlanningInput
+struct UcanAuthorizationMetadata
+struct UnavailableRuntimeToolAdapter
+struct UnsupportedContextReference
+struct WaitProcessJobRequest
+struct WasmToolExecutionProfile
+struct WasmToolExecutionReceipt
+struct WasmToolExecutionRequest
+struct WriteProcessJobStdinRequest
+trait AuthService
+trait CacheStore
+trait CheckpointStore
+trait ConfirmationBroker
+trait CredentialPoolPolicyService
+trait EffectHandler
+trait ExtensionAuthStoreService
+trait ExtensionRuntimeService
+trait ModelAdapter
+trait PluginStore
+trait ProcessJobBackend
+trait ProcessJobLogStore
+trait ProcessJobNotificationPolicyEngine
+trait ProcessJobNotificationSink
+trait ProcessJobProjection
+trait ProcessJobService
+trait ProcessJobStore
+trait ProjectContextService
+trait PromptSourceService
+trait ProviderRouterService
+trait RuntimeCancellationAdapter
+trait RuntimeEventObserver
+trait RuntimeRetryAdapter
+trait RuntimeToolAdapter
+trait RuntimeUsageAdapter
+trait SessionStore
+trait SettingsService
+trait SkillStore
+trait SteelMutationBackupStore
+trait SteelMutationTargetStore
+trait SteelMutationVerifier
+```
+
+</details>
+
+[Source](https://github.com/brittonr/clankers/tree/main/crates/clankers-runtime/src/)
+
+---
+
 ## clankers-session
 
 Session persistence and tree management for agent conversations
 
-**4014** lines of Rust · **102** tests
+**5012** lines of Rust · **111** tests
 
-**Workspace deps:** `clanker-message`
+**Workspace deps:** `clanker-message`, `clankers-artifacts`
 
 <details><summary>Public API</summary>
 
 ```
 enum AnnotationEntry
+enum LedgerPayload
+enum LedgerRecord
 enum MigrateResult
 enum SessionEntry
 fn active_leaf_id
 fn append_entry
+fn append_ledger_record
 fn append_message
+fn append_typed_ledger_fact
 fn build
 fn build_context
 fn build_messages_for_branch
@@ -1935,12 +2736,16 @@ fn find_latest_leaf
 fn find_message_public
 fn find_session_by_id
 fn find_unique_messages
+fn from_records
 fn from_session_entry
 fn get_children
+fn id
 fn import_session
+fn inspect_typed_ledger_facts
 fn into_session_entry
 fn is_branch_point
 fn is_persisted
+fn is_typed
 fn kind_str
 fn latest_compaction_summary
 fn latest_message
@@ -1953,20 +2758,29 @@ fn merge_selective
 fn message_count
 fn migrate_jsonl_to_automerge
 fn model
+fn new
+fn opaque
+fn opaque_from_unknown_json
 fn open
 fn purge_all_sessions
 fn purge_sessions
 fn put_annotation
 fn put_message
+fn query
+fn query_fields
 fn read_annotations
 fn read_entries
 fn read_header
+fn read_ledger_records
 fn read_messages
 fn read_session_summary
+fn read_typed_ledger_facts
 fn record_branch
 fn record_compaction_summary
+fn record_custom
 fn record_label
 fn record_resume
+fn records
 fn resolve_target
 fn rewind
 fn save_compact
@@ -1979,22 +2793,40 @@ fn session_id
 fn set_active_head
 fn set_message_id
 fn to_session_entries
+fn typed
+fn typed_ledger_file_path
 fn walk_branch
 fn worktree_branch
 fn worktree_path
+struct ArtifactReferenceLedgerFact
+struct AuthorizationLedgerFact
+struct BlockLedgerFact
 struct BranchEntry
 struct BranchInfo
+struct CairnLedgerFact
 struct CompactionEntry
 struct CustomEntry
+struct ErrorLedgerFact
 struct HeaderEntry
 struct LabelEntry
+struct LedgerIndex
+struct LedgerQuery
+struct LedgerQueryFields
 struct MessageEntry
 struct ModelChangeEntry
+struct ModelLedgerFact
+struct OpaqueLedgerRecord
+struct PendingChangeLedgerFact
 struct ResumeEntry
+struct ReviewLedgerFact
 struct SessionError
 struct SessionManager
 struct SessionSummary
 struct SessionTree
+struct TodoLedgerFact
+struct ToolLedgerFact
+struct TypedLedgerInspection
+struct TypedLedgerRecord
 ```
 
 </details>
@@ -2007,7 +2839,7 @@ struct SessionTree
 
 Skills (markdown-based)
 
-**756** lines of Rust · **17** tests
+**773** lines of Rust · **17** tests
 
 <details><summary>Public API</summary>
 
@@ -2042,7 +2874,7 @@ struct Skill
 
 Reusable tool execution contracts for engine-host runners.
 
-**372** lines of Rust · **10** tests
+**744** lines of Rust · **12** tests
 
 **Workspace deps:** `clanker-message`, `clankers-engine`
 
@@ -2052,18 +2884,46 @@ Reusable tool execution contracts for engine-host runners.
 enum CapabilityDecision
 enum ToolHostError
 enum ToolHostOutcome
+enum ToolHostServiceKind
+enum ToolHostServiceStatus
+enum ToolProgressKind
+fn active
+fn available
+fn cancelled
+fn emit_progress
+fn empty
+fn ensure_allowed
+fn ensure_not_cancelled
 fn finish
+fn get
+fn is_available
 fn new
 fn push
+fn require_service
 fn tool_call_id
+fn unavailable
+fn with_cancellation
+fn with_capability
+fn with_metadata
+fn with_progress_sink
+fn with_service
+fn with_services
+struct NullToolProgressSink
 struct ToolDescriptor
+struct ToolHostServiceHandle
+struct ToolHostServices
+struct ToolInvocationCancellation
+struct ToolInvocationContext
 struct ToolOutputAccumulator
+struct ToolProgressEvent
 struct ToolTruncationLimits
 struct ToolTruncationMetadata
 trait CapabilityChecker
+trait NeutralToolExecutor
 trait ToolCatalog
 trait ToolExecutor
 trait ToolHook
+trait ToolProgressSink
 ```
 
 </details>
@@ -2076,7 +2936,7 @@ trait ToolHook
 
 clankers-tts — Multi-provider text-to-speech router
 
-**1277** lines of Rust · **49** tests
+**1286** lines of Rust · **49** tests
 
 <details><summary>Public API</summary>
 
@@ -2116,7 +2976,7 @@ trait TtsProvider
 
 Terminal UI (ratatui + crossterm)
 
-**16619** lines of Rust · **279** tests
+**16869** lines of Rust · **284** tests
 
 **Workspace deps:** `clanker-tui-types`, `clankers-autoresearch`, `clankers-protocol`
 
@@ -2525,23 +3385,126 @@ trait Panel
 
 ## clankers-ucan
 
-Clankers-specific capability tokens over clanker-auth generic infrastructure.
+Clankers-specific capability vocabulary and UCAN auth adapters.
 
-**1436** lines of Rust · **52** tests
+**4764** lines of Rust · **114** tests
 
-**Workspace deps:** `clanker-auth`
+**Workspace deps:** `clanker-auth`, `clankers-runtime`
 
 <details><summary>Public API</summary>
 
 ```
+enum AdapterError
+enum BuiltinAdmissionError
 enum Capability
+enum CaveatHookError
+enum EffectKind
 enum Operation
+enum PublicCredentialError
+enum PublicCredentialStoreError
+enum PublicIssuerError
+enum ReplayAdmissionStatus
+enum UcanAdmissionDecision
+enum VocabularyError
+fn ability
+fn admit_credential_replay
+fn artifact_hash_caveat
+fn artifact_kind_caveat
+fn audience
+fn authorize
+fn authorize_with_revocations
+fn authorize_with_store
 fn authorizes
+fn clankers_daemon_auth_policy
+fn command_prefix_caveat
 fn contains
+fn contract
 fn db
+fn decode
+fn decode_public_credential_base64
+fn delegate_child_grant
+fn delegate_to
+fn encode
+fn encode_public_credential_base64
+fn expires_at_ms_caveat
+fn freshness_window_ms_caveat
+fn from_base64
+fn from_iroh_secret_key
 fn generate_root_token
+fn is_allowed
+fn is_denied
+fn issue_child_from_parent
+fn issue_delegated_credential
+fn issue_root_credential
+fn issuer
+fn lookup_credential
+fn max_bytes_at_most_caveat
+fn model_prefix_caveat
+fn network_host_caveat
+fn network_scheme_caveat
 fn new
+fn nonce_caveat
+fn normalize_resource
+fn not_before_ms_caveat
+fn parse_effect_kind
+fn path_prefix_caveat
+fn policy_hash
+fn proof_collection
+fn proofs
+fn provider_caveat
+fn read_tool_descriptor
+fn read_tool_effect_request
+fn read_tool_invocation
+fn redaction_class_caveat
+fn remove_credential
+fn replay_id
+fn resource
+fn revocation_reference_for
+fn revoke_reference
+fn run_read_tool_with_ucan_admission
+fn run_tool_with_ucan_then_confirmation
+fn schema
+fn set_trusted_roots
+fn store_credential
+fn timeout_ms_at_most_caveat
+fn to_base64
+fn token_reference
+fn tool_invocation
+fn trusted_roots
+fn verification_context_from
+fn verification_key
+fn verify_with_context
+fn verify_with_context_and_revocations
+fn verify_with_did_keys
+fn verify_with_did_keys_and_revocations
+fn with_artifact_hash
+fn with_artifact_kind
+fn with_command
+fn with_model
+fn with_network_host
+fn with_network_scheme
+fn with_nonce
+fn with_path
+fn with_provider
+fn with_redaction_class
+fn with_replay_id
+fn write_tool_descriptor
+struct BasaltAdmissionReceipt
+struct BasaltAdmissionRequest
+struct BasaltUcanAuthority
+struct ClankersCaveatPolicySet
+struct DelegatedGrant
+struct EffectCapability
+struct EffectCaveatContext
+struct EffectInvocation
+struct PublicCredentialEnvelope
+struct PublicUcanAuthorizer
+struct PublicUcanIssuer
+struct RedbPublicCredentialStore
 struct RedbRevocationStore
+struct UcanEffectAdmissionHandler
+trait RuntimeUcanAdmission
+trait UcanAuthorizer
 ```
 
 </details>
@@ -2554,13 +3517,15 @@ struct RedbRevocationStore
 
 Shared utility functions for clankers.
 
-**1942** lines of Rust · **79** tests
+**2496** lines of Rust · **86** tests
 
 **Workspace deps:** `clanker-message`, `clanker-tui-types`
 
 <details><summary>Public API</summary>
 
 ```
+enum ContextReferenceKind
+enum ContextReferenceStatus
 enum TokenKind
 fn ansi_color
 fn build_env_filter
@@ -2571,6 +3536,7 @@ fn ensure_gitignore_entry
 fn estimate_tokens
 fn estimate_tokens_for_messages
 fn expand_at_refs_with_images
+fn expand_at_refs_with_policy
 fn find_at_refs
 fn generate_id
 fn generate_uuid
@@ -2591,6 +3557,8 @@ fn truncate_tail
 fn walk_directory
 fn walk_directory_with_options
 struct AtFileRef
+struct ContextReferenceMetadata
+struct ContextReferencePolicy
 struct ExpandedContent
 struct HighlightSpan
 struct PathPolicy
@@ -2608,7 +3576,7 @@ struct WalkOptions
 
 Zellij integration and orchestration
 
-**896** lines of Rust · **39** tests
+**906** lines of Rust · **39** tests
 
 <details><summary>Public API</summary>
 

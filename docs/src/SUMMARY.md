@@ -15,6 +15,7 @@
 - [Session Format](./reference/session-format.md)
 - [Daemon & Actors](./reference/daemon.md)
 - [Request Lifecycle](./reference/request-lifecycle.md)
+- [Hooks](./reference/hooks.md)
 - [Durable Process Jobs](./reference/process-jobs.md)
 - [Provider Contracts](./reference/provider-contracts.md)
 - [Polyglot Agent Architecture](./reference/polyglot-agent-architecture.md)

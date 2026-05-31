@@ -61,6 +61,19 @@ impl HookPoint {
         matches!(self, Self::PrePrompt | Self::PreTool | Self::PreCommit)
     }
 
+    /// User-facing behavior summary for hook help and generated docs.
+    pub fn behavior_label(&self) -> &'static str {
+        match self {
+            Self::PrePrompt => "blocking pre-hook (deny + modify prompt)",
+            Self::PreTool => "blocking pre-hook (deny + modify tool input)",
+            Self::PreCommit => "blocking pre-hook (deny + modify git metadata)",
+            Self::PreTurn => "blocking pre-hook (deny only)",
+            Self::TurnStart | Self::TurnEnd => "non-blocking model-turn notification",
+            Self::PostPrompt | Self::PostTurn | Self::PostTool | Self::PostCommit => "observational post-hook",
+            Self::SessionStart | Self::SessionEnd | Self::OnError | Self::ModelChange => "observational lifecycle hook",
+        }
+    }
+
     /// Snake-case plugin event kind for hooks exposed through the plugin event protocol.
     pub fn plugin_event_kind(&self) -> Option<&'static str> {
         match self {
@@ -144,5 +157,13 @@ mod tests {
         assert_eq!(HookPoint::PreCommit.plugin_event_kind(), None);
         assert_eq!(HookPoint::PostCommit.plugin_event_kind(), None);
         assert_eq!(HookPoint::OnError.plugin_event_kind(), None);
+    }
+
+    #[test]
+    fn behavior_labels_distinguish_blocking_turn_hooks_from_notifications() {
+        assert_eq!(HookPoint::PreTurn.behavior_label(), "blocking pre-hook (deny only)");
+        assert_eq!(HookPoint::PostTurn.behavior_label(), "observational post-hook");
+        assert_eq!(HookPoint::TurnStart.behavior_label(), "non-blocking model-turn notification");
+        assert_eq!(HookPoint::PrePrompt.behavior_label(), "blocking pre-hook (deny + modify prompt)");
     }
 }

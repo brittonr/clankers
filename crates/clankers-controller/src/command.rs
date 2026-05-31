@@ -1261,7 +1261,41 @@ mod tests {
         })
     }
 
+    struct DenyPreTurnHook;
+
+    #[async_trait::async_trait]
+    impl clankers_hooks::HookHandler for DenyPreTurnHook {
+        fn name(&self) -> &str {
+            "deny-pre-turn"
+        }
+
+        fn priority(&self) -> u32 {
+            clankers_hooks::dispatcher::PRIORITY_PLUGIN_HOOKS
+        }
+
+        fn subscribes_to(&self, point: clankers_hooks::HookPoint) -> bool {
+            matches!(point, clankers_hooks::HookPoint::PreTurn)
+        }
+
+        async fn handle(
+            &self,
+            _point: clankers_hooks::HookPoint,
+            _payload: &clankers_hooks::HookPayload,
+        ) -> clankers_hooks::HookVerdict {
+            clankers_hooks::HookVerdict::Deny {
+                reason: "controller hook blocked turn".to_string(),
+            }
+        }
+    }
+
     fn make_test_controller_with_provider(provider: Arc<dyn clankers_provider::Provider>) -> SessionController {
+        make_test_controller_with_provider_and_hooks(provider, None)
+    }
+
+    fn make_test_controller_with_provider_and_hooks(
+        provider: Arc<dyn clankers_provider::Provider>,
+        hook_pipeline: Option<Arc<clankers_hooks::HookPipeline>>,
+    ) -> SessionController {
         let agent = clankers_agent::Agent::new(
             provider,
             vec![],
@@ -1272,6 +1306,7 @@ mod tests {
         SessionController::new(agent, ControllerConfig {
             session_id: "test-session".to_string(),
             model: "test-model".to_string(),
+            hook_pipeline,
             ..Default::default()
         })
     }
@@ -1400,6 +1435,33 @@ mod tests {
             DaemonEvent::PromptDone { error: Some(message) } if message.contains("prompt denied")
         )));
         assert!(ctrl.agent.as_ref().expect("agent").messages().is_empty());
+    }
+
+    #[tokio::test]
+    async fn controller_owned_prompt_pre_turn_denial_prevents_provider_request() {
+        let requests = Arc::new(Mutex::new(Vec::new()));
+        let mut pipeline = clankers_hooks::HookPipeline::new();
+        pipeline.register(Arc::new(DenyPreTurnHook));
+        let mut ctrl = make_test_controller_with_provider_and_hooks(
+            Arc::new(RecordingPromptProvider {
+                requests: requests.clone(),
+            }),
+            Some(Arc::new(pipeline)),
+        );
+
+        ctrl.handle_command(SessionCommand::Prompt {
+            text: "hello".to_string(),
+            images: vec![],
+        })
+        .await;
+
+        let events = ctrl.drain_events();
+        assert!(events.iter().any(|event| matches!(
+            event,
+            DaemonEvent::PromptDone { error: Some(message) } if message.contains("controller hook blocked turn")
+        )));
+        assert!(requests.lock().unwrap_or_else(|poisoned| poisoned.into_inner()).is_empty());
+        assert_eq!(ctrl.agent.as_ref().expect("agent").messages().len(), 1);
     }
 
     #[tokio::test]

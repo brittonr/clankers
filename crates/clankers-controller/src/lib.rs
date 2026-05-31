@@ -61,6 +61,13 @@ use clankers_core::CoreState;
 use clankers_hooks::HookPipeline;
 use clankers_protocol::DaemonEvent;
 use clankers_session::SessionManager;
+pub use runtime_adapter::ControllerRuntimeAdapter;
+pub use runtime_adapter::FakeRuntimeAdapter;
+pub use runtime_adapter::RuntimeControlRequest;
+pub use runtime_adapter::RuntimeControlResult;
+pub use runtime_adapter::RuntimePromptCompletion;
+pub use runtime_adapter::RuntimePromptRequest;
+pub use runtime_adapter::RuntimePromptResult;
 use tokio::sync::broadcast;
 use tracing::debug;
 use tracing::info;
@@ -69,13 +76,6 @@ use tracing::warn;
 use self::audit::AuditTracker;
 use self::config::ControllerConfig;
 use self::confirm::ConfirmStore;
-pub use runtime_adapter::ControllerRuntimeAdapter;
-pub use runtime_adapter::FakeRuntimeAdapter;
-pub use runtime_adapter::RuntimeControlRequest;
-pub use runtime_adapter::RuntimeControlResult;
-pub use runtime_adapter::RuntimePromptCompletion;
-pub use runtime_adapter::RuntimePromptRequest;
-pub use runtime_adapter::RuntimePromptResult;
 
 /// Controller-owned identity for pending shell work correlated back into the core.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -249,6 +249,9 @@ impl SessionController {
     pub fn new(mut agent: Agent, config: ControllerConfig) -> Self {
         agent.set_session_id(config.session_id.clone());
         agent.apply_controller_thinking_level(Self::provider_thinking_level(config.initial_thinking_level));
+        if let Some(pipeline) = config.hook_pipeline.as_ref() {
+            agent = agent.with_hook_pipeline(Arc::clone(pipeline));
+        }
         let event_rx = agent.subscribe();
         let model = config.model.clone();
         let metrics = metrics_capture::MetricsCollector::new(config.session_id.clone());

@@ -15,10 +15,16 @@ Workspace crate dependencies (auto-extracted from Cargo.toml files).
 ```mermaid
 graph TD
     clanker-router --> clanker-message
+    adapters --> clanker-message
+    adapters --> engine
+    adapters --> engine-host
+    adapters --> tool-host
     agent --> clanker-loop
     agent --> clanker-message
     agent --> clanker-router
     agent --> clanker-tui-types
+    agent --> adapters
+    agent --> artifacts
     agent --> config
     agent --> core
     agent --> db
@@ -29,6 +35,7 @@ graph TD
     agent --> procmon
     agent --> prompts
     agent --> provider
+    agent --> runtime
     agent --> skills
     agent --> tool-host
     agent --> util
@@ -37,7 +44,6 @@ graph TD
     config --> agent-defs
     config --> hooks
     config --> model-selection
-    config --> tui
     config --> ucan
     controller --> clanker-loop
     controller --> clanker-message
@@ -63,13 +69,20 @@ graph TD
     provider --> clanker-message
     provider --> clanker-router
     provider --> clanker-tui-types
+    runtime --> clanker-message
+    runtime --> artifacts
+    runtime --> engine
+    runtime --> engine-host
+    runtime --> tool-host
     session --> clanker-message
+    session --> artifacts
     tool-host --> clanker-message
     tool-host --> engine
     tui --> clanker-tui-types
     tui --> autoresearch
     tui --> protocol
     ucan --> clanker-auth
+    ucan --> runtime
     util --> clanker-message
     util --> clanker-tui-types
 ```
@@ -80,62 +93,62 @@ graph TD
 
 | Crate | Lines | Tests | Description |
 |-------|------:|------:|-------------|
-| `clanker-tui-types` | 1831 | 14 | Shared types for terminal-agent TUI boundaries. |
-| `tui` | 16619 | 279 | Terminal UI (ratatui + crossterm) |
-| `zellij` | 896 | 39 | Zellij integration and orchestration |
-| `tts` | 1277 | 49 | clankers-tts — Multi-provider text-to-speech router |
+| `clanker-tui-types` | 1833 | 14 |  |
+| `tui` | 16869 | 284 | Terminal UI (ratatui + crossterm) |
+| `zellij` | 906 | 39 | Zellij integration and orchestration |
+| `tts` | 1286 | 49 | clankers-tts — Multi-provider text-to-speech router |
 
 ### Agent core
 
 | Crate | Lines | Tests | Description |
 |-------|------:|------:|-------------|
-| `clanker-message` | 882 | 25 | Message types for LLM agent conversations |
-| `agent` | 8618 | 146 | Agent core — turn loop, event bus, tool interface, context management |
-| `agent-defs` | 873 | 29 | Agent definition system (first-class) |
-| `core` | 1643 | 42 |  |
-| `engine` | 1481 | 29 | Host-facing reusable engine contracts for model/tool turn policy that compose alongside `clankers-core` through controller/agent adapter seams. |
-| `controller` | 9244 | 210 | Transport-agnostic session controller for agent orchestration. |
+| `clanker-message` | 1296 | 27 |  |
+| `agent` | 12837 | 189 | Agent core — turn loop, event bus, tool interface, context management |
+| `agent-defs` | 906 | 29 |  |
+| `core` | 1693 | 42 |  |
+| `engine` | 1966 | 34 | Host-facing reusable engine contracts for model/tool turn policy that compose alongside `clankers-core` through controller/agent adapter seams. |
+| `controller` | 10645 | 226 | Transport-agnostic session controller for agent orchestration. |
 
 ### LLM routing
 
 | Crate | Lines | Tests | Description |
 |-------|------:|------:|-------------|
-| `clanker-router` | 21649 | 382 | clanker-router — Model router and auth gateway for LLM providers |
-| `provider` | 8613 | 168 | LLM provider abstraction |
-| `model-selection` | 1501 | 49 | Multi-model routing policy |
-| `prompts` | 163 | 5 | Prompt templates Prompt template scanning and loading |
+| `clanker-router` | 21981 | 385 | clanker-router — Model router and auth gateway for LLM providers |
+| `provider` | 9435 | 177 | LLM provider abstraction |
+| `model-selection` | 1524 | 49 | Multi-model routing policy |
+| `prompts` | 174 | 5 | Prompt templates Prompt template scanning and loading |
 
 ### Infrastructure
 
 | Crate | Lines | Tests | Description |
 |-------|------:|------:|-------------|
-| `config` | 1702 | 43 | Configuration loading and path resolution for clankers. |
-| `db` | 6714 | 207 | Embedded database (redb) for structured persistent storage. |
-| `hooks` | 1225 | 32 |  |
-| `nix` | 1262 | 61 |  |
-| `protocol` | 2240 | 79 | Wire protocol types for daemon-client communication. |
-| `session` | 4014 | 102 | Session persistence and tree management for agent conversations |
+| `config` | 3163 | 74 | Configuration loading and path resolution for clankers. |
+| `db` | 7161 | 212 | Embedded database (redb) for structured persistent storage. |
+| `hooks` | 1706 | 49 |  |
+| `nix` | 1279 | 61 |  |
+| `protocol` | 2247 | 79 | Wire protocol types for daemon-client communication. |
+| `session` | 5012 | 111 | Session persistence and tree management for agent conversations |
 
 ### Networking & security
 
 | Crate | Lines | Tests | Description |
 |-------|------:|------:|-------------|
-| `clanker-auth` | 1775 | 21 | UCAN-inspired capability tokens over iroh Ed25519 identity. |
-| `matrix` | 1512 | 8 |  |
-| `ucan` | 1436 | 52 | Clankers-specific capability tokens over clanker-auth generic infrastructure. |
+| `clanker-auth` | 1789 | 21 |  |
+| `matrix` | 1527 | 8 |  |
+| `ucan` | 4764 | 114 | Clankers-specific capability vocabulary and UCAN auth adapters. |
 
 ### Extensions & tooling
 
 | Crate | Lines | Tests | Description |
 |-------|------:|------:|-------------|
-| `clanker-plugin-sdk` | 524 | 0 | SDK for building [clankers](https://github.com/brittonr/clankers) WASM plugins. |
-| `plugin` | 3725 | 39 | Plugin system (Extism WASM) |
-| `skills` | 756 | 17 | Skills (markdown-based) |
-| `procmon` | 468 | 5 | Core process monitor for tracking child processes and resource usage. |
+| `clanker-plugin-sdk` | 534 | 0 | SDK for building [clankers](https://github.com/brittonr/clankers) WASM plugins. |
+| `plugin` | 3824 | 41 | Plugin system (Extism WASM) |
+| `skills` | 773 | 17 | Skills (markdown-based) |
+| `procmon` | 483 | 5 | Core process monitor for tracking child processes and resource usage. |
 
 ### Utilities
 
 | Crate | Lines | Tests | Description |
 |-------|------:|------:|-------------|
-| `util` | 1942 | 79 | Shared utility functions for clankers. |
+| `util` | 2496 | 86 | Shared utility functions for clankers. |
 

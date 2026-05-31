@@ -76,6 +76,79 @@ struct TurnToolUsage {
     used_skill_manage: bool,
 }
 
+fn replace_first_text_content(content: &mut Vec<Content>, replacement: &str) {
+    for block in content.iter_mut() {
+        if let Content::Text { text } = block {
+            text.clear();
+            text.push_str(replacement);
+            return;
+        }
+    }
+
+    content.insert(0, Content::Text {
+        text: replacement.to_string(),
+    });
+}
+
+fn hook_status_for_result(result: &Result<()>) -> clankers_hooks::HookStatus {
+    match result {
+        Ok(()) => clankers_hooks::HookStatus::Success,
+        Err(AgentError::Cancelled) => clankers_hooks::HookStatus::Cancelled,
+        Err(AgentError::Agent { message }) if message.contains("denied") => clankers_hooks::HookStatus::Denied,
+        Err(AgentError::ProviderStreaming { .. }) | Err(AgentError::Agent { .. }) => clankers_hooks::HookStatus::Error,
+    }
+}
+
+fn hook_error_for_result(result: &Result<()>) -> Option<clankers_hooks::HookSafeError> {
+    match result {
+        Ok(()) => None,
+        Err(AgentError::Cancelled) => {
+            Some(clankers_hooks::HookSafeError::new("operation cancelled", Some("cancelled")))
+        }
+        Err(AgentError::ProviderStreaming { message, .. }) => {
+            Some(clankers_hooks::HookSafeError::new(message, Some("provider_streaming")))
+        }
+        Err(AgentError::Agent { message }) => Some(clankers_hooks::HookSafeError::new(message, Some("agent"))),
+    }
+}
+
+fn token_count_to_u64(value: usize) -> u64 {
+    match u64::try_from(value) {
+        Ok(converted) => converted,
+        Err(_) => u64::MAX,
+    }
+}
+
+fn turn_hook_usage_since(messages: &[AgentMessage], start_index: usize) -> Option<clankers_hooks::HookUsage> {
+    let mut saw_usage = false;
+    let mut usage = clankers_hooks::HookUsage::default();
+
+    for message in messages.iter().skip(start_index) {
+        let AgentMessage::Assistant(assistant) = message else {
+            continue;
+        };
+        saw_usage = true;
+        usage.input_tokens = usage.input_tokens.saturating_add(token_count_to_u64(assistant.usage.input_tokens));
+        usage.output_tokens = usage.output_tokens.saturating_add(token_count_to_u64(assistant.usage.output_tokens));
+        usage.cache_creation_input_tokens = usage
+            .cache_creation_input_tokens
+            .saturating_add(token_count_to_u64(assistant.usage.cache_creation_input_tokens));
+        usage.cache_read_input_tokens = usage
+            .cache_read_input_tokens
+            .saturating_add(token_count_to_u64(assistant.usage.cache_read_input_tokens));
+    }
+
+    saw_usage.then_some(usage)
+}
+
+fn tool_call_count_since(messages: &[AgentMessage], start_index: usize) -> usize {
+    messages
+        .iter()
+        .skip(start_index)
+        .filter(|message| matches!(message, AgentMessage::ToolResult(_)))
+        .count()
+}
+
 pub struct Agent {
     /// The LLM provider
     provider: Arc<dyn Provider>,
@@ -310,10 +383,30 @@ impl Agent {
 
     /// Internal: run agent with arbitrary user content blocks
     async fn prompt_with_content(&mut self, text: &str, content: Vec<Content>) -> Result<()> {
+        let prompt_id = MessageId::generate().to_string();
+        let mut prompt_text = text.to_string();
+        let mut prompt_content = content;
+        let result =
+            self.prompt_with_content_after_prompt_hooks(&prompt_id, &mut prompt_text, &mut prompt_content).await;
+        self.fire_post_prompt_hook(&prompt_id, &prompt_text, &result);
+        result
+    }
+
+    async fn prompt_with_content_after_prompt_hooks(
+        &mut self,
+        prompt_id: &str,
+        text: &mut String,
+        content: &mut Vec<Content>,
+    ) -> Result<()> {
+        if let Some(modified_text) = self.fire_pre_prompt_hook(prompt_id, text).await? {
+            text.clone_from(&modified_text);
+            replace_first_text_content(content, text.as_str());
+        }
+
         self.check_prompt_authorization(text)?;
 
         // Create and append user message
-        self.append_user_message(text, content);
+        self.append_user_message(text, std::mem::take(content));
 
         self.event_tx.send(AgentEvent::AgentStart).ok();
 
@@ -325,7 +418,7 @@ impl Agent {
 
         // Select model based on complexity signals
         if let Some(plan) = self.select_model_for_turn(text)? {
-            return self.execute_orchestrated_turn(text, plan).await;
+            return self.execute_orchestrated_turn(prompt_id, text, plan).await;
         }
 
         self.maybe_emit_skill_creation_nudge();
@@ -353,6 +446,19 @@ impl Agent {
             steel_turn_planning: self.steel_turn_planning_config()?,
             steel_tool_substrate: self.steel_tool_substrate_config()?,
         };
+
+        let turn_start_message_index = self.messages.len();
+        let turn_model = config.model.clone();
+        if let Err(error) = self.fire_pre_turn_hook(prompt_id, text, &turn_model, turn_start_message_index).await {
+            let result = Err(error);
+            self.fire_post_turn_hook(prompt_id, text, &turn_model, turn_start_message_index, &result);
+            self.event_tx
+                .send(AgentEvent::AgentEnd {
+                    messages: self.messages.clone(),
+                })
+                .ok();
+            return result;
+        }
 
         let model_port = turn::ProviderModelPort::new(self.provider.as_ref());
         let tool_port = turn::ControllerToolPort {
@@ -386,6 +492,8 @@ impl Agent {
         )
         .await;
 
+        self.fire_post_turn_hook(prompt_id, text, &turn_model, turn_start_message_index, &result);
+
         if result.is_ok() {
             self.update_skill_creation_nudge_counter();
         }
@@ -400,6 +508,100 @@ impl Agent {
             .ok();
 
         result
+    }
+
+    async fn fire_pre_prompt_hook(&self, prompt_id: &str, text: &str) -> Result<Option<String>> {
+        let Some(pipeline) = &self.hook_pipeline else {
+            return Ok(None);
+        };
+
+        let payload = clankers_hooks::HookPayload::prompt_with_metadata(
+            "pre-prompt",
+            &self.session_id,
+            prompt_id,
+            text,
+            Some(&self.system_prompt),
+            clankers_hooks::HookStatus::Pending,
+            None,
+        );
+        match pipeline.fire(clankers_hooks::HookPoint::PrePrompt, &payload).await {
+            clankers_hooks::HookVerdict::Continue => Ok(None),
+            clankers_hooks::HookVerdict::Modify(modified) => {
+                Ok(modified.get("text").and_then(serde_json::Value::as_str).map(ToOwned::to_owned))
+            }
+            clankers_hooks::HookVerdict::Deny { reason } => Err(AgentError::Agent {
+                message: format!("prompt denied by pre-prompt hook: {reason}"),
+            }),
+        }
+    }
+
+    fn fire_post_prompt_hook(&self, prompt_id: &str, text: &str, result: &Result<()>) {
+        let Some(pipeline) = &self.hook_pipeline else {
+            return;
+        };
+
+        let payload = clankers_hooks::HookPayload::prompt_with_metadata(
+            "post-prompt",
+            &self.session_id,
+            prompt_id,
+            text,
+            Some(&self.system_prompt),
+            hook_status_for_result(result),
+            hook_error_for_result(result),
+        );
+        pipeline.fire_async(clankers_hooks::HookPoint::PostPrompt, payload);
+    }
+
+    async fn fire_pre_turn_hook(&self, prompt_id: &str, text: &str, model: &str, message_count: usize) -> Result<()> {
+        let Some(pipeline) = &self.hook_pipeline else {
+            return Ok(());
+        };
+
+        let payload = clankers_hooks::HookPayload::turn(
+            "pre-turn",
+            &self.session_id,
+            prompt_id,
+            model,
+            text,
+            message_count,
+            0,
+            clankers_hooks::HookStatus::Pending,
+            None,
+            None,
+        );
+        match pipeline.fire(clankers_hooks::HookPoint::PreTurn, &payload).await {
+            clankers_hooks::HookVerdict::Continue | clankers_hooks::HookVerdict::Modify(_) => Ok(()),
+            clankers_hooks::HookVerdict::Deny { reason } => Err(AgentError::Agent {
+                message: format!("turn denied by pre-turn hook: {reason}"),
+            }),
+        }
+    }
+
+    fn fire_post_turn_hook(
+        &self,
+        prompt_id: &str,
+        text: &str,
+        model: &str,
+        start_message_index: usize,
+        result: &Result<()>,
+    ) {
+        let Some(pipeline) = &self.hook_pipeline else {
+            return;
+        };
+
+        let payload = clankers_hooks::HookPayload::turn(
+            "post-turn",
+            &self.session_id,
+            prompt_id,
+            model,
+            text,
+            self.messages.len(),
+            tool_call_count_since(&self.messages, start_message_index),
+            hook_status_for_result(result),
+            hook_error_for_result(result),
+            turn_hook_usage_since(&self.messages, start_message_index),
+        );
+        pipeline.fire_async(clankers_hooks::HookPoint::PostTurn, payload);
     }
 
     /// Append a user message to the conversation
@@ -730,6 +932,7 @@ impl Agent {
     /// Run an orchestrated multi-phase turn.
     async fn execute_orchestrated_turn(
         &mut self,
+        prompt_id: &str,
         user_text: &str,
         plan: orchestration::OrchestrationPlan,
     ) -> Result<()> {
@@ -739,114 +942,134 @@ impl Agent {
         let base_system_prompt = self.system_prompt_with_memory();
         let model_info = self.provider.models().iter().find(|m| m.id == self.model).cloned();
         let max_input = model_info.map(|m| m.max_input_tokens).unwrap_or(200_000);
+        let turn_start_message_index = self.messages.len();
+        let mut turn_model = self.model.clone();
+        let mut pre_turn_fired = false;
 
-        for (phase_idx, phase) in plan.phases.iter().enumerate() {
-            if self.cancel.is_cancelled() {
-                return Err(AgentError::Cancelled);
-            }
+        let result = async {
+            for (phase_idx, phase) in plan.phases.iter().enumerate() {
+                if self.cancel.is_cancelled() {
+                    return Err(AgentError::Cancelled);
+                }
 
-            // Resolve phase model
-            let phase_model = self.model_roles.resolve(&phase.role, &self.model);
-            if phase_model != self.model {
-                self.check_model_switch_authorization(&phase_model)?;
-            }
-            let old_model = std::mem::replace(&mut self.model, phase_model.clone());
-            if phase_model != old_model {
+                // Resolve phase model
+                let phase_model = self.model_roles.resolve(&phase.role, &self.model);
+                if phase_model != self.model {
+                    self.check_model_switch_authorization(&phase_model)?;
+                }
+                let old_model = std::mem::replace(&mut self.model, phase_model.clone());
+                if phase_model != old_model {
+                    self.event_tx
+                        .send(AgentEvent::ModelChange {
+                            from: old_model.clone(),
+                            to: phase_model.clone(),
+                            reason: format!("orchestration_phase({}/{}:{})", phase_idx + 1, total_phases, phase.label,),
+                        })
+                        .ok();
+                }
+
+                // Build phase system prompt
+                let phase_system = format!("{}{}", base_system_prompt, phase.system_suffix);
+                let is_compact = self.settings.no_cache;
+                let ctx = context::build_context(&self.messages, &phase_system, max_input, is_compact);
+
                 self.event_tx
-                    .send(AgentEvent::ModelChange {
-                        from: old_model.clone(),
-                        to: phase_model.clone(),
-                        reason: format!("orchestration_phase({}/{}:{})", phase_idx + 1, total_phases, phase.label,),
+                    .send(AgentEvent::BeforeAgentStart {
+                        prompt: if phase_idx == 0 {
+                            user_text.to_string()
+                        } else {
+                            format!("[Orchestration phase {}/{}] {}", phase_idx + 1, total_phases, phase.label)
+                        },
+                        system_prompt: ctx.system_prompt.clone(),
                     })
                     .ok();
-            }
 
-            // Build phase system prompt
-            let phase_system = format!("{}{}", base_system_prompt, phase.system_suffix);
-            let is_compact = self.settings.no_cache;
-            let ctx = context::build_context(&self.messages, &phase_system, max_input, is_compact);
-
-            self.event_tx
-                .send(AgentEvent::BeforeAgentStart {
-                    prompt: if phase_idx == 0 {
-                        user_text.to_string()
+                // Run turn loop for this phase
+                let config = TurnConfig {
+                    model: phase_model,
+                    system_prompt: ctx.system_prompt,
+                    max_tokens: Some(self.settings.max_tokens),
+                    temperature: None,
+                    thinking: self.thinking.clone(),
+                    model_request_slot_budget: if phase_idx == 0 {
+                        NORMAL_TURN_MODEL_REQUEST_SLOT_BUDGET
                     } else {
-                        format!("[Orchestration phase {}/{}] {}", phase_idx + 1, total_phases, phase.label)
+                        ORCHESTRATION_FOLLOW_UP_MODEL_REQUEST_SLOT_BUDGET
                     },
-                    system_prompt: ctx.system_prompt.clone(),
-                })
-                .ok();
+                    output_truncation: self.output_truncation_config(),
+                    no_cache: self.settings.no_cache,
+                    cache_ttl: self.settings.cache_ttl.clone(),
+                    steel_turn_planning: self.steel_turn_planning_config()?,
+                    steel_tool_substrate: self.steel_tool_substrate_config()?,
+                };
 
-            // Run turn loop for this phase
-            let config = TurnConfig {
-                model: phase_model,
-                system_prompt: ctx.system_prompt,
-                max_tokens: Some(self.settings.max_tokens),
-                temperature: None,
-                thinking: self.thinking.clone(),
-                model_request_slot_budget: if phase_idx == 0 {
-                    NORMAL_TURN_MODEL_REQUEST_SLOT_BUDGET
-                } else {
-                    ORCHESTRATION_FOLLOW_UP_MODEL_REQUEST_SLOT_BUDGET
-                },
-                output_truncation: self.output_truncation_config(),
-                no_cache: self.settings.no_cache,
-                cache_ttl: self.settings.cache_ttl.clone(),
-                steel_turn_planning: self.steel_turn_planning_config()?,
-                steel_tool_substrate: self.steel_tool_substrate_config()?,
-            };
+                if !pre_turn_fired {
+                    turn_model = config.model.clone();
+                    pre_turn_fired = true;
+                    self.fire_pre_turn_hook(prompt_id, user_text, &turn_model, turn_start_message_index).await?;
+                }
 
-            let model_port = turn::ProviderModelPort::new(self.provider.as_ref());
-            let tool_port = turn::ControllerToolPort {
-                controller_tools: &self.tools,
-                event_tx: &self.event_tx,
-                cancel: self.cancel.clone(),
-                hook_pipeline: self.hook_pipeline.clone(),
-                session_id: &self.session_id,
-                db: self.db.clone(),
-                capability_gate: self.capability_gate.clone(),
-                user_tool_filter: self.user_tool_filter.clone(),
-                steel_tool_substrate: config.steel_tool_substrate.clone(),
-            };
-            let cost_port = turn::CostTrackerPort::new(self.cost_tracker.as_ref());
-            let cancellation = turn::TokenCancellationPort::new(self.cancel.clone());
-            let result = turn::run_turn_loop(
-                &config,
-                turn::TurnLoopContext {
-                    services: turn::AgentRuntimeServices {
-                        model: &model_port,
-                        tools: &tool_port,
-                        cost: &cost_port,
-                        cancellation: &cancellation,
-                        events: &self.event_tx,
-                        model_switch_slot: self.model_switch_slot.as_ref(),
-                        service_receipts: turn::DESKTOP_AGENT_SERVICE_RECEIPTS,
-                    },
+                let model_port = turn::ProviderModelPort::new(self.provider.as_ref());
+                let tool_port = turn::ControllerToolPort {
+                    controller_tools: &self.tools,
+                    event_tx: &self.event_tx,
+                    cancel: self.cancel.clone(),
+                    hook_pipeline: self.hook_pipeline.clone(),
                     session_id: &self.session_id,
-                },
-                &mut self.messages,
-            )
-            .await;
+                    db: self.db.clone(),
+                    capability_gate: self.capability_gate.clone(),
+                    user_tool_filter: self.user_tool_filter.clone(),
+                    steel_tool_substrate: config.steel_tool_substrate.clone(),
+                };
+                let cost_port = turn::CostTrackerPort::new(self.cost_tracker.as_ref());
+                let cancellation = turn::TokenCancellationPort::new(self.cancel.clone());
+                let result = turn::run_turn_loop(
+                    &config,
+                    turn::TurnLoopContext {
+                        services: turn::AgentRuntimeServices {
+                            model: &model_port,
+                            tools: &tool_port,
+                            cost: &cost_port,
+                            cancellation: &cancellation,
+                            events: &self.event_tx,
+                            model_switch_slot: self.model_switch_slot.as_ref(),
+                            service_receipts: turn::DESKTOP_AGENT_SERVICE_RECEIPTS,
+                        },
+                        session_id: &self.session_id,
+                    },
+                    &mut self.messages,
+                )
+                .await;
 
-            // If the agent switched models during the phase, sync state
-            if let Some(slot) = &self.model_switch_slot
-                && let Some(new_model) = slot.lock().take()
-            {
-                self.model = new_model;
+                // If the agent switched models during the phase, sync state
+                if let Some(slot) = &self.model_switch_slot
+                    && let Some(new_model) = slot.lock().take()
+                {
+                    self.model = new_model;
+                }
+
+                result?;
+
+                tracing::info!("Orchestration phase {}/{} ({}) complete", phase_idx + 1, total_phases, phase.label,);
             }
 
-            result?;
+            Ok(())
+        }
+        .await;
 
-            tracing::info!("Orchestration phase {}/{} ({}) complete", phase_idx + 1, total_phases, phase.label,);
+        if pre_turn_fired {
+            self.fire_post_turn_hook(prompt_id, user_text, &turn_model, turn_start_message_index, &result);
         }
 
-        self.event_tx
-            .send(AgentEvent::AgentEnd {
-                messages: self.messages.clone(),
-            })
-            .ok();
+        if pre_turn_fired || result.is_ok() {
+            self.event_tx
+                .send(AgentEvent::AgentEnd {
+                    messages: self.messages.clone(),
+                })
+                .ok();
+        }
 
-        Ok(())
+        result
     }
 
     fn steel_turn_planning_config(&self) -> Result<Option<turn::AgentTurnSteelPlanningConfig>> {
@@ -1003,6 +1226,267 @@ mod tests {
         fn name(&self) -> &str {
             "mock"
         }
+    }
+
+    #[derive(Clone)]
+    struct PromptHookProvider {
+        calls: Arc<std::sync::atomic::AtomicUsize>,
+        captured_prompts: Arc<std::sync::Mutex<Vec<String>>>,
+    }
+
+    impl PromptHookProvider {
+        fn new() -> Self {
+            Self {
+                calls: Arc::new(std::sync::atomic::AtomicUsize::new(0)),
+                captured_prompts: Arc::new(std::sync::Mutex::new(Vec::new())),
+            }
+        }
+    }
+
+    #[async_trait::async_trait]
+    impl clankers_provider::Provider for PromptHookProvider {
+        async fn complete(
+            &self,
+            request: clankers_provider::CompletionRequest,
+            tx: tokio::sync::mpsc::Sender<clankers_provider::streaming::StreamEvent>,
+        ) -> clankers_provider::error::Result<()> {
+            self.calls.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+            let prompt = request
+                .messages
+                .iter()
+                .rev()
+                .find_map(|message| match message {
+                    AgentMessage::User(user) => user.content.iter().find_map(|content| match content {
+                        Content::Text { text } => Some(text.clone()),
+                        _ => None,
+                    }),
+                    _ => None,
+                })
+                .unwrap_or_default();
+            self.captured_prompts.lock().unwrap_or_else(|poisoned| poisoned.into_inner()).push(prompt);
+            tx.send(clankers_provider::streaming::StreamEvent::MessageStart {
+                message: clankers_provider::streaming::MessageMetadata {
+                    id: "msg-1".into(),
+                    model: "test-model".into(),
+                    role: "assistant".into(),
+                },
+            })
+            .await
+            .ok();
+            tx.send(clankers_provider::streaming::StreamEvent::ContentBlockStart {
+                index: 0,
+                content_block: Content::Text { text: String::new() },
+            })
+            .await
+            .ok();
+            tx.send(clankers_provider::streaming::StreamEvent::ContentBlockDelta {
+                index: 0,
+                delta: clankers_provider::streaming::ContentDelta::TextDelta { text: "ok".into() },
+            })
+            .await
+            .ok();
+            tx.send(clankers_provider::streaming::StreamEvent::ContentBlockStop { index: 0 }).await.ok();
+            tx.send(clankers_provider::streaming::StreamEvent::MessageDelta {
+                stop_reason: Some("end_turn".into()),
+                usage: clankers_provider::Usage {
+                    input_tokens: 1,
+                    output_tokens: 1,
+                    cache_creation_input_tokens: 0,
+                    cache_read_input_tokens: 0,
+                },
+            })
+            .await
+            .ok();
+            tx.send(clankers_provider::streaming::StreamEvent::MessageStop).await.ok();
+            Ok(())
+        }
+
+        fn models(&self) -> &[clankers_provider::Model] {
+            &[]
+        }
+
+        fn name(&self) -> &str {
+            "prompt-hook-provider"
+        }
+    }
+
+    #[derive(Debug, PartialEq, Eq)]
+    struct RecordedPromptHookCall {
+        point: clankers_hooks::HookPoint,
+        prompt_id: String,
+        text: String,
+        status: clankers_hooks::HookStatus,
+        error_kind: Option<String>,
+    }
+
+    struct RecordingPromptHook {
+        calls: Arc<std::sync::Mutex<Vec<RecordedPromptHookCall>>>,
+        notify: Arc<tokio::sync::Notify>,
+        pre_prompt_verdict: clankers_hooks::HookVerdict,
+    }
+
+    #[async_trait::async_trait]
+    impl clankers_hooks::HookHandler for RecordingPromptHook {
+        fn name(&self) -> &str {
+            "recording-prompt-hook"
+        }
+
+        fn priority(&self) -> u32 {
+            clankers_hooks::dispatcher::PRIORITY_PLUGIN_HOOKS
+        }
+
+        fn subscribes_to(&self, point: clankers_hooks::HookPoint) -> bool {
+            matches!(point, clankers_hooks::HookPoint::PrePrompt | clankers_hooks::HookPoint::PostPrompt)
+        }
+
+        async fn handle(
+            &self,
+            point: clankers_hooks::HookPoint,
+            payload: &clankers_hooks::HookPayload,
+        ) -> clankers_hooks::HookVerdict {
+            let (prompt_id, text, status, error_kind) = match &payload.data {
+                clankers_hooks::HookData::Prompt {
+                    prompt_id,
+                    text,
+                    status,
+                    error,
+                    ..
+                } => (
+                    prompt_id.clone(),
+                    text.clone(),
+                    *status,
+                    error.as_ref().and_then(|safe_error| safe_error.kind.clone()),
+                ),
+                _ => (String::new(), String::new(), clankers_hooks::HookStatus::Pending, None),
+            };
+            self.calls.lock().unwrap_or_else(|poisoned| poisoned.into_inner()).push(RecordedPromptHookCall {
+                point,
+                prompt_id,
+                text,
+                status,
+                error_kind,
+            });
+            self.notify.notify_waiters();
+            if matches!(point, clankers_hooks::HookPoint::PrePrompt) {
+                return self.pre_prompt_verdict.clone();
+            }
+            clankers_hooks::HookVerdict::Continue
+        }
+    }
+
+    async fn wait_for_prompt_hook_calls(
+        calls: &Arc<std::sync::Mutex<Vec<RecordedPromptHookCall>>>,
+        notify: &Arc<tokio::sync::Notify>,
+        expected: usize,
+    ) {
+        tokio::time::timeout(std::time::Duration::from_secs(1), async {
+            loop {
+                let notified = notify.notified();
+                let count = calls.lock().unwrap_or_else(|poisoned| poisoned.into_inner()).len();
+                if count >= expected {
+                    break;
+                }
+                notified.await;
+            }
+        })
+        .await
+        .expect("prompt hook calls should arrive");
+    }
+
+    #[derive(Debug, PartialEq, Eq)]
+    struct RecordedTurnHookCall {
+        point: clankers_hooks::HookPoint,
+        prompt_id: String,
+        model: String,
+        message_count: usize,
+        tool_call_count: usize,
+        status: clankers_hooks::HookStatus,
+        usage: Option<clankers_hooks::HookUsage>,
+        error_kind: Option<String>,
+    }
+
+    struct RecordingTurnHook {
+        calls: Arc<std::sync::Mutex<Vec<RecordedTurnHookCall>>>,
+        notify: Arc<tokio::sync::Notify>,
+        pre_turn_verdict: clankers_hooks::HookVerdict,
+    }
+
+    #[async_trait::async_trait]
+    impl clankers_hooks::HookHandler for RecordingTurnHook {
+        fn name(&self) -> &str {
+            "recording-turn-hook"
+        }
+
+        fn priority(&self) -> u32 {
+            clankers_hooks::dispatcher::PRIORITY_PLUGIN_HOOKS
+        }
+
+        fn subscribes_to(&self, point: clankers_hooks::HookPoint) -> bool {
+            matches!(point, clankers_hooks::HookPoint::PreTurn | clankers_hooks::HookPoint::PostTurn)
+        }
+
+        async fn handle(
+            &self,
+            point: clankers_hooks::HookPoint,
+            payload: &clankers_hooks::HookPayload,
+        ) -> clankers_hooks::HookVerdict {
+            let call = match &payload.data {
+                clankers_hooks::HookData::Turn {
+                    prompt_id,
+                    model,
+                    message_count,
+                    tool_call_count,
+                    status,
+                    usage,
+                    error,
+                    ..
+                } => RecordedTurnHookCall {
+                    point,
+                    prompt_id: prompt_id.clone(),
+                    model: model.clone(),
+                    message_count: *message_count,
+                    tool_call_count: *tool_call_count,
+                    status: *status,
+                    usage: *usage,
+                    error_kind: error.as_ref().and_then(|safe_error| safe_error.kind.clone()),
+                },
+                _ => RecordedTurnHookCall {
+                    point,
+                    prompt_id: String::new(),
+                    model: String::new(),
+                    message_count: 0,
+                    tool_call_count: 0,
+                    status: clankers_hooks::HookStatus::Pending,
+                    usage: None,
+                    error_kind: None,
+                },
+            };
+            self.calls.lock().unwrap_or_else(|poisoned| poisoned.into_inner()).push(call);
+            self.notify.notify_waiters();
+            if matches!(point, clankers_hooks::HookPoint::PreTurn) {
+                return self.pre_turn_verdict.clone();
+            }
+            clankers_hooks::HookVerdict::Continue
+        }
+    }
+
+    async fn wait_for_turn_hook_calls(
+        calls: &Arc<std::sync::Mutex<Vec<RecordedTurnHookCall>>>,
+        notify: &Arc<tokio::sync::Notify>,
+        expected: usize,
+    ) {
+        tokio::time::timeout(std::time::Duration::from_secs(1), async {
+            loop {
+                let notified = notify.notified();
+                let count = calls.lock().unwrap_or_else(|poisoned| poisoned.into_inner()).len();
+                if count >= expected {
+                    break;
+                }
+                notified.await;
+            }
+        })
+        .await
+        .expect("turn hook calls should arrive");
     }
 
     struct StaticTool {
@@ -1382,6 +1866,176 @@ mod tests {
             .expect("captured summary prompt");
         assert!(prompt.contains("## Previous Summary"));
         assert!(prompt.contains("## Active Task\n- previous"));
+    }
+
+    #[tokio::test]
+    async fn pre_prompt_deny_stops_before_history_append_and_model_request() {
+        let provider = PromptHookProvider::new();
+        let provider_calls = provider.calls.clone();
+        let hook_calls = Arc::new(std::sync::Mutex::new(Vec::new()));
+        let hook_notify = Arc::new(tokio::sync::Notify::new());
+        let mut pipeline = clankers_hooks::HookPipeline::new();
+        pipeline.register(Arc::new(RecordingPromptHook {
+            calls: hook_calls.clone(),
+            notify: hook_notify.clone(),
+            pre_prompt_verdict: clankers_hooks::HookVerdict::Deny {
+                reason: "blocked by prompt hook".to_string(),
+            },
+        }));
+        let mut agent = make_structured_test_agent(Arc::new(provider)).with_hook_pipeline(Arc::new(pipeline));
+        agent.set_session_id("session-1".to_string());
+
+        let result = agent.prompt("do not append").await;
+
+        assert!(matches!(
+            result,
+            Err(AgentError::Agent { ref message }) if message.contains("blocked by prompt hook")
+        ));
+        wait_for_prompt_hook_calls(&hook_calls, &hook_notify, 2).await;
+        assert_eq!(provider_calls.load(std::sync::atomic::Ordering::SeqCst), 0);
+        assert!(agent.messages().is_empty());
+        let recorded = hook_calls.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+        assert_eq!(recorded.len(), 2);
+        assert!(!recorded[0].prompt_id.is_empty());
+        assert_eq!(recorded[0].prompt_id, recorded[1].prompt_id);
+        assert_eq!(recorded[0].point, clankers_hooks::HookPoint::PrePrompt);
+        assert_eq!(recorded[0].text, "do not append");
+        assert_eq!(recorded[0].status, clankers_hooks::HookStatus::Pending);
+        assert!(recorded[0].error_kind.is_none());
+        assert_eq!(recorded[1].point, clankers_hooks::HookPoint::PostPrompt);
+        assert_eq!(recorded[1].text, "do not append");
+        assert_eq!(recorded[1].status, clankers_hooks::HookStatus::Denied);
+        assert_eq!(recorded[1].error_kind.as_deref(), Some("agent"));
+    }
+
+    #[tokio::test]
+    async fn pre_prompt_modify_rewrites_history_and_model_request() {
+        let provider = PromptHookProvider::new();
+        let captured_prompts = provider.captured_prompts.clone();
+        let hook_calls = Arc::new(std::sync::Mutex::new(Vec::new()));
+        let hook_notify = Arc::new(tokio::sync::Notify::new());
+        let mut pipeline = clankers_hooks::HookPipeline::new();
+        pipeline.register(Arc::new(RecordingPromptHook {
+            calls: hook_calls.clone(),
+            notify: hook_notify.clone(),
+            pre_prompt_verdict: clankers_hooks::HookVerdict::Modify(json!({
+                "text": "rewritten prompt"
+            })),
+        }));
+        let mut agent = make_structured_test_agent(Arc::new(provider)).with_hook_pipeline(Arc::new(pipeline));
+        agent.set_session_id("session-1".to_string());
+
+        agent.prompt("original prompt").await.expect("modified prompt should succeed");
+        wait_for_prompt_hook_calls(&hook_calls, &hook_notify, 2).await;
+
+        assert_eq!(captured_prompts.lock().unwrap_or_else(|poisoned| poisoned.into_inner()).as_slice(), &[
+            "rewritten prompt".to_string()
+        ]);
+        let AgentMessage::User(user) = &agent.messages()[0] else {
+            panic!("expected first message to be the modified user prompt");
+        };
+        let Content::Text { text } = &user.content[0] else {
+            panic!("expected text content");
+        };
+        assert_eq!(text, "rewritten prompt");
+        let recorded = hook_calls.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+        assert_eq!(recorded.len(), 2);
+        assert!(!recorded[0].prompt_id.is_empty());
+        assert_eq!(recorded[0].prompt_id, recorded[1].prompt_id);
+        assert_eq!(recorded[0].point, clankers_hooks::HookPoint::PrePrompt);
+        assert_eq!(recorded[0].text, "original prompt");
+        assert_eq!(recorded[0].status, clankers_hooks::HookStatus::Pending);
+        assert!(recorded[0].error_kind.is_none());
+        assert_eq!(recorded[1].point, clankers_hooks::HookPoint::PostPrompt);
+        assert_eq!(recorded[1].text, "rewritten prompt");
+        assert_eq!(recorded[1].status, clankers_hooks::HookStatus::Success);
+        assert!(recorded[1].error_kind.is_none());
+    }
+
+    #[tokio::test]
+    async fn pre_turn_deny_stops_before_model_request_and_posts_denied_outcome() {
+        let provider = PromptHookProvider::new();
+        let provider_calls = provider.calls.clone();
+        let turn_calls = Arc::new(std::sync::Mutex::new(Vec::new()));
+        let turn_notify = Arc::new(tokio::sync::Notify::new());
+        let mut pipeline = clankers_hooks::HookPipeline::new();
+        pipeline.register(Arc::new(RecordingTurnHook {
+            calls: turn_calls.clone(),
+            notify: turn_notify.clone(),
+            pre_turn_verdict: clankers_hooks::HookVerdict::Deny {
+                reason: "blocked before model".to_string(),
+            },
+        }));
+        let mut agent = make_structured_test_agent(Arc::new(provider)).with_hook_pipeline(Arc::new(pipeline));
+        agent.set_session_id("session-1".to_string());
+
+        let result = agent.prompt("block the model").await;
+
+        assert!(matches!(
+            result,
+            Err(AgentError::Agent { ref message }) if message.contains("blocked before model")
+        ));
+        wait_for_turn_hook_calls(&turn_calls, &turn_notify, 2).await;
+        assert_eq!(provider_calls.load(std::sync::atomic::Ordering::SeqCst), 0);
+        assert_eq!(agent.messages().len(), 1);
+
+        let recorded = turn_calls.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+        assert_eq!(recorded.len(), 2);
+        assert!(!recorded[0].prompt_id.is_empty());
+        assert_eq!(recorded[0].prompt_id, recorded[1].prompt_id);
+        assert_eq!(recorded[0].point, clankers_hooks::HookPoint::PreTurn);
+        assert_eq!(recorded[0].status, clankers_hooks::HookStatus::Pending);
+        assert_eq!(recorded[0].message_count, 1);
+        assert_eq!(recorded[0].tool_call_count, 0);
+        assert_eq!(recorded[1].point, clankers_hooks::HookPoint::PostTurn);
+        assert_eq!(recorded[1].status, clankers_hooks::HookStatus::Denied);
+        assert_eq!(recorded[1].message_count, 1);
+        assert_eq!(recorded[1].tool_call_count, 0);
+        assert_eq!(recorded[1].error_kind.as_deref(), Some("agent"));
+    }
+
+    #[tokio::test]
+    async fn pre_and_post_turn_share_correlation_and_post_usage() {
+        let provider = PromptHookProvider::new();
+        let provider_calls = provider.calls.clone();
+        let turn_calls = Arc::new(std::sync::Mutex::new(Vec::new()));
+        let turn_notify = Arc::new(tokio::sync::Notify::new());
+        let mut pipeline = clankers_hooks::HookPipeline::new();
+        pipeline.register(Arc::new(RecordingTurnHook {
+            calls: turn_calls.clone(),
+            notify: turn_notify.clone(),
+            pre_turn_verdict: clankers_hooks::HookVerdict::Continue,
+        }));
+        let mut agent = make_structured_test_agent(Arc::new(provider)).with_hook_pipeline(Arc::new(pipeline));
+        agent.set_session_id("session-1".to_string());
+
+        agent.prompt("record turn metadata").await.expect("prompt succeeds");
+        wait_for_turn_hook_calls(&turn_calls, &turn_notify, 2).await;
+
+        assert_eq!(provider_calls.load(std::sync::atomic::Ordering::SeqCst), 1);
+        let recorded = turn_calls.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+        assert_eq!(recorded.len(), 2);
+        assert!(!recorded[0].prompt_id.is_empty());
+        assert_eq!(recorded[0].prompt_id, recorded[1].prompt_id);
+        assert_eq!(recorded[0].point, clankers_hooks::HookPoint::PreTurn);
+        assert_eq!(recorded[0].model, "test-model");
+        assert_eq!(recorded[0].message_count, 1);
+        assert_eq!(recorded[0].status, clankers_hooks::HookStatus::Pending);
+        assert!(recorded[0].usage.is_none());
+        assert_eq!(recorded[1].point, clankers_hooks::HookPoint::PostTurn);
+        assert_eq!(recorded[1].model, "test-model");
+        assert_eq!(recorded[1].message_count, 2);
+        assert_eq!(recorded[1].status, clankers_hooks::HookStatus::Success);
+        assert_eq!(recorded[1].tool_call_count, 0);
+        assert_eq!(
+            recorded[1].usage,
+            Some(clankers_hooks::HookUsage {
+                input_tokens: 1,
+                output_tokens: 1,
+                cache_creation_input_tokens: 0,
+                cache_read_input_tokens: 0,
+            })
+        );
     }
 
     #[tokio::test]

@@ -10,49 +10,52 @@
 
 | Metric | Count |
 |--------|------:|
-| Workspace crates | 31 |
-| Lines of Rust (crates/) | 107,428 |
-| Lines of Rust (src/) | 47,890 |
-| **Total lines of Rust** | **155,318** |
-| Tests (crates/) | 2,267 |
-| Tests (src/) | 733 |
-| **Total tests** | **3,000** |
-| Public API items | 2,087 |
+| Workspace crates | 34 |
+| Lines of Rust (crates/) | 141,912 |
+| Lines of Rust (src/) | 70,131 |
+| **Total lines of Rust** | **212,043** |
+| Tests (crates/) | 2,688 |
+| Tests (src/) | 1,032 |
+| **Total tests** | **3,720** |
+| Public API items | 3,012 |
 
 ## Crates by size
 
 | Crate | Lines | Tests |
 |-------|------:|------:|
-| `src/ (binary)` | 47,890 | 733 |
-| `clanker-router` | 21,649 | 382 |
-| `clankers-tui` | 16,619 | 279 |
-| `clankers-controller` | 9,244 | 210 |
-| `clankers-agent` | 8,618 | 146 |
-| `clankers-provider` | 8,613 | 168 |
-| `clankers-db` | 6,714 | 207 |
-| `clankers-session` | 4,014 | 102 |
-| `clankers-plugin` | 3,725 | 39 |
-| `clankers-protocol` | 2,240 | 79 |
-| `clankers-util` | 1,942 | 79 |
-| `clankers-engine-host` | 1,843 | 27 |
-| `clanker-tui-types` | 1,831 | 14 |
-| `clanker-auth` | 1,775 | 21 |
-| `clankers-config` | 1,702 | 43 |
-| `clankers-core` | 1,643 | 42 |
-| `clankers-matrix` | 1,512 | 8 |
-| `clankers-model-selection` | 1,501 | 49 |
-| `clankers-engine` | 1,481 | 29 |
-| `clankers-ucan` | 1,436 | 52 |
-| `clankers-tts` | 1,277 | 49 |
-| `clankers-nix` | 1,262 | 61 |
-| `clankers-hooks` | 1,225 | 32 |
-| `clankers-zellij` | 896 | 39 |
-| `clanker-message` | 882 | 25 |
-| `clankers-agent-defs` | 873 | 29 |
-| `clankers-skills` | 756 | 17 |
-| `clankers-autoresearch` | 628 | 19 |
-| `clanker-plugin-sdk` | 524 | 0 |
-| `clankers-procmon` | 468 | 5 |
-| `clankers-tool-host` | 372 | 10 |
-| `clankers-prompts` | 163 | 5 |
+| `src/ (binary)` | 70,131 | 1032 |
+| `clanker-router` | 21,981 | 385 |
+| `clankers-tui` | 16,869 | 284 |
+| `clankers-runtime` | 16,330 | 173 |
+| `clankers-agent` | 12,837 | 189 |
+| `clankers-controller` | 10,645 | 226 |
+| `clankers-provider` | 9,435 | 177 |
+| `clankers-db` | 7,161 | 212 |
+| `clankers-session` | 5,012 | 111 |
+| `clankers-ucan` | 4,764 | 114 |
+| `clankers-plugin` | 3,824 | 41 |
+| `clankers-config` | 3,163 | 74 |
+| `clankers-util` | 2,496 | 86 |
+| `clankers-engine-host` | 2,297 | 30 |
+| `clankers-protocol` | 2,247 | 79 |
+| `clankers-engine` | 1,966 | 34 |
+| `clanker-tui-types` | 1,833 | 14 |
+| `clanker-auth` | 1,789 | 21 |
+| `clankers-hooks` | 1,706 | 49 |
+| `clankers-core` | 1,693 | 42 |
+| `clankers-matrix` | 1,527 | 8 |
+| `clankers-model-selection` | 1,524 | 49 |
+| `clanker-message` | 1,296 | 27 |
+| `clankers-tts` | 1,286 | 49 |
+| `clankers-nix` | 1,279 | 61 |
+| `clankers-artifacts` | 1,072 | 20 |
+| `clankers-agent-defs` | 906 | 29 |
+| `clankers-zellij` | 906 | 39 |
+| `clankers-skills` | 773 | 17 |
+| `clankers-tool-host` | 744 | 12 |
+| `clankers-adapters` | 703 | 7 |
+| `clankers-autoresearch` | 657 | 19 |
+| `clanker-plugin-sdk` | 534 | 0 |
+| `clankers-procmon` | 483 | 5 |
+| `clankers-prompts` | 174 | 5 |
 

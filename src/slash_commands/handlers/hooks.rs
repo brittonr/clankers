@@ -10,7 +10,7 @@ impl SlashHandler for HooksHandler {
         super::super::SlashCommand {
             name: "hooks",
             description: "Manage lifecycle, git, and plugin hooks",
-            help: "Manage the hook system.\n\nUsage:\n  /hooks              — show hook status\n  /hooks list          — list available hook points\n  /hooks install-git   — install git hook shims\n  /hooks uninstall-git — remove git hook shims",
+            help: "Manage the hook system.\n\nUsage:\n  /hooks              — show hook status\n  /hooks list          — list hook points, script filenames, plugin events, and blocking/notification behavior\n  /hooks install-git   — install git hook shims\n  /hooks uninstall-git — remove git hook shims",
             accepts_args: true,
             subcommands: vec![
                 ("list", "List hook points and installed scripts"),
@@ -78,22 +78,25 @@ fn list_hook_points(ctx: &mut SlashContext<'_>) {
     let mut lines = vec![
         "## Hook Points".to_string(),
         String::new(),
-        "| Hook | Type | Script |".to_string(),
-        "|------|------|--------|".to_string(),
+        "| Script filename | Behavior | Plugin event | Installed |".to_string(),
+        "|-----------------|----------|--------------|-----------|".to_string(),
     ];
 
     for point in clankers_hooks::HookPoint::all() {
-        let kind = if point.is_pre_hook() {
-            "pre (can deny)"
-        } else {
-            "post (notify)"
-        };
         let script_path = hooks_dir.join(point.to_filename());
         let installed = if script_path.is_file() { "✅ installed" } else { "—" };
-        lines.push(format!("| `{}` | {} | {} |", point.to_filename(), kind, installed));
+        let plugin_event = point.plugin_event_kind().unwrap_or("—");
+        lines.push(format!(
+            "| `{}` | {} | `{}` | {} |",
+            point.to_filename(),
+            point.behavior_label(),
+            plugin_event,
+            installed
+        ));
     }
 
     lines.push(String::new());
+    lines.push("`pre-turn` is the blocking prompt-level gate before the first model request; `turn-start`/`turn-end` are non-blocking model-turn notifications.".to_string());
     lines.push(format!("Scripts go in: `{}`", hooks_dir.display()));
 
     ctx.app.push_system(lines.join("\n"), false);

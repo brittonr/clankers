@@ -39,6 +39,8 @@ A more complete example:
   },
 
   hooks = {
+    # Kebab-case hook script filenames such as pre-prompt, pre-turn,
+    # turn-start, post-turn, pre-tool, or post-tool.
     disabledHooks = ["pre-tool"],
   },
 

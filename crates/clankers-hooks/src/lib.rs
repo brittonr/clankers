@@ -11,5 +11,8 @@ pub use dispatcher::HookHandler;
 pub use dispatcher::HookPipeline;
 pub use payload::HookData;
 pub use payload::HookPayload;
+pub use payload::HookSafeError;
+pub use payload::HookStatus;
+pub use payload::HookUsage;
 pub use point::HookPoint;
 pub use verdict::HookVerdict;
