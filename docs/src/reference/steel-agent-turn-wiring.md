@@ -7,11 +7,11 @@ The real agent turn shell calls the reviewed `steel.host.plan_turn` planning sea
 1. `crates/clankers-agent::turn::run_turn_loop` receives an optional `AgentTurnSteelPlanningConfig` from the Rust-owned shell.
 2. `turn/steel_planning.rs` converts bounded turn context into `TurnPlanningInput` using hashes, counts, model name, session id, and sorted tool names instead of raw prompts or tool bodies.
 3. The adapter delegates to `clankers-runtime::plan_turn_with_steel_or_fallback` for the existing `steel.host.plan_turn` seam.
-4. The runtime evaluates the constrained Steel wrapper host call, parses typed plan payloads, and routes selected action envelopes through Rust authorization receipts.
+4. The runtime evaluates the constrained Steel wrapper host call, parses the typed JSON plan payload, and routes selected action envelopes through Rust authorization receipts.
 5. The agent shell emits a redacted `steel.host.plan_turn` receipt summary including the selected executor. If policy selects block-on-failure, the provider request is not sent.
 6. When the receipt selects `executor=SteelScheme`, `turn/steel_execution.rs` builds a redacted `SteelTurnExecutionInput` for `steel.host.execute_turn` from hashes, session target, host-runner label, session capabilities, and UCAN abilities.
-7. `clankers-runtime::authorize_steel_turn_execution` first evaluates `(host "steel.host.execute_turn")` through the constrained Steel runtime wrapper and validates its metadata-only host-call payload.
-8. Rust then applies dynamic-runtime authorization before the host runner. Missing `turn-execution` session capability, missing `clankers/steel/orchestrate.execute_turn` UCAN ability, disabled action policy, unsafe destinations, unsupported host-function policy, or malformed host-call payload deny before any provider request.
+7. `clankers-runtime::authorize_steel_turn_execution` first evaluates `(host "steel.host.execute_turn")` through the constrained Steel runtime wrapper and validates its metadata-only JSON host-call payload.
+8. Rust then applies dynamic-runtime authorization before the host runner. Missing `turn-execution` session capability, missing `clankers/steel/orchestrate.execute_turn` UCAN ability, disabled action policy, unsafe destinations, unsupported host-function policy, or malformed JSON host-call payload deny before any provider request.
 9. After authorization and host-runner return, the adapter emits a daemon-visible redacted `steel.host.execute_turn` receipt with executor, session hash, model label, result class, host-runner label, Steel host-call status/reason/hash, execution authority status/reason, authority receipt hash, safe counts, and receipt hash.
 
 ## Modes
@@ -23,7 +23,7 @@ The real agent turn shell calls the reviewed `steel.host.plan_turn` planning sea
 
 ## Boundaries
 
-Steel receives no ambient filesystem, shell, git, network, provider, credential, daemon, TUI, native-tool, session, or mutation authority. It can only call registered host functions with the capabilities supplied by Rust. The current profile names `steel.host.plan_turn` for typed planning and `steel.host.execute_turn` for the Steel-selected execution host-call plus authority check; both remain Rust-owned host seams that keep interpreter details out of controller/daemon/TUI/provider shells and emit deterministic redacted planning and execution receipts for review.
+Steel receives no ambient filesystem, shell, git, network, provider, credential, daemon, TUI, native-tool, session, or mutation authority. It can only call registered host functions with the capabilities supplied by Rust. The current profile names `steel.host.plan_turn` for typed JSON planning and `steel.host.execute_turn` for the Steel-selected JSON execution host-call plus authority check; both remain Rust-owned host seams that keep interpreter details out of controller/daemon/TUI/provider shells and emit deterministic redacted planning and execution receipts for review.
 
 ## Evidence
 

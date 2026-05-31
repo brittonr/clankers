@@ -18,78 +18,49 @@ use serde_json::json;
 const ERROR_EXIT: u8 = 1;
 const RUNTIME: &str = "crates/clankers-runtime/src/steel_orchestration.rs";
 const RUNTIME_LIB: &str = "crates/clankers-runtime/src/lib.rs";
-const AGENT_EXECUTION: &str = "crates/clankers-agent/src/turn/steel_execution.rs";
-const AGENT_TURN: &str = "crates/clankers-agent/src/turn/mod.rs";
-const EMBEDDED_TEST: &str = "tests/embedded_controller.rs";
+const AGENT_PLANNING: &str = "crates/clankers-agent/src/turn/steel_planning.rs";
 const DOC_AGENT: &str = "docs/src/reference/steel-agent-turn-wiring.md";
+const DOC_DEFAULT: &str = "docs/src/reference/steel-default-orchestration.md";
 const DOC_SMOKE: &str = "docs/src/reference/steel-turn-planning-runtime-smoke.md";
-const SPEC: &str = "cairn/specs/steel-execute-turn-host-call/spec.md";
-const TASKS: &str = "cairn/archive/1970-01-01-steel-execute-turn-host-call/tasks.md";
-const OUTPUT: &str = "target/steel-execute-turn-host-call/receipt.json";
+const SPEC: &str = "cairn/specs/steel-host-call-json-payloads/spec.md";
+const TASKS: &str = "cairn/archive/1970-01-01-steel-host-call-json-payloads/tasks.md";
+const OUTPUT: &str = "target/steel-host-call-json-payloads/receipt.json";
 
 const REQUIRED_RUNTIME_MARKERS: &[&str] = &[
-    "STEEL_TURN_EXECUTION_HOST_CALL_SCHEMA",
-    "DEFAULT_TURN_EXECUTION_SOURCE",
+    "SteelTurnPlanHostCallPayload",
     "SteelTurnExecutionHostCallPayload",
-    "SteelTurnExecutionHostCallReceipt",
-    "evaluate_steel_execution_host_call",
-    "steel_execution_host_call_payload_is_valid",
+    "serde_json::from_str::<SteelTurnPlanHostCallPayload>",
     "serde_json::from_str::<SteelTurnExecutionHostCallPayload>",
-    "SteelRuntimeRequest",
-    "SteelHostFunctionRegistration",
-    "host_call_receipt.is_allowed()",
-    "execute_turn_host_call_rejects_malformed_payload_before_authorized_status",
+    "legacy_delimited_payload",
+    "STEEL_TURN_EXECUTION_HOST_CALL_SCHEMA",
+    "payload_hash",
+    "payload_valid",
 ];
 const REQUIRED_AGENT_MARKERS: &[&str] = &[
-    "host_call_status=",
-    "host_call_reason=",
-    "host_call_outcome=",
-    "host_call_payload=",
-    "host_call_receipt_hash=",
-    "authority_status=",
-    "run_engine_turn(seed, hosts).await",
+    "SteelTurnPlanHostCallPayload",
+    "steel_plan_payload(",
+    "serde_json::from_str::<SteelTurnPlanHostCallPayload>",
+    ".to_json()",
 ];
-const REQUIRED_TEST_MARKERS: &[&str] = &[
-    "host_call_status=Succeeded",
-    "host_call_reason=Ok",
-    "host_call_outcome=Approved",
-    "host_call_payload=Valid",
-    "host_call_status=Denied",
-    "host_call_reason=MissingHostCapability",
-    "calls.load(Ordering::SeqCst), 0",
-];
-const REQUIRED_AGENT_DOC_MARKERS: &[&str] = &[
-    "steel.host.execute_turn",
-    "host-call",
-    "JSON",
-    "Steel host-call status/reason/hash",
-    "before any provider request",
-];
-const REQUIRED_SMOKE_DOC_MARKERS: &[&str] = &[
-    "steel.host.execute_turn",
-    "host-call",
-    "JSON",
-    "host_call_status=Succeeded",
-    "host_call_reason=MissingHostCapability",
-    "before any provider request",
-];
+const REQUIRED_DOC_MARKERS: &[&str] = &["typed JSON", "JSON host-call", "steel.host.execute_turn"];
 const REQUIRED_SPEC_MARKERS: &[&str] = &[
-    "r[steel-execute-turn-host-call.runtime.allowed]",
-    "r[steel-execute-turn-host-call.runtime.denied]",
-    "r[steel-execute-turn-host-call.runtime.malformed]",
-    "r[steel-execute-turn-host-call.receipts.allowed]",
-    "r[steel-execute-turn-host-call.verification.real-denial]",
+    "r[steel-host-call-json-payloads.plan.valid]",
+    "r[steel-host-call-json-payloads.plan.legacy-denied]",
+    "r[steel-host-call-json-payloads.execute.valid]",
+    "r[steel-host-call-json-payloads.execute.malformed-denied]",
+    "r[steel-host-call-json-payloads.receipts.hashes]",
 ];
+const FORBIDDEN_RUNTIME_MARKERS: &[&str] = &["payload.split('|')"];
 const FORBIDDEN_DOC_MARKERS: &[&str] = &["raw_prompt =", "provider_payload =", "credential_value", "compact_ucan"];
 
 fn main() -> ExitCode {
     match run() {
         Ok(path) => {
-            println!("steel execute-turn host-call receipt written to {}", path.display());
+            println!("steel host-call JSON payload receipt written to {}", path.display());
             ExitCode::SUCCESS
         }
         Err(error) => {
-            eprintln!("steel execute-turn host-call check failed: {error}");
+            eprintln!("steel host-call JSON payload check failed: {error}");
             ExitCode::from(ERROR_EXIT)
         }
     }
@@ -98,10 +69,9 @@ fn main() -> ExitCode {
 fn run() -> Result<PathBuf, String> {
     let runtime = read(RUNTIME)?;
     let runtime_lib = read(RUNTIME_LIB)?;
-    let agent_execution = read(AGENT_EXECUTION)?;
-    let agent_turn = read(AGENT_TURN)?;
-    let embedded = read(EMBEDDED_TEST)?;
+    let agent_planning = read(AGENT_PLANNING)?;
     let doc_agent = read(DOC_AGENT)?;
+    let doc_default = read(DOC_DEFAULT)?;
     let doc_smoke = read(DOC_SMOKE)?;
     let spec = read(SPEC)?;
     let tasks = read(TASKS)?;
@@ -111,21 +81,19 @@ fn run() -> Result<PathBuf, String> {
     require_all(
         RUNTIME_LIB,
         &runtime_lib,
-        &["SteelTurnExecutionHostCallReceipt", "DEFAULT_TURN_EXECUTION_SOURCE"],
+        &["SteelTurnPlanHostCallPayload", "SteelTurnExecutionHostCallPayload"],
         &mut errors,
     );
-    require_all(AGENT_EXECUTION, &agent_execution, REQUIRED_AGENT_MARKERS, &mut errors);
-    require_all(AGENT_TURN, &agent_turn, &["host_call_status=Succeeded", "host_call_payload=Valid"], &mut errors);
-    require_all(EMBEDDED_TEST, &embedded, REQUIRED_TEST_MARKERS, &mut errors);
-    require_all(DOC_AGENT, &doc_agent, REQUIRED_AGENT_DOC_MARKERS, &mut errors);
-    require_all(DOC_SMOKE, &doc_smoke, REQUIRED_SMOKE_DOC_MARKERS, &mut errors);
+    require_all(AGENT_PLANNING, &agent_planning, REQUIRED_AGENT_MARKERS, &mut errors);
+    require_all(DOC_AGENT, &doc_agent, REQUIRED_DOC_MARKERS, &mut errors);
+    require_all(DOC_DEFAULT, &doc_default, REQUIRED_DOC_MARKERS, &mut errors);
+    require_all(DOC_SMOKE, &doc_smoke, REQUIRED_DOC_MARKERS, &mut errors);
     require_all(SPEC, &spec, REQUIRED_SPEC_MARKERS, &mut errors);
-    require_all(TASKS, &tasks, &["r[steel-execute-turn-host-call.runtime.malformed]"], &mut errors);
+    require_all(TASKS, &tasks, &["pipe-delimited", "JSON serialization/deserialization"], &mut errors);
+    forbid_all(RUNTIME, &runtime, FORBIDDEN_RUNTIME_MARKERS, &mut errors);
     forbid_all(DOC_AGENT, &doc_agent, FORBIDDEN_DOC_MARKERS, &mut errors);
+    forbid_all(DOC_DEFAULT, &doc_default, FORBIDDEN_DOC_MARKERS, &mut errors);
     forbid_all(DOC_SMOKE, &doc_smoke, FORBIDDEN_DOC_MARKERS, &mut errors);
-    if agent_execution.contains("raw_prompt=") {
-        errors.push("agent host-call receipt must not format raw prompt fields".to_string());
-    }
     if !errors.is_empty() {
         return Err(errors.join("\n"));
     }
@@ -133,26 +101,25 @@ fn run() -> Result<PathBuf, String> {
     let artifacts = [
         RUNTIME,
         RUNTIME_LIB,
-        AGENT_EXECUTION,
-        AGENT_TURN,
-        EMBEDDED_TEST,
+        AGENT_PLANNING,
         DOC_AGENT,
+        DOC_DEFAULT,
         DOC_SMOKE,
         SPEC,
         TASKS,
-        "scripts/check-steel-execute-turn-host-call.rs",
+        "scripts/check-steel-host-call-json-payloads.rs",
     ]
     .iter()
     .map(|path| hash_artifact(Path::new(path)))
     .collect::<Result<Vec<_>, _>>()?;
     let receipt = json!({
-        "schema": "clankers.steel_execute_turn_host_call.check_receipt.v1",
+        "schema": "clankers.steel_host_call_json_payloads.check_receipt.v1",
         "validated_surfaces": [
-            "runtime-steel-host-call-source",
-            "typed-execution-host-call-payload",
-            "host-call-approval-denial-and-malformed-tests",
-            "agent-redacted-host-call-fields",
-            "embedded-provider-skip-on-host-call-denial"
+            "planning-json-dto",
+            "execute-turn-json-dto",
+            "legacy-delimited-plan-rejection",
+            "malformed-execute-payload-denial",
+            "redacted-json-payload-receipts"
         ],
         "hashed_artifacts": artifacts,
     });

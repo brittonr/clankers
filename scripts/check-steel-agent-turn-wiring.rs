@@ -26,6 +26,7 @@ const OUTPUT: &str = "target/steel-agent-turn-wiring/receipt.json";
 
 const REQUIRED_ADAPTER_MARKERS: &[&str] = &[
     "AgentTurnSteelPlanningConfig",
+    "SteelTurnPlanHostCallPayload",
     "TurnPlanningInput",
     "plan_turn_with_steel_or_fallback",
     "DEFAULT_TURN_PLANNING_SEAM",
@@ -68,6 +69,7 @@ const REQUIRED_DOC_MARKERS: &[&str] = &[
     "steel.host.execute_turn",
     "execution authority",
     "host-call",
+    "typed JSON",
 ];
 const FORBIDDEN_AGENT_IMPORTS: &[&str] = &["steel_core::", "steel::steel_vm", "steel_vm::"];
 const FORBIDDEN_RECEIPT_LEAKS: &[&str] = &[

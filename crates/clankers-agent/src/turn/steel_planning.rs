@@ -14,9 +14,9 @@ use clankers_runtime::OrchestrationFallbackMode;
 use clankers_runtime::OrchestrationPlanReceipt;
 use clankers_runtime::OrchestrationPlanStatus;
 use clankers_runtime::OrchestrationRolloutStage;
-use clankers_runtime::STEEL_ORCHESTRATION_PLAN_SCHEMA;
 use clankers_runtime::SteelOrchestrationProfile;
 use clankers_runtime::SteelRuntimeProfile;
+use clankers_runtime::SteelTurnPlanHostCallPayload;
 use clankers_runtime::SteelTurnPlanningAuthorityGrant;
 use clankers_runtime::TurnPlanningInput;
 use clankers_runtime::plan_turn_with_steel_or_fallback;
@@ -59,9 +59,7 @@ impl AgentTurnSteelPlanningConfig {
         granted_ucan_abilities.sort();
         granted_ucan_abilities.dedup();
         Self {
-            steel_plan_payload: format!(
-                "{STEEL_ORCHESTRATION_PLAN_SCHEMA}|{AGENT_TURN_DECISION_ID}|{DEFAULT_TURN_PLANNING_SEAM}|{target_resource}|{AGENT_TURN_DECISION_CLASS}"
-            ),
+            steel_plan_payload: steel_plan_payload(AGENT_TURN_DECISION_ID, target_resource, AGENT_TURN_DECISION_CLASS),
             steel_source: DEFAULT_STEEL_SOURCE.to_string(),
             session_capabilities,
             granted_ucan_abilities,
@@ -180,9 +178,7 @@ fn build_config_from_artifacts(
     let profile = runtime_profile_from_export(settings, &profile_export, script_hash, policy_hash)?;
     ensure_session_authority(settings, &profile)?;
     Ok(AgentTurnSteelPlanningConfig {
-        steel_plan_payload: format!(
-            "{STEEL_ORCHESTRATION_PLAN_SCHEMA}|{AGENT_TURN_DECISION_ID}|{DEFAULT_TURN_PLANNING_SEAM}|session:fixture|{AGENT_TURN_DECISION_CLASS}"
-        ),
+        steel_plan_payload: steel_plan_payload(AGENT_TURN_DECISION_ID, "session:fixture", AGENT_TURN_DECISION_CLASS),
         steel_source: script_source,
         session_capabilities: settings.session_capabilities.clone(),
         granted_ucan_abilities: settings.granted_ucan_abilities.clone(),
@@ -543,10 +539,23 @@ fn turn_planning_input(request: &AgentTurnPlanningRequest<'_>) -> TurnPlanningIn
     }
 }
 
+fn steel_plan_payload(
+    decision_id: impl Into<String>,
+    target_resource: impl Into<String>,
+    decision_class: impl Into<String>,
+) -> String {
+    SteelTurnPlanHostCallPayload::new(decision_id, DEFAULT_TURN_PLANNING_SEAM, target_resource, decision_class)
+        .to_json()
+}
+
 fn steel_plan_payload_for_session(request: &AgentTurnPlanningRequest<'_>) -> String {
-    let expected_fixture_target = "session:fixture";
     let session_target = format!("session:{}", safe_route_token(request.session_id));
-    request.config.steel_plan_payload.replace(expected_fixture_target, &session_target)
+    let Ok(mut payload) = serde_json::from_str::<SteelTurnPlanHostCallPayload>(&request.config.steel_plan_payload)
+    else {
+        return request.config.steel_plan_payload.clone();
+    };
+    payload.target_resource = session_target;
+    payload.to_json()
 }
 
 fn stable_json_bytes<T: Serialize>(value: &T) -> Vec<u8> {

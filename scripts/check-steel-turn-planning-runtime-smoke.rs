@@ -73,6 +73,7 @@ const REQUIRED_DOC_MARKERS: &[&str] = &[
     "steel.host.execute_turn",
     "execution authority",
     "host-call",
+    "typed JSON",
     "no raw prompt",
     "target/steel-turn-planning-runtime-smoke/receipt.json",
 ];

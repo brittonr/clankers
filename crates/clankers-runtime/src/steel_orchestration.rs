@@ -251,6 +251,38 @@ pub struct OrchestrationDecision {
     pub action: DynamicRuntimeActionEnvelope,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SteelTurnPlanHostCallPayload {
+    pub schema: String,
+    pub decision_id: String,
+    pub action_name: String,
+    pub target_resource: String,
+    pub decision_class: String,
+}
+
+impl SteelTurnPlanHostCallPayload {
+    #[must_use]
+    pub fn new(
+        decision_id: impl Into<String>,
+        action_name: impl Into<String>,
+        target_resource: impl Into<String>,
+        decision_class: impl Into<String>,
+    ) -> Self {
+        Self {
+            schema: STEEL_ORCHESTRATION_PLAN_SCHEMA.to_string(),
+            decision_id: decision_id.into(),
+            action_name: action_name.into(),
+            target_resource: target_resource.into(),
+            decision_class: decision_class.into(),
+        }
+    }
+
+    #[must_use]
+    pub fn to_json(&self) -> String {
+        serde_json::to_string(self).expect("Steel turn planning host-call payload serializes")
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum OrchestrationPlannerKind {
@@ -334,6 +366,33 @@ pub struct SteelTurnExecutionInput {
     pub granted_ucan_abilities: Vec<String>,
     #[serde(default)]
     pub ucan_authority_grants: Vec<SteelTurnPlanningAuthorityGrant>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SteelTurnExecutionHostCallPayload {
+    pub schema: String,
+    pub seam: String,
+    pub plan_receipt_hash: ArtifactHash,
+    pub host_runner: String,
+    pub input_hash: ArtifactHash,
+}
+
+impl SteelTurnExecutionHostCallPayload {
+    #[must_use]
+    pub fn new(input: &SteelTurnExecutionInput, input_hash: ArtifactHash) -> Self {
+        Self {
+            schema: STEEL_TURN_EXECUTION_HOST_CALL_SCHEMA.to_string(),
+            seam: DEFAULT_TURN_EXECUTION_SEAM.to_string(),
+            plan_receipt_hash: input.plan_receipt_hash,
+            host_runner: input.host_runner.clone(),
+            input_hash,
+        }
+    }
+
+    #[must_use]
+    pub fn to_json(&self) -> String {
+        serde_json::to_string(self).expect("Steel execute-turn host-call payload serializes")
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -594,14 +653,7 @@ fn execution_host_call_capability(profile: &SteelOrchestrationProfile) -> String
 }
 
 fn steel_execution_host_call_payload(input: &SteelTurnExecutionInput, input_hash: ArtifactHash) -> String {
-    format!(
-        "{}|{}|{}|{}|{}",
-        STEEL_TURN_EXECUTION_HOST_CALL_SCHEMA,
-        DEFAULT_TURN_EXECUTION_SEAM,
-        input.plan_receipt_hash.prefixed(),
-        input.host_runner,
-        input_hash.prefixed()
-    )
+    SteelTurnExecutionHostCallPayload::new(input, input_hash).to_json()
 }
 
 fn steel_execution_host_call_receipt(
@@ -630,18 +682,14 @@ fn steel_execution_host_call_receipt(
 }
 
 fn steel_execution_host_call_payload_is_valid(input: &SteelTurnExecutionInput, payload: &str) -> bool {
-    let mut parts = payload.split('|');
-    let schema = parts.next();
-    let seam = parts.next();
-    let plan_receipt_hash = parts.next();
-    let host_runner = parts.next();
-    let input_hash = parts.next();
-    schema == Some(STEEL_TURN_EXECUTION_HOST_CALL_SCHEMA)
-        && seam == Some(DEFAULT_TURN_EXECUTION_SEAM)
-        && plan_receipt_hash == Some(input.plan_receipt_hash.prefixed().as_str())
-        && host_runner == Some(input.host_runner.as_str())
-        && input_hash.is_some_and(|hash| hash.starts_with("b3:"))
-        && parts.next().is_none()
+    let Ok(parsed) = serde_json::from_str::<SteelTurnExecutionHostCallPayload>(payload) else {
+        return false;
+    };
+    parsed.schema == STEEL_TURN_EXECUTION_HOST_CALL_SCHEMA
+        && parsed.seam == DEFAULT_TURN_EXECUTION_SEAM
+        && parsed.plan_receipt_hash == input.plan_receipt_hash
+        && parsed.host_runner == input.host_runner
+        && parsed.input_hash == ArtifactHash::digest(&stable_execution_input_bytes(input))
 }
 
 fn steel_execution_host_call_summary(runtime_receipt: &SteelRuntimeReceipt, payload_valid: bool) -> String {
@@ -891,26 +939,21 @@ fn parse_steel_plan_payload(
     input: &TurnPlanningInput,
     payload: &str,
 ) -> Result<OrchestrationPlan, ()> {
-    let mut parts = payload.split('|');
-    let schema = parts.next().ok_or(())?;
-    let decision_id = parts.next().ok_or(())?;
-    let action_name = parts.next().ok_or(())?;
-    let target_resource = parts.next().ok_or(())?;
-    let decision_class = parts.next().ok_or(())?;
-    if parts.next().is_some() || schema != STEEL_ORCHESTRATION_PLAN_SCHEMA {
+    let parsed = serde_json::from_str::<SteelTurnPlanHostCallPayload>(payload).map_err(|_| ())?;
+    if parsed.schema != STEEL_ORCHESTRATION_PLAN_SCHEMA {
         return Err(());
     }
     let candidate = input
         .candidate_actions
         .iter()
         .find(|candidate| {
-            candidate.decision_id == decision_id
-                && candidate.action_name == action_name
-                && candidate.target_resource == target_resource
+            candidate.decision_id == parsed.decision_id
+                && candidate.action_name == parsed.action_name
+                && candidate.target_resource == parsed.target_resource
         })
         .ok_or(())?;
     let mut selected = candidate.clone();
-    selected.decision_class = decision_class.to_string();
+    selected.decision_class = parsed.decision_class;
     Ok(build_plan(&profile.planning_seam, OrchestrationPlannerKind::SteelScheme, vec![
         decision_from_candidate(profile, input, &selected, OrchestrationPlannerKind::SteelScheme),
     ]))
@@ -1555,6 +1598,16 @@ mod tests {
     }
 
     fn valid_payload() -> String {
+        SteelTurnPlanHostCallPayload::new(
+            "first",
+            DEFAULT_TURN_PLANNING_SEAM,
+            "turn:first",
+            "steel_selected_tool_candidate_ordering",
+        )
+        .to_json()
+    }
+
+    fn legacy_delimited_payload() -> String {
         format!(
             "{}|first|{}|turn:first|steel_selected_tool_candidate_ordering",
             STEEL_ORCHESTRATION_PLAN_SCHEMA, DEFAULT_TURN_PLANNING_SEAM
@@ -1704,11 +1757,13 @@ mod tests {
 
     #[test]
     fn malformed_steel_plan_falls_back_only_when_policy_allows() {
-        let receipt = plan_turn_with_steel_or_fallback(&profile(), &input_with_payload("not-a-plan".to_string()));
-        assert_eq!(receipt.status, OrchestrationPlanStatus::FallbackUsed);
-        assert_eq!(receipt.issue_code, OrchestrationIssueCode::MalformedPlan);
-        assert_eq!(receipt.planner, OrchestrationPlannerKind::RustNative);
-        assert_eq!(receipt.fallback_status, RustNativeFallbackStatus::Used);
+        for payload in ["not-a-plan".to_string(), legacy_delimited_payload()] {
+            let receipt = plan_turn_with_steel_or_fallback(&profile(), &input_with_payload(payload));
+            assert_eq!(receipt.status, OrchestrationPlanStatus::FallbackUsed);
+            assert_eq!(receipt.issue_code, OrchestrationIssueCode::MalformedPlan);
+            assert_eq!(receipt.planner, OrchestrationPlannerKind::RustNative);
+            assert_eq!(receipt.fallback_status, RustNativeFallbackStatus::Used);
+        }
     }
 
     #[test]
@@ -1726,10 +1781,9 @@ mod tests {
 
     #[test]
     fn unknown_host_action_is_denied_before_any_effect() {
-        let mut input = input_with_payload(format!(
-            "{}|first|steel.host.provider|turn:first|bad-provider",
-            STEEL_ORCHESTRATION_PLAN_SCHEMA
-        ));
+        let mut input = input_with_payload(
+            SteelTurnPlanHostCallPayload::new("first", "steel.host.provider", "turn:first", "bad-provider").to_json(),
+        );
         input.candidate_actions = vec![candidate("steel.host.provider")];
         let receipt = plan_turn_with_steel_or_fallback(&profile(), &input);
         assert_eq!(receipt.status, OrchestrationPlanStatus::Denied);

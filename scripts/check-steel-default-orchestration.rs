@@ -351,6 +351,7 @@ fn validate_docs(text: &str, errors: &mut Vec<String>) {
         "no ambient",
         "fallback",
         "dynamic-runtime",
+        "typed JSON",
         "not an OS/process sandbox",
     ] {
         if !text.contains(marker) {

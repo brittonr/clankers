@@ -35,6 +35,7 @@ const REQUIRED_RUNTIME_MARKERS: &[&str] = &[
     "STEEL_TURN_EXECUTION_RECEIPT_SCHEMA",
     "DEFAULT_TURN_EXECUTION_SEAM",
     "SteelTurnExecutionInput",
+    "SteelTurnExecutionHostCallPayload",
     "SteelTurnExecutionHostCallReceipt",
     "SteelTurnExecutionReceipt",
     "DEFAULT_TURN_EXECUTION_SOURCE",
@@ -73,6 +74,7 @@ const REQUIRED_DOC_MARKERS: &[&str] = &[
     "clankers/steel/orchestrate.execute_turn",
     "before any provider request",
     "host-call",
+    "JSON",
 ];
 const FORBIDDEN_DOC_MARKERS: &[&str] = &["raw_prompt =", "provider_payload =", "compact_ucan", "credential_value"];
 
@@ -131,6 +133,7 @@ fn run() -> Result<PathBuf, String> {
     }
     for marker in [
         "SteelTurnExecutionInput",
+        "SteelTurnExecutionHostCallPayload",
         "SteelTurnExecutionHostCallReceipt",
         "SteelTurnExecutionReceipt",
         "authorize_steel_turn_execution",
