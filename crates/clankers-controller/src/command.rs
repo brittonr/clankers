@@ -623,6 +623,43 @@ impl SessionController {
         true
     }
 
+    #[cfg(test)]
+    pub(crate) fn handle_command_with_runtime_adapter_for_test(
+        &mut self,
+        adapter: &mut dyn ControllerRuntimeAdapter,
+        cmd: SessionCommand,
+    ) -> bool {
+        match cmd {
+            SessionCommand::Prompt { text, images } => {
+                let image_count = u32::try_from(images.len()).unwrap_or(u32::MAX);
+                self.submit_prompt_with_runtime_adapter(adapter, text, image_count)
+            }
+            SessionCommand::Abort => self.apply_control_with_runtime_adapter(adapter, RuntimeControlRequest::Abort),
+            SessionCommand::ResetCancel => {
+                self.apply_control_with_runtime_adapter(adapter, RuntimeControlRequest::ResetCancel)
+            }
+            SessionCommand::SetThinkingLevel { level } => match Self::parse_core_thinking_level(&level) {
+                Some(level) => self.apply_control_with_runtime_adapter(
+                    adapter,
+                    RuntimeControlRequest::SetThinkingLevel { level },
+                ),
+                None => {
+                    let event = semantic_error_message_to_daemon_event(
+                        &self.session_id,
+                        format!("Unknown thinking level: {level}"),
+                        SemanticErrorClass::InvalidInput,
+                    );
+                    self.emit(event);
+                    false
+                }
+            },
+            SessionCommand::SetDisabledTools { tools } => {
+                self.apply_control_with_runtime_adapter(adapter, RuntimeControlRequest::SetDisabledTools { tools })
+            }
+            other => panic!("fake runtime command fixture does not support {other:?}"),
+        }
+    }
+
     /// Apply a controller control request through an injected runtime/session adapter.
     pub fn apply_control_with_runtime_adapter(
         &mut self,
@@ -1844,6 +1881,86 @@ mod tests {
             DaemonEvent::DisabledToolsChanged { tools } if tools == &vec!["bash".to_string()]
         )));
         assert!(control_events.iter().any(|event| matches!(
+            event,
+            DaemonEvent::SystemMessage { text, is_error: false } if text == "Operation cancelled"
+        )));
+    }
+
+    #[test]
+    fn fake_runtime_command_fixture_records_prompt_controls_and_session_identity() {
+        let mut ctrl = SessionController::new_embedded(ControllerConfig {
+            session_id: "fake-command-session".to_string(),
+            model: "fake-command-model".to_string(),
+            ..Default::default()
+        });
+        let mut adapter = crate::runtime_adapter::FakeRuntimeAdapter::new(vec![
+            crate::runtime_adapter::RuntimePromptResult::succeeded(vec![clanker_message::SemanticEvent::Completed {
+                stop_reason: clanker_message::SemanticStopReason::Complete,
+                metadata: clanker_message::SemanticEventMetadata::empty().with("source", "fake-command-runtime"),
+            }]),
+        ]);
+
+        assert!(ctrl.handle_command_with_runtime_adapter_for_test(
+            &mut adapter,
+            SessionCommand::Prompt {
+                text: "hello fake command".to_string(),
+                images: vec![
+                    ImageData {
+                        media_type: "image/png".to_string(),
+                        data: "ZmFrZTE=".to_string(),
+                    },
+                    ImageData {
+                        media_type: "image/jpeg".to_string(),
+                        data: "ZmFrZTI=".to_string(),
+                    },
+                ],
+            },
+        ));
+        assert!(ctrl.handle_command_with_runtime_adapter_for_test(&mut adapter, SessionCommand::ResetCancel));
+        assert!(ctrl.handle_command_with_runtime_adapter_for_test(
+            &mut adapter,
+            SessionCommand::SetThinkingLevel {
+                level: "high".to_string(),
+            },
+        ));
+        assert!(ctrl.handle_command_with_runtime_adapter_for_test(
+            &mut adapter,
+            SessionCommand::SetDisabledTools {
+                tools: vec!["bash".to_string()],
+            },
+        ));
+        assert!(ctrl.start_embedded_prompt("cancel me", 0));
+        assert!(ctrl.handle_command_with_runtime_adapter_for_test(&mut adapter, SessionCommand::Abort));
+
+        assert_eq!(adapter.prompts.len(), 1);
+        assert_eq!(adapter.prompts[0].session_id, "fake-command-session");
+        assert_eq!(adapter.prompts[0].model, "fake-command-model");
+        assert_eq!(adapter.prompts[0].text, "hello fake command");
+        assert_eq!(adapter.prompts[0].image_count, 2);
+        assert_eq!(adapter.controls, vec![
+            RuntimeControlRequest::ResetCancel,
+            RuntimeControlRequest::SetThinkingLevel {
+                level: CoreThinkingLevel::High,
+            },
+            RuntimeControlRequest::SetDisabledTools {
+                tools: vec!["bash".to_string()],
+            },
+            RuntimeControlRequest::Abort,
+        ]);
+        assert!(!ctrl.busy);
+        assert!(!ctrl.core_state.busy);
+        assert!(ctrl.core_state.pending_prompt.is_none());
+        let events = ctrl.drain_events();
+        assert!(events.iter().any(|event| matches!(event, DaemonEvent::PromptDone { error: None })));
+        assert!(events.iter().any(|event| matches!(
+            event,
+            DaemonEvent::SystemMessage { text, is_error: false } if text.contains("Thinking")
+        )));
+        assert!(events.iter().any(|event| matches!(
+            event,
+            DaemonEvent::DisabledToolsChanged { tools } if tools == &vec!["bash".to_string()]
+        )));
+        assert!(events.iter().any(|event| matches!(
             event,
             DaemonEvent::SystemMessage { text, is_error: false } if text == "Operation cancelled"
         )));

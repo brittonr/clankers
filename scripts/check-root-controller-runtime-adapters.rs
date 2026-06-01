@@ -36,6 +36,7 @@ const REQUIRED_MARKERS: &[(&str, &str)] = &[
     (CONTROLLER_COMMAND, "apply_control_with_runtime_adapter"),
     (CONTROLLER_COMMAND, "with_agent_runtime_adapter"),
     (CONTROLLER_COMMAND, "runtime_adapter_fixture_covers_prompt_control_identity_and_semantic_projection"),
+    (CONTROLLER_COMMAND, "fake_runtime_command_fixture_records_prompt_controls_and_session_identity"),
     (CONTROLLER_LIB, "Compatibility constructor for daemon mode"),
     (CONTROLLER_LIB, "AgentBackedRuntimeAdapter"),
     (CONTROLLER_LIB, "convergence condition"),
@@ -72,6 +73,16 @@ fn run() -> Result<(), String> {
             "runtime_adapter_fixture_covers_prompt_control_identity_and_semantic_projection",
         ],
         "controller fake-service command lifecycle fixture",
+    )?;
+    run_cargo_test(
+        [
+            "test",
+            "-p",
+            "clankers-controller",
+            "--lib",
+            "fake_runtime_command_fixture_records_prompt_controls_and_session_identity",
+        ],
+        "controller fake-runtime command branch fixture",
     )?;
     run_cargo_test(
         ["test", "-p", "clankers-controller", "--test", "fcis_shell_boundaries"],
