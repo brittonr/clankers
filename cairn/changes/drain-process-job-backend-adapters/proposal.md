@@ -21,6 +21,8 @@
 
 Extract the current native, pueue, systemd, durable-record, retention, and notification clusters one at a time. Each extraction should leave a narrow call path from `ProcessTool` to `ProcessJobService`/backend adapters, and each adapter should have a fake-runner fixture that proves behavior without spawning real shell services.
 
+The first slice should be an ownership map/source rail before extraction. That map should make `src/tools/process.rs` accountable only for request parsing, backend selection, service wiring, and final receipt projection, with every backend/storage policy cluster assigned to a named owner.
+
 ## Verification
 
 Focused validation should include process-job unit fixtures, fake pueue/systemd runner fixtures, durable retention/reconciliation fixtures, the lego architecture boundary rail, `cargo check --tests` for touched crates, Cairn gates, and `git diff --check`.

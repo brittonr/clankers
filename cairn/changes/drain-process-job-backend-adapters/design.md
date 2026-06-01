@@ -4,6 +4,18 @@
 
 This change continues the process-job decoupling by making the root tool a projection over typed backend services. The reusable process-job contracts stay in `clankers-runtime::process_jobs`; concrete host integrations may live in focused root-edge modules while their policy is covered by service-level tests.
 
+This is the process-tool counterpart to `neutral-tool-service-context`: neutral services shrink the agent/tool execution surface, while this change shrinks the root `process` tool itself into backend selection and receipt projection. The two changes can proceed independently, but both should keep reusable policy out of root/TUI/daemon assembly.
+
+## Initial inventory targets
+
+I1 should identify the owner for each policy cluster currently living in or reachable from `src/tools/process.rs`:
+
+- native backend: registry/admission/start/stop/restart/adopt/reconciliation;
+- pueue backend: command construction, status/list parsing, log projection, unavailable degraded receipts;
+- systemd backend: unit construction, show/list/log parsing, unsupported degraded receipts;
+- durable storage: record identity, reconciliation, retention/GC, log degradation, redaction;
+- notifications: completion/failure delivery, notification suppression, redacted receipts.
+
 ## Decisions
 
 ### 1. Extract by backend/service cluster

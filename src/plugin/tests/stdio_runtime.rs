@@ -1471,21 +1471,25 @@ async fn mixed_runtime_host_preserves_extism_behavior_and_stdio_visibility() {
     );
 
     let manager = init_manager_with_restart_delays(dir.path(), PluginRuntimeMode::Standalone, "5,10,15,20,25");
+    // This fixture starts one Extism plugin and two stdio plugins. Under full
+    // nextest load it can remain in `Starting` a little longer than the
+    // single-plugin fixtures even though focused execution is fast.
+    let mixed_runtime_startup_timeout = Duration::from_secs(5);
 
-    wait_for_plugin_state(&manager, "clankers-test-plugin", Duration::from_secs(2), |state| {
+    wait_for_plugin_state(&manager, "clankers-test-plugin", mixed_runtime_startup_timeout, |state| {
         matches!(state, PluginState::Active)
     })
     .await;
-    wait_for_plugin_state(&manager, "clankers-stdio-echo", Duration::from_secs(2), |state| {
+    wait_for_plugin_state(&manager, "clankers-stdio-echo", mixed_runtime_startup_timeout, |state| {
         matches!(state, PluginState::Active)
     })
     .await;
-    wait_for_plugin_state(&manager, "stdio-mixed-event-ui", Duration::from_secs(2), |state| {
+    wait_for_plugin_state(&manager, "stdio-mixed-event-ui", mixed_runtime_startup_timeout, |state| {
         matches!(state, PluginState::Active)
     })
     .await;
-    wait_for_live_tool(&manager, "clankers-stdio-echo", "stdio_echo_fixture", Duration::from_secs(2)).await;
-    wait_for_live_tool(&manager, "stdio-mixed-event-ui", "stdio_mixed_event_ui_tool", Duration::from_secs(2)).await;
+    wait_for_live_tool(&manager, "clankers-stdio-echo", "stdio_echo_fixture", mixed_runtime_startup_timeout).await;
+    wait_for_live_tool(&manager, "stdio-mixed-event-ui", "stdio_mixed_event_ui_tool", mixed_runtime_startup_timeout).await;
 
     let summaries = crate::plugin::build_protocol_plugin_summaries(&manager);
     let extism = summaries.iter().find(|summary| summary.name == "clankers-test-plugin").unwrap();

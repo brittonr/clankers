@@ -1,7 +1,7 @@
 {
   "artifact_hashes": [
     {
-      "blake3": "d12b02e349d9bcc925a960e83a3b1113a1895948a27fdeae433dc943f0c2c5db",
+      "blake3": "b541a01781d208af295c41ad752cfc6268a94e92158009ed6b1853630e066282",
       "path": "policy/lego-architecture/dependency-ownership-baseline.json"
     },
     {
@@ -17,7 +17,7 @@
       "path": "cairn/specs/lego-architecture-boundaries/spec.md"
     },
     {
-      "blake3": "a53498aa8e68932f7b271e9078f51768fcf0191c92bfdbcfde21587f15f73c73",
+      "blake3": "f800e3380293bd23dc8ce36bf814b32d1c3cf52f9daacd03971a9f1b87849b09",
       "path": "src/tools/process.rs"
     },
     {
@@ -25,11 +25,31 @@
       "path": "src/tools/process/adapter.rs"
     },
     {
-      "blake3": "d8fe9fe74c2f16e49b28b2ff2deaa8533d427a8f4b9de08f3e67c6046647eb4b",
+      "blake3": "93e4ec78ba68e75ebc3e7c4090e62d3bbd4edc85571d86608d9d02f59bf671cb",
       "path": "crates/clankers-agent/src/lib.rs"
     },
     {
-      "blake3": "854b8ac622953ff3c57e13b08bf7a9aa9302b6955a607a33e68e09a2ba7e8285",
+      "blake3": "e40ad60d0ab98fb472cd6d7e114b4c3358b50c9f717a5fe67cfe9a7f7105967f",
+      "path": "crates/clankers-agent/src/builder.rs"
+    },
+    {
+      "blake3": "932a3b5995d90696d5202584e6028693f90017d36127703771084777b9ff0fe2",
+      "path": "crates/clankers-agent/src/compaction.rs"
+    },
+    {
+      "blake3": "a14426a1f6d2ee53208e3ab5d5eb690a74c556ca831034ca3e3880487a0d384e",
+      "path": "crates/clankers-agent/src/compaction/tool_summaries.rs"
+    },
+    {
+      "blake3": "cf8f5bac54e5dace9eeee79e3bb89e7b7ed2906b24abf471840c8bc108b04345",
+      "path": "crates/clankers-agent/src/events.rs"
+    },
+    {
+      "blake3": "f5de6f444b00206552db0c3271485b2d78cf3a88e3fafb5334df2da3192fd22e",
+      "path": "crates/clankers-agent/src/tool.rs"
+    },
+    {
+      "blake3": "bc92792626c033911f40372c155c6242af2a5c9a48b7f58953cd548df9954db3",
       "path": "crates/clankers-agent/src/turn/mod.rs"
     },
     {
@@ -37,19 +57,51 @@
       "path": "crates/clankers-agent/src/turn/adapters.rs"
     },
     {
-      "blake3": "3e2140f665c310b8880f7ca6cc230f51ffde4a1b4c7afa75450c0c0f2f50dfbd",
+      "blake3": "4dfdf17b4329bdbd467970149fb4c87b52e00581ea569f53a4beca9807ff930a",
+      "path": "crates/clankers-agent/src/turn/execution.rs"
+    },
+    {
+      "blake3": "361f93f397262631b2eb8e4a2b32074498fe99a38784cf3c3503bcb8c4a8b7fd",
+      "path": "crates/clankers-agent/src/turn/message.rs"
+    },
+    {
+      "blake3": "6916150891fedf61e9b62c0d7423105a82277eca843f6e579a6f0523e8f6c302",
+      "path": "crates/clankers-agent/src/turn/policy.rs"
+    },
+    {
+      "blake3": "5e68d8889395742294f172932551cf540eb7bfb0baa11e9b72076726f70f48a5",
       "path": "crates/clankers-agent/src/turn/ports.rs"
     },
     {
-      "blake3": "6070591e3a0c39db1c84332cef800263c706079ba3d7953c3e3b92c7e63469d0",
+      "blake3": "9b43bb56b637c19b10210d05657979ce46f539b0abb13440aa3a8b311f3d61e9",
+      "path": "crates/clankers-agent/src/turn/steel_planning.rs"
+    },
+    {
+      "blake3": "4e7939dfc7dc7e2927aaafe57bb517fa7cca68894f5f4b5ae4fc2871ca6d4f81",
+      "path": "crates/clankers-agent/src/turn/steel_tool_substrate.rs"
+    },
+    {
+      "blake3": "38eac67cda76927d72c77f9383619aa18481bcb25b1456c0ad358c4a848a9655",
+      "path": "crates/clankers-agent/src/turn/transcript.rs"
+    },
+    {
+      "blake3": "3be08542c53acaceffefa5e401a1ba2dde31deaf7926aea07bfa3fbea1280d50",
+      "path": "crates/clankers-agent/src/turn/usage.rs"
+    },
+    {
+      "blake3": "c8f410f0b3cc8c505fda39a8538fa279f11a92133522322b99605e3ecf4ae7d0",
+      "path": "crates/clankers-tool-host/src/lib.rs"
+    },
+    {
+      "blake3": "8690fa45c2ac5d3b26b6c2a53bf8bccbd3a1618b9a81133a710fad25c3ed0f16",
       "path": "crates/clankers-controller/src/core_effects.rs"
     },
     {
-      "blake3": "47e829a44702dc376a4fa7b2848a45fef1adfe0157ac6d65c0cde6b3ac82030c",
+      "blake3": "4eb825284625aa9df3c6f26f15ca104cca7f37329df0b9df5497c0a94793c697",
       "path": "crates/clankers-controller/src/convert.rs"
     },
     {
-      "blake3": "ef4543ee0dc28fe3805d34bb5f9c306338938dd113a328341337c5dfedb5ca8b",
+      "blake3": "b3ce2144d9bcf01815aa54d4111479c9e1c784aeccab6c3fe51d08d7cf48658c",
       "path": "crates/clankers-controller/src/domain_event.rs"
     },
     {
@@ -57,28 +109,52 @@
       "path": "crates/clankers-controller/src/effect_interpretation.rs"
     },
     {
-      "blake3": "85c8b37e53f98ec7ff70e1a69e34f8e3710d5114916a74fe2a5e825604320571",
+      "blake3": "a3886af4252479fbc0c044a582a17fbb8deb6b7e3739ff583a6a0b7e26a32e70",
       "path": "crates/clankers-provider/src/router_request_bridge.rs"
     },
     {
-      "blake3": "9a090fd03f5f684f2d6c6fc905a96634212f0f4e4f0e0072d71086245d1bf661",
+      "blake3": "04cf3a4866d60e80c7625469aceb7123d272a8a0468a0bc463cb21c549473628",
       "path": "crates/clankers-provider/src/router.rs"
     },
     {
-      "blake3": "fbdbbb0faeede8922a50b28f7b4fd23391552ea6b8ed268d17697198c546e043",
+      "blake3": "af0c9c6d2c9e323d1a72bf4fff81386e4a25ac5b8a5ee62c777b2a73f9e66699",
       "path": "crates/clankers-provider/src/rpc_provider.rs"
     },
     {
-      "blake3": "30c8c2f1c7439c64bf133d7f682f39ec4086648bec81a01c8a4bc3dbde6ad511",
+      "blake3": "778b30932ed9d4ba847aabe19fb0fb7a83448ae53acd8d336894a67e4f503fc9",
+      "path": "crates/clankers-controller/src/command.rs"
+    },
+    {
+      "blake3": "2db57f662a6965c4a1591d0f4ae80da98f01e476e9c8e12bcb18606466f197f6",
+      "path": "crates/clankers-controller/src/auto_test.rs"
+    },
+    {
+      "blake3": "f5afd3278979cd5e9f945d0ad4ff9c1b3f8370e5363244dc67def0d990876aef",
       "path": "src/modes/session_command_policy.rs"
     },
     {
-      "blake3": "4457712cbd8068ec894722116ba4b2aa67e2a0734a1a8af01b569f9232f9e21a",
+      "blake3": "e5a2d14ce2b7be28abd7b68d2cb2307368e95e375cca26eb7dbd30ac9c56b96d",
       "path": "src/modes/attach/commands.rs"
     },
     {
-      "blake3": "f6fdfd7b00a6af595570eadae78f1fd586a7ce778edc97edf4cf971b752e27aa",
+      "blake3": "689b4bea39d44dfaf4858fe63d93a6ca6cdd3860f61b7894b7cddd6624a9a5f0",
+      "path": "src/slash_commands/effects.rs"
+    },
+    {
+      "blake3": "21fbf103614cfd20915f301c484adc1574f40922b8dacddabe3c6ddc6d82c1f1",
       "path": "src/modes/agent_task.rs"
+    },
+    {
+      "blake3": "0f55f85a28ec0dfb6f258cb2fc3e0218e7d68c061fcc63b311b03958cefaaf05",
+      "path": "src/modes/daemon/agent_process.rs"
+    },
+    {
+      "blake3": "f0f917b235a4c62da3e5dfb83300e13b8924dddf7e068aaeebeba6fd842975a9",
+      "path": "src/modes/daemon/session_builder.rs"
+    },
+    {
+      "blake3": "29c611b9eaf72d84a9646592da9a34d90c8585fb8e783c8035b95faaa7bba8ff",
+      "path": "src/modes/daemon/session_plugins.rs"
     }
   ],
   "baseline": "policy/lego-architecture/dependency-ownership-baseline.json",
@@ -139,6 +215,7 @@
       "cancellation_port_trait": "AgentCancellationPort",
       "cost_adapter": "CostTrackerPort",
       "cost_port_trait": "AgentCostPort",
+      "legacy_tool_context_inventory": "LEGACY_TOOL_CONTEXT_SERVICE_INVENTORY",
       "model_host_concrete_provider_fields": 0,
       "model_port_trait": "AgentModelPort",
       "ports_module": "crates/clankers-agent/src/turn/ports.rs",
@@ -156,8 +233,10 @@
         "cancellation"
       ],
       "tool_adapter": "ControllerToolPort",
+      "tool_context_module": "crates/clankers-agent/src/tool.rs",
       "tool_host_concrete_tool_map_fields": 0,
       "tool_port_trait": "AgentToolPort",
+      "tool_service_inventory": "CONTROLLER_TOOL_PORT_SERVICE_INVENTORY",
       "typed_rail_kind": "Rust AST module, trait, impl, struct-field, and service-receipt checks"
     },
     "controller_crate": {
@@ -255,17 +334,6 @@
       ],
       "package": "clankers-controller"
     },
-    "controller_domain_event": {
-      "compatibility_alias": "ControllerDomainEvent",
-      "domain_event_module": "crates/clankers-controller/src/domain_event.rs",
-      "neutral_event_contract": "clanker_message::SemanticEvent",
-      "neutral_receipt_dto": "SemanticImage",
-      "protocol_projection_module": "crates/clankers-controller/src/convert.rs",
-      "protocol_projection_owner": "convert::semantic_event_to_daemon_event",
-      "protocol_references_in_domain_module": 0,
-      "tui_references_in_domain_module": 0,
-      "typed_rail_kind": "Rust AST function, path, alias, and forbidden edge-dependency checks"
-    },
     "controller_display_protocol_dtos": {
       "auto_test_policy_module": "crates/clankers-controller/src/auto_test.rs",
       "command_policy_module": "crates/clankers-controller/src/command.rs",
@@ -288,6 +356,17 @@
       "protocol_projection_owner": "convert::semantic_error_message_to_daemon_event",
       "typed_rail_kind": "Rust AST path, struct, function, and owner-diagnostic checks for display/protocol DTO drains"
     },
+    "controller_domain_event": {
+      "compatibility_alias": "ControllerDomainEvent",
+      "domain_event_module": "crates/clankers-controller/src/domain_event.rs",
+      "neutral_event_contract": "clanker_message::SemanticEvent",
+      "neutral_receipt_dto": "SemanticImage",
+      "protocol_projection_module": "crates/clankers-controller/src/convert.rs",
+      "protocol_projection_owner": "convert::semantic_event_to_daemon_event",
+      "protocol_references_in_domain_module": 0,
+      "tui_references_in_domain_module": 0,
+      "typed_rail_kind": "Rust AST function, path, alias, and forbidden edge-dependency checks"
+    },
     "controller_effect_interpretation": {
       "agent_runtime_references": 0,
       "interpretation_module": "crates/clankers-controller/src/effect_interpretation.rs",
@@ -297,6 +376,39 @@
       "thinking_projection": "interpret_thinking_change",
       "tool_filter_projection": "interpret_tool_filter_application",
       "typed_rail_kind": "Rust AST function, struct, path, and forbidden dependency checks"
+    },
+    "daemon_session_assembly": {
+      "actor_forbidden_assembly_paths": [
+        "AgentBuilder",
+        "UcanCapabilityGate",
+        "PublicUcanCapabilityGate",
+        "ScriptHookHandler",
+        "GitHookHandler",
+        "PluginHookHandler",
+        "merge_session_capabilities",
+        "build_session_hook_pipeline",
+        "build_all_tiered_tools",
+        "build_protocol_plugin_summaries"
+      ],
+      "actor_loop_module": "src/modes/daemon/agent_process.rs",
+      "actor_spawn_entrypoint": "assemble_session_runtime",
+      "capability_merge_owner": "session_builder::merge_session_capabilities",
+      "ephemeral_spawn_plan": "plan_ephemeral_child_session",
+      "hook_pipeline_owner": "session_builder::build_session_hook_pipeline",
+      "plugin_projection_owner": "session_plugins::DaemonPluginProjection",
+      "runtime_builder_module": "src/modes/daemon/session_builder.rs",
+      "runtime_bundle": "DaemonSessionRuntime",
+      "runtime_request": "DaemonSessionRuntimeRequest",
+      "socketless_fixtures": [
+        "create_plan_for_new_session_has_spawn_and_handle_data_without_socket",
+        "create_plan_resolves_resume_messages_without_socket",
+        "keyed_plans_prepare_new_and_recovered_actor_inputs_without_socket",
+        "ephemeral_plan_prepares_child_actor_inputs_without_socket",
+        "runtime_bundle_assembles_controller_channels_and_projection_without_actor_or_socket"
+      ],
+      "tool_plugin_projection_module": "src/modes/daemon/session_plugins.rs",
+      "tool_rebuilder_owner": "session_plugins::DaemonToolRebuilder",
+      "typed_rail_kind": "Rust AST path, struct, function, method, and source-owner checks for daemon session assembly"
     },
     "most_shared_dto_crates": [
       {
@@ -605,39 +717,6 @@
       ],
       "package": "clankers"
     },
-    "daemon_session_assembly": {
-      "actor_forbidden_assembly_paths": [
-        "AgentBuilder",
-        "UcanCapabilityGate",
-        "PublicUcanCapabilityGate",
-        "ScriptHookHandler",
-        "GitHookHandler",
-        "PluginHookHandler",
-        "merge_session_capabilities",
-        "build_session_hook_pipeline",
-        "build_all_tiered_tools",
-        "build_protocol_plugin_summaries"
-      ],
-      "actor_loop_module": "src/modes/daemon/agent_process.rs",
-      "actor_spawn_entrypoint": "assemble_session_runtime",
-      "capability_merge_owner": "session_builder::merge_session_capabilities",
-      "ephemeral_spawn_plan": "plan_ephemeral_child_session",
-      "hook_pipeline_owner": "session_builder::build_session_hook_pipeline",
-      "plugin_projection_owner": "session_plugins::DaemonPluginProjection",
-      "runtime_builder_module": "src/modes/daemon/session_builder.rs",
-      "runtime_bundle": "DaemonSessionRuntime",
-      "runtime_request": "DaemonSessionRuntimeRequest",
-      "socketless_fixtures": [
-        "create_plan_for_new_session_has_spawn_and_handle_data_without_socket",
-        "create_plan_resolves_resume_messages_without_socket",
-        "keyed_plans_prepare_new_and_recovered_actor_inputs_without_socket",
-        "ephemeral_plan_prepares_child_actor_inputs_without_socket",
-        "runtime_bundle_assembles_controller_channels_and_projection_without_actor_or_socket"
-      ],
-      "tool_plugin_projection_module": "src/modes/daemon/session_plugins.rs",
-      "tool_rebuilder_owner": "session_plugins::DaemonToolRebuilder",
-      "typed_rail_kind": "Rust AST path, struct, function, method, and source-owner checks for daemon session assembly"
-    },
     "session_command_policy": {
       "ack_matcher": "ack_matches",
       "ack_policy_dto": "SessionAckPolicy",
@@ -656,6 +735,33 @@
       "slash_effects_module": "src/slash_commands/effects.rs",
       "standalone_agent_task_module": "src/modes/agent_task.rs",
       "typed_rail_kind": "Rust AST enum, struct, function, and call-path checks"
+    },
+    "tool_host_service_context": {
+      "forbidden_shell_imports": [
+        "clankers_db",
+        "SearchIndex",
+        "clankers_hooks",
+        "HookPipeline",
+        "AgentEvent",
+        "clanker_tui_types",
+        "DaemonEvent",
+        "SessionCommand",
+        "ToolContext",
+        "crate::tools",
+        "src/tools"
+      ],
+      "module": "crates/clankers-tool-host/src/lib.rs",
+      "neutral_cancellation_service": "ToolCancellationService",
+      "neutral_capability_service": "ToolCapabilityService",
+      "neutral_hook_service": "ToolHookService",
+      "neutral_progress_service": "ToolProgressSink",
+      "neutral_runtime_policy_service": "ToolRuntimePolicyService",
+      "neutral_search_service": "ToolSearchService",
+      "neutral_service_bundle": "ToolHostServices",
+      "neutral_service_kinds": "ToolHostServiceKind",
+      "neutral_storage_service": "ToolStorageService",
+      "requirement": "r[neutral-tool-service-context.verification.boundary-rail]",
+      "typed_rail_kind": "Rust AST/source import ownership check over reusable tool-host context module"
     }
   },
   "rail_kind": "typed cargo metadata plus Rust AST boundary rails",

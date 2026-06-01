@@ -21,6 +21,8 @@
 
 Add service traits or DTOs to `clankers-tool-host`/`clankers-runtime` for the concrete services currently threaded through `ControllerToolPort`. Update the legacy adapter to resolve concrete DB/hook/progress behavior at the product edge and present neutral services to tool execution.
 
+The first slice is intentionally an inventory/source-rail pass: name every concrete service currently crossing `ControllerToolPort`, then fail future changes that add new DB/hook/TUI/protocol/root fields to reusable tool-host context modules without an owner receipt.
+
 ## Verification
 
 Validation should include neutral tool fixtures for success, missing service, hook denial/modify/continue, capability denial, cancellation, progress emission, and legacy adapter parity; source rails should reject DB/hook/TUI/protocol imports in reusable tool-host context modules.

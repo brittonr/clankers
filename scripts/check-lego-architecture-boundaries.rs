@@ -40,6 +40,7 @@ const AGENT_BUILDER: &str = "crates/clankers-agent/src/builder.rs";
 const AGENT_COMPACTION: &str = "crates/clankers-agent/src/compaction.rs";
 const AGENT_COMPACTION_TOOL_SUMMARIES: &str = "crates/clankers-agent/src/compaction/tool_summaries.rs";
 const AGENT_EVENTS: &str = "crates/clankers-agent/src/events.rs";
+const AGENT_TOOL: &str = "crates/clankers-agent/src/tool.rs";
 const AGENT_TURN_MOD: &str = "crates/clankers-agent/src/turn/mod.rs";
 const AGENT_TURN_ADAPTERS: &str = "crates/clankers-agent/src/turn/adapters.rs";
 const AGENT_TURN_EXECUTION: &str = "crates/clankers-agent/src/turn/execution.rs";
@@ -50,6 +51,7 @@ const AGENT_TURN_STEEL_PLANNING: &str = "crates/clankers-agent/src/turn/steel_pl
 const AGENT_TURN_STEEL_TOOL_SUBSTRATE: &str = "crates/clankers-agent/src/turn/steel_tool_substrate.rs";
 const AGENT_TURN_TRANSCRIPT: &str = "crates/clankers-agent/src/turn/transcript.rs";
 const AGENT_TURN_USAGE: &str = "crates/clankers-agent/src/turn/usage.rs";
+const TOOL_HOST_LIB: &str = "crates/clankers-tool-host/src/lib.rs";
 const CONTROLLER_COMMAND: &str = "crates/clankers-controller/src/command.rs";
 const CONTROLLER_AUTO_TEST: &str = "crates/clankers-controller/src/auto_test.rs";
 const CONTROLLER_CORE_EFFECTS: &str = "crates/clankers-controller/src/core_effects.rs";
@@ -125,6 +127,7 @@ fn run() -> Result<PathBuf, String> {
     let process_tool_adapter = process_tool_adapter_signature()?;
     let agent_turn_ports = agent_turn_ports_signature()?;
     let agent_provider_neutral_dtos = agent_provider_neutral_dto_signature()?;
+    let tool_host_service_context = tool_host_service_context_signature()?;
     let controller_effect_interpretation = controller_effect_interpretation_signature()?;
     let provider_router_bridge = provider_router_bridge_signature()?;
     let controller_domain_event = controller_domain_event_signature()?;
@@ -164,6 +167,7 @@ fn run() -> Result<PathBuf, String> {
         "process_tool_adapter": process_tool_adapter,
         "agent_turn_ports": agent_turn_ports,
         "agent_provider_neutral_dtos": agent_provider_neutral_dtos,
+        "tool_host_service_context": tool_host_service_context,
         "controller_effect_interpretation": controller_effect_interpretation,
         "provider_router_bridge": provider_router_bridge,
         "controller_domain_event": controller_domain_event,
@@ -203,6 +207,7 @@ fn run() -> Result<PathBuf, String> {
             hash_artifact(Path::new(AGENT_COMPACTION))?,
             hash_artifact(Path::new(AGENT_COMPACTION_TOOL_SUMMARIES))?,
             hash_artifact(Path::new(AGENT_EVENTS))?,
+            hash_artifact(Path::new(AGENT_TOOL))?,
             hash_artifact(Path::new(AGENT_TURN_MOD))?,
             hash_artifact(Path::new(AGENT_TURN_ADAPTERS))?,
             hash_artifact(Path::new(AGENT_TURN_EXECUTION))?,
@@ -213,6 +218,7 @@ fn run() -> Result<PathBuf, String> {
             hash_artifact(Path::new(AGENT_TURN_STEEL_TOOL_SUBSTRATE))?,
             hash_artifact(Path::new(AGENT_TURN_TRANSCRIPT))?,
             hash_artifact(Path::new(AGENT_TURN_USAGE))?,
+            hash_artifact(Path::new(TOOL_HOST_LIB))?,
             hash_artifact(Path::new(CONTROLLER_CORE_EFFECTS))?,
             hash_artifact(Path::new(CONTROLLER_CONVERT))?,
             hash_artifact(Path::new(CONTROLLER_DOMAIN_EVENT))?,
@@ -501,6 +507,7 @@ fn agent_turn_ports_signature() -> Result<Value, String> {
     let turn_mod_file = read_rust_file(AGENT_TURN_MOD)?;
     let adapters_file = read_rust_file(AGENT_TURN_ADAPTERS)?;
     let ports_file = read_rust_file(AGENT_TURN_PORTS)?;
+    let tool_file = read_rust_file(AGENT_TOOL)?;
     let agent_lib = &agent_lib_file.source;
     let turn_mod = &turn_mod_file.source;
     let adapters = &adapters_file.source;
@@ -599,6 +606,45 @@ fn agent_turn_ports_signature() -> Result<Value, String> {
     }
     require_contains(&ports, "impl AgentModelPort for ProviderModelPort", "provider model port adapter")?;
     require_contains(&ports, "impl AgentToolPort for ControllerToolPort", "controller tool port adapter")?;
+    require_contains(
+        &ports,
+        "NEUTRAL_TOOL_SERVICE_CONTEXT_REQUIREMENT",
+        "neutral tool service context requirement marker",
+    )?;
+    require_contains(
+        &ports,
+        "CONTROLLER_TOOL_PORT_SERVICE_INVENTORY",
+        "controller tool port concrete service inventory",
+    )?;
+    require_contains(
+        &ports,
+        "LEGACY_TOOL_CONTEXT_SERVICE_INVENTORY",
+        "legacy tool context concrete service inventory",
+    )?;
+    for (field, type_path, label) in [
+        ("controller_tools", "HashMap", "legacy tool registry service field"),
+        ("event_tx", "AgentEvent", "progress/event sender service field"),
+        ("cancel", "CancellationToken", "cancellation service field"),
+        ("hook_pipeline", "HookPipeline", "hook service field"),
+        ("db", "Db", "storage service field"),
+        ("capability_gate", "CapabilityGate", "capability service field"),
+        (
+            "steel_tool_substrate",
+            "AgentToolSteelSubstrateConfig",
+            "Steel substrate policy service field",
+        ),
+    ] {
+        require_struct_field_type_path(&ports_file, "ControllerToolPort", field, type_path, label)?;
+    }
+    for (field, type_path, label) in [
+        ("event_tx", "AgentEvent", "legacy progress/event sender field"),
+        ("signal", "CancellationToken", "legacy cancellation field"),
+        ("hook_pipeline", "HookPipeline", "legacy hook field"),
+        ("db", "Db", "legacy storage field"),
+        ("search_index", "SearchIndex", "legacy search-index field"),
+    ] {
+        require_struct_field_type_path(&tool_file, "ToolContext", field, type_path, label)?;
+    }
 
     Ok(json!({
         "ports_module": AGENT_TURN_PORTS,
@@ -612,10 +658,89 @@ fn agent_turn_ports_signature() -> Result<Value, String> {
         "tool_host_concrete_tool_map_fields": 0,
         "provider_adapter": "ProviderModelPort",
         "tool_adapter": "ControllerToolPort",
+        "tool_service_inventory": "CONTROLLER_TOOL_PORT_SERVICE_INVENTORY",
+        "legacy_tool_context_inventory": "LEGACY_TOOL_CONTEXT_SERVICE_INVENTORY",
+        "tool_context_module": AGENT_TOOL,
         "cost_adapter": "CostTrackerPort",
         "cancellation_adapter": "TokenCancellationPort",
         "provider_adapter_owner": "crates/clankers-agent/src/lib.rs app-edge shell",
         "typed_rail_kind": "Rust AST module, trait, impl, struct-field, and service-receipt checks"
+    }))
+}
+
+fn tool_host_service_context_signature() -> Result<Value, String> {
+    let file = read_rust_file(TOOL_HOST_LIB)?;
+    let source = &file.source;
+
+    for (path, label) in [
+        ("clankers_db", "concrete database service import"),
+        ("SearchIndex", "concrete search-index service import"),
+        ("clankers_hooks", "concrete hook pipeline import"),
+        ("HookPipeline", "concrete hook pipeline type import"),
+        ("AgentEvent", "agent progress/event import"),
+        ("clanker_tui_types", "TUI DTO import"),
+        ("DaemonEvent", "daemon protocol event import"),
+        ("SessionCommand", "daemon protocol command import"),
+        ("ToolContext", "legacy agent tool context import"),
+    ] {
+        forbid_rust_path(&file, path, &format!("neutral tool-host context shell leak: {label}"))?;
+    }
+    for (needle, label) in [
+        ("clankers_db", "concrete database service path"),
+        ("clankers_hooks", "concrete hook pipeline path"),
+        ("clanker_tui_types", "TUI DTO path"),
+        ("clankers_protocol", "daemon protocol DTO path"),
+        ("crate::tools", "root tool state path"),
+        ("src/tools", "root tool source path"),
+    ] {
+        forbid_contains(source, needle, &format!("neutral tool-host context shell leak: {label}"))?;
+    }
+    for (needle, label) in [
+        ("ToolHostServices", "neutral service bundle"),
+        ("ToolHostServiceKind", "neutral service kind DTO"),
+        ("ToolHostFuture", "neutral async service future alias"),
+        ("ToolStorageService", "neutral storage service trait"),
+        ("ToolStorageReadRequest", "neutral storage read DTO"),
+        ("ToolSearchService", "neutral search service trait"),
+        ("ToolSearchRequest", "neutral search DTO"),
+        ("ToolHookService", "neutral hook service trait"),
+        ("ToolHookDecision", "neutral hook decision DTO"),
+        ("ToolProgressSink", "neutral progress service"),
+        ("ToolCapabilityService", "neutral capability service trait"),
+        ("ToolCapabilityRequest", "neutral capability DTO"),
+        ("ToolCancellationService", "neutral cancellation service trait"),
+        ("ToolRuntimePolicyService", "neutral runtime policy service trait"),
+        ("ToolRuntimePolicyDecision", "neutral runtime policy decision DTO"),
+    ] {
+        require_contains(source, needle, label)?;
+    }
+
+    Ok(json!({
+        "module": TOOL_HOST_LIB,
+        "neutral_service_bundle": "ToolHostServices",
+        "neutral_service_kinds": "ToolHostServiceKind",
+        "neutral_storage_service": "ToolStorageService",
+        "neutral_search_service": "ToolSearchService",
+        "neutral_hook_service": "ToolHookService",
+        "neutral_progress_service": "ToolProgressSink",
+        "neutral_capability_service": "ToolCapabilityService",
+        "neutral_cancellation_service": "ToolCancellationService",
+        "neutral_runtime_policy_service": "ToolRuntimePolicyService",
+        "forbidden_shell_imports": [
+            "clankers_db",
+            "SearchIndex",
+            "clankers_hooks",
+            "HookPipeline",
+            "AgentEvent",
+            "clanker_tui_types",
+            "DaemonEvent",
+            "SessionCommand",
+            "ToolContext",
+            "crate::tools",
+            "src/tools"
+        ],
+        "requirement": "r[neutral-tool-service-context.verification.boundary-rail]",
+        "typed_rail_kind": "Rust AST/source import ownership check over reusable tool-host context module"
     }))
 }
 

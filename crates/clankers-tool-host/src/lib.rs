@@ -18,6 +18,8 @@ use thiserror::Error;
 pub const DEFAULT_TOOL_MAX_BYTES: usize = 200_000;
 pub const DEFAULT_TOOL_MAX_LINES: usize = 10_000;
 
+pub type ToolHostFuture<'a, T> = core::pin::Pin<Box<dyn core::future::Future<Output = T> + Send + 'a>>;
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ToolDescriptor {
     pub name: String,
@@ -32,6 +34,9 @@ pub enum ToolHostServiceKind {
     Hooks,
     Process,
     Progress,
+    Capability,
+    Cancellation,
+    RuntimePolicy,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -106,6 +111,274 @@ impl ToolHostServices {
 pub enum CapabilityDecision {
     Allowed,
     Denied { reason: String },
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ToolStorageKey {
+    pub namespace: String,
+    pub key: String,
+}
+
+impl ToolStorageKey {
+    #[must_use]
+    pub fn new(namespace: impl Into<String>, key: impl Into<String>) -> Self {
+        Self {
+            namespace: safe_metadata_key(namespace.into()),
+            key: safe_metadata_key(key.into()),
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ToolStorageValue {
+    pub bytes: Vec<u8>,
+    pub content_type: Option<String>,
+    pub metadata: BTreeMap<String, String>,
+}
+
+impl ToolStorageValue {
+    #[must_use]
+    pub fn new(bytes: Vec<u8>) -> Self {
+        Self {
+            bytes,
+            content_type: None,
+            metadata: BTreeMap::new(),
+        }
+    }
+
+    #[must_use]
+    pub fn with_content_type(mut self, content_type: impl Into<String>) -> Self {
+        self.content_type = Some(safe_metadata(content_type.into()));
+        self
+    }
+
+    #[must_use]
+    pub fn with_metadata(mut self, key: impl Into<String>, value: impl Into<String>) -> Self {
+        self.metadata.insert(safe_metadata_key(key.into()), safe_metadata(value.into()));
+        self
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ToolStorageReadRequest {
+    pub key: ToolStorageKey,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ToolStorageReadResult {
+    pub value: Option<ToolStorageValue>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ToolStorageWriteRequest {
+    pub key: ToolStorageKey,
+    pub value: ToolStorageValue,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ToolStorageWriteResult {
+    pub stored: bool,
+    pub metadata: BTreeMap<String, String>,
+}
+
+pub trait ToolStorageService: Send + Sync {
+    fn read(&self, request: ToolStorageReadRequest) -> Result<ToolStorageReadResult, ToolHostError>;
+    fn write(&self, request: ToolStorageWriteRequest) -> Result<ToolStorageWriteResult, ToolHostError>;
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ToolSearchRequest {
+    pub query: String,
+    pub limit: usize,
+    pub metadata: BTreeMap<String, String>,
+}
+
+impl ToolSearchRequest {
+    #[must_use]
+    pub fn new(query: impl Into<String>, limit: usize) -> Self {
+        Self {
+            query: safe_metadata(query.into()),
+            limit,
+            metadata: BTreeMap::new(),
+        }
+    }
+
+    #[must_use]
+    pub fn with_metadata(mut self, key: impl Into<String>, value: impl Into<String>) -> Self {
+        self.metadata.insert(safe_metadata_key(key.into()), safe_metadata(value.into()));
+        self
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ToolSearchHit {
+    pub title: String,
+    pub snippet: String,
+    pub rank: usize,
+    pub metadata: BTreeMap<String, String>,
+}
+
+impl ToolSearchHit {
+    #[must_use]
+    pub fn new(title: impl Into<String>, snippet: impl Into<String>, rank: usize) -> Self {
+        Self {
+            title: safe_metadata(title.into()),
+            snippet: safe_metadata(snippet.into()),
+            rank,
+            metadata: BTreeMap::new(),
+        }
+    }
+
+    #[must_use]
+    pub fn with_metadata(mut self, key: impl Into<String>, value: impl Into<String>) -> Self {
+        self.metadata.insert(safe_metadata_key(key.into()), safe_metadata(value.into()));
+        self
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ToolSearchResult {
+    pub hits: Vec<ToolSearchHit>,
+}
+
+pub trait ToolSearchService: Send + Sync {
+    fn search(&self, request: ToolSearchRequest) -> Result<ToolSearchResult, ToolHostError>;
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ToolHookPhase {
+    Before,
+    After,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ToolHookRequest {
+    pub phase: ToolHookPhase,
+    pub call_id: String,
+    pub tool_name: String,
+    pub input: Value,
+    pub metadata: BTreeMap<String, String>,
+}
+
+impl ToolHookRequest {
+    #[must_use]
+    pub fn before(call_id: impl Into<String>, tool_name: impl Into<String>, input: Value) -> Self {
+        Self::new(ToolHookPhase::Before, call_id, tool_name, input)
+    }
+
+    #[must_use]
+    pub fn after(call_id: impl Into<String>, tool_name: impl Into<String>, input: Value) -> Self {
+        Self::new(ToolHookPhase::After, call_id, tool_name, input)
+    }
+
+    #[must_use]
+    pub fn with_metadata(mut self, key: impl Into<String>, value: impl Into<String>) -> Self {
+        self.metadata.insert(safe_metadata_key(key.into()), safe_metadata(value.into()));
+        self
+    }
+
+    fn new(phase: ToolHookPhase, call_id: impl Into<String>, tool_name: impl Into<String>, input: Value) -> Self {
+        Self {
+            phase,
+            call_id: safe_metadata_key(call_id.into()),
+            tool_name: safe_metadata_key(tool_name.into()),
+            input,
+            metadata: BTreeMap::new(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(tag = "decision", rename_all = "snake_case")]
+pub enum ToolHookDecision {
+    Continue,
+    Modify { input: Value },
+    Deny { reason: String },
+}
+
+pub trait ToolHookService: Send + Sync {
+    fn decide(&self, request: ToolHookRequest) -> ToolHostFuture<'_, Result<ToolHookDecision, ToolHostError>>;
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ToolCapabilityRequest {
+    pub call_id: String,
+    pub tool_name: String,
+    pub input: Value,
+    pub metadata: BTreeMap<String, String>,
+}
+
+impl ToolCapabilityRequest {
+    #[must_use]
+    pub fn new(call_id: impl Into<String>, tool_name: impl Into<String>, input: Value) -> Self {
+        Self {
+            call_id: safe_metadata_key(call_id.into()),
+            tool_name: safe_metadata_key(tool_name.into()),
+            input,
+            metadata: BTreeMap::new(),
+        }
+    }
+
+    #[must_use]
+    pub fn with_metadata(mut self, key: impl Into<String>, value: impl Into<String>) -> Self {
+        self.metadata.insert(safe_metadata_key(key.into()), safe_metadata(value.into()));
+        self
+    }
+}
+
+pub trait ToolCapabilityService: Send + Sync {
+    fn check(&self, request: ToolCapabilityRequest) -> Result<CapabilityDecision, ToolHostError>;
+}
+
+pub trait ToolCancellationService: Send + Sync {
+    fn cancellation_state(&self, call_id: &str) -> ToolInvocationCancellation;
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ToolRuntimePolicyKind {
+    Steel,
+    Process,
+    Network,
+    FileSystem,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ToolRuntimePolicyRequest {
+    pub call_id: String,
+    pub tool_name: String,
+    pub kind: ToolRuntimePolicyKind,
+    pub metadata: BTreeMap<String, String>,
+}
+
+impl ToolRuntimePolicyRequest {
+    #[must_use]
+    pub fn new(call_id: impl Into<String>, tool_name: impl Into<String>, kind: ToolRuntimePolicyKind) -> Self {
+        Self {
+            call_id: safe_metadata_key(call_id.into()),
+            tool_name: safe_metadata_key(tool_name.into()),
+            kind,
+            metadata: BTreeMap::new(),
+        }
+    }
+
+    #[must_use]
+    pub fn with_metadata(mut self, key: impl Into<String>, value: impl Into<String>) -> Self {
+        self.metadata.insert(safe_metadata_key(key.into()), safe_metadata(value.into()));
+        self
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "decision", rename_all = "snake_case")]
+pub enum ToolRuntimePolicyDecision {
+    Allowed,
+    Denied { reason: String },
+}
+
+pub trait ToolRuntimePolicyService: Send + Sync {
+    fn authorize(&self, request: ToolRuntimePolicyRequest) -> Result<ToolRuntimePolicyDecision, ToolHostError>;
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -232,6 +505,12 @@ pub struct ToolInvocationContext {
     pub services: ToolHostServices,
     pub cancellation: ToolInvocationCancellation,
     pub progress: Arc<dyn ToolProgressSink>,
+    pub storage: Option<Arc<dyn ToolStorageService>>,
+    pub search: Option<Arc<dyn ToolSearchService>>,
+    pub hooks: Option<Arc<dyn ToolHookService>>,
+    pub capability_service: Option<Arc<dyn ToolCapabilityService>>,
+    pub cancellation_service: Option<Arc<dyn ToolCancellationService>>,
+    pub runtime_policy: Option<Arc<dyn ToolRuntimePolicyService>>,
     pub metadata: BTreeMap<String, String>,
 }
 
@@ -244,6 +523,12 @@ impl ToolInvocationContext {
             services: ToolHostServices::empty(),
             cancellation: ToolInvocationCancellation::default(),
             progress: Arc::new(NullToolProgressSink),
+            storage: None,
+            search: None,
+            hooks: None,
+            capability_service: None,
+            cancellation_service: None,
+            runtime_policy: None,
             metadata: BTreeMap::new(),
         }
     }
@@ -269,6 +554,42 @@ impl ToolInvocationContext {
     #[must_use]
     pub fn with_progress_sink(mut self, progress: Arc<dyn ToolProgressSink>) -> Self {
         self.progress = progress;
+        self
+    }
+
+    #[must_use]
+    pub fn with_storage_service(mut self, storage: Arc<dyn ToolStorageService>) -> Self {
+        self.storage = Some(storage);
+        self
+    }
+
+    #[must_use]
+    pub fn with_search_service(mut self, search: Arc<dyn ToolSearchService>) -> Self {
+        self.search = Some(search);
+        self
+    }
+
+    #[must_use]
+    pub fn with_hook_service(mut self, hooks: Arc<dyn ToolHookService>) -> Self {
+        self.hooks = Some(hooks);
+        self
+    }
+
+    #[must_use]
+    pub fn with_capability_service(mut self, capability_service: Arc<dyn ToolCapabilityService>) -> Self {
+        self.capability_service = Some(capability_service);
+        self
+    }
+
+    #[must_use]
+    pub fn with_cancellation_service(mut self, cancellation_service: Arc<dyn ToolCancellationService>) -> Self {
+        self.cancellation_service = Some(cancellation_service);
+        self
+    }
+
+    #[must_use]
+    pub fn with_runtime_policy(mut self, runtime_policy: Arc<dyn ToolRuntimePolicyService>) -> Self {
+        self.runtime_policy = Some(runtime_policy);
         self
     }
 
@@ -538,6 +859,78 @@ mod tests {
         }
     }
 
+    #[derive(Default)]
+    struct FakeStorageService {
+        writes: std::sync::Mutex<Vec<ToolStorageWriteRequest>>,
+    }
+
+    impl ToolStorageService for FakeStorageService {
+        fn read(&self, _request: ToolStorageReadRequest) -> Result<ToolStorageReadResult, ToolHostError> {
+            Ok(ToolStorageReadResult {
+                value: Some(ToolStorageValue::new(b"fixture".to_vec()).with_content_type("text/plain")),
+            })
+        }
+
+        fn write(&self, request: ToolStorageWriteRequest) -> Result<ToolStorageWriteResult, ToolHostError> {
+            self.writes.lock().expect("storage lock").push(request);
+            Ok(ToolStorageWriteResult {
+                stored: true,
+                metadata: BTreeMap::new(),
+            })
+        }
+    }
+
+    struct FakeSearchService;
+
+    impl ToolSearchService for FakeSearchService {
+        fn search(&self, request: ToolSearchRequest) -> Result<ToolSearchResult, ToolHostError> {
+            Ok(ToolSearchResult {
+                hits: vec![ToolSearchHit::new("fixture", request.query, 1)],
+            })
+        }
+    }
+
+    struct FakeHookService {
+        decision: ToolHookDecision,
+    }
+
+    impl ToolHookService for FakeHookService {
+        fn decide(&self, _request: ToolHookRequest) -> ToolHostFuture<'_, Result<ToolHookDecision, ToolHostError>> {
+            let decision = self.decision.clone();
+            Box::pin(async move { Ok(decision) })
+        }
+    }
+
+    struct FakeToolCapabilityService {
+        decision: CapabilityDecision,
+    }
+
+    impl ToolCapabilityService for FakeToolCapabilityService {
+        fn check(&self, _request: ToolCapabilityRequest) -> Result<CapabilityDecision, ToolHostError> {
+            Ok(self.decision.clone())
+        }
+    }
+
+    struct FakeCancellationService {
+        state: ToolInvocationCancellation,
+    }
+
+    impl ToolCancellationService for FakeCancellationService {
+        fn cancellation_state(&self, _call_id: &str) -> ToolInvocationCancellation {
+            self.state.clone()
+        }
+    }
+
+    struct FakeRuntimePolicyService {
+        decision: ToolRuntimePolicyDecision,
+    }
+
+    impl ToolRuntimePolicyService for FakeRuntimePolicyService {
+        fn authorize(&self, _request: ToolRuntimePolicyRequest) -> Result<ToolRuntimePolicyDecision, ToolHostError> {
+            Ok(self.decision.clone())
+        }
+    }
+
     struct NeutralReadFixtureTool;
 
     impl NeutralToolExecutor for NeutralReadFixtureTool {
@@ -732,6 +1125,92 @@ mod tests {
         hook.after_tool(&call, &outcome).expect("after hook should pass");
 
         assert_eq!(hook.events, vec!["before", "after"]);
+    }
+
+    #[test]
+    fn neutral_service_contracts_cover_storage_search_hooks_capability_cancellation_and_runtime_policy() {
+        let storage = Arc::new(FakeStorageService::default());
+        let search = Arc::new(FakeSearchService);
+        let hooks = Arc::new(FakeHookService {
+            decision: ToolHookDecision::Modify {
+                input: serde_json::json!({"path": "safe"}),
+            },
+        });
+        let capability = Arc::new(FakeToolCapabilityService {
+            decision: CapabilityDecision::Denied {
+                reason: "blocked".to_string(),
+            },
+        });
+        let cancellation = Arc::new(FakeCancellationService {
+            state: ToolInvocationCancellation::cancelled("user"),
+        });
+        let runtime_policy = Arc::new(FakeRuntimePolicyService {
+            decision: ToolRuntimePolicyDecision::Denied {
+                reason: "steel disabled".to_string(),
+            },
+        });
+        let context = ToolInvocationContext::new("call-1")
+            .with_storage_service(storage.clone())
+            .with_search_service(search)
+            .with_hook_service(hooks)
+            .with_capability_service(capability)
+            .with_cancellation_service(cancellation)
+            .with_runtime_policy(runtime_policy);
+
+        let storage_key = ToolStorageKey::new("session", "state.json");
+        let storage_write = context
+            .storage
+            .as_ref()
+            .expect("storage service")
+            .write(ToolStorageWriteRequest {
+                key: storage_key.clone(),
+                value: ToolStorageValue::new(br#"{"ok":true}"#.to_vec()).with_content_type("application/json"),
+            })
+            .expect("storage write");
+        let storage_read = context
+            .storage
+            .as_ref()
+            .expect("storage service")
+            .read(ToolStorageReadRequest { key: storage_key })
+            .expect("storage read");
+        let search_result = context
+            .search
+            .as_ref()
+            .expect("search service")
+            .search(ToolSearchRequest::new("needle", 5))
+            .expect("search");
+        let hook_future = context
+            .hooks
+            .as_ref()
+            .expect("hook service")
+            .decide(ToolHookRequest::before("call-1", "read", serde_json::json!({"path": "unsafe"})));
+        let hook_decision = block_on(hook_future).expect("hook decision");
+        let capability_decision = context
+            .capability_service
+            .as_ref()
+            .expect("capability service")
+            .check(ToolCapabilityRequest::new("call-1", "read", serde_json::json!({"path": "safe"})))
+            .expect("capability decision");
+        let cancellation_state = context
+            .cancellation_service
+            .as_ref()
+            .expect("cancellation service")
+            .cancellation_state("call-1");
+        let runtime_decision = context
+            .runtime_policy
+            .as_ref()
+            .expect("runtime policy")
+            .authorize(ToolRuntimePolicyRequest::new("call-1", "run", ToolRuntimePolicyKind::Steel))
+            .expect("runtime policy decision");
+
+        assert!(storage_write.stored);
+        assert_eq!(storage_read.value.expect("stored value").bytes, b"fixture".to_vec());
+        assert_eq!(storage.writes.lock().expect("storage lock").len(), 1);
+        assert_eq!(search_result.hits[0].snippet, "needle");
+        assert!(matches!(hook_decision, ToolHookDecision::Modify { .. }));
+        assert!(matches!(capability_decision, CapabilityDecision::Denied { reason } if reason == "blocked"));
+        assert!(cancellation_state.cancelled);
+        assert!(matches!(runtime_decision, ToolRuntimePolicyDecision::Denied { reason } if reason == "steel disabled"));
     }
 
     #[test]
