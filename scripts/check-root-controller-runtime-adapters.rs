@@ -20,6 +20,7 @@ use serde_json::json;
 const ERROR_EXIT: u8 = 1;
 const CONTROLLER_RUNTIME_ADAPTER: &str = "crates/clankers-controller/src/runtime_adapter.rs";
 const CONTROLLER_COMMAND: &str = "crates/clankers-controller/src/command.rs";
+const CONTROLLER_LIB: &str = "crates/clankers-controller/src/lib.rs";
 const LEGO_RAIL: &str = "scripts/check-lego-architecture-boundaries.rs";
 const FCIS_RAIL: &str = "crates/clankers-controller/tests/fcis_shell_boundaries.rs";
 const BASELINE: &str = "policy/lego-architecture/dependency-ownership-baseline.json";
@@ -30,9 +31,14 @@ const REQUIRED_MARKERS: &[(&str, &str)] = &[
     (CONTROLLER_RUNTIME_ADAPTER, "RuntimePromptRequest"),
     (CONTROLLER_RUNTIME_ADAPTER, "RuntimeControlRequest"),
     (CONTROLLER_RUNTIME_ADAPTER, "FakeRuntimeAdapter"),
+    (CONTROLLER_RUNTIME_ADAPTER, "AgentBackedRuntimeAdapter"),
     (CONTROLLER_COMMAND, "submit_prompt_with_runtime_adapter"),
     (CONTROLLER_COMMAND, "apply_control_with_runtime_adapter"),
+    (CONTROLLER_COMMAND, "with_agent_runtime_adapter"),
     (CONTROLLER_COMMAND, "runtime_adapter_fixture_covers_prompt_control_identity_and_semantic_projection"),
+    (CONTROLLER_LIB, "Compatibility constructor for daemon mode"),
+    (CONTROLLER_LIB, "AgentBackedRuntimeAdapter"),
+    (CONTROLLER_LIB, "convergence condition"),
     (LEGO_RAIL, "dependency_owner_receipts"),
     (BASELINE, "owner_receipts"),
 ];
@@ -125,10 +131,11 @@ fn write_receipt() -> Result<(), String> {
         "schema": "clankers.root_controller_runtime_adapters.receipt.v1",
         "observed_outcome": "passed",
         "expected_outcome": "root/controller dependency budgets carry owner receipts, and controller prompt/control lifecycle runs through fake runtime services without sockets, TUI, providers, or desktop storage",
-        "source_artifacts": [CONTROLLER_RUNTIME_ADAPTER, CONTROLLER_COMMAND, LEGO_RAIL, FCIS_RAIL, BASELINE, "scripts/check-root-controller-runtime-adapters.rs"],
+        "source_artifacts": [CONTROLLER_RUNTIME_ADAPTER, CONTROLLER_COMMAND, CONTROLLER_LIB, LEGO_RAIL, FCIS_RAIL, BASELINE, "scripts/check-root-controller-runtime-adapters.rs"],
         "sanitized_hashes": {
             CONTROLLER_RUNTIME_ADAPTER: hash_file(CONTROLLER_RUNTIME_ADAPTER)?,
             CONTROLLER_COMMAND: hash_file(CONTROLLER_COMMAND)?,
+            CONTROLLER_LIB: hash_file(CONTROLLER_LIB)?,
             LEGO_RAIL: hash_file(LEGO_RAIL)?,
             BASELINE: hash_file(BASELINE)?,
         },

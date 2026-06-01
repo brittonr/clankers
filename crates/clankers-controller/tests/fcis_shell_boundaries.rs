@@ -52,6 +52,7 @@ const DAEMON_AGENT_PROCESS_FILE: &str = "src/modes/daemon/agent_process.rs";
 const DAEMON_SESSION_BUILDER_FILE: &str = "src/modes/daemon/session_builder.rs";
 const DAEMON_SESSION_PLUGINS_FILE: &str = "src/modes/daemon/session_plugins.rs";
 const CONTROLLER_COMMAND_FILE: &str = "crates/clankers-controller/src/command.rs";
+const CONTROLLER_LIB_FILE: &str = "crates/clankers-controller/src/lib.rs";
 const CONTROLLER_EFFECT_INTERPRETER_FILE: &str = "crates/clankers-controller/src/core_effects.rs";
 const CONTROLLER_EFFECT_PROJECTION_FILE: &str = "crates/clankers-controller/src/effect_interpretation.rs";
 const CONTROLLER_INPUT_TRANSLATION_FILES: [&str; 2] =
@@ -1805,6 +1806,25 @@ fn controller_input_translation_stays_in_controller_translation_files() {
         &auto_test_paths,
         &AUTO_TEST_REQUIRED_INPUT_PATHS,
     );
+}
+
+#[test]
+fn controller_compatibility_constructor_documents_adapter_convergence() {
+    let source = read_relative_file(CONTROLLER_LIB_FILE);
+    for required_text in [
+        "Compatibility constructor for daemon mode",
+        "AgentBackedRuntimeAdapter",
+        "convergence condition",
+        "inject the production adapter from root/daemon assembly",
+    ] {
+        assert!(
+            source.contains(required_text),
+            "{} must document remaining Agent ownership convergence for {}: missing `{}`",
+            CONTROLLER_LIB_FILE,
+            CONTROLLER_RUNTIME_ADAPTER_OWNERSHIP_REQUIREMENT,
+            required_text
+        );
+    }
 }
 
 #[test]

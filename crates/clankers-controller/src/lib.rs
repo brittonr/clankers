@@ -183,12 +183,20 @@ pub enum PostPromptAction {
 /// terminals, sockets, or rendering.
 ///
 /// Two modes:
-/// - **Daemon mode** (`new`): owns the Agent, drives prompts directly.
+/// - **Daemon mode** (`new`): compatibility assembly owns an `Agent`, and
+///   production command branches construct an `AgentBackedRuntimeAdapter` at
+///   the command boundary for concrete prompt/control operations.
 /// - **Embedded mode** (`new_embedded`): no agent ownership. Events fed via `feed_event()`, agent
 ///   managed externally by `agent_task`.
 #[allow(dead_code)] // Fields used incrementally as phases are implemented
 pub struct SessionController {
-    /// The agent instance (None in embedded mode).
+    /// Compatibility-owned agent instance (None in embedded mode).
+    ///
+    /// Production command handling must wrap this value in
+    /// `AgentBackedRuntimeAdapter` rather than mutating it directly. The
+    /// convergence condition for removing this field is root/daemon injection
+    /// of the production runtime adapter instead of passing `Agent` into
+    /// [`SessionController::new`].
     pub(crate) agent: Option<Agent>,
     /// Receiver for agent events (None in embedded mode).
     pub(crate) event_rx: Option<broadcast::Receiver<AgentEvent>>,
@@ -248,7 +256,13 @@ pub trait ToolRebuilder: Send + Sync {
 }
 
 impl SessionController {
-    /// Create a new controller that owns the Agent (daemon mode).
+    /// Compatibility constructor for daemon mode.
+    ///
+    /// Root/daemon assembly still passes a concrete `Agent` here, but reusable
+    /// command policy constructs `AgentBackedRuntimeAdapter` explicitly before
+    /// invoking concrete prompt/control operations. The remaining convergence
+    /// condition is to inject the production adapter from root/daemon assembly
+    /// and remove controller ownership of `Agent`.
     pub fn new(mut agent: Agent, config: ControllerConfig) -> Self {
         agent.set_session_id(config.session_id.clone());
         agent.apply_controller_thinking_level(Self::provider_thinking_level(config.initial_thinking_level));
