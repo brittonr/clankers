@@ -31,6 +31,8 @@ use crate::SessionController;
 use crate::command_images::prompt_images_to_provider_content;
 use crate::convert::semantic_error_message_to_daemon_event;
 use crate::convert::semantic_event_to_daemon_event;
+use crate::runtime_adapter::AgentBackedRuntimeAdapter;
+use crate::runtime_adapter::AgentRuntimePromptRequest;
 use crate::runtime_adapter::ControllerRuntimeAdapter;
 use crate::runtime_adapter::RuntimeControlRequest;
 use crate::runtime_adapter::RuntimePromptCompletion;
@@ -52,9 +54,9 @@ impl SessionController {
                 self.handle_prompt(text, images).await;
             }
             SessionCommand::Abort => {
-                if let Some(ref mut agent) = self.agent {
-                    agent.abort();
-                }
+                self.with_agent_runtime_adapter(|adapter| {
+                    adapter.apply_runtime_control(RuntimeControlRequest::Abort);
+                });
                 self.busy = false;
                 self.core_state.busy = false;
                 self.core_state.pending_prompt = None;
@@ -64,9 +66,9 @@ impl SessionController {
                 });
             }
             SessionCommand::ResetCancel => {
-                if let Some(ref mut agent) = self.agent {
-                    agent.reset_cancel();
-                }
+                self.with_agent_runtime_adapter(|adapter| {
+                    adapter.apply_runtime_control(RuntimeControlRequest::ResetCancel);
+                });
             }
             SessionCommand::SetModel { model } => {
                 self.set_model_from_command(model, "user request");
@@ -75,9 +77,9 @@ impl SessionController {
                 if !self.ensure_session_manage_authorized("clear_history") {
                     return;
                 }
-                if let Some(ref mut agent) = self.agent {
-                    agent.clear_messages();
-                }
+                self.with_agent_runtime_adapter(|adapter| {
+                    adapter.clear_messages();
+                });
                 self.emit(DaemonEvent::SystemMessage {
                     text: "History cleared".to_string(),
                     is_error: false,
@@ -87,9 +89,9 @@ impl SessionController {
                 if !self.ensure_session_manage_authorized("truncate_messages") {
                     return;
                 }
-                if let Some(ref mut agent) = self.agent {
-                    agent.truncate_messages(count);
-                }
+                self.with_agent_runtime_adapter(|adapter| {
+                    adapter.truncate_messages(count);
+                });
                 self.emit(DaemonEvent::SystemMessage {
                     text: format!("Truncated to {count} messages"),
                     is_error: false,
@@ -111,9 +113,9 @@ impl SessionController {
                 }
                 let agent_messages = self.convert_seed_messages(&messages);
                 let count = agent_messages.len();
-                if let Some(ref mut agent) = self.agent {
-                    agent.seed_messages(agent_messages);
-                }
+                self.with_agent_runtime_adapter(|adapter| {
+                    adapter.seed_messages(agent_messages);
+                });
                 self.emit(DaemonEvent::SystemMessage {
                     text: format!("Seeded {count} messages"),
                     is_error: false,
@@ -123,16 +125,18 @@ impl SessionController {
                 if !self.ensure_session_manage_authorized("set_system_prompt") {
                     return;
                 }
-                if let Some(ref mut agent) = self.agent {
-                    agent.set_system_prompt(prompt);
-                }
+                self.with_agent_runtime_adapter(|adapter| {
+                    adapter.set_system_prompt(prompt);
+                });
                 self.emit(DaemonEvent::SystemMessage {
                     text: "System prompt updated".to_string(),
                     is_error: false,
                 });
             }
             SessionCommand::GetSystemPrompt => {
-                let prompt = self.agent.as_ref().map(|a| a.system_prompt().to_string()).unwrap_or_default();
+                let prompt = self
+                    .with_agent_runtime_adapter(|adapter| adapter.system_prompt().to_string())
+                    .unwrap_or_default();
                 self.emit(DaemonEvent::SystemPromptResponse { prompt });
             }
             SessionCommand::SwitchAccount { account } => {
@@ -161,17 +165,16 @@ impl SessionController {
                     return;
                 }
                 // Remove the last user message and re-prompt
-                if let Some(ref mut agent) = self.agent {
-                    agent.pop_last_exchange();
-                }
+                self.with_agent_runtime_adapter(|adapter| {
+                    adapter.pop_last_exchange();
+                });
                 self.handle_prompt(text, vec![]).await;
             }
             SessionCommand::CompactHistory => {
                 if !self.ensure_session_manage_authorized("compact_history") {
                     return;
                 }
-                if let Some(ref mut agent) = self.agent {
-                    let result = agent.compact_messages();
+                if let Some(result) = self.with_agent_runtime_adapter(|adapter| adapter.compact_messages()) {
                     self.emit(DaemonEvent::SessionCompaction {
                         compacted_count: result.compacted_count,
                         tokens_saved: result.tokens_saved,
@@ -240,9 +243,9 @@ impl SessionController {
                     });
                 } else {
                     self.capabilities = capabilities.clone();
-                    if let Some(ref mut agent) = self.agent {
-                        agent.set_user_tool_filter(capabilities.clone());
-                    }
+                    self.with_agent_runtime_adapter(|adapter| {
+                        adapter.set_user_tool_filter(capabilities.clone());
+                    });
                     let desc = capabilities.as_ref().map(|c| c.join(", ")).unwrap_or_else(|| "full access".to_string());
                     self.emit(DaemonEvent::SystemMessage {
                         text: format!("Capabilities updated: {desc}"),
@@ -286,9 +289,9 @@ impl SessionController {
                     }
                     return;
                 }
-                if let Some(ref mut agent) = self.agent {
-                    agent.pop_last_exchange();
-                }
+                self.with_agent_runtime_adapter(|adapter| {
+                    adapter.pop_last_exchange();
+                });
                 self.handle_prompt_inner(text, vec![], Some(on_events)).await;
             }
             other => {
@@ -308,11 +311,20 @@ impl SessionController {
         });
     }
 
+    pub(crate) fn with_agent_runtime_adapter<R>(
+        &mut self,
+        apply: impl FnOnce(&mut AgentBackedRuntimeAdapter<'_>) -> R,
+    ) -> Option<R> {
+        let agent = self.agent.as_mut()?;
+        let mut adapter = AgentBackedRuntimeAdapter::without_events(agent);
+        Some(apply(&mut adapter))
+    }
+
     fn ensure_session_manage_authorized(&mut self, action: &str) -> bool {
-        let Some(agent) = self.agent.as_ref() else {
-            return true;
-        };
-        match agent.check_session_manage_authorization(action) {
+        let result = self
+            .with_agent_runtime_adapter(|adapter| adapter.check_session_manage_authorization(action))
+            .unwrap_or(Ok(()));
+        match result {
             Ok(()) => true,
             Err(error) => {
                 self.emit_authorization_error(error);
@@ -322,10 +334,10 @@ impl SessionController {
     }
 
     fn ensure_prompt_authorized(&mut self, text: &str) -> bool {
-        let Some(agent) = self.agent.as_ref() else {
-            return true;
-        };
-        match agent.check_prompt_authorization(text) {
+        let result = self
+            .with_agent_runtime_adapter(|adapter| adapter.check_prompt_authorization(text))
+            .unwrap_or(Ok(()));
+        match result {
             Ok(()) => true,
             Err(error) => {
                 self.emit_authorization_error(error);
@@ -336,7 +348,9 @@ impl SessionController {
 
     fn set_model_from_command(&mut self, model: String, reason: &str) -> bool {
         let from = self.model.clone();
-        let authorization_error = self.agent.as_mut().and_then(|agent| agent.try_set_model(model.clone()).err());
+        let authorization_error = self
+            .with_agent_runtime_adapter(|adapter| adapter.try_set_model(model.clone()).err())
+            .flatten();
         if let Some(error) = authorization_error {
             self.emit_authorization_error(error);
             return false;
@@ -753,49 +767,28 @@ impl SessionController {
         self.outgoing.push(DaemonEvent::AgentStart);
         self.flush_outgoing_for_streaming(&mut on_events);
 
-        let image_content = prompt_images_to_provider_content(images);
+        let prompt_request = match prompt_images_to_provider_content(images) {
+            Some(image_content) => AgentRuntimePromptRequest::with_images(
+                self.session_id.clone(),
+                self.model.clone(),
+                text.clone(),
+                image_content,
+            ),
+            None => AgentRuntimePromptRequest::text_only(self.session_id.clone(), self.model.clone(), text.clone()),
+        };
 
         // Take the agent and event receiver out to avoid borrow conflicts while
-        // the prompt future is alive and we keep draining broadcast events.
+        // the adapter-owned prompt future is alive and we keep draining
+        // broadcast events through the controller side-effect pipeline.
         let mut agent = self.agent.take().unwrap();
         let mut event_rx = self.event_rx.take();
         let result = {
-            let prompt_future = async {
-                if let Some(image_content) = image_content {
-                    agent.prompt_with_images(&text, image_content).await
-                } else {
-                    agent.prompt(&text).await
-                }
+            let mut adapter = AgentBackedRuntimeAdapter::new(&mut agent, event_rx.as_mut());
+            let mut process_event = |event: &clankers_agent::events::AgentEvent| {
+                self.process_agent_event(event);
+                self.flush_outgoing_for_streaming(&mut on_events);
             };
-            tokio::pin!(prompt_future);
-
-            if on_events.is_some() {
-                if let Some(rx) = event_rx.as_mut() {
-                    loop {
-                        tokio::select! {
-                            result = &mut prompt_future => break result,
-                            event = rx.recv() => {
-                                match event {
-                                    Ok(event) => {
-                                        self.process_agent_event(&event);
-                                        self.flush_outgoing_for_streaming(&mut on_events);
-                                    }
-                                    Err(tokio::sync::broadcast::error::RecvError::Lagged(n)) => {
-                                        warn!("agent event stream lagged while prompt was running, skipped {n} events");
-                                    }
-                                    Err(tokio::sync::broadcast::error::RecvError::Closed) => {
-                                        break (&mut prompt_future).await;
-                                    }
-                                }
-                            }
-                        }
-                    }
-                } else {
-                    prompt_future.await
-                }
-            } else {
-                prompt_future.await
-            }
+            adapter.submit_prompt_with_event_sink(prompt_request, &mut process_event).await
         };
         self.event_rx = event_rx;
         self.agent = Some(agent);
@@ -804,13 +797,12 @@ impl SessionController {
         self.drain_agent_events_to_outgoing();
         self.flush_outgoing_for_streaming(&mut on_events);
 
-        let (completion_status, prompt_error) = match result {
-            Ok(()) => (CompletionStatus::Succeeded, None),
-            Err(AgentError::Cancelled) => {
+        let (completion_status, prompt_error) = match result.completion {
+            RuntimePromptCompletion::Succeeded => (CompletionStatus::Succeeded, None),
+            RuntimePromptCompletion::Cancelled => {
                 (CompletionStatus::Failed(CoreFailure::Cancelled), Some("cancelled".to_string()))
             }
-            Err(error) => {
-                let message = error.to_string();
+            RuntimePromptCompletion::Failed { message } => {
                 (CompletionStatus::Failed(CoreFailure::Message(message.clone())), Some(message))
             }
         };
@@ -880,11 +872,17 @@ impl SessionController {
         }
 
         // Replay conversation messages
-        if let Some(ref agent) = self.agent {
-            for msg in agent.messages() {
-                let block = serde_json::to_value(msg).unwrap_or_default();
-                self.outgoing.push(DaemonEvent::HistoryBlock { block });
-            }
+        let history_blocks = self
+            .with_agent_runtime_adapter(|adapter| {
+                adapter
+                    .messages()
+                    .iter()
+                    .map(|msg| serde_json::to_value(msg).unwrap_or_default())
+                    .collect::<Vec<_>>()
+            })
+            .unwrap_or_default();
+        for block in history_blocks {
+            self.outgoing.push(DaemonEvent::HistoryBlock { block });
         }
         self.emit(DaemonEvent::HistoryEnd);
     }
@@ -910,9 +908,9 @@ impl SessionController {
                 if !self.ensure_session_manage_authorized("clear_history") {
                     return;
                 }
-                if let Some(ref mut agent) = self.agent {
-                    agent.clear_messages();
-                }
+                self.with_agent_runtime_adapter(|adapter| {
+                    adapter.clear_messages();
+                });
                 self.emit(DaemonEvent::SystemMessage {
                     text: "History cleared".to_string(),
                     is_error: false,
@@ -922,8 +920,7 @@ impl SessionController {
                 if !self.ensure_session_manage_authorized("compact_history") {
                     return;
                 }
-                if let Some(ref mut agent) = self.agent {
-                    let result = agent.compact_messages();
+                if let Some(result) = self.with_agent_runtime_adapter(|adapter| adapter.compact_messages()) {
                     self.emit(DaemonEvent::SessionCompaction {
                         compacted_count: result.compacted_count,
                         tokens_saved: result.tokens_saved,
@@ -965,7 +962,9 @@ impl SessionController {
                 });
             }
             "prompt" => {
-                let prompt = self.agent.as_ref().map(|a| a.system_prompt().to_string()).unwrap_or_default();
+                let prompt = self
+                    .with_agent_runtime_adapter(|adapter| adapter.system_prompt().to_string())
+                    .unwrap_or_default();
                 self.emit(DaemonEvent::SystemPromptResponse { prompt });
             }
             _ => {

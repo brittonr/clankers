@@ -1,3 +1,4 @@
+use std::collections::BTreeMap;
 use std::collections::BTreeSet;
 use std::ffi::OsStr;
 use std::fs;
@@ -50,12 +51,11 @@ const EVENT_LOOP_RUNTIME_FILE: &str = "src/modes/event_loop_runner/mod.rs";
 const DAEMON_AGENT_PROCESS_FILE: &str = "src/modes/daemon/agent_process.rs";
 const DAEMON_SESSION_BUILDER_FILE: &str = "src/modes/daemon/session_builder.rs";
 const DAEMON_SESSION_PLUGINS_FILE: &str = "src/modes/daemon/session_plugins.rs";
+const CONTROLLER_COMMAND_FILE: &str = "crates/clankers-controller/src/command.rs";
 const CONTROLLER_EFFECT_INTERPRETER_FILE: &str = "crates/clankers-controller/src/core_effects.rs";
 const CONTROLLER_EFFECT_PROJECTION_FILE: &str = "crates/clankers-controller/src/effect_interpretation.rs";
-const CONTROLLER_INPUT_TRANSLATION_FILES: [&str; 2] = [
-    "crates/clankers-controller/src/command.rs",
-    "crates/clankers-controller/src/auto_test.rs",
-];
+const CONTROLLER_INPUT_TRANSLATION_FILES: [&str; 2] =
+    [CONTROLLER_COMMAND_FILE, "crates/clankers-controller/src/auto_test.rs"];
 const CONTROLLER_EVENT_TRANSLATION_FILE: &str = "crates/clankers-controller/src/convert.rs";
 const CONTROLLER_EVENT_TRANSLATION_CALLER_FILE: &str = "crates/clankers-controller/src/event_processing.rs";
 const TRANSPORT_PROTOCOL_CONVERSION_FILE: &str = "crates/clankers-controller/src/transport_convert.rs";
@@ -120,6 +120,22 @@ const COMMAND_REQUIRED_INPUT_PATHS: [&str; 8] = [
     "CoreInput::StopLoop",
     "CoreInput::PromptRequested",
     "CoreInput::PromptCompleted",
+];
+const CONTROLLER_RUNTIME_ADAPTER_OWNERSHIP_REQUIREMENT: &str =
+    "r[controller-runtime-adapter-production.ownership.source-rail]";
+const CONTROLLER_RUNTIME_ADAPTER_OWNER: &str = "agent-backed ControllerRuntimeAdapter production owner";
+const CONTROLLER_DIRECT_AGENT_METHOD_INVENTORY: [(&str, &str, &str, usize, &str); 0] = [];
+const AGENT_RECEIVER_IGNORED_METHODS: &[&str] = &[
+    "and_then",
+    "as_mut",
+    "as_ref",
+    "err",
+    "is_none",
+    "map",
+    "take",
+    "to_string",
+    "unwrap",
+    "unwrap_or_default",
 ];
 const AUTO_TEST_REQUIRED_INPUT_PATHS: [&str; 4] = [
     "clankers_core::CoreInput::PromptRequested",
@@ -674,6 +690,12 @@ struct NonTestRunnerPolicyCollector {
     findings: BTreeSet<String>,
 }
 
+#[derive(Default)]
+struct NonTestAgentMethodCallCollector {
+    calls: BTreeMap<(String, String), usize>,
+    function_stack: Vec<String>,
+}
+
 macro_rules! impl_non_test_cfg_visit_guards {
     () => {
         fn visit_item(&mut self, item: &'ast Item) {
@@ -823,6 +845,39 @@ impl<'ast> Visit<'ast> for NonTestRunnerPolicyCollector {
     }
 }
 
+impl<'ast> Visit<'ast> for NonTestAgentMethodCallCollector {
+    impl_non_test_cfg_visit_guards!();
+
+    fn visit_item_fn(&mut self, item_fn: &'ast syn::ItemFn) {
+        if has_test_only_cfg_attribute(&item_fn.attrs) {
+            return;
+        }
+        self.function_stack.push(item_fn.sig.ident.to_string());
+        syn::visit::visit_block(self, &item_fn.block);
+        self.function_stack.pop();
+    }
+
+    fn visit_impl_item_fn(&mut self, item_fn: &'ast syn::ImplItemFn) {
+        if has_test_only_cfg_attribute(&item_fn.attrs) {
+            return;
+        }
+        self.function_stack.push(item_fn.sig.ident.to_string());
+        syn::visit::visit_block(self, &item_fn.block);
+        self.function_stack.pop();
+    }
+
+    fn visit_expr_method_call(&mut self, expression: &'ast syn::ExprMethodCall) {
+        if expr_mentions_agent_receiver(&expression.receiver)
+            && !agent_receiver_method_is_ignored(&expression.method)
+            && let Some(function_name) = self.function_stack.last()
+        {
+            let key = (function_name.clone(), expression.method.to_string());
+            *self.calls.entry(key).or_insert(0) += 1;
+        }
+        syn::visit::visit_expr_method_call(self, expression);
+    }
+}
+
 fn repo_root() -> PathBuf {
     let mut path = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     for _ in 0..REPO_ROOT_PARENT_COUNT {
@@ -901,6 +956,18 @@ fn collect_non_test_runner_policy_findings(relative_path: &str) -> BTreeSet<Stri
     collector.findings
 }
 
+fn collect_non_test_agent_method_calls_from_source(source: &str) -> BTreeMap<(String, String), usize> {
+    let file = parse_rust_file(source);
+    let mut collector = NonTestAgentMethodCallCollector::default();
+    collector.visit_file(&file);
+    collector.calls
+}
+
+fn collect_non_test_agent_method_calls(relative_path: &str) -> BTreeMap<(String, String), usize> {
+    let source = read_relative_file(relative_path);
+    collect_non_test_agent_method_calls_from_source(&source)
+}
+
 fn collect_non_test_paths_from_visit(visit: impl FnOnce(&mut NonTestPathCollector)) -> BTreeSet<String> {
     let mut collector = NonTestPathCollector::default();
     visit(&mut collector);
@@ -965,6 +1032,25 @@ fn expr_mentions_field_named(expression: &syn::Expr, expected_field: &str) -> bo
         syn::Expr::Index(index) => expr_mentions_field_named(&index.expr, expected_field),
         _ => false,
     }
+}
+
+fn expr_mentions_agent_receiver(expression: &syn::Expr) -> bool {
+    match expression {
+        syn::Expr::Path(path) => path.path.is_ident("agent") || path.path.is_ident("a"),
+        syn::Expr::Field(field) => match &field.member {
+            syn::Member::Named(member) if member == "agent" => true,
+            _ => expr_mentions_agent_receiver(&field.base),
+        },
+        syn::Expr::MethodCall(method) => expr_mentions_agent_receiver(&method.receiver),
+        syn::Expr::Reference(reference) => expr_mentions_agent_receiver(&reference.expr),
+        syn::Expr::Paren(paren) => expr_mentions_agent_receiver(&paren.expr),
+        syn::Expr::Group(group) => expr_mentions_agent_receiver(&group.expr),
+        _ => false,
+    }
+}
+
+fn agent_receiver_method_is_ignored(method: &syn::Ident) -> bool {
+    AGENT_RECEIVER_IGNORED_METHODS.iter().any(|ignored| method == ignored)
 }
 
 fn parse_cfg_meta(attribute: &Attribute) -> Meta {
@@ -1572,6 +1658,48 @@ fn collect_non_test_paths_skip_test_only_match_arms() {
 }
 
 #[test]
+fn collect_non_test_agent_method_calls_tracks_runtime_functions_and_skips_tests() {
+    let source = r#"
+struct RuntimeAgent;
+struct RuntimeController {
+    agent: Option<RuntimeAgent>,
+}
+
+impl RuntimeController {
+    fn command_path(&mut self) {
+        if let Some(agent) = self.agent.as_mut() {
+            agent.abort();
+        }
+        self.agent.as_mut().unwrap().reset_cancel();
+        let _ = self.agent.as_ref().map(|a| a.system_prompt()).unwrap_or_default();
+    }
+
+    #[cfg(test)]
+    fn test_only(&mut self) {
+        self.agent.as_mut().unwrap().clear_messages();
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    fn helper() {
+        let agent = super::RuntimeAgent;
+        agent.truncate_messages(1);
+    }
+}
+"#;
+
+    let calls = collect_non_test_agent_method_calls_from_source(source);
+    assert_eq!(calls.get(&("command_path".to_string(), "abort".to_string())), Some(&1));
+    assert_eq!(calls.get(&("command_path".to_string(), "reset_cancel".to_string())), Some(&1));
+    assert_eq!(calls.get(&("command_path".to_string(), "system_prompt".to_string())), Some(&1));
+    assert!(!calls.contains_key(&("command_path".to_string(), "as_mut".to_string())));
+    assert!(!calls.contains_key(&("command_path".to_string(), "unwrap".to_string())));
+    assert!(!calls.contains_key(&("test_only".to_string(), "clear_messages".to_string())));
+    assert!(!calls.contains_key(&("helper".to_string(), "truncate_messages".to_string())));
+}
+
+#[test]
 fn agent_runtime_files_stay_shell_native() {
     for relative_path in AGENT_RUNTIME_FILES {
         let paths = collect_non_test_paths(relative_path);
@@ -1676,6 +1804,97 @@ fn controller_input_translation_stays_in_controller_translation_files() {
         CONTROLLER_INPUT_TRANSLATION_FILES[1],
         &auto_test_paths,
         &AUTO_TEST_REQUIRED_INPUT_PATHS,
+    );
+}
+
+#[test]
+fn controller_command_prompt_path_uses_agent_backed_runtime_adapter() {
+    let paths = collect_non_test_paths(CONTROLLER_COMMAND_FILE);
+    for required_segment in ["AgentBackedRuntimeAdapter", "AgentRuntimePromptRequest", "RuntimePromptCompletion"] {
+        assert!(
+            !find_paths_with_segment(&paths, required_segment).is_empty(),
+            "{} prompt command branch must reference {required_segment} for {}",
+            CONTROLLER_COMMAND_FILE,
+            CONTROLLER_RUNTIME_ADAPTER_OWNERSHIP_REQUIREMENT
+        );
+    }
+
+    let calls = collect_non_test_agent_method_calls(CONTROLLER_COMMAND_FILE);
+    assert!(
+        !calls.contains_key(&("handle_prompt_inner".to_string(), "prompt".to_string()))
+            && !calls.contains_key(&("handle_prompt_inner".to_string(), "prompt_with_images".to_string())),
+        "{} prompt command branch must route concrete prompt execution through {} instead of direct Agent calls: {:?}",
+        CONTROLLER_RUNTIME_ADAPTER_OWNERSHIP_REQUIREMENT,
+        CONTROLLER_RUNTIME_ADAPTER_OWNER,
+        calls
+    );
+}
+
+#[test]
+fn controller_command_control_path_uses_agent_backed_runtime_adapter() {
+    let command_paths = collect_non_test_paths(CONTROLLER_COMMAND_FILE);
+    let effect_paths = collect_non_test_paths(CONTROLLER_EFFECT_INTERPRETER_FILE);
+    for required_segment in ["AgentBackedRuntimeAdapter", "RuntimeControlRequest"] {
+        assert!(
+            !find_paths_with_segment(&command_paths, required_segment).is_empty()
+                || !find_paths_with_segment(&effect_paths, required_segment).is_empty(),
+            "controller control path must reference {required_segment} for {}",
+            CONTROLLER_RUNTIME_ADAPTER_OWNERSHIP_REQUIREMENT
+        );
+    }
+    assert!(
+        !find_paths_with_segment(&effect_paths, "RuntimeControlRequest").is_empty(),
+        "{} thinking/disabled-tool effects must route concrete agent controls through RuntimeControlRequest",
+        CONTROLLER_EFFECT_INTERPRETER_FILE
+    );
+}
+
+#[test]
+fn controller_command_direct_agent_ownership_inventory_is_explicit() {
+    let mut actual: BTreeMap<(String, String, String), usize> = BTreeMap::new();
+    for relative_path in [CONTROLLER_COMMAND_FILE, CONTROLLER_EFFECT_INTERPRETER_FILE] {
+        for ((function_name, method_name), count) in collect_non_test_agent_method_calls(relative_path) {
+            actual.insert((relative_path.to_string(), function_name, method_name), count);
+        }
+    }
+
+    let mut expected: BTreeMap<(String, String, String), usize> = BTreeMap::new();
+    let mut expected_categories: BTreeMap<(String, String, String), &str> = BTreeMap::new();
+    for (relative_path, function_name, method_name, count, category) in CONTROLLER_DIRECT_AGENT_METHOD_INVENTORY {
+        let key = (relative_path.to_string(), function_name.to_string(), method_name.to_string());
+        expected.insert(key.clone(), count);
+        expected_categories.insert(key, category);
+    }
+
+    let unexpected_or_changed = actual
+        .iter()
+        .filter_map(|(key, actual_count)| {
+            let expected_count = expected.get(key).copied().unwrap_or_default();
+            (expected_count != *actual_count)
+                .then(|| format!("{key:?}: actual={actual_count} expected={expected_count}"))
+        })
+        .collect::<Vec<_>>();
+    let missing_or_changed = expected
+        .iter()
+        .filter_map(|(key, expected_count)| {
+            let actual_count = actual.get(key).copied().unwrap_or_default();
+            (actual_count != *expected_count).then(|| {
+                let category = expected_categories.get(key).copied().unwrap_or("unknown command-path ownership");
+                format!("{key:?}: actual={actual_count} expected={expected_count} category={category}")
+            })
+        })
+        .collect::<Vec<_>>();
+
+    assert!(
+        unexpected_or_changed.is_empty() && missing_or_changed.is_empty(),
+        "{} direct Agent command ownership inventory drifted; move new command-path calls to {} or update \
+         the inventory with a convergence note. Offending function/method counts: {:?}; missing or changed \
+         expected calls: {:?}; full actual inventory: {:?}",
+        CONTROLLER_RUNTIME_ADAPTER_OWNERSHIP_REQUIREMENT,
+        CONTROLLER_RUNTIME_ADAPTER_OWNER,
+        unexpected_or_changed,
+        missing_or_changed,
+        actual
     );
 }
 

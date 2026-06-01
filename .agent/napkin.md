@@ -3,6 +3,7 @@
 ## Corrections
 | Date | Source | What Went Wrong | What To Do Instead |
 |------|--------|----------------|-------------------|
+| 2026-05-31 | self | `rustfmt --check` on `crates/clankers-controller/tests/fcis_shell_boundaries.rs` after a focused rail edit wanted unrelated pre-existing formatting changes elsewhere in the same large test | Manually format the touched FCIS hunks and cite focused nextest + `git diff --check`; do not rustfmt the whole boundary rail unless accepting broad churn. |
 | 2026-05-31 | self | Lego daemon assembly rail used `rust_paths` over the whole file and flagged `SessionManager` from a new `#[cfg(test)]` fixture, unlike the FCIS non-test collector | Keep lego source rails to production-only tokens or source anchors when they do not skip `cfg(test)`; let FCIS own precise non-test AST exclusions. |
 | 2026-05-31 | self | Used `(void)` as an else branch in a Steel script and hit `Function application not a procedure`; Steel exposed `void` as a value there, not a callable | Use `#f`, a string, or another concrete expression as a no-op branch in Steel snippets instead of `(void)`. |
 | 2026-05-31 | self | `require "steel/core/result"` failed in the current Steel runtime even though an older napkin entry mentioned it | Use `(require "steel/result")` with `Ok?`/`Ok->value`/`Err?`/`Err->value` for Steel process result handling here. |

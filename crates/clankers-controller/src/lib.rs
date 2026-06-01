@@ -62,6 +62,8 @@ use clankers_core::CoreState;
 use clankers_hooks::HookPipeline;
 use clankers_protocol::DaemonEvent;
 use clankers_session::SessionManager;
+pub use runtime_adapter::AgentBackedRuntimeAdapter;
+pub use runtime_adapter::AgentRuntimePromptRequest;
 pub use runtime_adapter::ControllerRuntimeAdapter;
 pub use runtime_adapter::FakeRuntimeAdapter;
 pub use runtime_adapter::RuntimeControlRequest;

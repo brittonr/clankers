@@ -138,9 +138,9 @@ impl SessionController {
 
     pub(crate) fn execute_thinking_effects(&mut self, effects: Vec<CoreEffect>) -> ThinkingEffectExecution {
         for level in effect_interpretation::applied_thinking_levels(&effects) {
-            if let Some(agent) = self.agent.as_mut() {
-                agent.apply_controller_thinking_level(Self::provider_thinking_level(level));
-            }
+            self.with_agent_runtime_adapter(|adapter| {
+                adapter.apply_runtime_control(crate::RuntimeControlRequest::SetThinkingLevel { level });
+            });
         }
 
         effect_interpretation::interpret_thinking_change(&effects)
@@ -153,9 +153,12 @@ impl SessionController {
         if let Some(application) = effect_interpretation::interpret_tool_filter_application(&effects) {
             if let Some(rebuilder) = self.tool_rebuilder.as_ref() {
                 let filtered = rebuilder.rebuild_filtered(&application.disabled_tools);
-                if let Some(agent) = self.agent.as_mut() {
-                    agent.apply_core_filtered_tools(filtered);
-                }
+                self.with_agent_runtime_adapter(|adapter| {
+                    adapter.apply_runtime_control(crate::RuntimeControlRequest::SetDisabledTools {
+                        tools: application.disabled_tools.clone(),
+                    });
+                    adapter.apply_core_filtered_tools(filtered);
+                });
             }
 
             let applied = self.apply_tool_filter_feedback(ToolFilterApplied {
