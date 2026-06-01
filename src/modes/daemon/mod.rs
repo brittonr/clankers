@@ -28,6 +28,7 @@ mod config;
 mod handlers;
 pub mod quic_bridge;
 pub(crate) mod session_builder;
+pub(crate) mod session_plugins;
 pub mod session_store;
 pub mod socket_bridge;
 

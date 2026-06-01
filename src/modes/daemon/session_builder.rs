@@ -11,6 +11,9 @@ use std::sync::Arc;
 use std::sync::Mutex;
 use std::time::Duration;
 
+use clanker_tui_types::SubagentEvent;
+use clankers_controller::SessionController;
+use clankers_controller::config::ControllerConfig;
 use clankers_controller::transport::SessionHandle;
 use clankers_controller::transport::session_socket_path;
 use clankers_protocol::DaemonEvent;
@@ -20,8 +23,11 @@ use clankers_protocol::SessionKey;
 use tokio::sync::broadcast;
 use tokio::sync::mpsc;
 
+use super::session_plugins::DaemonPluginProjection;
+use super::session_plugins::tool_rebuilder_for_factory;
 use super::session_store::SessionCatalogEntry;
 use super::session_store::SessionLifecycle;
+use super::socket_bridge::SessionFactory;
 
 /// User/control-plane inputs for a local daemon session create request.
 pub(crate) struct CreateSessionPlanRequest {
@@ -51,6 +57,28 @@ pub(crate) struct SessionBuildPlan {
     pub seed_messages: Vec<SerializedMessage>,
     pub thinking_level: Option<String>,
     pub key: Option<SessionKey>,
+}
+
+/// Actor-ready runtime inputs assembled without binding daemon sockets.
+pub(crate) struct DaemonSessionRuntime {
+    pub session_id: String,
+    pub controller: SessionController,
+    pub cmd_tx: mpsc::UnboundedSender<SessionCommand>,
+    pub cmd_rx: mpsc::UnboundedReceiver<SessionCommand>,
+    pub event_tx: broadcast::Sender<DaemonEvent>,
+    pub panel_rx: mpsc::UnboundedReceiver<SubagentEvent>,
+    pub bash_confirm_rx: crate::tools::bash::ConfirmRx,
+    pub plugin_projection: DaemonPluginProjection,
+    pub automerge_path: Option<PathBuf>,
+}
+
+pub(crate) struct DaemonSessionRuntimeRequest<'a> {
+    pub factory: &'a SessionFactory,
+    pub session_id: String,
+    pub model: Option<String>,
+    pub system_prompt: Option<String>,
+    pub capabilities: Option<Vec<clankers_ucan::Capability>>,
+    pub public_auth: Option<crate::capability_gate::PublicUcanToolAuthorization>,
 }
 
 /// Builder that owns session-construction policy while callers own IO/spawn.
@@ -97,6 +125,108 @@ pub(crate) fn build_session_hook_pipeline(
     }
 
     Some(Arc::new(pipeline))
+}
+
+pub(crate) fn assemble_session_runtime(request: DaemonSessionRuntimeRequest<'_>) -> DaemonSessionRuntime {
+    let paths = clankers_config::ClankersPaths::get();
+    assemble_session_runtime_in_dir(request, paths.global_sessions_dir.clone())
+}
+
+fn assemble_session_runtime_in_dir(
+    request: DaemonSessionRuntimeRequest<'_>,
+    sessions_dir: PathBuf,
+) -> DaemonSessionRuntime {
+    let factory = request.factory;
+    let session_id = request.session_id;
+    let model = request.model.unwrap_or_else(|| factory.default_model.clone());
+    let system_prompt = request.system_prompt.unwrap_or_else(|| factory.default_system_prompt.clone());
+
+    let (panel_tx, panel_rx) = mpsc::unbounded_channel::<SubagentEvent>();
+    let (bash_confirm_tx, bash_confirm_rx) = crate::tools::bash::confirm_channel();
+    let tools = factory.build_tools_with_panel_tx(panel_tx, Some(bash_confirm_tx));
+    let effective_caps =
+        merge_session_capabilities(request.capabilities.as_deref(), factory.settings.default_capabilities.as_deref());
+
+    let mut builder = clankers_agent::builder::AgentBuilder::new(
+        Arc::clone(&factory.provider),
+        factory.settings.clone(),
+        model.clone(),
+        system_prompt.clone(),
+    )
+    .with_tools(tools);
+
+    if let Some(public_auth) = request.public_auth {
+        let gate = Arc::new(crate::capability_gate::PublicUcanCapabilityGate::new(public_auth));
+        builder = builder.with_capability_gate(gate);
+    } else if let Some(caps) = &effective_caps {
+        let gate = Arc::new(crate::capability_gate::UcanCapabilityGate::new(caps.clone()));
+        builder = builder.with_capability_gate(gate);
+    }
+
+    let agent = builder.build();
+    let tool_patterns = effective_caps.as_deref().and_then(crate::capability_gate::extract_tool_patterns);
+    let (session_manager, automerge_path) = build_session_manager(&sessions_dir, &session_id, &model);
+    let hook_pipeline = build_session_hook_pipeline(&factory.settings, factory.plugin_manager.as_ref());
+
+    let config = ControllerConfig {
+        session_id: session_id.clone(),
+        model,
+        system_prompt: Some(system_prompt),
+        capabilities: tool_patterns.clone(),
+        capability_ceiling: tool_patterns,
+        session_manager,
+        hook_pipeline,
+        initial_thinking_level: crate::modes::common::core_thinking_level(factory.settings.parsed_thinking_level()),
+        auto_test_command: factory.settings.auto_test_command.clone(),
+        auto_test_enabled: factory.settings.auto_test_command.is_some(),
+    };
+
+    let mut controller = SessionController::new(agent, config);
+    controller.set_tool_rebuilder(tool_rebuilder_for_factory(Arc::new(SessionFactory {
+        provider: Arc::clone(&factory.provider),
+        tools: factory.tools.clone(),
+        settings: factory.settings.clone(),
+        default_model: factory.default_model.clone(),
+        default_system_prompt: factory.default_system_prompt.clone(),
+        registry: None,
+        catalog: None,
+        schedule_engine: factory.schedule_engine.clone(),
+        plugin_manager: factory.plugin_manager.clone(),
+    })));
+
+    let (cmd_tx, cmd_rx) = mpsc::unbounded_channel::<SessionCommand>();
+    let (event_tx, _) = broadcast::channel::<DaemonEvent>(256);
+
+    DaemonSessionRuntime {
+        session_id,
+        controller,
+        cmd_tx,
+        cmd_rx,
+        event_tx,
+        panel_rx,
+        bash_confirm_rx,
+        plugin_projection: DaemonPluginProjection::new(factory.plugin_manager.clone()),
+        automerge_path,
+    }
+}
+
+fn build_session_manager(
+    sessions_dir: &Path,
+    session_id: &str,
+    model: &str,
+) -> (Option<clankers_session::SessionManager>, Option<PathBuf>) {
+    let cwd = std::env::current_dir().unwrap_or_default().to_string_lossy().into_owned();
+    match clankers_session::SessionManager::create(sessions_dir, &cwd, model, None, None, None) {
+        Ok(mgr) => {
+            let path = mgr.file_path().to_path_buf();
+            tracing::info!("session {session_id}: persistence enabled at {path:?}");
+            (Some(mgr), Some(path))
+        }
+        Err(error) => {
+            tracing::warn!("session {session_id}: failed to create session file: {error}");
+            (None, None)
+        }
+    }
 }
 
 pub(crate) struct SessionBuilder {
@@ -211,6 +341,33 @@ impl SessionBuilder {
         let mut plan = self.plan_recovered_catalog_session(entry, public_auth);
         plan.key = Some(key.clone());
         plan
+    }
+
+    pub(crate) fn plan_ephemeral_child_session(
+        &self,
+        session_id: String,
+        model: Option<String>,
+        system_prompt: Option<String>,
+    ) -> SessionBuildPlan {
+        let resolved_model = model.clone().unwrap_or_else(|| self.default_model.clone());
+        let socket_path = session_socket_path(&session_id);
+        let spawn = AgentSpawnPlan {
+            session_id: session_id.clone(),
+            model,
+            system_prompt,
+            capabilities: None,
+            public_auth: None,
+        };
+
+        SessionBuildPlan {
+            session_id,
+            resolved_model,
+            socket_path,
+            spawn,
+            seed_messages: Vec::new(),
+            thinking_level: None,
+            key: None,
+        }
     }
 }
 
@@ -384,6 +541,7 @@ fn resolve_session_resume_in_dir(
 #[cfg(test)]
 mod tests {
     use std::path::PathBuf;
+    use std::sync::Arc;
 
     use chrono::Utc;
     use clanker_message::AssistantMessage;
@@ -396,6 +554,41 @@ mod tests {
     use tempfile::tempdir;
 
     use super::*;
+
+    struct StubProvider;
+
+    #[async_trait::async_trait]
+    impl clankers_provider::Provider for StubProvider {
+        async fn complete(
+            &self,
+            _req: clankers_provider::CompletionRequest,
+            _tx: tokio::sync::mpsc::Sender<clankers_provider::streaming::StreamEvent>,
+        ) -> std::result::Result<(), clankers_provider::error::ProviderError> {
+            Ok(())
+        }
+
+        fn models(&self) -> &[clankers_provider::Model] {
+            &[]
+        }
+
+        fn name(&self) -> &str {
+            "session-builder-stub"
+        }
+    }
+
+    fn make_factory() -> SessionFactory {
+        SessionFactory {
+            provider: Arc::new(StubProvider),
+            tools: vec![],
+            settings: clankers_config::settings::Settings::default(),
+            default_model: "default-model".to_string(),
+            default_system_prompt: "default prompt".to_string(),
+            registry: None,
+            catalog: None,
+            schedule_engine: None,
+            plugin_manager: None,
+        }
+    }
 
     fn append_resume_fixture(session: &mut clankers_session::SessionManager) {
         let user_id = MessageId::new("user-1");
@@ -547,5 +740,53 @@ mod tests {
         assert_eq!(recovered.key.as_ref(), Some(&key));
         assert_eq!(recovered.spawn.model.as_deref(), Some("catalog-model"));
         assert_eq!(recovered.seed_messages.len(), 2);
+    }
+
+    #[test]
+    fn ephemeral_plan_prepares_child_actor_inputs_without_socket() {
+        let dir = tempdir().unwrap();
+        let builder = SessionBuilder::for_sessions_dir("default-model", dir.path().join("sessions"));
+        let plan = builder.plan_ephemeral_child_session(
+            "ephemeral-child".to_string(),
+            Some("child-model".to_string()),
+            Some("child system".to_string()),
+        );
+
+        assert_eq!(plan.session_id, "ephemeral-child");
+        assert_eq!(plan.resolved_model, "child-model");
+        assert_eq!(plan.spawn.session_id, "ephemeral-child");
+        assert_eq!(plan.spawn.model.as_deref(), Some("child-model"));
+        assert_eq!(plan.spawn.system_prompt.as_deref(), Some("child system"));
+        assert!(plan.spawn.capabilities.is_none());
+        assert!(plan.spawn.public_auth.is_none());
+        assert!(plan.seed_messages.is_empty());
+        assert!(plan.key.is_none());
+        let expected_socket_name = "session-ephemeral-child.sock";
+        assert_eq!(plan.socket_path.file_name().and_then(|name| name.to_str()), Some(expected_socket_name));
+    }
+
+    #[test]
+    fn runtime_bundle_assembles_controller_channels_and_projection_without_actor_or_socket() {
+        let dir = tempdir().unwrap();
+        let factory = make_factory();
+        let runtime = assemble_session_runtime_in_dir(
+            DaemonSessionRuntimeRequest {
+                factory: &factory,
+                session_id: "runtime-bundle".to_string(),
+                model: Some("runtime-model".to_string()),
+                system_prompt: Some("runtime system".to_string()),
+                capabilities: None,
+                public_auth: None,
+            },
+            dir.path().join("sessions"),
+        );
+
+        assert_eq!(runtime.session_id, "runtime-bundle");
+        assert!(runtime.cmd_tx.send(SessionCommand::GetToolList).is_ok());
+        assert!(runtime.event_tx.receiver_count() == 0);
+        assert!(runtime.automerge_path.as_ref().is_some_and(|path| path.starts_with(dir.path())));
+        assert!(runtime.plugin_projection.summaries().is_empty());
+        assert!(runtime.bash_confirm_rx.is_empty());
+        assert!(!runtime.controller.current_tool_infos().is_empty());
     }
 }

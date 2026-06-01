@@ -63,6 +63,9 @@ const SESSION_COMMAND_POLICY: &str = "src/modes/session_command_policy.rs";
 const ATTACH_COMMANDS: &str = "src/modes/attach/commands.rs";
 const SLASH_EFFECTS: &str = "src/slash_commands/effects.rs";
 const AGENT_TASK: &str = "src/modes/agent_task.rs";
+const DAEMON_AGENT_PROCESS: &str = "src/modes/daemon/agent_process.rs";
+const DAEMON_SESSION_BUILDER: &str = "src/modes/daemon/session_builder.rs";
+const DAEMON_SESSION_PLUGINS: &str = "src/modes/daemon/session_plugins.rs";
 
 const AGENT_CONCRETE_DEPS: &[&str] = &[
     "clankers-config",
@@ -127,6 +130,7 @@ fn run() -> Result<PathBuf, String> {
     let controller_domain_event = controller_domain_event_signature()?;
     let controller_display_protocol_dtos = controller_display_protocol_dto_signature()?;
     let session_command_policy = session_command_policy_signature()?;
+    let daemon_session_assembly = daemon_session_assembly_signature()?;
 
     require_nonempty(&root_internal, "root internal dependency inventory")?;
     require_nonempty(&agent_concrete, "agent concrete dependency inventory")?;
@@ -165,6 +169,7 @@ fn run() -> Result<PathBuf, String> {
         "controller_domain_event": controller_domain_event,
         "controller_display_protocol_dtos": controller_display_protocol_dtos,
         "session_command_policy": session_command_policy,
+        "daemon_session_assembly": daemon_session_assembly,
     });
     validate_baseline(&signature)?;
 
@@ -220,7 +225,10 @@ fn run() -> Result<PathBuf, String> {
             hash_artifact(Path::new(SESSION_COMMAND_POLICY))?,
             hash_artifact(Path::new(ATTACH_COMMANDS))?,
             hash_artifact(Path::new(SLASH_EFFECTS))?,
-            hash_artifact(Path::new(AGENT_TASK))?
+            hash_artifact(Path::new(AGENT_TASK))?,
+            hash_artifact(Path::new(DAEMON_AGENT_PROCESS))?,
+            hash_artifact(Path::new(DAEMON_SESSION_BUILDER))?,
+            hash_artifact(Path::new(DAEMON_SESSION_PLUGINS))?
         ]
     });
 
@@ -993,6 +1001,129 @@ fn controller_display_protocol_dto_signature() -> Result<Value, String> {
         "command_semantic_projection": "semantic_error_message_to_daemon_event",
         "protocol_projection_owner": "convert::semantic_error_message_to_daemon_event",
         "typed_rail_kind": "Rust AST path, struct, function, and owner-diagnostic checks for display/protocol DTO drains"
+    }))
+}
+
+fn daemon_session_assembly_signature() -> Result<Value, String> {
+    let agent_process_file = read_rust_file(DAEMON_AGENT_PROCESS)?;
+    let builder_file = read_rust_file(DAEMON_SESSION_BUILDER)?;
+    let plugins_file = read_rust_file(DAEMON_SESSION_PLUGINS)?;
+    let agent_process = &agent_process_file.source;
+    let builder = &builder_file.source;
+    let plugins = &plugins_file.source;
+    let actor_forbidden = [
+        ("AgentBuilder", "agent builder construction belongs to session_builder"),
+        ("UcanCapabilityGate", "capability gate construction belongs to session_builder"),
+        ("PublicUcanCapabilityGate", "public capability gate construction belongs to session_builder"),
+        ("ScriptHookHandler", "hook pipeline construction belongs to session_builder"),
+        ("GitHookHandler", "hook pipeline construction belongs to session_builder"),
+        ("PluginHookHandler", "plugin hook attachment belongs to session_builder"),
+        ("merge_session_capabilities", "capability merge belongs to session_builder"),
+        ("build_session_hook_pipeline", "hook assembly belongs to session_builder"),
+        ("build_all_tiered_tools", "tool catalog projection belongs to session_plugins"),
+        ("build_protocol_plugin_summaries", "plugin summary projection belongs to session_plugins"),
+    ];
+
+    for (path, reason) in actor_forbidden {
+        forbid_rust_path(&agent_process_file, path, &format!("daemon actor loop assembly split: {reason}"))?;
+        forbid_contains(agent_process, path, &format!("daemon actor loop assembly split: {reason}"))?;
+    }
+
+    require_rust_path(
+        &agent_process_file,
+        "assemble_session_runtime",
+        "daemon actor consumes assembled session runtime",
+    )?;
+    require_rust_path(&agent_process_file, "DaemonSessionRuntimeRequest", "daemon actor runtime request DTO")?;
+    require_contains(
+        agent_process,
+        "plan_ephemeral_child_session",
+        "ephemeral child spawn path uses socketless builder plan",
+    )?;
+    require_contains(
+        agent_process,
+        "session_plugins::sync_tool_inventory",
+        "actor loop triggers tool projection refresh without owning construction",
+    )?;
+    require_rust_struct(&builder_file, "DaemonSessionRuntime", "assembled daemon session runtime bundle")?;
+    require_rust_struct(
+        &builder_file,
+        "DaemonSessionRuntimeRequest",
+        "daemon session runtime request DTO",
+    )?;
+    require_rust_fn(&builder_file, "assemble_session_runtime", "socketless daemon runtime assembly entrypoint")?;
+    require_rust_fn(&builder_file, "build_session_hook_pipeline", "builder-owned hook pipeline assembly")?;
+    require_rust_fn(&builder_file, "merge_session_capabilities", "builder-owned capability merge")?;
+    require_rust_method(&builder_file, "plan_ephemeral_child_session", "ephemeral child socketless spawn plan")?;
+    require_contains(builder, "clankers_agent::builder::AgentBuilder::new", "builder-owned agent construction")?;
+    require_rust_path(&builder_file, "tool_rebuilder_for_factory", "builder wires named tool rebuilder helper")?;
+    require_rust_struct(&plugins_file, "DaemonPluginProjection", "daemon plugin protocol projection handle")?;
+    require_rust_struct(&plugins_file, "DaemonToolRebuilder", "daemon tool rebuilder projection owner")?;
+    require_rust_fn(&plugins_file, "sync_tool_inventory", "daemon tool-list refresh helper")?;
+    require_rust_fn(&plugins_file, "drain_plugin_runtime_events", "daemon plugin runtime drain helper")?;
+    require_rust_path(
+        &plugins_file,
+        "crate::plugin::build_protocol_plugin_summaries",
+        "plugin summary projection owner",
+    )?;
+    require_rust_path(
+        &plugins_file,
+        "crate::modes::common::build_all_tiered_tools",
+        "tool catalog projection owner",
+    )?;
+    require_contains(
+        builder,
+        "runtime_bundle_assembles_controller_channels_and_projection_without_actor_or_socket",
+        "socketless runtime bundle fixture",
+    )?;
+    require_contains(
+        builder,
+        "ephemeral_plan_prepares_child_actor_inputs_without_socket",
+        "ephemeral child socketless spawn fixture",
+    )?;
+    require_contains(
+        agent_process,
+        "shared_plugin_disconnect_and_reconnect_updates_all_sessions",
+        "daemon actor plugin live refresh parity fixture",
+    )?;
+    require_contains(
+        plugins,
+        "Session actors trigger refresh and drain operations",
+        "tool/plugin projection module purpose",
+    )?;
+
+    Ok(json!({
+        "actor_loop_module": DAEMON_AGENT_PROCESS,
+        "runtime_builder_module": DAEMON_SESSION_BUILDER,
+        "tool_plugin_projection_module": DAEMON_SESSION_PLUGINS,
+        "runtime_bundle": "DaemonSessionRuntime",
+        "runtime_request": "DaemonSessionRuntimeRequest",
+        "actor_spawn_entrypoint": "assemble_session_runtime",
+        "ephemeral_spawn_plan": "plan_ephemeral_child_session",
+        "hook_pipeline_owner": "session_builder::build_session_hook_pipeline",
+        "capability_merge_owner": "session_builder::merge_session_capabilities",
+        "tool_rebuilder_owner": "session_plugins::DaemonToolRebuilder",
+        "plugin_projection_owner": "session_plugins::DaemonPluginProjection",
+        "actor_forbidden_assembly_paths": [
+            "AgentBuilder",
+            "UcanCapabilityGate",
+            "PublicUcanCapabilityGate",
+            "ScriptHookHandler",
+            "GitHookHandler",
+            "PluginHookHandler",
+            "merge_session_capabilities",
+            "build_session_hook_pipeline",
+            "build_all_tiered_tools",
+            "build_protocol_plugin_summaries"
+        ],
+        "socketless_fixtures": [
+            "create_plan_for_new_session_has_spawn_and_handle_data_without_socket",
+            "create_plan_resolves_resume_messages_without_socket",
+            "keyed_plans_prepare_new_and_recovered_actor_inputs_without_socket",
+            "ephemeral_plan_prepares_child_actor_inputs_without_socket",
+            "runtime_bundle_assembles_controller_channels_and_projection_without_actor_or_socket"
+        ],
+        "typed_rail_kind": "Rust AST path, struct, function, method, and source-owner checks for daemon session assembly"
     }))
 }
 

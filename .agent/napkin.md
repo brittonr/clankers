@@ -3,6 +3,7 @@
 ## Corrections
 | Date | Source | What Went Wrong | What To Do Instead |
 |------|--------|----------------|-------------------|
+| 2026-05-31 | self | Lego daemon assembly rail used `rust_paths` over the whole file and flagged `SessionManager` from a new `#[cfg(test)]` fixture, unlike the FCIS non-test collector | Keep lego source rails to production-only tokens or source anchors when they do not skip `cfg(test)`; let FCIS own precise non-test AST exclusions. |
 | 2026-05-31 | self | Used `(void)` as an else branch in a Steel script and hit `Function application not a procedure`; Steel exposed `void` as a value there, not a callable | Use `#f`, a string, or another concrete expression as a no-op branch in Steel snippets instead of `(void)`. |
 | 2026-05-31 | self | `require "steel/core/result"` failed in the current Steel runtime even though an older napkin entry mentioned it | Use `(require "steel/result")` with `Ok?`/`Ok->value`/`Err?`/`Err->value` for Steel process result handling here. |
 | 2026-05-31 | self | Closeout nextest partitions surfaced two stale rails outside the main slice: provider-contract docs still anchored a deleted helper and artifact golden hash expected an old `SkillReference` digest | Treat broad closeout failures as validation drift until proven otherwise: fix focused anchors/fixtures, rerun the focused test, then rerun the failed partition before claiming full-suite pass. |

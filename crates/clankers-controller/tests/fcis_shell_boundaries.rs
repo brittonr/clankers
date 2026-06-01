@@ -47,6 +47,9 @@ const AGENT_RUNTIME_FILES: [&str; 3] = [
     "crates/clankers-agent/src/turn/execution.rs",
 ];
 const EVENT_LOOP_RUNTIME_FILE: &str = "src/modes/event_loop_runner/mod.rs";
+const DAEMON_AGENT_PROCESS_FILE: &str = "src/modes/daemon/agent_process.rs";
+const DAEMON_SESSION_BUILDER_FILE: &str = "src/modes/daemon/session_builder.rs";
+const DAEMON_SESSION_PLUGINS_FILE: &str = "src/modes/daemon/session_plugins.rs";
 const CONTROLLER_EFFECT_INTERPRETER_FILE: &str = "crates/clankers-controller/src/core_effects.rs";
 const CONTROLLER_EFFECT_PROJECTION_FILE: &str = "crates/clankers-controller/src/effect_interpretation.rs";
 const CONTROLLER_INPUT_TRANSLATION_FILES: [&str; 2] = [
@@ -68,6 +71,39 @@ const CORE_EFFECTS_REQUIRED_PATHS: [&str; 4] = [
     "CoreEffect::ApplyThinkingLevel",
     "CoreEffect::ApplyToolFilter",
     "CoreEffect::ReplayQueuedPrompt",
+];
+const DAEMON_AGENT_PROCESS_FORBIDDEN_ASSEMBLY_SEGMENTS: [&str; 12] = [
+    "AgentBuilder",
+    "SessionManager",
+    "UcanCapabilityGate",
+    "PublicUcanCapabilityGate",
+    "ScriptHookHandler",
+    "GitHookHandler",
+    "PluginHookHandler",
+    "DaemonToolRebuilder",
+    "merge_session_capabilities",
+    "build_session_hook_pipeline",
+    "build_all_tiered_tools",
+    "build_protocol_plugin_summaries",
+];
+const DAEMON_AGENT_PROCESS_REQUIRED_ASSEMBLY_PATHS: [&str; 3] = [
+    "assemble_session_runtime",
+    "DaemonSessionRuntimeRequest",
+    "run_agent_actor",
+];
+const DAEMON_SESSION_BUILDER_REQUIRED_ASSEMBLY_PATHS: [&str; 5] = [
+    "DaemonSessionRuntime",
+    "DaemonSessionRuntimeRequest",
+    "build_session_hook_pipeline",
+    "merge_session_capabilities",
+    "tool_rebuilder_for_factory",
+];
+const DAEMON_SESSION_PLUGINS_REQUIRED_PATHS: [&str; 5] = [
+    "DaemonPluginProjection",
+    "DaemonToolRebuilder",
+    "crate::plugin::build_protocol_plugin_summaries",
+    "crate::modes::common::build_all_tiered_tools",
+    "crate::modes::plugin_dispatch::drain_stdio_runtime_outputs",
 ];
 const CORE_EFFECT_PROJECTION_REQUIRED_PATHS: [&str; 4] = [
     "CoreEffect::StartPrompt",
@@ -1553,6 +1589,49 @@ fn embedded_event_loop_runner_stays_adapter_only() {
     assert_segment_absent(EVENT_LOOP_RUNTIME_FILE, &paths, CORE_STATE_SEGMENT);
     assert_segment_absent(EVENT_LOOP_RUNTIME_FILE, &paths, CORE_EFFECT_SEGMENT);
     assert_segment_absent(EVENT_LOOP_RUNTIME_FILE, &paths, CORE_LOGICAL_EVENT_SEGMENT);
+}
+
+#[test]
+fn daemon_session_actor_loop_consumes_socketless_assembly_bundle() {
+    let agent_process_paths = collect_non_test_paths(DAEMON_AGENT_PROCESS_FILE);
+    assert_required_paths_present(
+        DAEMON_AGENT_PROCESS_FILE,
+        &agent_process_paths,
+        &DAEMON_AGENT_PROCESS_REQUIRED_ASSEMBLY_PATHS,
+    );
+    for segment in DAEMON_AGENT_PROCESS_FORBIDDEN_ASSEMBLY_SEGMENTS {
+        assert_segment_absent(DAEMON_AGENT_PROCESS_FILE, &agent_process_paths, segment);
+    }
+    let agent_process_source = read_relative_file(DAEMON_AGENT_PROCESS_FILE);
+    assert!(
+        agent_process_source.contains("plan_ephemeral_child_session"),
+        "{} must route ephemeral child spawn through socketless builder output",
+        DAEMON_AGENT_PROCESS_FILE
+    );
+    assert!(
+        agent_process_source.contains("session_plugins::sync_tool_inventory"),
+        "{} must trigger tool refresh through the named daemon projection helper",
+        DAEMON_AGENT_PROCESS_FILE
+    );
+
+    let builder_paths = collect_non_test_paths(DAEMON_SESSION_BUILDER_FILE);
+    assert_required_paths_present(
+        DAEMON_SESSION_BUILDER_FILE,
+        &builder_paths,
+        &DAEMON_SESSION_BUILDER_REQUIRED_ASSEMBLY_PATHS,
+    );
+    assert!(
+        !find_paths_with_segment(&builder_paths, "AgentBuilder").is_empty(),
+        "{} must own agent builder construction for daemon sessions",
+        DAEMON_SESSION_BUILDER_FILE
+    );
+
+    let plugin_paths = collect_non_test_paths(DAEMON_SESSION_PLUGINS_FILE);
+    assert_required_paths_present(
+        DAEMON_SESSION_PLUGINS_FILE,
+        &plugin_paths,
+        &DAEMON_SESSION_PLUGINS_REQUIRED_PATHS,
+    );
 }
 
 #[test]

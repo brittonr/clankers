@@ -605,6 +605,39 @@
       ],
       "package": "clankers"
     },
+    "daemon_session_assembly": {
+      "actor_forbidden_assembly_paths": [
+        "AgentBuilder",
+        "UcanCapabilityGate",
+        "PublicUcanCapabilityGate",
+        "ScriptHookHandler",
+        "GitHookHandler",
+        "PluginHookHandler",
+        "merge_session_capabilities",
+        "build_session_hook_pipeline",
+        "build_all_tiered_tools",
+        "build_protocol_plugin_summaries"
+      ],
+      "actor_loop_module": "src/modes/daemon/agent_process.rs",
+      "actor_spawn_entrypoint": "assemble_session_runtime",
+      "capability_merge_owner": "session_builder::merge_session_capabilities",
+      "ephemeral_spawn_plan": "plan_ephemeral_child_session",
+      "hook_pipeline_owner": "session_builder::build_session_hook_pipeline",
+      "plugin_projection_owner": "session_plugins::DaemonPluginProjection",
+      "runtime_builder_module": "src/modes/daemon/session_builder.rs",
+      "runtime_bundle": "DaemonSessionRuntime",
+      "runtime_request": "DaemonSessionRuntimeRequest",
+      "socketless_fixtures": [
+        "create_plan_for_new_session_has_spawn_and_handle_data_without_socket",
+        "create_plan_resolves_resume_messages_without_socket",
+        "keyed_plans_prepare_new_and_recovered_actor_inputs_without_socket",
+        "ephemeral_plan_prepares_child_actor_inputs_without_socket",
+        "runtime_bundle_assembles_controller_channels_and_projection_without_actor_or_socket"
+      ],
+      "tool_plugin_projection_module": "src/modes/daemon/session_plugins.rs",
+      "tool_rebuilder_owner": "session_plugins::DaemonToolRebuilder",
+      "typed_rail_kind": "Rust AST path, struct, function, method, and source-owner checks for daemon session assembly"
+    },
     "session_command_policy": {
       "ack_matcher": "ack_matches",
       "ack_policy_dto": "SessionAckPolicy",

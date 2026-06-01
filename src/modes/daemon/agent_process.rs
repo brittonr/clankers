@@ -18,7 +18,6 @@ use clanker_actor::ProcessRegistry;
 use clanker_actor::Signal;
 use clanker_tui_types::SubagentEvent;
 use clankers_controller::SessionController;
-use clankers_controller::config::ControllerConfig;
 use clankers_protocol::DaemonEvent;
 use clankers_protocol::SessionCommand;
 use tokio::sync::broadcast;
@@ -28,8 +27,8 @@ use tracing::debug;
 use tracing::info;
 use tracing::warn;
 
-use super::session_builder::build_session_hook_pipeline;
-use super::session_builder::merge_session_capabilities;
+use super::session_builder::DaemonSessionRuntimeRequest;
+use super::session_builder::assemble_session_runtime;
 use super::socket_bridge::SessionFactory;
 
 /// Maximum bytes collected from agent text output.
@@ -64,121 +63,30 @@ pub fn spawn_agent_process(
     capabilities: Option<Vec<clankers_ucan::Capability>>,
     public_auth: Option<crate::capability_gate::PublicUcanToolAuthorization>,
 ) -> SpawnedSession {
-    let model = model.unwrap_or_else(|| factory.default_model.clone());
-    let system_prompt = system_prompt.unwrap_or_else(|| factory.default_system_prompt.clone());
+    let runtime = assemble_session_runtime(DaemonSessionRuntimeRequest {
+        factory,
+        session_id,
+        model,
+        system_prompt,
+        capabilities,
+        public_auth,
+    });
 
-    // Create subagent event channel
-    let (panel_tx, panel_rx) = mpsc::unbounded_channel::<SubagentEvent>();
-
-    // Create bash confirm channel so dangerous commands can be approved
-    // by attached clients via the ConfirmRequest/ConfirmBash protocol.
-    let (bash_confirm_tx, bash_confirm_rx) = crate::tools::bash::confirm_channel();
-
-    // Build tools with panel_tx for subagent event routing
-    let tools = factory.build_tools_with_panel_tx(panel_tx, Some(bash_confirm_tx));
-
-    // Build the agent, attaching capability gate from UCAN token and/or settings.
-    //
-    // Three cases:
-    //   1. UCAN caps only (remote peer)  → gate from token
-    //   2. Settings caps only (local)    → gate from defaultCapabilities
-    //   3. Both                          → merge (both sets must authorize)
-    //   4. Neither                       → no gate, full access
-    let effective_caps =
-        merge_session_capabilities(capabilities.as_deref(), factory.settings.default_capabilities.as_deref());
-
-    let mut builder = clankers_agent::builder::AgentBuilder::new(
-        Arc::clone(&factory.provider),
-        factory.settings.clone(),
-        model.clone(),
-        system_prompt.clone(),
-    )
-    .with_tools(tools);
-
-    if let Some(public_auth) = public_auth {
-        let gate = std::sync::Arc::new(crate::capability_gate::PublicUcanCapabilityGate::new(public_auth));
-        builder = builder.with_capability_gate(gate);
-    } else if let Some(caps) = &effective_caps {
-        let gate = std::sync::Arc::new(crate::capability_gate::UcanCapabilityGate::new(caps.clone()));
-        builder = builder.with_capability_gate(gate);
-    }
-
-    let agent = builder.build();
-
-    let tool_patterns = effective_caps.as_deref().and_then(crate::capability_gate::extract_tool_patterns);
-
-    // ── Session persistence ──────────────────────────────────────────
-    // Create a SessionManager so daemon sessions get JSONL persistence
-    // (same as standalone mode). Without this, conversation history is
-    // lost when the daemon stops.
-    let (session_manager, automerge_path) = {
-        let paths = clankers_config::ClankersPaths::get();
-        let cwd = std::env::current_dir().unwrap_or_default().to_string_lossy().into_owned();
-        match clankers_session::SessionManager::create(&paths.global_sessions_dir, &cwd, &model, None, None, None) {
-            Ok(mgr) => {
-                let path = mgr.file_path().to_path_buf();
-                info!("session {session_id}: persistence enabled at {path:?}");
-                (Some(mgr), Some(path))
-            }
-            Err(e) => {
-                warn!("session {session_id}: failed to create session file: {e}");
-                (None, None)
-            }
-        }
-    };
-
-    // ── Hook pipeline ────────────────────────────────────────────────
-    let hook_pipeline = build_session_hook_pipeline(&factory.settings, factory.plugin_manager.as_ref());
-
-    let config = ControllerConfig {
-        session_id: session_id.clone(),
-        model: model.clone(),
-        system_prompt: Some(system_prompt),
-        capabilities: tool_patterns.clone(),
-        capability_ceiling: tool_patterns,
-        session_manager,
-        hook_pipeline,
-        initial_thinking_level: crate::modes::common::core_thinking_level(factory.settings.parsed_thinking_level()),
-        auto_test_command: factory.settings.auto_test_command.clone(),
-        auto_test_enabled: factory.settings.auto_test_command.is_some(),
-    };
-
-    let mut controller = SessionController::new(agent, config);
-
-    // Wire tool rebuilder so SetDisabledTools can hot-reload the agent's tools.
-    let rebuilder = DaemonToolRebuilder {
-        factory: Arc::new(SessionFactory {
-            provider: Arc::clone(&factory.provider),
-            tools: factory.tools.clone(),
-            settings: factory.settings.clone(),
-            default_model: factory.default_model.clone(),
-            default_system_prompt: factory.default_system_prompt.clone(),
-            registry: None, // child tools use subprocess fallback
-            catalog: None,
-            schedule_engine: factory.schedule_engine.clone(),
-            plugin_manager: factory.plugin_manager.clone(),
-        }),
-    };
-    controller.set_tool_rebuilder(Arc::new(rebuilder));
-
-    // Create channels for external command/event access
-    let (cmd_tx, cmd_rx) = mpsc::unbounded_channel::<SessionCommand>();
-    let (event_tx, _) = broadcast::channel::<DaemonEvent>(256);
-
-    let driver_event_tx = event_tx.clone();
-    let driver_plugin_manager = factory.plugin_manager.clone();
-    let process_name = format!("session:{session_id}");
+    let cmd_tx = runtime.cmd_tx.clone();
+    let event_tx = runtime.event_tx.clone();
+    let automerge_path = runtime.automerge_path.clone();
+    let process_name = format!("session:{}", runtime.session_id);
 
     let pid = registry.spawn(Some(process_name), parent, move |_pid, mut signal_rx| async move {
         Box::pin(run_agent_actor(
-            controller,
-            cmd_rx,
-            driver_event_tx,
-            session_id,
-            panel_rx,
-            bash_confirm_rx,
+            runtime.controller,
+            runtime.cmd_rx,
+            runtime.event_tx,
+            runtime.session_id,
+            runtime.panel_rx,
+            runtime.bash_confirm_rx,
             &mut signal_rx,
-            driver_plugin_manager,
+            runtime.plugin_projection,
         ))
         .await
     });
@@ -201,19 +109,15 @@ async fn run_agent_actor(
     mut panel_rx: mpsc::UnboundedReceiver<SubagentEvent>,
     mut bash_confirm_rx: crate::tools::bash::ConfirmRx,
     signal_rx: &mut mpsc::UnboundedReceiver<Signal>,
-    plugin_manager: Option<std::sync::Arc<std::sync::Mutex<clankers_plugin::PluginManager>>>,
+    plugin_projection: super::session_plugins::DaemonPluginProjection,
 ) -> DeathReason {
     info!("agent process started: {session_id}");
 
     let mut pending_commands = VecDeque::new();
 
     // Fire plugin_init so plugins can set up initial UI state
-    if let Some(ref pm) = plugin_manager {
-        for action in crate::modes::common::fire_plugin_init(pm) {
-            event_tx.send(crate::modes::plugin_dispatch::ui_action_to_daemon_event(action)).ok();
-        }
-        drain_plugin_runtime_events(&event_tx, Some(pm));
-    }
+    plugin_projection.fire_init(&event_tx);
+    plugin_projection.drain_runtime_events(&event_tx);
 
     loop {
         if let Some(cmd) = pending_commands.pop_front() {
@@ -223,7 +127,7 @@ async fn run_agent_actor(
                 &mut cmd_rx,
                 &event_tx,
                 &mut panel_rx,
-                plugin_manager.as_ref(),
+                &plugin_projection,
                 &mut pending_commands,
             )
             .await
@@ -269,7 +173,7 @@ async fn run_agent_actor(
                     &mut cmd_rx,
                     &event_tx,
                     &mut panel_rx,
-                    plugin_manager.as_ref(),
+                    &plugin_projection,
                     &mut pending_commands,
                 )
                 .await
@@ -316,12 +220,12 @@ async fn run_agent_actor(
 
             // Periodic drain of background agent events
             () = tokio::time::sleep(tokio::time::Duration::from_millis(50)) => {
-                sync_tool_inventory(&mut controller, &event_tx);
+                super::session_plugins::sync_tool_inventory(&mut controller, &event_tx);
                 super::socket_bridge::drain_and_broadcast(
                     &mut controller, &event_tx, &mut panel_rx,
-                    plugin_manager.as_ref(),
+                    plugin_projection.manager(),
                 );
-                drain_plugin_runtime_events(&event_tx, plugin_manager.as_ref());
+                plugin_projection.drain_runtime_events(&event_tx);
             }
         }
     }
@@ -337,15 +241,18 @@ async fn handle_actor_session_command(
     cmd_rx: &mut mpsc::UnboundedReceiver<SessionCommand>,
     event_tx: &broadcast::Sender<DaemonEvent>,
     panel_rx: &mut mpsc::UnboundedReceiver<SubagentEvent>,
-    plugin_manager: Option<&Arc<std::sync::Mutex<clankers_plugin::PluginManager>>>,
+    plugin_projection: &super::session_plugins::DaemonPluginProjection,
     pending_commands: &mut VecDeque<SessionCommand>,
 ) -> bool {
     let is_disconnect = matches!(cmd, SessionCommand::Disconnect);
 
     // Handle plugin queries locally (controller doesn't know about plugins).
     if matches!(cmd, SessionCommand::GetPlugins) {
-        let summaries = build_plugin_summaries(plugin_manager);
-        event_tx.send(DaemonEvent::PluginList { plugins: summaries }).ok();
+        event_tx
+            .send(DaemonEvent::PluginList {
+                plugins: plugin_projection.summaries(),
+            })
+            .ok();
         return is_disconnect;
     }
 
@@ -356,16 +263,16 @@ async fn handle_actor_session_command(
         cmd_rx,
         event_tx,
         panel_rx,
-        plugin_manager,
+        plugin_projection.manager(),
         pending_commands,
     )
     .await;
-    super::socket_bridge::drain_and_broadcast(controller, event_tx, panel_rx, plugin_manager);
+    super::socket_bridge::drain_and_broadcast(controller, event_tx, panel_rx, plugin_projection.manager());
     let tools_after = controller.current_tool_infos();
     if tools_after != tools_before {
         event_tx.send(DaemonEvent::ToolList { tools: tools_after }).ok();
     }
-    drain_plugin_runtime_events(event_tx, plugin_manager);
+    plugin_projection.drain_runtime_events(event_tx);
 
     // Post-prompt actions (auto-test, loop continuation).
     if !controller.is_busy() {
@@ -379,11 +286,11 @@ async fn handle_actor_session_command(
                 cmd_rx,
                 event_tx,
                 panel_rx,
-                plugin_manager,
+                plugin_projection.manager(),
                 pending_commands,
             )
             .await;
-            super::socket_bridge::drain_and_broadcast(controller, event_tx, panel_rx, plugin_manager);
+            super::socket_bridge::drain_and_broadcast(controller, event_tx, panel_rx, plugin_projection.manager());
         }
         controller.clear_auto_test();
     }
@@ -463,16 +370,18 @@ pub async fn run_ephemeral_agent(
 
     // Resolve agent definition to model + system prompt overrides
     let (model, system_prompt) = resolve_agent_def(agent_def, factory);
+    let builder = super::session_builder::SessionBuilder::from_global_paths(factory.default_model.clone());
+    let mut plan = builder.plan_ephemeral_child_session(session_id.clone(), model, system_prompt);
 
     let spawned = spawn_agent_process(
         registry,
         factory,
-        session_id.clone(),
-        model,
-        system_prompt,
+        plan.spawn.session_id.clone(),
+        plan.spawn.model.clone(),
+        plan.spawn.system_prompt.clone(),
         parent_pid,
-        None, // ephemeral agents inherit parent's capabilities via actor links
-        None,
+        plan.spawn.capabilities.take(), // ephemeral agents inherit parent's capabilities via actor links
+        plan.spawn.public_auth.take(),
     );
     let pid = spawned.pid;
     let cmd_tx = spawned.cmd_tx;
@@ -824,78 +733,6 @@ fn resolve_agent_def(agent_def: Option<&str>, _factory: &SessionFactory) -> (Opt
     } else {
         debug!("agent definition '{name}' not found, using defaults");
         (None, None)
-    }
-}
-
-/// Tool rebuilder that uses the daemon's SessionFactory to rebuild
-/// the filtered tool set when disabled tools change.
-struct DaemonToolRebuilder {
-    factory: Arc<SessionFactory>,
-}
-
-impl clankers_controller::ToolRebuilder for DaemonToolRebuilder {
-    fn rebuild_filtered(&self, disabled: &[String]) -> Vec<Arc<dyn crate::tools::Tool>> {
-        let disabled_set: std::collections::HashSet<String> = disabled.iter().cloned().collect();
-        // Build a fresh panel_tx (events go nowhere — we only need the tool list)
-        let (panel_tx, _) = tokio::sync::mpsc::unbounded_channel();
-        let child_factory = self.factory.child_actor_factory();
-        let actor_ctx = self.factory.registry.as_ref().zip(child_factory).map(|(registry, factory)| {
-            crate::tools::subagent::ActorContext {
-                registry: registry.clone(),
-                factory,
-            }
-        });
-        let env = crate::modes::common::ToolEnv {
-            settings: Some(self.factory.settings.clone()),
-            panel_tx: Some(panel_tx),
-            actor_ctx,
-            schedule_engine: self.factory.schedule_engine.clone(),
-            ..Default::default()
-        };
-        let tiered = crate::modes::common::build_all_tiered_tools(&env, self.factory.plugin_manager.as_ref());
-        crate::tool_gateway::allowed_tools_for_policy(&tiered, &crate::tool_gateway::daemon_toolsets(), &disabled_set)
-    }
-}
-
-/// Build plugin summaries from the shared plugin manager for protocol responses.
-fn build_plugin_summaries(
-    plugin_manager: Option<&std::sync::Arc<std::sync::Mutex<clankers_plugin::PluginManager>>>,
-) -> Vec<clankers_protocol::PluginSummary> {
-    let Some(pm) = plugin_manager else {
-        return Vec::new();
-    };
-    crate::plugin::build_protocol_plugin_summaries(pm)
-}
-
-fn sync_tool_inventory(controller: &mut SessionController, event_tx: &broadcast::Sender<DaemonEvent>) {
-    if controller.refresh_tools() {
-        event_tx
-            .send(DaemonEvent::ToolList {
-                tools: controller.current_tool_infos(),
-            })
-            .ok();
-    }
-}
-
-fn drain_plugin_runtime_events(
-    event_tx: &broadcast::Sender<DaemonEvent>,
-    plugin_manager: Option<&std::sync::Arc<std::sync::Mutex<clankers_plugin::PluginManager>>>,
-) {
-    let Some(pm) = plugin_manager else {
-        return;
-    };
-
-    let result = crate::modes::plugin_dispatch::drain_stdio_runtime_outputs(pm);
-    for (plugin_name, message) in result.messages {
-        event_tx
-            .send(DaemonEvent::SystemMessage {
-                text: format!("🔌 {}: {}", plugin_name, message),
-                is_error: false,
-            })
-            .ok();
-    }
-    for action in result.ui_actions {
-        event_tx.send(crate::modes::plugin_dispatch::ui_action_to_daemon_event(action)).ok();
     }
 }
 
@@ -1329,7 +1166,7 @@ mod factory_plugin_tests {
         let plugins_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("plugins");
         let pm = crate::modes::common::init_plugin_manager(&plugins_dir, None, &[]);
         let factory = Arc::new(make_factory(Some(pm)));
-        let rebuilder = super::DaemonToolRebuilder { factory };
+        let rebuilder = super::super::session_plugins::DaemonToolRebuilder::new(factory);
         use clankers_controller::ToolRebuilder;
 
         // All tools present when nothing disabled
@@ -1424,7 +1261,7 @@ mod factory_plugin_tests {
         let (_panel_tx, mut panel_rx) = mpsc::unbounded_channel();
         crate::modes::daemon::socket_bridge::drain_and_broadcast(&mut controller, &event_tx, &mut panel_rx, Some(&pm));
         tokio::time::sleep(Duration::from_millis(150)).await;
-        super::drain_plugin_runtime_events(&event_tx, Some(&pm));
+        super::super::session_plugins::drain_plugin_runtime_events(&event_tx, Some(&pm));
 
         let mut saw_system = false;
         let mut saw_status = false;
@@ -1617,6 +1454,82 @@ mod factory_plugin_tests {
         shutdown_spawned_session(&registry, &session_a);
         shutdown_spawned_session(&registry, &session_b);
         clankers_plugin::shutdown_plugin_runtime(&pm, "test shutdown").await;
+    }
+
+    #[tokio::test]
+    async fn keyed_session_recovery_revives_suspended_placeholder_in_place() {
+        let dir = tempdir().unwrap();
+        let db = super::super::session_store::open_daemon_db(&dir.path().join("daemon.db"))
+            .expect("test daemon db should open");
+        let catalog = super::super::session_store::create_session_catalog(&db);
+        let sessions_dir = dir.path().join("sessions");
+        let cwd = dir.path().join("project");
+        let cwd_text = cwd.to_string_lossy().to_string();
+        let session = clankers_session::SessionManager::create(
+            &sessions_dir,
+            &cwd_text,
+            "catalog-model",
+            None,
+            None,
+            None,
+        )
+        .expect("fixture session should be created");
+        let session_id = session.session_id().to_string();
+        let entry = super::super::session_store::SessionCatalogEntry {
+            session_id: session_id.clone(),
+            automerge_path: session.file_path().to_path_buf(),
+            model: "catalog-model".to_string(),
+            created_at: "now".to_string(),
+            last_active: "now".to_string(),
+            turn_count: 0,
+            state: super::super::session_store::SessionLifecycle::Suspended,
+        };
+        let key = clankers_protocol::SessionKey::Matrix {
+            user_id: "@keyed:example".to_string(),
+            room_id: "!room:example".to_string(),
+        };
+        catalog.insert_session(&entry);
+        catalog.insert_key(&key, &session_id);
+
+        let mut daemon_state = clankers_controller::transport::DaemonState::new();
+        daemon_state.sessions.insert(
+            session_id.clone(),
+            clankers_controller::transport::SessionHandle {
+                session_id: session_id.clone(),
+                model: "catalog-model".to_string(),
+                turn_count: 0,
+                last_active: "now".to_string(),
+                client_count: 0,
+                cmd_tx: None,
+                event_tx: None,
+                socket_path: clankers_controller::transport::session_socket_path(&session_id),
+                state: "suspended".to_string(),
+            },
+        );
+        daemon_state.register_key(key.clone(), session_id.clone());
+        let state = tokio::sync::Mutex::new(daemon_state);
+        let registry = ProcessRegistry::new();
+        let mut factory = make_factory(None);
+        factory.catalog = Some(Arc::clone(&catalog));
+
+        let (recovered_id, cmd_tx, event_tx) =
+            super::get_or_create_keyed_session(&state, &registry, &factory, &key, None, None).await;
+
+        assert_eq!(recovered_id, session_id);
+        {
+            let state = state.lock().await;
+            let handle = state.sessions.get(&session_id).expect("placeholder should be revived in place");
+            assert!(handle.cmd_tx.is_some());
+            assert!(handle.event_tx.is_some());
+            assert_eq!(handle.state, "active");
+        }
+        assert_eq!(
+            catalog.get_session(&session_id).expect("catalog entry should remain").state,
+            super::super::session_store::SessionLifecycle::Active
+        );
+
+        cmd_tx.send(clankers_protocol::SessionCommand::Disconnect).ok();
+        drop(event_tx);
     }
 
     #[tokio::test]
