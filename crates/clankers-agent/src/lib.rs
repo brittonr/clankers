@@ -463,16 +463,16 @@ impl Agent {
         let model_port = turn::ProviderModelPort::new(self.provider.as_ref());
         let tool_port = turn::ControllerToolPort {
             controller_tools: &self.tools,
-            services: turn::ControllerToolServices {
-                event_tx: self.event_tx.clone(),
-                cancel: self.cancel.clone(),
-                hook_pipeline: self.hook_pipeline.clone(),
-                session_id: self.session_id.clone(),
-                db: self.db.clone(),
-                capability_gate: self.capability_gate.clone(),
-                user_tool_filter: self.user_tool_filter.clone(),
-                steel_tool_substrate: config.steel_tool_substrate.clone(),
-            },
+            services: turn::ControllerToolServices::from_concrete(
+                self.event_tx.clone(),
+                self.cancel.clone(),
+                self.hook_pipeline.clone(),
+                self.session_id.clone(),
+                self.db.clone(),
+                self.capability_gate.clone(),
+                self.user_tool_filter.clone(),
+                config.steel_tool_substrate.clone(),
+            ),
         };
         let cost_port = turn::CostTrackerPort::new(self.cost_tracker.as_ref());
         let cancellation = turn::TokenCancellationPort::new(self.cancel.clone());
@@ -1014,16 +1014,16 @@ impl Agent {
                 let model_port = turn::ProviderModelPort::new(self.provider.as_ref());
                 let tool_port = turn::ControllerToolPort {
                     controller_tools: &self.tools,
-                    services: turn::ControllerToolServices {
-                        event_tx: self.event_tx.clone(),
-                        cancel: self.cancel.clone(),
-                        hook_pipeline: self.hook_pipeline.clone(),
-                        session_id: self.session_id.clone(),
-                        db: self.db.clone(),
-                        capability_gate: self.capability_gate.clone(),
-                        user_tool_filter: self.user_tool_filter.clone(),
-                        steel_tool_substrate: config.steel_tool_substrate.clone(),
-                    },
+                    services: turn::ControllerToolServices::from_concrete(
+                        self.event_tx.clone(),
+                        self.cancel.clone(),
+                        self.hook_pipeline.clone(),
+                        self.session_id.clone(),
+                        self.db.clone(),
+                        self.capability_gate.clone(),
+                        self.user_tool_filter.clone(),
+                        config.steel_tool_substrate.clone(),
+                    ),
                 };
                 let cost_port = turn::CostTrackerPort::new(self.cost_tracker.as_ref());
                 let cancellation = turn::TokenCancellationPort::new(self.cancel.clone());

@@ -7,6 +7,14 @@ use clanker_message::Usage;
 use clankers_model_selection::cost_tracker::CostTracker;
 use clankers_provider::CompletionRequest;
 use clankers_provider::Provider;
+use clankers_tool_host::ToolCancellationService;
+use clankers_tool_host::ToolCapabilityService;
+use clankers_tool_host::ToolHookService;
+use clankers_tool_host::ToolHostServiceHandle;
+use clankers_tool_host::ToolHostServiceKind;
+use clankers_tool_host::ToolHostServices;
+use clankers_tool_host::ToolInvocationContext;
+use clankers_tool_host::ToolProgressSink;
 use serde_json::Value;
 use tokio::sync::broadcast;
 use tokio_util::sync::CancellationToken;
@@ -19,10 +27,10 @@ use super::tool_definitions_from_tool_catalog;
 use super::update_usage_tracking;
 use crate::error::Result;
 use crate::events::AgentEvent;
-use crate::tool::CapabilityGate;
 use crate::tool::ModelSwitchSlot;
 use crate::tool::Tool;
 use crate::tool::ToolDefinition;
+use crate::tool::ToolResult as ToolExecResult;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum AgentRuntimeServiceKind {
@@ -136,7 +144,8 @@ pub(crate) enum AgentToolServiceKind {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum AgentToolServiceOwner {
     ControllerToolPort,
-    ControllerToolServices,
+    ControllerNeutralToolServices,
+    LegacyToolRunner,
     LegacyToolContext,
 }
 
@@ -163,63 +172,63 @@ pub(crate) const CONTROLLER_TOOL_PORT_SERVICE_INVENTORY: &[AgentToolServiceInven
     },
     AgentToolServiceInventoryEntry {
         kind: AgentToolServiceKind::ProgressEvents,
-        owner: AgentToolServiceOwner::ControllerToolServices,
-        field: "event_tx",
-        concrete_type: "broadcast::Sender<AgentEvent>",
+        owner: AgentToolServiceOwner::ControllerNeutralToolServices,
+        field: "progress",
+        concrete_type: "ToolProgressSink",
         replacement: "neutral progress/event service",
         convergence: "replace AgentEvent progress output with semantic tool progress DTOs",
     },
     AgentToolServiceInventoryEntry {
         kind: AgentToolServiceKind::Cancellation,
-        owner: AgentToolServiceOwner::ControllerToolServices,
-        field: "cancel",
-        concrete_type: "CancellationToken",
+        owner: AgentToolServiceOwner::ControllerNeutralToolServices,
+        field: "cancellation",
+        concrete_type: "ToolCancellationService",
         replacement: "neutral cancellation service",
         convergence: "thread cancellation through ToolInvocationContext instead of legacy ToolContext",
     },
     AgentToolServiceInventoryEntry {
         kind: AgentToolServiceKind::Hooks,
-        owner: AgentToolServiceOwner::ControllerToolServices,
-        field: "hook_pipeline",
-        concrete_type: "clankers_hooks::HookPipeline",
+        owner: AgentToolServiceOwner::ControllerNeutralToolServices,
+        field: "hooks",
+        concrete_type: "ToolHookService",
         replacement: "neutral hook decision service",
         convergence: "translate hook continue/modify/deny at the product edge",
     },
     AgentToolServiceInventoryEntry {
         kind: AgentToolServiceKind::SessionIdentity,
-        owner: AgentToolServiceOwner::ControllerToolServices,
-        field: "session_id",
-        concrete_type: "String",
+        owner: AgentToolServiceOwner::ControllerNeutralToolServices,
+        field: "metadata",
+        concrete_type: "ToolInvocationContext metadata",
         replacement: "neutral invocation identity DTO",
         convergence: "carry session identity in ToolInvocationContext metadata",
     },
     AgentToolServiceInventoryEntry {
         kind: AgentToolServiceKind::Storage,
-        owner: AgentToolServiceOwner::ControllerToolServices,
-        field: "db",
-        concrete_type: "clankers_db::Db",
+        owner: AgentToolServiceOwner::LegacyToolRunner,
+        field: "legacy_runner",
+        concrete_type: "LegacyToolRunner",
         replacement: "neutral storage/search service",
         convergence: "move storage access behind explicit missing-service/error receipts",
     },
     AgentToolServiceInventoryEntry {
         kind: AgentToolServiceKind::CapabilityGate,
-        owner: AgentToolServiceOwner::ControllerToolServices,
-        field: "capability_gate",
-        concrete_type: "CapabilityGate",
+        owner: AgentToolServiceOwner::ControllerNeutralToolServices,
+        field: "capability",
+        concrete_type: "ToolCapabilityService",
         replacement: "neutral capability decision service",
         convergence: "translate capability denial to semantic tool denial receipts",
     },
     AgentToolServiceInventoryEntry {
         kind: AgentToolServiceKind::UserToolFilter,
-        owner: AgentToolServiceOwner::ControllerToolServices,
-        field: "user_tool_filter",
-        concrete_type: "Vec<String>",
+        owner: AgentToolServiceOwner::ControllerNeutralToolServices,
+        field: "capability",
+        concrete_type: "ToolCapabilityService",
         replacement: "neutral tool visibility policy",
         convergence: "evaluate tool visibility before legacy tool dispatch",
     },
     AgentToolServiceInventoryEntry {
         kind: AgentToolServiceKind::SteelSubstratePolicy,
-        owner: AgentToolServiceOwner::ControllerToolServices,
+        owner: AgentToolServiceOwner::LegacyToolRunner,
         field: "steel_tool_substrate",
         concrete_type: "AgentToolSteelSubstrateConfig",
         replacement: "neutral runtime policy service",
@@ -312,16 +321,50 @@ pub(crate) trait AgentToolPort: Send + Sync {
     async fn execute_tools(&self, tool_calls: &[(String, String, Value)]) -> Vec<ToolResultMessage>;
 }
 
+pub(crate) trait AgentToolEventSink: Send + Sync {
+    fn emit(&self, event: AgentEvent);
+}
+
+#[async_trait]
+pub(crate) trait LegacyToolRunner: Send + Sync {
+    async fn execute_legacy_tool(&self, tool: Arc<dyn Tool>, call_id: String, input: Value) -> ToolExecResult;
+}
+
 #[derive(Clone)]
 pub(crate) struct ControllerToolServices {
-    pub(crate) event_tx: broadcast::Sender<AgentEvent>,
-    pub(crate) cancel: CancellationToken,
-    pub(crate) hook_pipeline: Option<Arc<clankers_hooks::HookPipeline>>,
-    pub(crate) session_id: String,
-    pub(crate) db: Option<clankers_db::Db>,
-    pub(crate) capability_gate: Option<Arc<dyn CapabilityGate>>,
-    pub(crate) user_tool_filter: Option<Vec<String>>,
+    pub(crate) events: Arc<dyn AgentToolEventSink>,
+    pub(crate) progress: Arc<dyn ToolProgressSink>,
+    pub(crate) cancellation: Arc<dyn ToolCancellationService>,
+    pub(crate) hooks: Option<Arc<dyn ToolHookService>>,
+    pub(crate) capability: Option<Arc<dyn ToolCapabilityService>>,
+    pub(crate) legacy_runner: Arc<dyn LegacyToolRunner>,
     pub(crate) steel_tool_substrate: Option<AgentToolSteelSubstrateConfig>,
+}
+
+impl ControllerToolServices {
+    pub(crate) fn invocation_context(&self, call_id: &str) -> ToolInvocationContext {
+        let mut services = ToolHostServices::empty()
+            .with_service(ToolHostServiceHandle::available(ToolHostServiceKind::Progress))
+            .with_service(ToolHostServiceHandle::available(ToolHostServiceKind::Cancellation));
+        if self.hooks.is_some() {
+            services = services.with_service(ToolHostServiceHandle::available(ToolHostServiceKind::Hooks));
+        }
+        if self.capability.is_some() {
+            services = services.with_service(ToolHostServiceHandle::available(ToolHostServiceKind::Capability));
+        }
+
+        let mut context = ToolInvocationContext::new(call_id)
+            .with_services(services)
+            .with_progress_sink(self.progress.clone())
+            .with_cancellation_service(self.cancellation.clone());
+        if let Some(hooks) = &self.hooks {
+            context = context.with_hook_service(hooks.clone());
+        }
+        if let Some(capability) = &self.capability {
+            context = context.with_capability_service(capability.clone());
+        }
+        context
+    }
 }
 
 pub(crate) struct ControllerToolPort<'a> {
@@ -433,6 +476,41 @@ mod tests {
     }
 
     #[test]
+    fn controller_tool_services_build_neutral_invocation_context() {
+        let (event_tx, _rx) = tokio::sync::broadcast::channel(16);
+        let services = ControllerToolServices::from_concrete(
+            event_tx,
+            CancellationToken::new(),
+            None,
+            "session".to_string(),
+            None,
+            None,
+            Some(vec!["read".to_string()]),
+            None,
+        );
+
+        let context = services.invocation_context("call-1");
+
+        assert!(context.services.is_available(ToolHostServiceKind::Progress));
+        assert!(context.services.is_available(ToolHostServiceKind::Cancellation));
+        assert!(context.services.is_available(ToolHostServiceKind::Capability));
+        assert!(!context.services.is_available(ToolHostServiceKind::Hooks));
+        assert!(
+            context
+                .progress
+                .emit(clankers_tool_host::ToolProgressEvent::new(
+                    "call-1",
+                    clankers_tool_host::ToolProgressKind::Progress,
+                    "visible progress",
+                ))
+                .is_ok()
+        );
+        assert!(context.capability_service.is_some());
+        assert!(context.cancellation_service.is_some());
+        assert!(context.hooks.is_none());
+    }
+
+    #[test]
     fn controller_tool_port_service_inventory_names_current_concrete_edges() {
         let kinds = inventory_kinds(CONTROLLER_TOOL_PORT_SERVICE_INVENTORY);
         let fields = inventory_fields(CONTROLLER_TOOL_PORT_SERVICE_INVENTORY);
@@ -453,22 +531,21 @@ mod tests {
         }
         for field in [
             "controller_tools",
-            "event_tx",
-            "cancel",
-            "hook_pipeline",
-            "session_id",
-            "db",
-            "capability_gate",
-            "user_tool_filter",
+            "progress",
+            "cancellation",
+            "hooks",
+            "metadata",
+            "legacy_runner",
+            "capability",
             "steel_tool_substrate",
         ] {
             assert!(fields.contains(field), "missing ControllerToolPort field inventory for {field}");
         }
         assert!(CONTROLLER_TOOL_PORT_SERVICE_INVENTORY.iter().all(|entry| {
-            let expected_owner = if entry.field == "controller_tools" {
-                AgentToolServiceOwner::ControllerToolPort
-            } else {
-                AgentToolServiceOwner::ControllerToolServices
+            let expected_owner = match entry.field {
+                "controller_tools" => AgentToolServiceOwner::ControllerToolPort,
+                "legacy_runner" | "steel_tool_substrate" => AgentToolServiceOwner::LegacyToolRunner,
+                _ => AgentToolServiceOwner::ControllerNeutralToolServices,
             };
             entry.owner == expected_owner
                 && !entry.concrete_type.is_empty()

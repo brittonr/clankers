@@ -16,7 +16,6 @@ use clankers_runtime::SteelToolSubstrateStatus;
 use clankers_runtime::plan_tool_invocation_with_steel_or_fallback;
 use clankers_runtime::steel_tool_plan_payload;
 use serde_json::Value;
-use tokio::sync::broadcast;
 
 use crate::events::AgentEvent;
 use crate::tool::Tool;
@@ -111,7 +110,7 @@ pub(crate) fn authorize_tool_invocation(
     call_id: &str,
     tool_name: &str,
     input: &Value,
-    event_tx: &broadcast::Sender<AgentEvent>,
+    emit_event: impl Fn(AgentEvent),
 ) -> Result<Option<SteelToolInvocationReceipt>, SteelToolInvocationReceipt> {
     let Some(config) = config else {
         return Ok(None);
@@ -133,7 +132,7 @@ pub(crate) fn authorize_tool_invocation(
     };
     request.steel_plan_payload = steel_tool_plan_payload(&request);
     let receipt = plan_tool_invocation_with_steel_or_fallback(&config.profile, &request);
-    emit_steel_tool_substrate_receipt(event_tx, &receipt);
+    emit_steel_tool_substrate_receipt(emit_event, &receipt);
     if receipt.status == SteelToolSubstrateStatus::Blocked || receipt.status == SteelToolSubstrateStatus::Denied {
         return Err(receipt);
     }
@@ -149,7 +148,7 @@ fn executor_kind(backend: ToolExecutionBackend) -> SteelToolExecutorKind {
     }
 }
 
-fn emit_steel_tool_substrate_receipt(event_tx: &broadcast::Sender<AgentEvent>, receipt: &SteelToolInvocationReceipt) {
+fn emit_steel_tool_substrate_receipt(emit_event: impl Fn(AgentEvent), receipt: &SteelToolInvocationReceipt) {
     let message = format!(
         "{DEFAULT_TOOL_SUBSTRATE_CALL_SEAM} receipt status={:?} issue={:?} executor={:?} fallback={:?} tool={} receipt_hash={} plan_hash={}",
         receipt.status,
@@ -160,7 +159,7 @@ fn emit_steel_tool_substrate_receipt(event_tx: &broadcast::Sender<AgentEvent>, r
         receipt.receipt_hash.prefixed(),
         receipt.plan_hash.map_or_else(|| "none".to_string(), ArtifactHash::prefixed),
     );
-    event_tx.send(AgentEvent::SystemMessage { message }).ok();
+    emit_event(AgentEvent::SystemMessage { message });
 }
 
 pub(crate) fn blocked_receipt_to_tool_result(

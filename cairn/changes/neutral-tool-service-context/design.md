@@ -19,6 +19,8 @@ The I1 source inventory is checked into `crates/clankers-agent/src/turn/ports.rs
 
 The I2 neutral service contracts live in `crates/clankers-tool-host/src/lib.rs` and intentionally use semantic DTOs only: `ToolStorageService`, `ToolSearchService`, `ToolHookService`, `ToolProgressSink`, `ToolCapabilityService`, `ToolCancellationService`, and `ToolRuntimePolicyService`. `ToolInvocationContext` can carry these services by `Arc<dyn ...>` while the old handle inventory remains available during migration.
 
+The I3 controller port migration keeps concrete desktop handles at adapter construction: `ControllerToolServices::from_concrete(...)` builds neutral progress, cancellation, hook, and capability services plus a legacy runner. Reusable tool execution now consumes `ControllerToolServices` through neutral service traits and invokes legacy tools through `LegacyToolRunner`; the runner remains the compatibility edge that constructs old `ToolContext` until representative storage/search tools migrate.
+
 ## Decisions
 
 ### 1. Service bundle is the migration unit

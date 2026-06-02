@@ -3,6 +3,7 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 
+use async_trait::async_trait;
 use chrono::Utc;
 use clanker_message::Usage;
 use clanker_message::*;
@@ -15,10 +16,23 @@ use clankers_engine_host::stream::HostStreamEvent;
 use clankers_engine_host::stream::ProviderStreamError;
 use clankers_provider::CompletionRequest;
 use clankers_provider::Provider;
+use clankers_tool_host::CapabilityDecision;
+use clankers_tool_host::ToolCancellationService;
+use clankers_tool_host::ToolCapabilityRequest;
+use clankers_tool_host::ToolCapabilityService;
 use clankers_tool_host::ToolCatalog;
 use clankers_tool_host::ToolDescriptor;
 use clankers_tool_host::ToolExecutor;
+use clankers_tool_host::ToolHookDecision;
+use clankers_tool_host::ToolHookPhase;
+use clankers_tool_host::ToolHookRequest;
+use clankers_tool_host::ToolHookService;
+use clankers_tool_host::ToolHostError;
+use clankers_tool_host::ToolHostFuture;
 use clankers_tool_host::ToolHostOutcome;
+use clankers_tool_host::ToolInvocationCancellation;
+use clankers_tool_host::ToolProgressEvent;
+use clankers_tool_host::ToolProgressSink;
 use serde_json::Value;
 use tokio::sync::broadcast;
 use tokio::sync::mpsc;
@@ -27,7 +41,8 @@ use tokio_util::sync::CancellationToken;
 use super::CollectedResponse;
 use super::ContentBlockBuilder;
 use super::ControllerToolServices;
-#[cfg(test)]
+use super::ports::AgentToolEventSink;
+use super::ports::LegacyToolRunner;
 use super::steel_tool_substrate::AgentToolSteelSubstrateConfig;
 use super::steel_tool_substrate::authorize_tool_invocation;
 use super::steel_tool_substrate::blocked_receipt_to_tool_result;
@@ -162,6 +177,194 @@ impl ToolCatalog for AgentToolCatalog<'_> {
 
     fn contains_tool(&self, name: &str) -> bool {
         self.controller_tools.contains_key(name)
+    }
+}
+
+impl ControllerToolServices {
+    #[allow(clippy::too_many_arguments)]
+    pub(crate) fn from_concrete(
+        event_tx: broadcast::Sender<AgentEvent>,
+        cancel: CancellationToken,
+        hook_pipeline: Option<Arc<clankers_hooks::HookPipeline>>,
+        session_id: String,
+        db: Option<clankers_db::Db>,
+        capability_gate: Option<Arc<dyn crate::tool::CapabilityGate>>,
+        user_tool_filter: Option<Vec<String>>,
+        steel_tool_substrate: Option<AgentToolSteelSubstrateConfig>,
+    ) -> Self {
+        let events = Arc::new(BroadcastAgentToolEventSink {
+            event_tx: event_tx.clone(),
+        });
+        let progress = Arc::new(AgentEventProgressSink {
+            event_tx: event_tx.clone(),
+        });
+        let cancellation = Arc::new(TokenToolCancellationService { cancel: cancel.clone() });
+        let hooks = hook_pipeline.clone().map(|pipeline| {
+            Arc::new(ControllerHookService {
+                pipeline,
+                session_id: session_id.clone(),
+            }) as Arc<dyn ToolHookService>
+        });
+        let capability = (capability_gate.is_some() || user_tool_filter.is_some()).then(|| {
+            Arc::new(ControllerCapabilityService {
+                capability_gate,
+                user_tool_filter,
+            }) as Arc<dyn ToolCapabilityService>
+        });
+        let legacy_runner = Arc::new(AgentLegacyToolRunner {
+            event_tx,
+            cancel,
+            hook_pipeline,
+            session_id,
+            db,
+        });
+        Self {
+            events,
+            progress,
+            cancellation,
+            hooks,
+            capability,
+            legacy_runner,
+            steel_tool_substrate,
+        }
+    }
+}
+
+struct BroadcastAgentToolEventSink {
+    event_tx: broadcast::Sender<AgentEvent>,
+}
+
+impl AgentToolEventSink for BroadcastAgentToolEventSink {
+    fn emit(&self, event: AgentEvent) {
+        self.event_tx.send(event).ok();
+    }
+}
+
+struct AgentEventProgressSink {
+    event_tx: broadcast::Sender<AgentEvent>,
+}
+
+impl ToolProgressSink for AgentEventProgressSink {
+    fn emit(&self, event: ToolProgressEvent) -> std::result::Result<(), ToolHostError> {
+        let result = ToolExecResult::text(event.message);
+        self.event_tx
+            .send(AgentEvent::ToolExecutionUpdate {
+                call_id: event.call_id,
+                partial: result,
+            })
+            .ok();
+        Ok(())
+    }
+}
+
+struct TokenToolCancellationService {
+    cancel: CancellationToken,
+}
+
+impl ToolCancellationService for TokenToolCancellationService {
+    fn cancellation_state(&self, _call_id: &str) -> ToolInvocationCancellation {
+        if self.cancel.is_cancelled() {
+            return ToolInvocationCancellation::cancelled("cancelled");
+        }
+        ToolInvocationCancellation::active()
+    }
+}
+
+struct ControllerCapabilityService {
+    capability_gate: Option<Arc<dyn crate::tool::CapabilityGate>>,
+    user_tool_filter: Option<Vec<String>>,
+}
+
+impl ToolCapabilityService for ControllerCapabilityService {
+    fn check(&self, request: ToolCapabilityRequest) -> std::result::Result<CapabilityDecision, ToolHostError> {
+        if let Some(gate) = &self.capability_gate
+            && let Err(reason) = gate.check_tool_call(&request.tool_name, &request.input)
+        {
+            return Ok(CapabilityDecision::Denied { reason });
+        }
+
+        if let Some(filter) = &self.user_tool_filter {
+            let allowed = filter.iter().any(|pattern| {
+                pattern == "*" || pattern.split(',').any(|candidate| candidate.trim() == request.tool_name)
+            });
+            if !allowed {
+                return Ok(CapabilityDecision::Denied {
+                    reason: "Tool not in active capability set (use /capabilities to adjust)".to_string(),
+                });
+            }
+        }
+
+        Ok(CapabilityDecision::Allowed)
+    }
+}
+
+struct ControllerHookService {
+    pipeline: Arc<clankers_hooks::HookPipeline>,
+    session_id: String,
+}
+
+impl ToolHookService for ControllerHookService {
+    fn decide(
+        &self,
+        request: ToolHookRequest,
+    ) -> ToolHostFuture<'_, std::result::Result<ToolHookDecision, ToolHostError>> {
+        let pipeline = self.pipeline.clone();
+        let session_id = self.session_id.clone();
+        Box::pin(async move {
+            let hook_point = match request.phase {
+                ToolHookPhase::Before => clankers_hooks::HookPoint::PreTool,
+                ToolHookPhase::After => clankers_hooks::HookPoint::PostTool,
+            };
+            let event_name = match request.phase {
+                ToolHookPhase::Before => "pre-tool",
+                ToolHookPhase::After => "post-tool",
+            };
+            let result_json = (request.phase == ToolHookPhase::After).then(|| request.input.clone());
+            let input = if request.phase == ToolHookPhase::After {
+                serde_json::json!({})
+            } else {
+                request.input.clone()
+            };
+            let payload = clankers_hooks::HookPayload::tool(
+                event_name,
+                &session_id,
+                &request.tool_name,
+                &request.call_id,
+                input,
+                result_json,
+            );
+            let decision = pipeline.fire(hook_point, &payload).await;
+            Ok(match decision {
+                clankers_hooks::HookVerdict::Continue => ToolHookDecision::Continue,
+                clankers_hooks::HookVerdict::Modify(input) => ToolHookDecision::Modify { input },
+                clankers_hooks::HookVerdict::Deny { reason } => ToolHookDecision::Deny { reason },
+            })
+        })
+    }
+}
+
+struct AgentLegacyToolRunner {
+    event_tx: broadcast::Sender<AgentEvent>,
+    cancel: CancellationToken,
+    hook_pipeline: Option<Arc<clankers_hooks::HookPipeline>>,
+    session_id: String,
+    db: Option<clankers_db::Db>,
+}
+
+#[async_trait]
+impl LegacyToolRunner for AgentLegacyToolRunner {
+    async fn execute_legacy_tool(&self, tool: Arc<dyn Tool>, call_id: String, input: Value) -> ToolExecResult {
+        execute_tool_with_accumulator(
+            tool,
+            &call_id,
+            input,
+            &self.event_tx,
+            self.cancel.clone(),
+            self.hook_pipeline.clone(),
+            self.session_id.clone(),
+            self.db.clone(),
+        )
+        .await
     }
 }
 
@@ -499,17 +702,17 @@ pub(super) async fn execute_tools_parallel(
     capability_gate: Option<Arc<dyn crate::tool::CapabilityGate>>,
     user_tool_filter: Option<Vec<String>>,
 ) -> Vec<ToolResultMessage> {
-    execute_tools_parallel_with_substrate(controller_tools, tool_calls, ControllerToolServices {
-        event_tx: event_tx.clone(),
+    let services = ControllerToolServices::from_concrete(
+        event_tx.clone(),
         cancel,
         hook_pipeline,
-        session_id: session_id.to_string(),
+        session_id.to_string(),
         db,
         capability_gate,
         user_tool_filter,
-        steel_tool_substrate: None,
-    })
-    .await
+        None,
+    );
+    execute_tools_parallel_with_substrate(controller_tools, tool_calls, services).await
 }
 
 // Clippy allowance: this adapter mirrors the engine/tool-host seam while the
@@ -559,111 +762,93 @@ async fn execute_single_tool(
     input: Value,
     services: ControllerToolServices,
 ) -> ToolResultMessage {
-    let event_tx = services.event_tx.clone();
-    let cancel = services.cancel.clone();
-    let hook_pipeline = services.hook_pipeline.clone();
-    let session_id = services.session_id.clone();
-    let db = services.db.clone();
-    let capability_gate = services.capability_gate.clone();
-    let user_tool_filter = services.user_tool_filter.clone();
-    let steel_tool_substrate = services.steel_tool_substrate.clone();
+    let events = services.events.clone();
+    let mut invocation_context = services.invocation_context(&call_id);
 
     // Emit ToolCall event
-    event_tx
-        .send(AgentEvent::ToolCall {
-            tool_name: tool_name.clone(),
-            call_id: call_id.clone(),
-            input: input.clone(),
-        })
-        .ok();
+    events.emit(AgentEvent::ToolCall {
+        tool_name: tool_name.clone(),
+        call_id: call_id.clone(),
+        input: input.clone(),
+    });
 
-    // Check capability gate (UCAN token authorization — immutable ceiling)
-    if let Some(ref gate) = capability_gate
-        && let Err(reason) = gate.check_tool_call(&tool_name, &input)
-    {
-        return create_error_result(call_id, tool_name, format!("🔒 {reason}"), &event_tx);
+    invocation_context = invocation_context.with_cancellation(services.cancellation.cancellation_state(&call_id));
+    if let Err(outcome) = invocation_context.ensure_not_cancelled(&tool_name) {
+        return create_error_result_from_host_outcome(call_id, tool_name, outcome, events.as_ref());
     }
 
-    // Check user tool filter (user-adjustable — within ceiling)
-    if let Some(ref filter) = user_tool_filter {
-        let is_allowed =
-            filter.iter().any(|pattern| pattern == "*" || pattern.split(',').any(|p| p.trim() == tool_name));
-        if !is_allowed {
-            return create_error_result(
-                call_id,
-                tool_name,
-                "🔒 Tool not in active capability set (use /capabilities to adjust)".to_string(),
-                &event_tx,
-            );
+    if let Some(capability) = invocation_context.capability_service.as_ref() {
+        match capability.check(ToolCapabilityRequest::new(&call_id, &tool_name, input.clone())) {
+            Ok(decision) => {
+                invocation_context = invocation_context.with_capability(decision);
+            }
+            Err(error) => {
+                return create_error_result_with_event_sink(call_id, tool_name, error.to_string(), events.as_ref());
+            }
         }
+    }
+    if let Err(outcome) = invocation_context.ensure_allowed(&tool_name) {
+        return create_error_result_from_host_outcome(call_id, tool_name, outcome, events.as_ref());
     }
 
     // Check if tool exists
     let Some(tool) = tool else {
         let error_msg = format!("Tool '{}' not found", tool_name);
-        return create_error_result(call_id, tool_name, error_msg, &event_tx);
+        return create_error_result_with_event_sink(call_id, tool_name, error_msg, events.as_ref());
     };
 
     // Check sandbox paths
     if let Some(reason) = check_tool_paths(&input) {
-        return create_error_result(call_id, tool_name, format!("🔒 {}", reason), &event_tx);
+        return create_error_result_with_event_sink(call_id, tool_name, format!("🔒 {}", reason), events.as_ref());
     }
 
     // Fire pre-tool hook (can deny or modify input)
-    let effective_input = if let Some(ref pipeline) = hook_pipeline {
-        let payload =
-            clankers_hooks::HookPayload::tool("pre-tool", &session_id, &tool_name, &call_id, input.clone(), None);
-        match pipeline.fire(clankers_hooks::HookPoint::PreTool, &payload).await {
-            clankers_hooks::HookVerdict::Deny { reason } => {
-                return create_error_result(call_id, tool_name, format!("🪝 Hook denied: {reason}"), &event_tx);
+    let effective_input = if let Some(hooks) = invocation_context.hooks.as_ref() {
+        match hooks.decide(ToolHookRequest::before(&call_id, &tool_name, input.clone())).await {
+            Ok(ToolHookDecision::Deny { reason }) => {
+                return create_error_result_with_event_sink(
+                    call_id,
+                    tool_name,
+                    format!("🪝 Hook denied: {reason}"),
+                    events.as_ref(),
+                );
             }
-            clankers_hooks::HookVerdict::Modify(modified) => modified,
-            clankers_hooks::HookVerdict::Continue => input,
+            Ok(ToolHookDecision::Modify { input }) => input,
+            Ok(ToolHookDecision::Continue) => input,
+            Err(error) => {
+                return create_error_result_with_event_sink(call_id, tool_name, error.to_string(), events.as_ref());
+            }
         }
     } else {
         input
     };
 
     if let Err(receipt) = authorize_tool_invocation(
-        steel_tool_substrate.as_ref(),
+        services.steel_tool_substrate.as_ref(),
         tool.as_ref(),
         &call_id,
         &tool_name,
         &effective_input,
-        &event_tx,
+        |event| events.emit(event),
     ) {
         return blocked_receipt_to_tool_result(call_id, tool_name, receipt);
     }
 
-    event_tx
-        .send(AgentEvent::ToolExecutionStart {
-            call_id: call_id.clone(),
-            tool_name: tool_name.clone(),
-        })
-        .ok();
+    events.emit(AgentEvent::ToolExecutionStart {
+        call_id: call_id.clone(),
+        tool_name: tool_name.clone(),
+    });
 
-    // Execute with accumulator
-    let result = execute_tool_with_accumulator(
-        tool,
-        &call_id,
-        effective_input,
-        &event_tx,
-        cancel,
-        hook_pipeline.clone(),
-        session_id.clone(),
-        db,
-    )
-    .await;
+    // Execute with accumulator through the legacy compatibility runner.
+    let result = services.legacy_runner.execute_legacy_tool(tool, call_id.clone(), effective_input).await;
 
-    fire_post_tool_hook(hook_pipeline.as_ref(), &session_id, &tool_name, &call_id, &result);
+    fire_post_tool_hook(invocation_context.hooks.as_deref(), &tool_name, &call_id, &result).await;
 
-    event_tx
-        .send(AgentEvent::ToolExecutionEnd {
-            call_id: call_id.clone(),
-            result: result.clone(),
-            is_error: result.is_error,
-        })
-        .ok();
+    events.emit(AgentEvent::ToolExecutionEnd {
+        call_id: call_id.clone(),
+        result: result.clone(),
+        is_error: result.is_error,
+    });
 
     ToolResultMessage {
         id: MessageId::generate(),
@@ -676,25 +861,17 @@ async fn execute_single_tool(
     }
 }
 
-fn fire_post_tool_hook(
-    hook_pipeline: Option<&Arc<clankers_hooks::HookPipeline>>,
-    session_id: &str,
+async fn fire_post_tool_hook(
+    hooks: Option<&dyn ToolHookService>,
     tool_name: &str,
     call_id: &str,
     result: &ToolExecResult,
 ) {
-    if let Some(pipeline) = hook_pipeline {
-        let result_json = serde_json::to_value(result).ok();
-        let payload = clankers_hooks::HookPayload::tool(
-            "post-tool",
-            session_id,
-            tool_name,
-            call_id,
-            serde_json::json!({}),
-            result_json,
-        );
-        pipeline.fire_async(clankers_hooks::HookPoint::PostTool, payload);
-    }
+    let Some(hooks) = hooks else {
+        return;
+    };
+    let result_json = serde_json::to_value(result).unwrap_or_else(|_| serde_json::json!({ "serialization": "failed" }));
+    hooks.decide(ToolHookRequest::after(call_id, tool_name, result_json)).await.ok();
 }
 
 /// Execute tool with result accumulator for streaming output
@@ -767,15 +944,36 @@ pub(super) fn create_error_result(
     error_msg: String,
     event_tx: &broadcast::Sender<AgentEvent>,
 ) -> ToolResultMessage {
+    let sink = BroadcastAgentToolEventSink {
+        event_tx: event_tx.clone(),
+    };
+    create_error_result_with_event_sink(call_id, tool_name, error_msg, &sink)
+}
+
+fn create_error_result_from_host_outcome(
+    call_id: String,
+    tool_name: String,
+    outcome: ToolHostOutcome,
+    events: &dyn AgentToolEventSink,
+) -> ToolResultMessage {
+    let message = tool_result_message_from_host_outcome(call_id.clone(), tool_name.clone(), outcome);
+    let error_msg = first_text_block(&message.content).unwrap_or_else(|| "tool execution failed".to_string());
+    create_error_result_with_event_sink(call_id, tool_name, error_msg, events)
+}
+
+fn create_error_result_with_event_sink(
+    call_id: String,
+    tool_name: String,
+    error_msg: String,
+    events: &dyn AgentToolEventSink,
+) -> ToolResultMessage {
     let result = ToolExecResult::error(error_msg);
 
-    event_tx
-        .send(AgentEvent::ToolExecutionEnd {
-            call_id: call_id.clone(),
-            result: result.clone(),
-            is_error: true,
-        })
-        .ok();
+    events.emit(AgentEvent::ToolExecutionEnd {
+        call_id: call_id.clone(),
+        result: result.clone(),
+        is_error: true,
+    });
 
     ToolResultMessage {
         id: MessageId::generate(),
@@ -1091,17 +1289,17 @@ mod tests {
             disabled_actions: Vec::new(),
         };
 
-        let results = execute_tools_parallel_with_substrate(&tools, &tool_calls, ControllerToolServices {
-            event_tx: event_tx.clone(),
-            cancel: CancellationToken::new(),
-            hook_pipeline: None,
-            session_id: "session".to_string(),
-            db: None,
-            capability_gate: None,
-            user_tool_filter: None,
-            steel_tool_substrate: Some(config),
-        })
-        .await;
+        let services = ControllerToolServices::from_concrete(
+            event_tx.clone(),
+            CancellationToken::new(),
+            None,
+            "session".to_string(),
+            None,
+            None,
+            None,
+            Some(config),
+        );
+        let results = execute_tools_parallel_with_substrate(&tools, &tool_calls, services).await;
 
         assert_eq!(results.len(), 1);
         assert!(results[0].is_error);

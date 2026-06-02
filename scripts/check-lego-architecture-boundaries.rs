@@ -621,20 +621,38 @@ fn agent_turn_ports_signature() -> Result<Value, String> {
         "LEGACY_TOOL_CONTEXT_SERVICE_INVENTORY",
         "legacy tool context concrete service inventory",
     )?;
-    for (field, type_path, label) in [
-        ("controller_tools", "HashMap", "legacy tool registry service field"),
-        ("event_tx", "AgentEvent", "progress/event sender service field"),
-        ("cancel", "CancellationToken", "cancellation service field"),
-        ("hook_pipeline", "HookPipeline", "hook service field"),
-        ("db", "Db", "storage service field"),
-        ("capability_gate", "CapabilityGate", "capability service field"),
+    for (owner, field, type_path, label) in [
+        ("ControllerToolPort", "controller_tools", "HashMap", "legacy tool registry service field"),
         (
+            "ControllerToolPort",
+            "services",
+            "ControllerToolServices",
+            "neutral controller tool service bundle field",
+        ),
+        ("ControllerToolServices", "events", "AgentToolEventSink", "progress/event adapter service field"),
+        ("ControllerToolServices", "progress", "ToolProgressSink", "neutral progress service field"),
+        (
+            "ControllerToolServices",
+            "cancellation",
+            "ToolCancellationService",
+            "neutral cancellation service field",
+        ),
+        ("ControllerToolServices", "hooks", "ToolHookService", "neutral hook service field"),
+        ("ControllerToolServices", "capability", "ToolCapabilityService", "neutral capability service field"),
+        (
+            "ControllerToolServices",
+            "legacy_runner",
+            "LegacyToolRunner",
+            "legacy storage/search compatibility runner field",
+        ),
+        (
+            "ControllerToolServices",
             "steel_tool_substrate",
             "AgentToolSteelSubstrateConfig",
-            "Steel substrate policy service field",
+            "Steel substrate policy compatibility field",
         ),
     ] {
-        require_struct_field_type_path(&ports_file, "ControllerToolPort", field, type_path, label)?;
+        require_struct_field_type_path(&ports_file, owner, field, type_path, label)?;
     }
     for (field, type_path, label) in [
         ("event_tx", "AgentEvent", "legacy progress/event sender field"),

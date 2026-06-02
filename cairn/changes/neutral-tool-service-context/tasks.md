@@ -2,7 +2,7 @@
 
 - [x] [serial] I1: Inventory concrete services currently threaded through `ControllerToolPort` and legacy tool execution, including DB, search index, hook pipeline, event/progress sender, capability gate, cancellation, and Steel tool substrate policy. r[neutral-tool-service-context.service-contracts] [covers=neutral-tool-service-context.service-contracts]
 - [x] [serial] I2: Define neutral tool service traits/DTOs for storage/search, hook decisions, progress/events, capability checks, cancellation, and optional runtime policy. r[neutral-tool-service-context.service-contracts.no-shell-fields] [covers=neutral-tool-service-context.service-contracts.no-shell-fields]
-- [ ] [serial] I3: Update `ControllerToolPort` and the legacy tool adapter to pass a neutral service bundle instead of concrete DB/hook/event fields through reusable tool execution. r[neutral-tool-service-context.controller-tool-port.edge-owned] [covers=neutral-tool-service-context.controller-tool-port.edge-owned]
+- [x] [serial] I3: Update `ControllerToolPort` and the legacy tool adapter to pass a neutral service bundle instead of concrete DB/hook/event fields through reusable tool execution. r[neutral-tool-service-context.controller-tool-port.edge-owned] [covers=neutral-tool-service-context.controller-tool-port.edge-owned]
 - [ ] [parallel] I4: Migrate one storage/search tool path and one hook/progress-emitting tool path to consume the neutral services. r[neutral-tool-service-context.representative-migration] [covers=neutral-tool-service-context.representative-migration]
 
 ## Phase 2: Verification

@@ -334,16 +334,16 @@ mod tests {
         let model_port = ProviderModelPort::new(provider);
         let tool_port = ControllerToolPort {
             controller_tools: tools,
-            services: ControllerToolServices {
-                event_tx: event_tx.clone(),
-                cancel: cancel.clone(),
+            services: ControllerToolServices::from_concrete(
+                event_tx.clone(),
+                cancel.clone(),
                 hook_pipeline,
-                session_id: session_id.to_string(),
+                session_id.to_string(),
                 db,
                 capability_gate,
                 user_tool_filter,
-                steel_tool_substrate: config.steel_tool_substrate.clone(),
-            },
+                config.steel_tool_substrate.clone(),
+            ),
         };
         let cost_port = CostTrackerPort::new(cost_tracker);
         let cancellation = TokenCancellationPort::new(cancel);
