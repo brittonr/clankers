@@ -643,11 +643,13 @@ fn agent_turn_ports_signature() -> Result<Value, String> {
     let turn_mod_file = read_rust_file(AGENT_TURN_MOD)?;
     let adapters_file = read_rust_file(AGENT_TURN_ADAPTERS)?;
     let ports_file = read_rust_file(AGENT_TURN_PORTS)?;
+    let steel_tool_substrate_file = read_rust_file(AGENT_TURN_STEEL_TOOL_SUBSTRATE)?;
     let tool_file = read_rust_file(AGENT_TOOL)?;
     let agent_lib = &agent_lib_file.source;
     let turn_mod = &turn_mod_file.source;
     let adapters = &adapters_file.source;
     let ports = &ports_file.source;
+    let steel_tool_substrate = &steel_tool_substrate_file.source;
 
     require_rust_mod(&turn_mod_file, "ports", "agent turn ports module")?;
     require_contains(&turn_mod, "mod ports;", "agent turn ports module")?;
@@ -757,6 +759,42 @@ fn agent_turn_ports_signature() -> Result<Value, String> {
         "LEGACY_TOOL_CONTEXT_SERVICE_INVENTORY",
         "legacy tool context concrete service inventory",
     )?;
+    require_contains(
+        &ports,
+        "AGENT_CONCRETE_DEPENDENCY_DRAIN_REQUIREMENT",
+        "agent concrete dependency drain requirement marker",
+    )?;
+    require_contains(
+        &ports,
+        "AGENT_CONCRETE_DEPENDENCY_BUDGET",
+        "agent concrete dependency budget inventory",
+    )?;
+    for marker in [
+        "AgentConcreteDependencyFamily::Provider",
+        "AgentConcreteDependencyFamily::StorageSearch",
+        "AgentConcreteDependencyFamily::Config",
+        "AgentConcreteDependencyFamily::Procmon",
+        "AgentConcreteDependencyFamily::DisplayProtocol",
+        "AgentConcreteDependencyFamily::Router",
+        "AgentToolSteelSubstrateSettings",
+    ] {
+        require_contains(&ports, marker, "agent concrete dependency budget family")?;
+    }
+    require_contains(
+        steel_tool_substrate,
+        "pub struct AgentToolSteelSubstrateSettings",
+        "agent-owned Steel tool substrate settings DTO",
+    )?;
+    require_contains(
+        agent_lib,
+        "agent_tool_steel_substrate_settings_from_config",
+        "Steel tool substrate app-edge settings adapter",
+    )?;
+    forbid_contains(
+        steel_tool_substrate,
+        "clankers_config::",
+        "Steel tool substrate reusable policy concrete config import",
+    )?;
     for (owner, field, type_path, label) in [
         ("ControllerToolPort", "controller_tools", "HashMap", "legacy tool registry service field"),
         (
@@ -816,6 +854,8 @@ fn agent_turn_ports_signature() -> Result<Value, String> {
         "tool_adapter": "ControllerToolPort",
         "tool_service_inventory": "CONTROLLER_TOOL_PORT_SERVICE_INVENTORY",
         "legacy_tool_context_inventory": "LEGACY_TOOL_CONTEXT_SERVICE_INVENTORY",
+        "concrete_dependency_budget": "AGENT_CONCRETE_DEPENDENCY_BUDGET",
+        "selected_config_slice": "Steel tool substrate settings now convert to AgentToolSteelSubstrateSettings at app edge",
         "tool_context_module": AGENT_TOOL,
         "cost_adapter": "CostTrackerPort",
         "cancellation_adapter": "TokenCancellationPort",

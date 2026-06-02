@@ -118,6 +118,9 @@ use steel_planning::emit_agent_turn_planning_receipt;
 use steel_planning::plan_agent_turn;
 pub use steel_planning::steel_turn_planning_config_from_settings;
 pub use steel_tool_substrate::AgentToolSteelSubstrateConfig;
+pub use steel_tool_substrate::AgentToolSteelSubstrateFallbackMode;
+pub use steel_tool_substrate::AgentToolSteelSubstrateRolloutStage;
+pub use steel_tool_substrate::AgentToolSteelSubstrateSettings;
 pub use steel_tool_substrate::steel_tool_substrate_config_from_settings;
 #[cfg(test)]
 use tokio::sync::broadcast;

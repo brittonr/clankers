@@ -213,6 +213,7 @@
     "agent_turn_ports": {
       "cancellation_adapter": "TokenCancellationPort",
       "cancellation_port_trait": "AgentCancellationPort",
+      "concrete_dependency_budget": "AGENT_CONCRETE_DEPENDENCY_BUDGET",
       "cost_adapter": "CostTrackerPort",
       "cost_port_trait": "AgentCostPort",
       "legacy_tool_context_inventory": "LEGACY_TOOL_CONTEXT_SERVICE_INVENTORY",
@@ -222,6 +223,7 @@
       "provider_adapter": "ProviderModelPort",
       "provider_adapter_owner": "crates/clankers-agent/src/lib.rs app-edge shell",
       "runtime_service_bundle": "AgentRuntimeServices",
+      "selected_config_slice": "Steel tool substrate settings now convert to AgentToolSteelSubstrateSettings at app edge",
       "service_receipt_kinds": [
         "model",
         "tools",

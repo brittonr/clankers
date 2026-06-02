@@ -119,6 +119,55 @@ fn token_count_to_u64(value: usize) -> u64 {
     }
 }
 
+fn agent_tool_steel_substrate_settings_from_config(
+    settings: &clankers_config::settings::SteelToolSubstrateSettings,
+) -> turn::AgentToolSteelSubstrateSettings {
+    turn::AgentToolSteelSubstrateSettings {
+        enabled: settings.enabled,
+        rollout_stage: settings.rollout_stage.map(agent_tool_steel_substrate_rollout_stage_from_config),
+        fallback_mode: settings.fallback_mode.map(agent_tool_steel_substrate_fallback_mode_from_config),
+        session_capabilities: settings.session_capabilities.clone(),
+        granted_ucan_abilities: settings.granted_ucan_abilities.clone(),
+        disabled_executors: settings.disabled_executors.clone(),
+        disabled_actions: settings.disabled_actions.clone(),
+        receipt_prefix: settings.receipt_prefix.clone(),
+        max_input_bytes: settings.max_input_bytes,
+        max_source_bytes: settings.max_source_bytes,
+    }
+}
+
+fn agent_tool_steel_substrate_rollout_stage_from_config(
+    stage: clankers_config::settings::SteelToolSubstrateRolloutStage,
+) -> turn::AgentToolSteelSubstrateRolloutStage {
+    match stage {
+        clankers_config::settings::SteelToolSubstrateRolloutStage::Disabled => {
+            turn::AgentToolSteelSubstrateRolloutStage::Disabled
+        }
+        clankers_config::settings::SteelToolSubstrateRolloutStage::Comparison => {
+            turn::AgentToolSteelSubstrateRolloutStage::Comparison
+        }
+        clankers_config::settings::SteelToolSubstrateRolloutStage::Default => {
+            turn::AgentToolSteelSubstrateRolloutStage::Default
+        }
+        clankers_config::settings::SteelToolSubstrateRolloutStage::Block => {
+            turn::AgentToolSteelSubstrateRolloutStage::Block
+        }
+    }
+}
+
+fn agent_tool_steel_substrate_fallback_mode_from_config(
+    mode: clankers_config::settings::SteelToolSubstrateFallbackMode,
+) -> turn::AgentToolSteelSubstrateFallbackMode {
+    match mode {
+        clankers_config::settings::SteelToolSubstrateFallbackMode::RustNative => {
+            turn::AgentToolSteelSubstrateFallbackMode::RustNative
+        }
+        clankers_config::settings::SteelToolSubstrateFallbackMode::Block => {
+            turn::AgentToolSteelSubstrateFallbackMode::Block
+        }
+    }
+}
+
 fn turn_hook_usage_since(messages: &[AgentMessage], start_index: usize) -> Option<clankers_hooks::HookUsage> {
     let mut saw_usage = false;
     let mut usage = clankers_hooks::HookUsage::default();
@@ -1088,10 +1137,9 @@ impl Agent {
     }
 
     fn steel_tool_substrate_config(&self) -> Result<Option<turn::AgentToolSteelSubstrateConfig>> {
-        steel_tool_substrate_config_from_settings(&self.settings.steel_tool_substrate).map_err(|error| {
-            AgentError::Agent {
-                message: format!("Steel tool substrate activation failed closed: {error}"),
-            }
+        let settings = agent_tool_steel_substrate_settings_from_config(&self.settings.steel_tool_substrate);
+        steel_tool_substrate_config_from_settings(&settings).map_err(|error| AgentError::Agent {
+            message: format!("Steel tool substrate activation failed closed: {error}"),
         })
     }
 
@@ -1575,6 +1623,39 @@ mod tests {
             "test-model".to_string(),
             "test system prompt".to_string(),
         )
+    }
+
+    #[test]
+    fn steel_tool_substrate_settings_adapter_preserves_config_policy_at_agent_edge() {
+        let settings = clankers_config::settings::SteelToolSubstrateSettings {
+            rollout_stage: Some(clankers_config::settings::SteelToolSubstrateRolloutStage::Comparison),
+            fallback_mode: Some(clankers_config::settings::SteelToolSubstrateFallbackMode::Block),
+            session_capabilities: vec!["steel-tool-substrate".to_string(), "tool-dispatch".to_string()],
+            granted_ucan_abilities: vec!["clankers/steel/tool.call".to_string()],
+            disabled_executors: vec!["subagent".to_string()],
+            disabled_actions: vec!["steel.host.tool.call".to_string()],
+            receipt_prefix: Some("target/steel-tool-substrate".to_string()),
+            max_input_bytes: Some(42),
+            max_source_bytes: 256,
+            ..Settings::default().steel_tool_substrate
+        };
+
+        let agent_settings = agent_tool_steel_substrate_settings_from_config(&settings);
+        assert_eq!(agent_settings.rollout_stage, Some(turn::AgentToolSteelSubstrateRolloutStage::Comparison));
+        assert_eq!(agent_settings.fallback_mode, Some(turn::AgentToolSteelSubstrateFallbackMode::Block));
+        assert_eq!(agent_settings.max_input_bytes, Some(42));
+        assert_eq!(agent_settings.max_source_bytes, 256);
+        assert_eq!(agent_settings.disabled_executors, vec!["subagent"]);
+
+        let config = turn::steel_tool_substrate_config_from_settings(&agent_settings)
+            .expect("neutral settings activate")
+            .expect("enabled substrate config");
+        assert_eq!(
+            config.profile.rollout_stage,
+            clankers_runtime::SteelToolSubstrateRolloutStage::Comparison
+        );
+        assert_eq!(config.profile.fallback_mode, clankers_runtime::SteelToolSubstrateFallbackMode::Block);
+        assert!(!config.profile.allowed_executor_kinds.contains(&clankers_runtime::SteelToolExecutorKind::Subagent));
     }
 
     fn stub_tool(name: &str) -> Arc<dyn Tool> {

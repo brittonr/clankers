@@ -128,6 +128,113 @@ pub(crate) const DESKTOP_AGENT_SERVICE_RECEIPTS: &[AgentRuntimeServiceReceipt] =
 pub(crate) const NEUTRAL_TOOL_SERVICE_CONTEXT_REQUIREMENT: &str = "r[neutral-tool-service-context.service-contracts]";
 
 #[allow(dead_code)]
+pub(crate) const AGENT_CONCRETE_DEPENDENCY_DRAIN_REQUIREMENT: &str =
+    "r[agent-concrete-dependency-drain.dependency-budget]";
+
+#[allow(dead_code)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+pub(crate) enum AgentConcreteDependencyFamily {
+    Provider,
+    StorageSearch,
+    Config,
+    Procmon,
+    DisplayProtocol,
+    Router,
+}
+
+#[allow(dead_code)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum AgentConcreteDependencyOwner {
+    ModelAdapter,
+    LegacyToolAdapter,
+    AppEdgeSettingsAdapter,
+    ProcessEventProjection,
+    NoProductionEdge,
+}
+
+#[allow(dead_code)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct AgentConcreteDependencyBudgetEntry {
+    pub(crate) family: AgentConcreteDependencyFamily,
+    pub(crate) crate_name: &'static str,
+    pub(crate) owner: AgentConcreteDependencyOwner,
+    pub(crate) production_modules: &'static [&'static str],
+    pub(crate) selected_slice_status: &'static str,
+    pub(crate) convergence: &'static str,
+}
+
+#[allow(dead_code)]
+pub(crate) const AGENT_CONCRETE_DEPENDENCY_BUDGET: &[AgentConcreteDependencyBudgetEntry] = &[
+    AgentConcreteDependencyBudgetEntry {
+        family: AgentConcreteDependencyFamily::Provider,
+        crate_name: "clankers-provider",
+        owner: AgentConcreteDependencyOwner::ModelAdapter,
+        production_modules: &[
+            "crates/clankers-agent/src/lib.rs",
+            "crates/clankers-agent/src/builder.rs",
+            "crates/clankers-agent/src/error.rs",
+            "crates/clankers-agent/src/compaction.rs",
+            "crates/clankers-agent/src/turn/execution.rs",
+            "crates/clankers-agent/src/turn/ports.rs",
+        ],
+        selected_slice_status: "remaining",
+        convergence: "replace provider-native CompletionRequest/Provider with agent model request/stream ports at reusable policy seams",
+    },
+    AgentConcreteDependencyBudgetEntry {
+        family: AgentConcreteDependencyFamily::StorageSearch,
+        crate_name: "clankers-db",
+        owner: AgentConcreteDependencyOwner::LegacyToolAdapter,
+        production_modules: &[
+            "crates/clankers-agent/src/lib.rs",
+            "crates/clankers-agent/src/builder.rs",
+            "crates/clankers-agent/src/tool.rs",
+            "crates/clankers-agent/src/turn/execution.rs",
+            "crates/clankers-agent/src/turn/mod.rs",
+        ],
+        selected_slice_status: "remaining",
+        convergence: "complete tool storage/search migration to clankers-tool-host services and remove legacy Db/SearchIndex context fields",
+    },
+    AgentConcreteDependencyBudgetEntry {
+        family: AgentConcreteDependencyFamily::Config,
+        crate_name: "clankers-config",
+        owner: AgentConcreteDependencyOwner::AppEdgeSettingsAdapter,
+        production_modules: &[
+            "crates/clankers-agent/src/lib.rs",
+            "crates/clankers-agent/src/builder.rs",
+            "crates/clankers-agent/src/context.rs",
+            "crates/clankers-agent/src/system_prompt.rs",
+            "crates/clankers-agent/src/turn/steel_planning.rs",
+        ],
+        selected_slice_status: "steel_tool_substrate settings converted to AgentToolSteelSubstrateSettings at app edge",
+        convergence: "move remaining settings-derived planning/prompt policy to agent-owned DTOs and shell adapters",
+    },
+    AgentConcreteDependencyBudgetEntry {
+        family: AgentConcreteDependencyFamily::Procmon,
+        crate_name: "clankers-procmon",
+        owner: AgentConcreteDependencyOwner::ProcessEventProjection,
+        production_modules: &["crates/clankers-agent/src/events.rs"],
+        selected_slice_status: "remaining",
+        convergence: "replace procmon-native process events with reusable process observation DTOs before AgentEvent projection",
+    },
+    AgentConcreteDependencyBudgetEntry {
+        family: AgentConcreteDependencyFamily::DisplayProtocol,
+        crate_name: "clanker-tui-types/clankers-protocol",
+        owner: AgentConcreteDependencyOwner::NoProductionEdge,
+        production_modules: &[],
+        selected_slice_status: "absent",
+        convergence: "keep display and wire protocol DTOs outside clankers-agent reusable policy",
+    },
+    AgentConcreteDependencyBudgetEntry {
+        family: AgentConcreteDependencyFamily::Router,
+        crate_name: "clanker-router",
+        owner: AgentConcreteDependencyOwner::NoProductionEdge,
+        production_modules: &[],
+        selected_slice_status: "absent",
+        convergence: "keep router composition in provider/root adapters rather than agent policy",
+    },
+];
+
+#[allow(dead_code)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub(crate) enum AgentToolServiceKind {
     LegacyToolRegistry,
@@ -505,6 +612,41 @@ mod tests {
 
     fn inventory_fields(entries: &[AgentToolServiceInventoryEntry]) -> BTreeSet<&'static str> {
         entries.iter().map(|entry| entry.field).collect()
+    }
+
+    fn dependency_families(entries: &[AgentConcreteDependencyBudgetEntry]) -> BTreeSet<AgentConcreteDependencyFamily> {
+        entries.iter().map(|entry| entry.family).collect()
+    }
+
+    #[test]
+    fn concrete_dependency_budget_names_current_agent_edges_and_selected_config_slice() {
+        let families = dependency_families(AGENT_CONCRETE_DEPENDENCY_BUDGET);
+
+        assert_eq!(
+            AGENT_CONCRETE_DEPENDENCY_DRAIN_REQUIREMENT,
+            "r[agent-concrete-dependency-drain.dependency-budget]"
+        );
+        for family in [
+            AgentConcreteDependencyFamily::Provider,
+            AgentConcreteDependencyFamily::StorageSearch,
+            AgentConcreteDependencyFamily::Config,
+            AgentConcreteDependencyFamily::Procmon,
+            AgentConcreteDependencyFamily::DisplayProtocol,
+            AgentConcreteDependencyFamily::Router,
+        ] {
+            assert!(families.contains(&family), "missing concrete dependency budget for {family:?}");
+        }
+
+        let config_entry = AGENT_CONCRETE_DEPENDENCY_BUDGET
+            .iter()
+            .find(|entry| entry.family == AgentConcreteDependencyFamily::Config)
+            .expect("config dependency budget entry");
+        assert_eq!(config_entry.owner, AgentConcreteDependencyOwner::AppEdgeSettingsAdapter);
+        assert!(config_entry.selected_slice_status.contains("AgentToolSteelSubstrateSettings"));
+        assert!(!config_entry.production_modules.contains(&"crates/clankers-agent/src/turn/steel_tool_substrate.rs"));
+        assert!(AGENT_CONCRETE_DEPENDENCY_BUDGET.iter().all(|entry| {
+            !entry.crate_name.is_empty() && !entry.selected_slice_status.is_empty() && !entry.convergence.is_empty()
+        }));
     }
 
     #[test]

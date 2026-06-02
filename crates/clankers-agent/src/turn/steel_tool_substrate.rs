@@ -2,9 +2,6 @@ use clanker_message::Content;
 use clanker_message::MessageId;
 use clanker_message::ToolResultMessage;
 use clankers_artifacts::ArtifactHash;
-use clankers_config::SteelToolSubstrateFallbackMode as ConfigFallbackMode;
-use clankers_config::SteelToolSubstrateRolloutStage as ConfigRolloutStage;
-use clankers_config::SteelToolSubstrateSettings;
 use clankers_runtime::DEFAULT_TOOL_SUBSTRATE_CALL_SEAM;
 use clankers_runtime::SteelToolExecutorKind;
 use clankers_runtime::SteelToolInvocationInput;
@@ -32,6 +29,112 @@ pub struct AgentToolSteelSubstrateConfig {
     pub disabled_actions: Vec<String>,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AgentToolSteelSubstrateRolloutStage {
+    Disabled,
+    Comparison,
+    Default,
+    Block,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AgentToolSteelSubstrateFallbackMode {
+    RustNative,
+    Block,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AgentToolSteelSubstrateSettings {
+    pub enabled: bool,
+    pub rollout_stage: Option<AgentToolSteelSubstrateRolloutStage>,
+    pub fallback_mode: Option<AgentToolSteelSubstrateFallbackMode>,
+    pub session_capabilities: Vec<String>,
+    pub granted_ucan_abilities: Vec<String>,
+    pub disabled_executors: Vec<String>,
+    pub disabled_actions: Vec<String>,
+    pub receipt_prefix: Option<String>,
+    pub max_input_bytes: Option<u64>,
+    pub max_source_bytes: u64,
+}
+
+impl Default for AgentToolSteelSubstrateSettings {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            rollout_stage: Some(AgentToolSteelSubstrateRolloutStage::Default),
+            fallback_mode: Some(AgentToolSteelSubstrateFallbackMode::RustNative),
+            session_capabilities: vec!["steel-tool-substrate".to_string(), "tool-dispatch".to_string()],
+            granted_ucan_abilities: vec!["clankers/steel/tool.call".to_string()],
+            disabled_executors: Vec::new(),
+            disabled_actions: Vec::new(),
+            receipt_prefix: None,
+            max_input_bytes: Some(200_000),
+            max_source_bytes: 4096,
+        }
+    }
+}
+
+impl AgentToolSteelSubstrateSettings {
+    fn validate(&self) -> Result<(), SteelToolSubstrateSettingsError> {
+        if !self.enabled {
+            return Ok(());
+        }
+        if self.session_capabilities.iter().any(|capability| capability.trim().is_empty()) {
+            return Err(SteelToolSubstrateSettingsError::BlankCapability);
+        }
+        if self.granted_ucan_abilities.iter().any(|ability| ability.trim().is_empty()) {
+            return Err(SteelToolSubstrateSettingsError::BlankUcanAbility);
+        }
+        if self.disabled_executors.iter().any(|executor| executor.trim().is_empty()) {
+            return Err(SteelToolSubstrateSettingsError::BlankDisabledExecutor);
+        }
+        if self.disabled_actions.iter().any(|action| action.trim().is_empty()) {
+            return Err(SteelToolSubstrateSettingsError::BlankDisabledAction);
+        }
+        if matches!(self.max_input_bytes, Some(0)) {
+            return Err(SteelToolSubstrateSettingsError::NonPositiveMaxInputBytes);
+        }
+        if self.max_source_bytes == 0 {
+            return Err(SteelToolSubstrateSettingsError::NonPositiveMaxSourceBytes);
+        }
+        if let Some(prefix) = &self.receipt_prefix
+            && !prefix.starts_with("target/")
+        {
+            return Err(SteelToolSubstrateSettingsError::ReceiptOutsideTarget);
+        }
+        Ok(())
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum SteelToolSubstrateSettingsError {
+    BlankCapability,
+    BlankUcanAbility,
+    BlankDisabledExecutor,
+    BlankDisabledAction,
+    NonPositiveMaxInputBytes,
+    NonPositiveMaxSourceBytes,
+    ReceiptOutsideTarget,
+}
+
+impl std::fmt::Display for SteelToolSubstrateSettingsError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::BlankCapability => f.write_str("Steel tool substrate session capabilities cannot be blank"),
+            Self::BlankUcanAbility => f.write_str("Steel tool substrate UCAN abilities cannot be blank"),
+            Self::BlankDisabledExecutor => f.write_str("Steel tool substrate disabled executors cannot be blank"),
+            Self::BlankDisabledAction => f.write_str("Steel tool substrate disabled actions cannot be blank"),
+            Self::NonPositiveMaxInputBytes => {
+                f.write_str("Steel tool substrate `maxInputBytes` must be greater than zero")
+            }
+            Self::NonPositiveMaxSourceBytes => {
+                f.write_str("Steel tool substrate `maxSourceBytes` must be greater than zero")
+            }
+            Self::ReceiptOutsideTarget => f.write_str("Steel tool substrate `receiptPrefix` must stay under target/"),
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum SteelToolSubstrateActivationError {
     InvalidSettings(String),
@@ -52,7 +155,7 @@ impl std::fmt::Display for SteelToolSubstrateActivationError {
 impl std::error::Error for SteelToolSubstrateActivationError {}
 
 pub fn steel_tool_substrate_config_from_settings(
-    settings: &SteelToolSubstrateSettings,
+    settings: &AgentToolSteelSubstrateSettings,
 ) -> Result<Option<AgentToolSteelSubstrateConfig>, SteelToolSubstrateActivationError> {
     if !settings.enabled {
         return Ok(None);
@@ -88,19 +191,19 @@ pub fn steel_tool_substrate_config_from_settings(
     }))
 }
 
-fn rollout_stage(stage: ConfigRolloutStage) -> SteelToolSubstrateRolloutStage {
+fn rollout_stage(stage: AgentToolSteelSubstrateRolloutStage) -> SteelToolSubstrateRolloutStage {
     match stage {
-        ConfigRolloutStage::Disabled => SteelToolSubstrateRolloutStage::Disabled,
-        ConfigRolloutStage::Comparison => SteelToolSubstrateRolloutStage::Comparison,
-        ConfigRolloutStage::Default => SteelToolSubstrateRolloutStage::Default,
-        ConfigRolloutStage::Block => SteelToolSubstrateRolloutStage::Block,
+        AgentToolSteelSubstrateRolloutStage::Disabled => SteelToolSubstrateRolloutStage::Disabled,
+        AgentToolSteelSubstrateRolloutStage::Comparison => SteelToolSubstrateRolloutStage::Comparison,
+        AgentToolSteelSubstrateRolloutStage::Default => SteelToolSubstrateRolloutStage::Default,
+        AgentToolSteelSubstrateRolloutStage::Block => SteelToolSubstrateRolloutStage::Block,
     }
 }
 
-fn fallback_mode(mode: ConfigFallbackMode) -> SteelToolSubstrateFallbackMode {
+fn fallback_mode(mode: AgentToolSteelSubstrateFallbackMode) -> SteelToolSubstrateFallbackMode {
     match mode {
-        ConfigFallbackMode::RustNative => SteelToolSubstrateFallbackMode::RustNative,
-        ConfigFallbackMode::Block => SteelToolSubstrateFallbackMode::Block,
+        AgentToolSteelSubstrateFallbackMode::RustNative => SteelToolSubstrateFallbackMode::RustNative,
+        AgentToolSteelSubstrateFallbackMode::Block => SteelToolSubstrateFallbackMode::Block,
     }
 }
 
@@ -193,7 +296,7 @@ mod tests {
 
     #[test]
     fn default_settings_enable_all_executor_kinds() {
-        let config = steel_tool_substrate_config_from_settings(&SteelToolSubstrateSettings::default())
+        let config = steel_tool_substrate_config_from_settings(&AgentToolSteelSubstrateSettings::default())
             .expect("settings valid")
             .expect("enabled by default");
         assert!(config.profile.allowed_executor_kinds.contains(&SteelToolExecutorKind::RustBuiltin));
@@ -204,9 +307,9 @@ mod tests {
 
     #[test]
     fn disabled_executor_is_removed_from_profile() {
-        let settings = SteelToolSubstrateSettings {
+        let settings = AgentToolSteelSubstrateSettings {
             disabled_executors: vec!["subagent".to_string()],
-            ..SteelToolSubstrateSettings::default()
+            ..AgentToolSteelSubstrateSettings::default()
         };
         let config = steel_tool_substrate_config_from_settings(&settings).expect("settings valid").expect("enabled");
         assert!(!config.profile.allowed_executor_kinds.contains(&SteelToolExecutorKind::Subagent));
