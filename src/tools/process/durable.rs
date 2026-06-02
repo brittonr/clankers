@@ -3,6 +3,8 @@ use clankers_runtime::process_jobs::ProcessJobEventId;
 use clankers_runtime::process_jobs::ProcessJobNotificationDecision;
 use clankers_runtime::process_jobs::ProcessJobNotificationPolicyEngine;
 
+use super::native::ProcessEntry;
+use super::native::ProcessStatus;
 use super::*;
 
 pub(super) async fn evaluate_process_entry_notification(

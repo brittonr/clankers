@@ -39,7 +39,6 @@ const ADAPTER_MARKERS: &[&str] = &[
 const TOOL_MARKERS: &[&str] = &[
     "mod adapter;",
     "ProcessToolJsonAdapter::process_job_tool_request(params)",
-    "struct NativeProcessJobService",
     "mod durable;",
     "mod pueue;",
     "mod systemd;",
@@ -104,6 +103,8 @@ fn run() -> Result<(), String> {
     let native = read(TOOL_NATIVE)?;
     for marker in [
         "struct NativeProcessJobBackendAdapter",
+        "struct NativeProcessJobService",
+        "struct ProcessEntry",
         "fn start_native_process_job",
         "native_backend_in_memory_fixture_projects_list_poll_log_and_errors_without_spawning",
     ] {

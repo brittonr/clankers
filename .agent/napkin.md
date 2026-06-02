@@ -3,6 +3,8 @@
 ## Corrections
 | Date | Source | What Went Wrong | What To Do Instead |
 |------|--------|----------------|-------------------|
+| 2026-06-02 | self | Resumed from compacted context and began edits before re-reading the always-on napkin in the live turn | Even with a detailed handoff, read `.agent/napkin.md` at the start of the live turn before running tools. |
+| 2026-06-02 | self | Copied an older `AdoptProcessJobRequest` helper shape into moved native tests (`allowed_owners`, `command_preview`) and broke compile | When moving tests across modules, re-read the current helper in the source file instead of relying on stale memory or summary snippets. |
 | 2026-06-02 | self | Reused a Steel helper hardcoded to run `nix` for a `git status` label, so the transcript showed `nix` rejecting `--no-pager` after successful Cairn archive/validate | Make Steel process helpers take the program as an explicit parameter when mixing Nix and Git commands in one validation bundle. |
 | 2026-06-02 | self | Used Steel `call-with-output-file` to rewrite a shorter `src/tools/process.rs`; it overwrote but did not truncate, leaving stale trailing Rust and a confusing syntax error | For Steel file rewrites that shrink content, remove/truncate the file first or use the structured write tool for full rewrites. |
 | 2026-06-02 | self | Repeated the one-filter mistake with `cargo nextest run ... native_backend_in_memory_fixture|durable_policy_helpers_project`, which ran 0 tests because nextest did not treat the argument as regex alternation there | Run separate nextest commands for unrelated focused tests, or use one literal substring that matches both names. |
