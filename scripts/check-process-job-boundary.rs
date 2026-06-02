@@ -11,6 +11,7 @@ const ERROR_EXIT: u8 = 1;
 const RUNTIME_CONTRACTS: &str = "crates/clankers-runtime/src/process_jobs.rs";
 const TOOL: &str = "src/tools/process.rs";
 const TOOL_ADAPTER: &str = "src/tools/process/adapter.rs";
+const TOOL_PUEUE: &str = "src/tools/process/pueue.rs";
 
 const RUNTIME_MARKERS: &[&str] = &[
     "pub enum ProcessJobToolRequest",
@@ -36,7 +37,7 @@ const TOOL_MARKERS: &[&str] = &[
     "mod adapter;",
     "ProcessToolJsonAdapter::process_job_tool_request(params)",
     "struct NativeProcessJobService",
-    "struct PueueProcessJobService",
+    "mod pueue;",
     "struct SystemdProcessJobService",
     "fn stored_record_from_entry",
     "fn stored_record_summary",
@@ -87,6 +88,11 @@ fn run() -> Result<(), String> {
     }
     if tool.contains("params.get(\"command\")") && !tool.contains("ProcessToolJsonAdapter::process_job_tool_request(params)") {
         return Err(format!("{TOOL} parses process JSON directly instead of routing through {TOOL_ADAPTER}"));
+    }
+
+    let pueue = read(TOOL_PUEUE)?;
+    for marker in ["trait PueueRunner", "struct PueueProcessJobService", "fn parse_pueue_tasks", "fn parse_pueue_log_text"] {
+        require_contains(&pueue, marker, TOOL_PUEUE)?;
     }
 
     Ok(())

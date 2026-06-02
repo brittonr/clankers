@@ -36,6 +36,7 @@ const ACCEPTED_SPEC: &str = "cairn/specs/lego-architecture-boundaries/spec.md";
 const PROCESS_TOOL: &str = "src/tools/process.rs";
 const PROCESS_TOOL_ADAPTER: &str = "src/tools/process/adapter.rs";
 const PROCESS_TOOL_NATIVE: &str = "src/tools/process/native.rs";
+const PROCESS_TOOL_PUEUE: &str = "src/tools/process/pueue.rs";
 const AGENT_LIB: &str = "crates/clankers-agent/src/lib.rs";
 const AGENT_BUILDER: &str = "crates/clankers-agent/src/builder.rs";
 const AGENT_COMPACTION: &str = "crates/clankers-agent/src/compaction.rs";
@@ -204,6 +205,7 @@ fn run() -> Result<PathBuf, String> {
             hash_artifact(Path::new(PROCESS_TOOL))?,
             hash_artifact(Path::new(PROCESS_TOOL_ADAPTER))?,
             hash_artifact(Path::new(PROCESS_TOOL_NATIVE))?,
+            hash_artifact(Path::new(PROCESS_TOOL_PUEUE))?,
             hash_artifact(Path::new(AGENT_LIB))?,
             hash_artifact(Path::new(AGENT_BUILDER))?,
             hash_artifact(Path::new(AGENT_COMPACTION))?,
@@ -472,13 +474,17 @@ fn process_tool_adapter_signature() -> Result<Value, String> {
     let tool_file = read_rust_file(PROCESS_TOOL)?;
     let adapter_file = read_rust_file(PROCESS_TOOL_ADAPTER)?;
     let native_file = read_rust_file(PROCESS_TOOL_NATIVE)?;
+    let pueue_file = read_rust_file(PROCESS_TOOL_PUEUE)?;
     let tool = &tool_file.source;
     let adapter = &adapter_file.source;
     let native = &native_file.source;
+    let pueue = &pueue_file.source;
     require_rust_mod(&tool_file, "adapter", "process tool adapter module")?;
     require_rust_mod(&tool_file, "native", "process native backend adapter module")?;
+    require_rust_mod(&tool_file, "pueue", "process pueue backend adapter module")?;
     require_contains(&tool, "mod adapter;", "process tool adapter module")?;
     require_contains(&tool, "mod native;", "process native backend adapter module")?;
+    require_contains(&tool, "mod pueue;", "process pueue backend adapter module")?;
     require_contains(
         &tool,
         "ProcessToolJsonAdapter::process_job_tool_request(params)",
@@ -507,10 +513,19 @@ fn process_tool_adapter_signature() -> Result<Value, String> {
     forbid_contains(tool, "struct ProcessRegistry", "process root native registry owner")?;
     forbid_contains(tool, "static REGISTRY", "process root native registry owner")?;
     forbid_contains(tool, "fn terminate_process_group", "process root native termination owner")?;
+    require_rust_path(&pueue_file, "PueueProcessJobService", "process pueue backend service type")?;
+    require_rust_path(&pueue_file, "PueueRunner", "process pueue fakeable runner trait")?;
+    require_contains(pueue, "pub(super) trait PueueRunner", "process pueue fakeable runner trait")?;
+    require_contains(pueue, "pub(super) struct PueueProcessJobService", "process pueue service owner")?;
+    require_contains(pueue, "fn parse_pueue_tasks", "process pueue task parser owner")?;
+    require_contains(pueue, "fn parse_pueue_log_text", "process pueue log parser owner")?;
+    forbid_contains(tool, "struct PueueTaskProjection", "process root pueue projection owner")?;
+    forbid_contains(tool, "fn parse_pueue_", "process root pueue parser owner")?;
     let backend_ownership = process_backend_ownership_signature(&tool_file, tool)?;
     Ok(json!({
         "adapter_module": PROCESS_TOOL_ADAPTER,
         "native_module": PROCESS_TOOL_NATIVE,
+        "pueue_module": PROCESS_TOOL_PUEUE,
         "tool_module": PROCESS_TOOL,
         "storage_dto_imports": 0,
         "storage_dto_references": 0,
@@ -520,7 +535,9 @@ fn process_tool_adapter_signature() -> Result<Value, String> {
         "backend_owner_count": 7,
         "native_backend_adapter": "NativeProcessJobBackendAdapter",
         "native_registry_owner": "ProcessRegistry in src/tools/process/native.rs",
-        "typed_rail_kind": "Rust AST module, method, path, forbidden dependency, process native adapter/registry, and backend ownership checks"
+        "pueue_backend_service": "PueueProcessJobService",
+        "pueue_runner_owner": "PueueRunner in src/tools/process/pueue.rs",
+        "typed_rail_kind": "Rust AST module, method, path, forbidden dependency, process native adapter/registry, pueue runner/parser, and backend ownership checks"
     }))
 }
 
@@ -539,7 +556,7 @@ fn process_backend_ownership_signature(tool_file: &RustFile, tool: &str) -> Resu
         ),
         (
             "PueueBackend",
-            "src/tools/process/pueue.rs::PueueProcessJobBackendAdapter",
+            "src/tools/process/pueue.rs::PueueProcessJobService",
             "select pueue backend and surface degraded unavailable receipts",
         ),
         (
