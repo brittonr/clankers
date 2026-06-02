@@ -498,9 +498,15 @@ fn process_tool_adapter_signature() -> Result<Value, String> {
     require_contains(&adapter, "ProcessJobToolRequest::Start", "process adapter typed start projection")?;
     require_contains(&adapter, "Unknown process action", "process adapter fail-closed unsupported action")?;
     require_rust_path(&native_file, "NativeProcessJobBackendAdapter", "process native backend adapter type")?;
-    require_contains(native, "super::start_native_process_job", "process native start delegation")?;
-    require_contains(native, "super::restart_native_process_job", "process native restart delegation")?;
+    require_rust_path(&native_file, "ProcessRegistry", "process native registry owner")?;
+    require_contains(native, "pub(super) struct ProcessRegistry", "process native registry owner")?;
+    require_contains(native, "pub(super) fn reserve_native_start", "process native admission owner")?;
+    require_contains(native, "pub(super) async fn restart_native_process_job", "process native restart owner")?;
+    require_contains(native, "fn terminate_process_group", "process native termination owner")?;
     require_contains(tool, "NativeProcessJobBackendAdapter::for_invocation", "process native adapter dispatch")?;
+    forbid_contains(tool, "struct ProcessRegistry", "process root native registry owner")?;
+    forbid_contains(tool, "static REGISTRY", "process root native registry owner")?;
+    forbid_contains(tool, "fn terminate_process_group", "process root native termination owner")?;
     let backend_ownership = process_backend_ownership_signature(&tool_file, tool)?;
     Ok(json!({
         "adapter_module": PROCESS_TOOL_ADAPTER,
@@ -513,7 +519,8 @@ fn process_tool_adapter_signature() -> Result<Value, String> {
         "backend_ownership": backend_ownership,
         "backend_owner_count": 7,
         "native_backend_adapter": "NativeProcessJobBackendAdapter",
-        "typed_rail_kind": "Rust AST module, method, path, forbidden dependency, process native adapter, and backend ownership checks"
+        "native_registry_owner": "ProcessRegistry in src/tools/process/native.rs",
+        "typed_rail_kind": "Rust AST module, method, path, forbidden dependency, process native adapter/registry, and backend ownership checks"
     }))
 }
 
