@@ -361,6 +361,22 @@ pub trait Tool: Send + Sync {
     /// Execute the tool with the given parameters
     async fn execute(&self, ctx: &ToolContext, params: Value) -> ToolResult;
 
+    /// Whether this tool should be invoked through the neutral tool-host context.
+    fn uses_neutral_tool_context(&self) -> bool {
+        false
+    }
+
+    /// Execute the tool with neutral host services.
+    async fn execute_with_neutral_context(
+        &self,
+        context: clankers_tool_host::ToolInvocationContext,
+        params: Value,
+    ) -> ToolResult {
+        let _ = context;
+        let _ = params;
+        ToolResult::error("neutral tool context execution is not implemented for this tool")
+    }
+
     /// Source label: "built-in" for core tools, plugin name for plugin tools.
     fn source(&self) -> &str {
         "built-in"

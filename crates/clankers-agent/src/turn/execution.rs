@@ -222,6 +222,8 @@ impl ControllerToolServices {
             events,
             progress,
             cancellation,
+            storage: None,
+            search: None,
             hooks,
             capability,
             legacy_runner,
@@ -839,8 +841,12 @@ async fn execute_single_tool(
         tool_name: tool_name.clone(),
     });
 
-    // Execute with accumulator through the legacy compatibility runner.
-    let result = services.legacy_runner.execute_legacy_tool(tool, call_id.clone(), effective_input).await;
+    let result = if tool.uses_neutral_tool_context() {
+        tool.execute_with_neutral_context(invocation_context.clone(), effective_input).await
+    } else {
+        // Execute with accumulator through the legacy compatibility runner.
+        services.legacy_runner.execute_legacy_tool(tool, call_id.clone(), effective_input).await
+    };
 
     fire_post_tool_hook(invocation_context.hooks.as_deref(), &tool_name, &call_id, &result).await;
 
@@ -1053,6 +1059,20 @@ mod tests {
         definition: crate::tool::ToolDefinition,
     }
 
+    struct NeutralStorageSearchProgressTool {
+        definition: crate::tool::ToolDefinition,
+    }
+
+    struct FakeNeutralStorage {
+        writes: std::sync::Mutex<Vec<clankers_tool_host::ToolStorageWriteRequest>>,
+    }
+
+    struct FakeNeutralSearch {
+        queries: std::sync::Mutex<Vec<String>>,
+    }
+
+    struct PanicLegacyRunner;
+
     impl FakeTool {
         fn new() -> Self {
             Self {
@@ -1071,6 +1091,18 @@ mod tests {
                 definition: crate::tool::ToolDefinition {
                     name: "panic_tool".to_string(),
                     description: "panics if executed".to_string(),
+                    input_schema: json!({"type": "object"}),
+                },
+            }
+        }
+    }
+
+    impl NeutralStorageSearchProgressTool {
+        fn new() -> Self {
+            Self {
+                definition: crate::tool::ToolDefinition {
+                    name: "neutral_storage_search".to_string(),
+                    description: "neutral storage/search/progress test tool".to_string(),
                     input_schema: json!({"type": "object"}),
                 },
             }
@@ -1129,6 +1161,102 @@ mod tests {
 
         async fn execute(&self, _ctx: &ToolContext, _params: Value) -> AgentToolResult {
             panic!("blocked Steel substrate calls must not execute direct tool path")
+        }
+    }
+
+    #[async_trait]
+    impl Tool for NeutralStorageSearchProgressTool {
+        fn definition(&self) -> &crate::tool::ToolDefinition {
+            &self.definition
+        }
+
+        async fn execute(&self, _ctx: &ToolContext, _params: Value) -> AgentToolResult {
+            panic!("neutral tool path must not use legacy ToolContext")
+        }
+
+        fn uses_neutral_tool_context(&self) -> bool {
+            true
+        }
+
+        async fn execute_with_neutral_context(
+            &self,
+            context: clankers_tool_host::ToolInvocationContext,
+            params: Value,
+        ) -> AgentToolResult {
+            for service in [
+                clankers_tool_host::ToolHostServiceKind::Storage,
+                clankers_tool_host::ToolHostServiceKind::Search,
+            ] {
+                if let Err(outcome) = context.require_service(&self.definition.name, service) {
+                    return AgentToolResult::error(format!("missing neutral service: {outcome:?}"));
+                }
+            }
+            let value = params.get("value").and_then(Value::as_str).unwrap_or("missing");
+            context
+                .emit_progress(clankers_tool_host::ToolProgressKind::Progress, format!("neutral value: {value}"))
+                .ok();
+            let key = clankers_tool_host::ToolStorageKey::new("fixture", "value");
+            let storage = context.storage.as_ref().expect("storage service present");
+            storage
+                .write(clankers_tool_host::ToolStorageWriteRequest {
+                    key: key.clone(),
+                    value: clankers_tool_host::ToolStorageValue::new(value.as_bytes().to_vec()),
+                })
+                .expect("storage write should pass");
+            let stored = storage
+                .read(clankers_tool_host::ToolStorageReadRequest { key })
+                .expect("storage read should pass")
+                .value
+                .expect("stored value should exist");
+            let search = context.search.as_ref().expect("search service present");
+            let hits = search
+                .search(clankers_tool_host::ToolSearchRequest::new(value, 1))
+                .expect("search should pass")
+                .hits;
+            let stored_text = String::from_utf8(stored.bytes).expect("storage bytes should be utf8");
+            AgentToolResult::text(format!("stored={stored_text}; search={}", hits[0].snippet))
+        }
+    }
+
+    impl clankers_tool_host::ToolStorageService for FakeNeutralStorage {
+        fn read(
+            &self,
+            _request: clankers_tool_host::ToolStorageReadRequest,
+        ) -> std::result::Result<clankers_tool_host::ToolStorageReadResult, clankers_tool_host::ToolHostError> {
+            let writes = self.writes.lock().expect("storage lock");
+            let value = writes.last().map(|write| write.value.clone());
+            Ok(clankers_tool_host::ToolStorageReadResult { value })
+        }
+
+        fn write(
+            &self,
+            request: clankers_tool_host::ToolStorageWriteRequest,
+        ) -> std::result::Result<clankers_tool_host::ToolStorageWriteResult, clankers_tool_host::ToolHostError>
+        {
+            self.writes.lock().expect("storage lock").push(request);
+            Ok(clankers_tool_host::ToolStorageWriteResult {
+                stored: true,
+                metadata: std::collections::BTreeMap::new(),
+            })
+        }
+    }
+
+    impl clankers_tool_host::ToolSearchService for FakeNeutralSearch {
+        fn search(
+            &self,
+            request: clankers_tool_host::ToolSearchRequest,
+        ) -> std::result::Result<clankers_tool_host::ToolSearchResult, clankers_tool_host::ToolHostError> {
+            self.queries.lock().expect("search lock").push(request.query.clone());
+            Ok(clankers_tool_host::ToolSearchResult {
+                hits: vec![clankers_tool_host::ToolSearchHit::new("fixture", request.query, 1)],
+            })
+        }
+    }
+
+    #[async_trait]
+    impl LegacyToolRunner for PanicLegacyRunner {
+        async fn execute_legacy_tool(&self, _tool: Arc<dyn Tool>, _call_id: String, _input: Value) -> ToolExecResult {
+            panic!("neutral tool path must not invoke legacy runner")
         }
     }
 
@@ -1222,6 +1350,56 @@ mod tests {
             "wasm-plugin:wasm_tool",
             "stdio-plugin:stdio_tool"
         ]);
+    }
+
+    #[tokio::test]
+    async fn controller_tool_executor_runs_neutral_storage_search_progress_path() {
+        let storage = Arc::new(FakeNeutralStorage {
+            writes: std::sync::Mutex::new(Vec::new()),
+        });
+        let search = Arc::new(FakeNeutralSearch {
+            queries: std::sync::Mutex::new(Vec::new()),
+        });
+        let mut tools: HashMap<String, Arc<dyn Tool>> = HashMap::new();
+        tools.insert("neutral_storage_search".to_string(), Arc::new(NeutralStorageSearchProgressTool::new()));
+        let tool_calls =
+            vec![("call-neutral".to_string(), "neutral_storage_search".to_string(), json!({"value": "needle"}))];
+        let (event_tx, mut rx) = broadcast::channel(16);
+        let services = ControllerToolServices {
+            events: Arc::new(BroadcastAgentToolEventSink {
+                event_tx: event_tx.clone(),
+            }),
+            progress: Arc::new(AgentEventProgressSink {
+                event_tx: event_tx.clone(),
+            }),
+            cancellation: Arc::new(TokenToolCancellationService {
+                cancel: CancellationToken::new(),
+            }),
+            storage: Some(storage.clone()),
+            search: Some(search.clone()),
+            hooks: None,
+            capability: None,
+            legacy_runner: Arc::new(PanicLegacyRunner),
+            steel_tool_substrate: None,
+        };
+
+        let results = execute_tools_parallel_with_substrate(&tools, &tool_calls, services).await;
+
+        assert_eq!(results.len(), 1);
+        assert!(!results[0].is_error);
+        assert!(
+            matches!(&results[0].content[0], Content::Text { text } if text.contains("stored=needle; search=needle"))
+        );
+        assert_eq!(storage.writes.lock().expect("storage lock").len(), 1);
+        assert_eq!(search.queries.lock().expect("search lock").as_slice(), &["needle".to_string()]);
+        let mut saw_progress = false;
+        while let Ok(event) = rx.try_recv() {
+            if let AgentEvent::ToolExecutionUpdate { call_id, partial } = event {
+                saw_progress = call_id == "call-neutral"
+                    && matches!(&partial.content[0], crate::tool::ToolResultContent::Text { text } if text.contains("neutral value: needle"));
+            }
+        }
+        assert!(saw_progress, "expected neutral progress event");
     }
 
     #[test]

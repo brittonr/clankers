@@ -637,6 +637,8 @@ fn agent_turn_ports_signature() -> Result<Value, String> {
             "ToolCancellationService",
             "neutral cancellation service field",
         ),
+        ("ControllerToolServices", "storage", "ToolStorageService", "neutral storage service field"),
+        ("ControllerToolServices", "search", "ToolSearchService", "neutral search service field"),
         ("ControllerToolServices", "hooks", "ToolHookService", "neutral hook service field"),
         ("ControllerToolServices", "capability", "ToolCapabilityService", "neutral capability service field"),
         (

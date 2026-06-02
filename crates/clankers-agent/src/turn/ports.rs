@@ -15,6 +15,8 @@ use clankers_tool_host::ToolHostServiceKind;
 use clankers_tool_host::ToolHostServices;
 use clankers_tool_host::ToolInvocationContext;
 use clankers_tool_host::ToolProgressSink;
+use clankers_tool_host::ToolSearchService;
+use clankers_tool_host::ToolStorageService;
 use serde_json::Value;
 use tokio::sync::broadcast;
 use tokio_util::sync::CancellationToken;
@@ -204,11 +206,27 @@ pub(crate) const CONTROLLER_TOOL_PORT_SERVICE_INVENTORY: &[AgentToolServiceInven
     },
     AgentToolServiceInventoryEntry {
         kind: AgentToolServiceKind::Storage,
+        owner: AgentToolServiceOwner::ControllerNeutralToolServices,
+        field: "storage",
+        concrete_type: "ToolStorageService",
+        replacement: "neutral storage service",
+        convergence: "move storage access behind explicit missing-service/error receipts",
+    },
+    AgentToolServiceInventoryEntry {
+        kind: AgentToolServiceKind::SearchIndex,
+        owner: AgentToolServiceOwner::ControllerNeutralToolServices,
+        field: "search",
+        concrete_type: "ToolSearchService",
+        replacement: "neutral search service",
+        convergence: "move search access behind explicit missing-service/error receipts",
+    },
+    AgentToolServiceInventoryEntry {
+        kind: AgentToolServiceKind::Storage,
         owner: AgentToolServiceOwner::LegacyToolRunner,
         field: "legacy_runner",
         concrete_type: "LegacyToolRunner",
-        replacement: "neutral storage/search service",
-        convergence: "move storage access behind explicit missing-service/error receipts",
+        replacement: "legacy storage/search compatibility runner",
+        convergence: "remove once concrete DB/search users migrate to neutral services",
     },
     AgentToolServiceInventoryEntry {
         kind: AgentToolServiceKind::CapabilityGate,
@@ -335,6 +353,8 @@ pub(crate) struct ControllerToolServices {
     pub(crate) events: Arc<dyn AgentToolEventSink>,
     pub(crate) progress: Arc<dyn ToolProgressSink>,
     pub(crate) cancellation: Arc<dyn ToolCancellationService>,
+    pub(crate) storage: Option<Arc<dyn ToolStorageService>>,
+    pub(crate) search: Option<Arc<dyn ToolSearchService>>,
     pub(crate) hooks: Option<Arc<dyn ToolHookService>>,
     pub(crate) capability: Option<Arc<dyn ToolCapabilityService>>,
     pub(crate) legacy_runner: Arc<dyn LegacyToolRunner>,
@@ -346,6 +366,12 @@ impl ControllerToolServices {
         let mut services = ToolHostServices::empty()
             .with_service(ToolHostServiceHandle::available(ToolHostServiceKind::Progress))
             .with_service(ToolHostServiceHandle::available(ToolHostServiceKind::Cancellation));
+        if self.storage.is_some() {
+            services = services.with_service(ToolHostServiceHandle::available(ToolHostServiceKind::Storage));
+        }
+        if self.search.is_some() {
+            services = services.with_service(ToolHostServiceHandle::available(ToolHostServiceKind::Search));
+        }
         if self.hooks.is_some() {
             services = services.with_service(ToolHostServiceHandle::available(ToolHostServiceKind::Hooks));
         }
@@ -357,6 +383,12 @@ impl ControllerToolServices {
             .with_services(services)
             .with_progress_sink(self.progress.clone())
             .with_cancellation_service(self.cancellation.clone());
+        if let Some(storage) = &self.storage {
+            context = context.with_storage_service(storage.clone());
+        }
+        if let Some(search) = &self.search {
+            context = context.with_search_service(search.clone());
+        }
         if let Some(hooks) = &self.hooks {
             context = context.with_hook_service(hooks.clone());
         }
@@ -523,6 +555,7 @@ mod tests {
             AgentToolServiceKind::Hooks,
             AgentToolServiceKind::SessionIdentity,
             AgentToolServiceKind::Storage,
+            AgentToolServiceKind::SearchIndex,
             AgentToolServiceKind::CapabilityGate,
             AgentToolServiceKind::UserToolFilter,
             AgentToolServiceKind::SteelSubstratePolicy,
@@ -533,6 +566,8 @@ mod tests {
             "controller_tools",
             "progress",
             "cancellation",
+            "storage",
+            "search",
             "hooks",
             "metadata",
             "legacy_runner",

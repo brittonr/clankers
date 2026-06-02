@@ -1128,6 +1128,27 @@ mod tests {
     }
 
     #[test]
+    fn neutral_hook_service_fixtures_cover_continue_modify_and_deny() {
+        let call = engine_tool_call("read");
+        for decision in [
+            ToolHookDecision::Continue,
+            ToolHookDecision::Modify {
+                input: serde_json::json!({"path": "safe"}),
+            },
+            ToolHookDecision::Deny {
+                reason: "blocked".to_string(),
+            },
+        ] {
+            let hooks = FakeHookService {
+                decision: decision.clone(),
+            };
+            let request = ToolHookRequest::before(call.call_id.0.clone(), call.tool_name.clone(), call.input.clone());
+            let observed = block_on(hooks.decide(request)).expect("hook decision");
+            assert_eq!(observed, decision);
+        }
+    }
+
+    #[test]
     fn neutral_service_contracts_cover_storage_search_hooks_capability_cancellation_and_runtime_policy() {
         let storage = Arc::new(FakeStorageService::default());
         let search = Arc::new(FakeSearchService);
@@ -1179,11 +1200,11 @@ mod tests {
             .expect("search service")
             .search(ToolSearchRequest::new("needle", 5))
             .expect("search");
-        let hook_future = context
-            .hooks
-            .as_ref()
-            .expect("hook service")
-            .decide(ToolHookRequest::before("call-1", "read", serde_json::json!({"path": "unsafe"})));
+        let hook_future = context.hooks.as_ref().expect("hook service").decide(ToolHookRequest::before(
+            "call-1",
+            "read",
+            serde_json::json!({"path": "unsafe"}),
+        ));
         let hook_decision = block_on(hook_future).expect("hook decision");
         let capability_decision = context
             .capability_service
@@ -1191,11 +1212,8 @@ mod tests {
             .expect("capability service")
             .check(ToolCapabilityRequest::new("call-1", "read", serde_json::json!({"path": "safe"})))
             .expect("capability decision");
-        let cancellation_state = context
-            .cancellation_service
-            .as_ref()
-            .expect("cancellation service")
-            .cancellation_state("call-1");
+        let cancellation_state =
+            context.cancellation_service.as_ref().expect("cancellation service").cancellation_state("call-1");
         let runtime_decision = context
             .runtime_policy
             .as_ref()

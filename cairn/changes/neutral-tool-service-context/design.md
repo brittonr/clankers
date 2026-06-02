@@ -19,7 +19,9 @@ The I1 source inventory is checked into `crates/clankers-agent/src/turn/ports.rs
 
 The I2 neutral service contracts live in `crates/clankers-tool-host/src/lib.rs` and intentionally use semantic DTOs only: `ToolStorageService`, `ToolSearchService`, `ToolHookService`, `ToolProgressSink`, `ToolCapabilityService`, `ToolCancellationService`, and `ToolRuntimePolicyService`. `ToolInvocationContext` can carry these services by `Arc<dyn ...>` while the old handle inventory remains available during migration.
 
-The I3 controller port migration keeps concrete desktop handles at adapter construction: `ControllerToolServices::from_concrete(...)` builds neutral progress, cancellation, hook, and capability services plus a legacy runner. Reusable tool execution now consumes `ControllerToolServices` through neutral service traits and invokes legacy tools through `LegacyToolRunner`; the runner remains the compatibility edge that constructs old `ToolContext` until representative storage/search tools migrate.
+The I3 controller port migration keeps concrete desktop handles at adapter construction: `ControllerToolServices::from_concrete(...)` builds neutral progress, cancellation, hook, and capability services plus a legacy runner. Reusable tool execution now consumes `ControllerToolServices` through neutral service traits and invokes legacy tools through `LegacyToolRunner`; the runner remains the compatibility edge that constructs old `ToolContext` until concrete production tools migrate.
+
+The I4 representative migration adds the `Tool::uses_neutral_tool_context()` / `execute_with_neutral_context(...)` seam and a deterministic neutral-native controller tool path that requires storage and search services, emits neutral progress, and panics if the legacy runner is used. This proves the controller executor can run storage/search and hook/progress paths through `ToolInvocationContext` before moving a production tool off `ToolContext`.
 
 ## Decisions
 
