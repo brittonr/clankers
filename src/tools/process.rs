@@ -85,7 +85,9 @@ use super::ToolDefinition;
 use super::ToolResult;
 
 mod adapter;
+mod native;
 use adapter::ProcessToolJsonAdapter;
+use native::NativeProcessJobBackendAdapter;
 
 const DEFAULT_LOG_LIMIT: usize = 200;
 const MAX_COMMAND_PREVIEW_LEN: usize = 200;
@@ -505,63 +507,7 @@ impl Default for NativeProcessJobService {
 #[async_trait]
 impl ProcessJobService for NativeProcessJobService {
     async fn start(&self, request: StartProcessJobRequest) -> Result<ProcessJobReceipt, RuntimeError> {
-        if request.backend != ProcessJobBackendKind::Native {
-            return Ok(unsupported_backend_receipt(
-                ProcessJobOperation::Start,
-                None,
-                request.backend,
-                "current process tool default service supports only native backend",
-            ));
-        }
-        let admission = match ProcessTool::reserve_native_start() {
-            Ok(admission) => admission,
-            Err(decision) => return Ok(ProcessTool::admission_denied_receipt(decision)),
-        };
-
-        let (display_command, mut child) = spawn_from_start_request(&request)?;
-        let pid = child.id();
-        let stdin = child.stdin.take();
-        let stdout = child.stdout.take().ok_or_else(|| {
-            RuntimeError::InvalidTool("failed to capture stdout from native background process".to_string())
-        })?;
-        let stderr = child.stderr.take().ok_or_else(|| {
-            RuntimeError::InvalidTool("failed to capture stderr from native background process".to_string())
-        })?;
-        let (kill_tx, kill_rx) = oneshot::channel();
-        let id = ProcessTool::next_native_job_id(&request);
-        let id_string = id.0.clone();
-        let entry = Arc::new(ProcessEntry::new(
-            id_string.clone(),
-            display_command,
-            request.clone(),
-            stdin,
-            kill_tx,
-            pid,
-            request.notification_policy.clone(),
-            ProcessJobProfileReceiptMetadata::from_metadata(&request.metadata),
-        ));
-        let backend_ref = entry.backend_ref.clone();
-        ProcessTool::insert(entry.clone());
-        admission.release();
-        spawn_reader(entry.clone(), "stdout", stdout);
-        spawn_reader(entry, "stderr", stderr);
-        spawn_waiter(ProcessTool::get(&id_string).expect("inserted native process entry"), child, pid, kill_rx, None);
-
-        Ok(ProcessJobReceipt {
-            operation: ProcessJobOperation::Start,
-            id: Some(id.clone()),
-            backend: Some(ProcessJobBackendKind::Native),
-            status: Some(ProcessJobStatus::Running),
-            backend_ref,
-            log_refs: Vec::new(),
-            profile: ProcessJobProfileReceiptMetadata::from_metadata(&request.metadata),
-            summary: format!(
-                "Started background process {} (pid: {})",
-                id.0,
-                pid.map(|p| p.to_string()).unwrap_or_else(|| "unknown".to_string())
-            ),
-            error: None,
-        })
+        start_native_process_job(request, self.db.clone(), None, None).await
     }
 
     async fn list(&self, filter: ProcessJobFilter) -> Result<Vec<ProcessJobSummary>, RuntimeError> {
@@ -1918,6 +1864,82 @@ fn native_restart_failed_receipt(id: ProcessJobId, message: impl Into<String>) -
     }
 }
 
+async fn start_native_process_job(
+    request: StartProcessJobRequest,
+    db: Option<clankers_db::Db>,
+    process_monitor: Option<&clankers_procmon::ProcessMonitorHandle>,
+    call_id: Option<&str>,
+) -> Result<ProcessJobReceipt, RuntimeError> {
+    if request.backend != ProcessJobBackendKind::Native {
+        return Ok(unsupported_backend_receipt(
+            ProcessJobOperation::Start,
+            None,
+            request.backend,
+            "current process tool default service supports only native backend",
+        ));
+    }
+    let admission = match ProcessTool::reserve_native_start() {
+        Ok(admission) => admission,
+        Err(decision) => return Ok(ProcessTool::admission_denied_receipt(decision)),
+    };
+
+    let (display_command, mut child) = spawn_from_start_request(&request)?;
+    let pid = child.id();
+    let stdin = child.stdin.take();
+    let stdout = child
+        .stdout
+        .take()
+        .ok_or_else(|| RuntimeError::InvalidTool("failed to capture stdout from native background process".to_string()))?;
+    let stderr = child
+        .stderr
+        .take()
+        .ok_or_else(|| RuntimeError::InvalidTool("failed to capture stderr from native background process".to_string()))?;
+    let (kill_tx, kill_rx) = oneshot::channel();
+    let id = ProcessTool::next_native_job_id(&request);
+    let entry = Arc::new(ProcessEntry::new(
+        id.0.clone(),
+        display_command,
+        request.clone(),
+        stdin,
+        kill_tx,
+        pid,
+        request.notification_policy.clone(),
+        ProcessJobProfileReceiptMetadata::from_metadata(&request.metadata),
+    ));
+    let backend_ref = entry.backend_ref.clone();
+    ProcessTool::insert(entry.clone());
+    admission.release();
+    if let Some(monitor) = process_monitor
+        && let Some(pid) = pid
+    {
+        monitor.register(pid, clankers_procmon::ProcessMeta {
+            tool_name: "process".to_string(),
+            command: ProcessJobRedactionPolicy::default().safe_command_preview(&entry.command),
+            call_id: call_id.unwrap_or("process-start").to_string(),
+        });
+    }
+    persist_entry(db.as_ref(), &entry).await;
+    spawn_reader(entry.clone(), "stdout", stdout);
+    spawn_reader(entry.clone(), "stderr", stderr);
+    spawn_waiter(entry, child, pid, kill_rx, db);
+
+    Ok(ProcessJobReceipt {
+        operation: ProcessJobOperation::Start,
+        id: Some(id.clone()),
+        backend: Some(ProcessJobBackendKind::Native),
+        status: Some(ProcessJobStatus::Running),
+        backend_ref,
+        log_refs: Vec::new(),
+        profile: ProcessJobProfileReceiptMetadata::from_metadata(&request.metadata),
+        summary: format!(
+            "Started background process {} (pid: {})",
+            id.0,
+            pid.map(|p| p.to_string()).unwrap_or_else(|| "unknown".to_string())
+        ),
+        error: None,
+    })
+}
+
 async fn stop_native_entry_for_restart(entry: &ProcessEntry) -> bool {
     if entry.status().is_done() {
         return true;
@@ -2889,82 +2911,17 @@ impl ProcessTool {
                 Err(error) => ToolResult::error(error.to_string()),
             };
         }
-        let admission = match Self::reserve_native_start() {
-            Ok(admission) => admission,
-            Err(decision) => {
-                let receipt = Self::admission_denied_receipt(decision);
-                let payload = serde_json::to_string(&receipt).unwrap_or_else(|_| receipt.summary.clone());
-                return ToolResult::error(payload);
-            }
-        };
-
-        let (display_command, mut child) = match spawn_from_start_request(&request) {
-            Ok(spec) => spec,
-            Err(error) => return ToolResult::error(error.to_string()),
-        };
-        let pid = child.id();
-        let stdin = child.stdin.take();
-        let stdout = match child.stdout.take() {
-            Some(stdout) => stdout,
-            None => {
-                admission.release();
-                return ToolResult::error("Failed to capture stdout from background process");
-            }
-        };
-        let stderr = match child.stderr.take() {
-            Some(stderr) => stderr,
-            None => {
-                admission.release();
-                return ToolResult::error("Failed to capture stderr from background process");
-            }
-        };
-        let notification_policy = request.notification_policy.clone();
-        let (kill_tx, kill_rx) = oneshot::channel();
-        let id = Self::next_native_job_id(&request).0;
-        let entry = Arc::new(ProcessEntry::new(
-            id.clone(),
-            display_command.clone(),
-            request.clone(),
-            stdin,
-            kill_tx,
-            pid,
-            notification_policy,
-            ProcessJobProfileReceiptMetadata::from_metadata(&request.metadata),
-        ));
-        Self::insert(entry.clone());
-        admission.release();
-
-        if let Some(ref monitor) = self.process_monitor
-            && let Some(pid) = pid
+        match NativeProcessJobBackendAdapter::for_invocation(
+            ctx.db().cloned(),
+            self.process_monitor.clone(),
+            ctx.call_id.clone(),
+        )
+        .start(request)
+        .await
         {
-            let command_preview: String = display_command.chars().take(MAX_COMMAND_PREVIEW_LEN).collect();
-            monitor.register(pid, clankers_procmon::ProcessMeta {
-                tool_name: "process".to_string(),
-                command: command_preview,
-                call_id: ctx.call_id.clone(),
-            });
+            Ok(receipt) => Self::tool_receipt_result(ProcessJobToolResult::Start(receipt)),
+            Err(error) => ToolResult::error(error.to_string()),
         }
-
-        persist_entry(ctx.db(), &entry).await;
-        spawn_reader(entry.clone(), "stdout", stdout);
-        spawn_reader(entry.clone(), "stderr", stderr);
-        spawn_waiter(entry.clone(), child, pid, kill_rx, ctx.db().cloned());
-
-        let receipt = ProcessJobReceipt {
-            operation: ProcessJobOperation::Start,
-            id: Some(ProcessJobId(id.clone())),
-            backend: Some(ProcessJobBackendKind::Native),
-            status: Some(ProcessJobStatus::Running),
-            backend_ref: pid.map(|pid| BackendRef(format!("pid:{pid}"))),
-            log_refs: Vec::new(),
-            profile: ProcessJobProfileReceiptMetadata::from_metadata(&request.metadata),
-            summary: format!(
-                "Started background process {id} (pid: {})",
-                pid.map(|p| p.to_string()).unwrap_or_else(|| "unknown".to_string())
-            ),
-            error: None,
-        };
-        Self::receipt_result(receipt)
     }
 
     async fn handle_list(ctx: &ToolContext, params: &Value) -> ToolResult {
@@ -3384,12 +3341,12 @@ impl ProcessTool {
         if let Some(id) = Self::systemd_id(&session_id) {
             return Self::systemd_receipt_result(Self::systemd_service().restart(id).await).await;
         }
-        match restart_native_process_job(
-            request.id,
+        match NativeProcessJobBackendAdapter::for_invocation(
             ctx.db().cloned(),
-            self.process_monitor.as_ref(),
-            Some(ctx.call_id.as_str()),
+            self.process_monitor.clone(),
+            ctx.call_id.clone(),
         )
+        .restart(request.id)
         .await
         {
             Ok(receipt) => Self::receipt_result(receipt),

@@ -35,6 +35,7 @@ const CHANGE_SPEC_ARCHIVE: &str =
 const ACCEPTED_SPEC: &str = "cairn/specs/lego-architecture-boundaries/spec.md";
 const PROCESS_TOOL: &str = "src/tools/process.rs";
 const PROCESS_TOOL_ADAPTER: &str = "src/tools/process/adapter.rs";
+const PROCESS_TOOL_NATIVE: &str = "src/tools/process/native.rs";
 const AGENT_LIB: &str = "crates/clankers-agent/src/lib.rs";
 const AGENT_BUILDER: &str = "crates/clankers-agent/src/builder.rs";
 const AGENT_COMPACTION: &str = "crates/clankers-agent/src/compaction.rs";
@@ -202,6 +203,7 @@ fn run() -> Result<PathBuf, String> {
             hash_artifact(Path::new(ACCEPTED_SPEC))?,
             hash_artifact(Path::new(PROCESS_TOOL))?,
             hash_artifact(Path::new(PROCESS_TOOL_ADAPTER))?,
+            hash_artifact(Path::new(PROCESS_TOOL_NATIVE))?,
             hash_artifact(Path::new(AGENT_LIB))?,
             hash_artifact(Path::new(AGENT_BUILDER))?,
             hash_artifact(Path::new(AGENT_COMPACTION))?,
@@ -469,10 +471,14 @@ fn shared_dto_crates(reverse_map: &BTreeMap<String, BTreeSet<String>>) -> Vec<Va
 fn process_tool_adapter_signature() -> Result<Value, String> {
     let tool_file = read_rust_file(PROCESS_TOOL)?;
     let adapter_file = read_rust_file(PROCESS_TOOL_ADAPTER)?;
+    let native_file = read_rust_file(PROCESS_TOOL_NATIVE)?;
     let tool = &tool_file.source;
     let adapter = &adapter_file.source;
+    let native = &native_file.source;
     require_rust_mod(&tool_file, "adapter", "process tool adapter module")?;
+    require_rust_mod(&tool_file, "native", "process native backend adapter module")?;
     require_contains(&tool, "mod adapter;", "process tool adapter module")?;
+    require_contains(&tool, "mod native;", "process native backend adapter module")?;
     require_contains(
         &tool,
         "ProcessToolJsonAdapter::process_job_tool_request(params)",
@@ -491,9 +497,14 @@ fn process_tool_adapter_signature() -> Result<Value, String> {
     require_rust_path(&adapter_file, "ProcessJobToolRequest::Start", "process adapter typed start projection")?;
     require_contains(&adapter, "ProcessJobToolRequest::Start", "process adapter typed start projection")?;
     require_contains(&adapter, "Unknown process action", "process adapter fail-closed unsupported action")?;
+    require_rust_path(&native_file, "NativeProcessJobBackendAdapter", "process native backend adapter type")?;
+    require_contains(native, "super::start_native_process_job", "process native start delegation")?;
+    require_contains(native, "super::restart_native_process_job", "process native restart delegation")?;
+    require_contains(tool, "NativeProcessJobBackendAdapter::for_invocation", "process native adapter dispatch")?;
     let backend_ownership = process_backend_ownership_signature(&tool_file, tool)?;
     Ok(json!({
         "adapter_module": PROCESS_TOOL_ADAPTER,
+        "native_module": PROCESS_TOOL_NATIVE,
         "tool_module": PROCESS_TOOL,
         "storage_dto_imports": 0,
         "storage_dto_references": 0,
@@ -501,7 +512,8 @@ fn process_tool_adapter_signature() -> Result<Value, String> {
         "fail_closed_negative_path": "unsupported action returns ToolResult error before backend dispatch",
         "backend_ownership": backend_ownership,
         "backend_owner_count": 7,
-        "typed_rail_kind": "Rust AST module, method, path, forbidden dependency, and process backend ownership checks"
+        "native_backend_adapter": "NativeProcessJobBackendAdapter",
+        "typed_rail_kind": "Rust AST module, method, path, forbidden dependency, process native adapter, and backend ownership checks"
     }))
 }
 
