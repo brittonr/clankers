@@ -12,6 +12,7 @@ const RUNTIME_CONTRACTS: &str = "crates/clankers-runtime/src/process_jobs.rs";
 const TOOL: &str = "src/tools/process.rs";
 const TOOL_ADAPTER: &str = "src/tools/process/adapter.rs";
 const TOOL_PUEUE: &str = "src/tools/process/pueue.rs";
+const TOOL_SYSTEMD: &str = "src/tools/process/systemd.rs";
 
 const RUNTIME_MARKERS: &[&str] = &[
     "pub enum ProcessJobToolRequest",
@@ -38,7 +39,7 @@ const TOOL_MARKERS: &[&str] = &[
     "ProcessToolJsonAdapter::process_job_tool_request(params)",
     "struct NativeProcessJobService",
     "mod pueue;",
-    "struct SystemdProcessJobService",
+    "mod systemd;",
     "fn stored_record_from_entry",
     "fn stored_record_summary",
     "fn apply_process_job_retention",
@@ -93,6 +94,11 @@ fn run() -> Result<(), String> {
     let pueue = read(TOOL_PUEUE)?;
     for marker in ["trait PueueRunner", "struct PueueProcessJobService", "fn parse_pueue_tasks", "fn parse_pueue_log_text"] {
         require_contains(&pueue, marker, TOOL_PUEUE)?;
+    }
+
+    let systemd = read(TOOL_SYSTEMD)?;
+    for marker in ["trait SystemdRunner", "struct SystemdProcessJobService", "fn parse_systemd_show", "fn parse_systemd_list_units"] {
+        require_contains(&systemd, marker, TOOL_SYSTEMD)?;
     }
 
     Ok(())

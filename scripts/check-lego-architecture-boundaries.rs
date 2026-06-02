@@ -37,6 +37,7 @@ const PROCESS_TOOL: &str = "src/tools/process.rs";
 const PROCESS_TOOL_ADAPTER: &str = "src/tools/process/adapter.rs";
 const PROCESS_TOOL_NATIVE: &str = "src/tools/process/native.rs";
 const PROCESS_TOOL_PUEUE: &str = "src/tools/process/pueue.rs";
+const PROCESS_TOOL_SYSTEMD: &str = "src/tools/process/systemd.rs";
 const AGENT_LIB: &str = "crates/clankers-agent/src/lib.rs";
 const AGENT_BUILDER: &str = "crates/clankers-agent/src/builder.rs";
 const AGENT_COMPACTION: &str = "crates/clankers-agent/src/compaction.rs";
@@ -206,6 +207,7 @@ fn run() -> Result<PathBuf, String> {
             hash_artifact(Path::new(PROCESS_TOOL_ADAPTER))?,
             hash_artifact(Path::new(PROCESS_TOOL_NATIVE))?,
             hash_artifact(Path::new(PROCESS_TOOL_PUEUE))?,
+            hash_artifact(Path::new(PROCESS_TOOL_SYSTEMD))?,
             hash_artifact(Path::new(AGENT_LIB))?,
             hash_artifact(Path::new(AGENT_BUILDER))?,
             hash_artifact(Path::new(AGENT_COMPACTION))?,
@@ -475,16 +477,20 @@ fn process_tool_adapter_signature() -> Result<Value, String> {
     let adapter_file = read_rust_file(PROCESS_TOOL_ADAPTER)?;
     let native_file = read_rust_file(PROCESS_TOOL_NATIVE)?;
     let pueue_file = read_rust_file(PROCESS_TOOL_PUEUE)?;
+    let systemd_file = read_rust_file(PROCESS_TOOL_SYSTEMD)?;
     let tool = &tool_file.source;
     let adapter = &adapter_file.source;
     let native = &native_file.source;
     let pueue = &pueue_file.source;
+    let systemd = &systemd_file.source;
     require_rust_mod(&tool_file, "adapter", "process tool adapter module")?;
     require_rust_mod(&tool_file, "native", "process native backend adapter module")?;
     require_rust_mod(&tool_file, "pueue", "process pueue backend adapter module")?;
+    require_rust_mod(&tool_file, "systemd", "process systemd backend adapter module")?;
     require_contains(&tool, "mod adapter;", "process tool adapter module")?;
     require_contains(&tool, "mod native;", "process native backend adapter module")?;
     require_contains(&tool, "mod pueue;", "process pueue backend adapter module")?;
+    require_contains(&tool, "mod systemd;", "process systemd backend adapter module")?;
     require_contains(
         &tool,
         "ProcessToolJsonAdapter::process_job_tool_request(params)",
@@ -521,11 +527,20 @@ fn process_tool_adapter_signature() -> Result<Value, String> {
     require_contains(pueue, "fn parse_pueue_log_text", "process pueue log parser owner")?;
     forbid_contains(tool, "struct PueueTaskProjection", "process root pueue projection owner")?;
     forbid_contains(tool, "fn parse_pueue_", "process root pueue parser owner")?;
+    require_rust_path(&systemd_file, "SystemdProcessJobService", "process systemd backend service type")?;
+    require_rust_path(&systemd_file, "SystemdRunner", "process systemd fakeable runner trait")?;
+    require_contains(systemd, "pub(super) trait SystemdRunner", "process systemd fakeable runner trait")?;
+    require_contains(systemd, "pub(super) struct SystemdProcessJobService", "process systemd service owner")?;
+    require_contains(systemd, "fn parse_systemd_show", "process systemd show parser owner")?;
+    require_contains(systemd, "fn parse_systemd_list_units", "process systemd list parser owner")?;
+    forbid_contains(tool, "struct SystemdUnitProjection", "process root systemd projection owner")?;
+    forbid_contains(tool, "fn parse_systemd_", "process root systemd parser owner")?;
     let backend_ownership = process_backend_ownership_signature(&tool_file, tool)?;
     Ok(json!({
         "adapter_module": PROCESS_TOOL_ADAPTER,
         "native_module": PROCESS_TOOL_NATIVE,
         "pueue_module": PROCESS_TOOL_PUEUE,
+        "systemd_module": PROCESS_TOOL_SYSTEMD,
         "tool_module": PROCESS_TOOL,
         "storage_dto_imports": 0,
         "storage_dto_references": 0,
@@ -537,7 +552,9 @@ fn process_tool_adapter_signature() -> Result<Value, String> {
         "native_registry_owner": "ProcessRegistry in src/tools/process/native.rs",
         "pueue_backend_service": "PueueProcessJobService",
         "pueue_runner_owner": "PueueRunner in src/tools/process/pueue.rs",
-        "typed_rail_kind": "Rust AST module, method, path, forbidden dependency, process native adapter/registry, pueue runner/parser, and backend ownership checks"
+        "systemd_backend_service": "SystemdProcessJobService",
+        "systemd_runner_owner": "SystemdRunner in src/tools/process/systemd.rs",
+        "typed_rail_kind": "Rust AST module, method, path, forbidden dependency, process native adapter/registry, pueue runner/parser, systemd runner/parser, and backend ownership checks"
     }))
 }
 
@@ -561,7 +578,7 @@ fn process_backend_ownership_signature(tool_file: &RustFile, tool: &str) -> Resu
         ),
         (
             "SystemdBackend",
-            "src/tools/process/systemd.rs::SystemdProcessJobBackendAdapter",
+            "src/tools/process/systemd.rs::SystemdProcessJobService",
             "select systemd backend and surface degraded unsupported receipts",
         ),
         (

@@ -479,7 +479,7 @@
         {
           "cluster": "SystemdBackend",
           "root_accountability": "select systemd backend and surface degraded unsupported receipts",
-          "target_owner": "src/tools/process/systemd.rs::SystemdProcessJobBackendAdapter"
+          "target_owner": "src/tools/process/systemd.rs::SystemdProcessJobService"
         },
         {
           "cluster": "DurableStorage",
@@ -505,10 +505,13 @@
       "pueue_module": "src/tools/process/pueue.rs",
       "pueue_runner_owner": "PueueRunner in src/tools/process/pueue.rs",
       "request_parser_owner": "ProcessToolJsonAdapter",
+      "systemd_backend_service": "SystemdProcessJobService",
+      "systemd_module": "src/tools/process/systemd.rs",
+      "systemd_runner_owner": "SystemdRunner in src/tools/process/systemd.rs",
       "storage_dto_imports": 0,
       "storage_dto_references": 0,
       "tool_module": "src/tools/process.rs",
-      "typed_rail_kind": "Rust AST module, method, path, forbidden dependency, process native adapter/registry, pueue runner/parser, and backend ownership checks"
+      "typed_rail_kind": "Rust AST module, method, path, forbidden dependency, process native adapter/registry, pueue runner/parser, systemd runner/parser, and backend ownership checks"
     },
     "provider_router_bridge": {
       "bridge_module": "crates/clankers-provider/src/router_request_bridge.rs",
