@@ -544,3 +544,163 @@ pub(super) fn format_log_refs(refs: &[StoredProcessJobLogRef]) -> String {
     }
     refs.iter().map(|log_ref| log_ref.reference.as_str()).collect::<Vec<_>>().join(", ")
 }
+
+#[cfg(test)]
+mod tests {
+    use std::time::Duration;
+
+    use tokio::sync::oneshot;
+
+    use super::super::*;
+    use super::*;
+
+    fn native_start_request(command: &str) -> StartProcessJobRequest {
+        StartProcessJobRequest {
+            backend: ProcessJobBackendKind::Native,
+            command_preview: command.to_string(),
+            program: None,
+            args: Vec::new(),
+            shell_command: Some(command.to_string()),
+            cwd: ProcessJobCwd::Inherited,
+            owner: ProcessJobOwnerScope::DaemonGlobal,
+            resource_policy: clankers_runtime::process_jobs::ProcessJobResourcePolicy::default(),
+            notification_policy: ProcessJobNotificationPolicy::default(),
+            metadata: std::collections::BTreeMap::default(),
+        }
+    }
+
+    #[tokio::test]
+    async fn durable_policy_helpers_project_redacted_reconciliation_gc_and_notifications_without_root_tool() {
+        let db = clankers_db::Db::in_memory().expect("db opens");
+        let temp = tempfile::tempdir().expect("tempdir");
+        let old = Utc::now() - chrono::Duration::days(30);
+        let mut expired = StoredProcessJobRecord::new_native(
+            "proc_durable_policy_expired",
+            "printf token=raw-token",
+            StoredProcessJobOwnerScope::DaemonGlobal,
+        );
+        expired.status = StoredProcessJobStatus::Succeeded { exit_code: Some(0) };
+        expired.started_at = old;
+        expired.updated_at = old;
+        expired.completed_at = Some(old);
+        expired.log_refs = vec![StoredProcessJobLogRef {
+            stream: StoredProcessJobStream::Combined,
+            reference: "native:proc_durable_policy_expired/combined.log".to_string(),
+            retained_until: None,
+            max_bytes: Some(17),
+        }];
+        assert!(!expired.command_preview.contains("raw-token"), "{}", expired.command_preview);
+        assert!(expired.command_preview.contains("[REDACTED]"), "{}", expired.command_preview);
+        let log_path = temp.path().join("proc_durable_policy_expired").join("combined.log");
+        std::fs::create_dir_all(log_path.parent().expect("log parent")).expect("log dir");
+        std::fs::write(&log_path, b"expired durable").expect("log write");
+        db.async_process_jobs().upsert(expired).await.expect("insert expired");
+
+        let receipt = apply_process_job_retention(
+            Some(&db),
+            ProcessJobRetentionPolicy {
+                max_age: Some(Duration::from_secs(1)),
+                max_records: None,
+                max_log_bytes: None,
+            },
+            Some(temp.path().to_path_buf()),
+            ProcessJobFilter::default(),
+        )
+        .await;
+        assert_eq!(receipt.removed_records, vec![ProcessJobId("proc_durable_policy_expired".to_string())]);
+        assert_eq!(receipt.deleted_native_log_files, 1);
+        assert!(!log_path.exists());
+
+        let current_pid = std::process::id();
+        let mut running = StoredProcessJobRecord::new_native(
+            "proc_durable_policy_running",
+            "sleep token=raw-token",
+            StoredProcessJobOwnerScope::DaemonGlobal,
+        );
+        running.status = StoredProcessJobStatus::Running;
+        running.os_pid = Some(current_pid);
+        running.log_refs = vec![StoredProcessJobLogRef {
+            stream: StoredProcessJobStream::Combined,
+            reference: "native:proc_durable_policy_running/combined.log".to_string(),
+            retained_until: None,
+            max_bytes: Some(1),
+        }];
+        db.async_process_jobs().upsert(running).await.expect("insert running");
+        let reconciled = reconcile_durable_native_process_jobs(&db).await;
+        let reconciled_running = reconciled
+            .iter()
+            .find(|record| record.id == "proc_durable_policy_running")
+            .expect("running record reconciled");
+        assert_eq!(reconciled_running.status, StoredProcessJobStatus::Running);
+        assert_eq!(
+            reconciled_running.safe_metadata.get("reconciliation").map(String::as_str),
+            Some("reattached")
+        );
+
+        let mut degraded = StoredProcessJobRecord::new_native(
+            "proc_durable_policy_degraded",
+            "printf token=raw-token",
+            StoredProcessJobOwnerScope::DaemonGlobal,
+        );
+        degraded.status = StoredProcessJobStatus::LostAfterRestart;
+        degraded.safe_metadata.insert("reconciliation".to_string(), "lost-after-restart".to_string());
+        degraded.log_refs = vec![StoredProcessJobLogRef {
+            stream: StoredProcessJobStream::Combined,
+            reference: "native:proc_durable_policy_degraded/combined.log".to_string(),
+            retained_until: None,
+            max_bytes: Some(9),
+        }];
+        let mut summary = stored_record_summary(&degraded);
+        append_log_degradation(&mut summary, &degraded, Some(&temp.path().to_path_buf()));
+        let degraded_message = durable_degraded_log_message(&degraded, Some(&temp.path().to_path_buf()));
+        assert!(degraded_message.contains("degraded reconciliation"), "{degraded_message}");
+        let degraded_json = serde_json::to_string(&summary).expect("summary serializes");
+        assert!(!degraded_json.contains("raw-token"), "{degraded_json}");
+        assert!(degraded_json.contains("[REDACTED]"), "{degraded_json}");
+        assert!(degraded_json.contains("log_unavailable:native_missing"), "{degraded_json}");
+
+        let (kill_tx, _kill_rx) = oneshot::channel();
+        let entry = ProcessEntry::new(
+            "proc_durable_policy_notify".to_string(),
+            "printf token=raw-token".to_string(),
+            native_start_request("printf token=raw-token"),
+            None,
+            kill_tx,
+            None,
+            ProcessJobNotificationPolicy {
+                notify_on_complete: true,
+                watch_patterns: vec!["READY".to_string()],
+            },
+            None,
+        );
+        evaluate_process_entry_notification(
+            &entry,
+            ProcessJobNotificationObservation {
+                status: ProcessJobStatus::Running,
+                line: Some("READY token=raw-token".to_string()),
+                tick: 0,
+            },
+        )
+        .await;
+        entry.set_status(ProcessStatus::Exited {
+            code: Some(0),
+            elapsed: Duration::from_secs(0),
+        });
+        evaluate_process_entry_notification(
+            &entry,
+            ProcessJobNotificationObservation {
+                status: entry.job_status(),
+                line: Some("done token=raw-token".to_string()),
+                tick: 20,
+            },
+        )
+        .await;
+        let events = entry.drain_new_notifications();
+        assert_eq!(events.len(), 2, "{events:?}");
+        assert!(events.iter().any(|event| matches!(event.kind, ProcessJobNotificationKind::WatchPattern { .. })));
+        assert!(events.iter().any(|event| matches!(event.kind, ProcessJobNotificationKind::Completion)));
+        let events_json = serde_json::to_string(&events).expect("events serialize");
+        assert!(!events_json.contains("raw-token"), "{events_json}");
+        assert!(events_json.contains("[REDACTED]"), "{events_json}");
+    }
+}

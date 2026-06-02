@@ -12,6 +12,7 @@ const RUNTIME_CONTRACTS: &str = "crates/clankers-runtime/src/process_jobs.rs";
 const TOOL: &str = "src/tools/process.rs";
 const TOOL_ADAPTER: &str = "src/tools/process/adapter.rs";
 const TOOL_DURABLE: &str = "src/tools/process/durable.rs";
+const TOOL_NATIVE: &str = "src/tools/process/native.rs";
 const TOOL_PUEUE: &str = "src/tools/process/pueue.rs";
 const TOOL_SYSTEMD: &str = "src/tools/process/systemd.rs";
 
@@ -91,8 +92,22 @@ fn run() -> Result<(), String> {
     }
 
     let durable = read(TOOL_DURABLE)?;
-    for marker in ["fn stored_record_from_entry", "fn apply_process_job_retention", "fn durable_degraded_log_message"] {
+    for marker in [
+        "fn stored_record_from_entry",
+        "fn apply_process_job_retention",
+        "fn durable_degraded_log_message",
+        "durable_policy_helpers_project_redacted_reconciliation_gc_and_notifications_without_root_tool",
+    ] {
         require_contains(&durable, marker, TOOL_DURABLE)?;
+    }
+
+    let native = read(TOOL_NATIVE)?;
+    for marker in [
+        "struct NativeProcessJobBackendAdapter",
+        "fn start_native_process_job",
+        "native_backend_in_memory_fixture_projects_list_poll_log_and_errors_without_spawning",
+    ] {
+        require_contains(&native, marker, TOOL_NATIVE)?;
     }
 
     let pueue = read(TOOL_PUEUE)?;

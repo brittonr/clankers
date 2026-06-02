@@ -8,6 +8,6 @@
 
 ## Phase 2: Verification
 
-- [ ] [serial] V1: Add focused fake-runner/backend fixtures for native, pueue, and systemd start/list/poll/log/error paths without requiring live host services. r[process-job-backend-adapters.verification.backend-fixtures] [covers=process-job-backend-adapters.verification.backend-fixtures]
-- [ ] [serial] V2: Add retention/reconciliation/notification fixtures proving policy lives outside `src/tools/process.rs` and returns typed redacted receipts. r[process-job-backend-adapters.durable-policy.no-root-tool] [covers=process-job-backend-adapters.durable-policy.no-root-tool]
-- [ ] [serial] V3: Run process-job focused tests, `cargo check --tests` for touched crates, `./scripts/check-lego-architecture-boundaries.rs`, Cairn gates/validate for this change, and `git diff --check`. r[process-job-backend-adapters.verification.closeout] [covers=process-job-backend-adapters.verification.closeout]
+- [x] [serial] V1: Add focused fake-runner/backend fixtures for native, pueue, and systemd start/list/poll/log/error paths without requiring live host services. r[process-job-backend-adapters.verification.backend-fixtures] [covers=process-job-backend-adapters.verification.backend-fixtures] [evidence=evidence/backend-fixtures.md]
+- [x] [serial] V2: Add retention/reconciliation/notification fixtures proving policy lives outside `src/tools/process.rs` and returns typed redacted receipts. r[process-job-backend-adapters.durable-policy.no-root-tool] [covers=process-job-backend-adapters.durable-policy.no-root-tool] [evidence=evidence/durable-policy-fixtures.md]
+- [x] [serial] V3: Run process-job focused tests, `cargo check --tests` for touched crates, `./scripts/check-lego-architecture-boundaries.rs`, Cairn gates/validate for this change, and `git diff --check`. r[process-job-backend-adapters.verification.closeout] [covers=process-job-backend-adapters.verification.closeout] [evidence=evidence/closeout-validation.md]

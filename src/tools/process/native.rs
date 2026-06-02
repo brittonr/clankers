@@ -422,3 +422,105 @@ async fn terminate_process_group(pid: Option<u32>, child: &mut tokio::process::C
     let _ = child.wait().await;
     NativeTerminationOutcome::DirectKill
 }
+
+#[cfg(test)]
+mod tests {
+    use std::sync::Arc;
+    use std::time::Duration;
+
+    use chrono::Utc;
+    use tokio::sync::oneshot;
+
+    use super::super::*;
+    use super::*;
+
+    fn native_start_request(command: &str) -> StartProcessJobRequest {
+        StartProcessJobRequest {
+            backend: ProcessJobBackendKind::Native,
+            command_preview: command.to_string(),
+            program: None,
+            args: Vec::new(),
+            shell_command: Some(command.to_string()),
+            cwd: ProcessJobCwd::Inherited,
+            owner: ProcessJobOwnerScope::DaemonGlobal,
+            resource_policy: clankers_runtime::process_jobs::ProcessJobResourcePolicy::default(),
+            notification_policy: ProcessJobNotificationPolicy::default(),
+            metadata: std::collections::BTreeMap::default(),
+        }
+    }
+
+    #[tokio::test]
+    async fn native_backend_in_memory_fixture_projects_list_poll_log_and_errors_without_spawning() {
+        let service = NativeProcessJobService::default();
+        let mut unsupported_start = native_start_request("printf should-not-spawn");
+        unsupported_start.backend = ProcessJobBackendKind::Pueue;
+        let unsupported = service.start(unsupported_start).await.expect("unsupported start is typed receipt");
+        assert_eq!(unsupported.operation, ProcessJobOperation::Start);
+        assert_eq!(unsupported.backend, Some(ProcessJobBackendKind::Pueue));
+        assert_eq!(
+            unsupported.error.expect("unsupported backend error").code,
+            ProcessJobErrorCode::UnsupportedActionForBackend
+        );
+
+        let (kill_tx, _kill_rx) = oneshot::channel();
+        let id = format!("proc_in_memory_fixture_{}", Utc::now().timestamp_nanos_opt().unwrap_or_default());
+        let entry = Arc::new(ProcessEntry::new(
+            id.clone(),
+            "printf fixture".to_string(),
+            native_start_request("printf fixture"),
+            None,
+            kill_tx,
+            None,
+            ProcessJobNotificationPolicy::default(),
+            None,
+        ));
+        entry.push_output("stdout", "fixture line one");
+        entry.push_output("stderr", "fixture line two");
+        insert(entry.clone());
+
+        let summaries = service
+            .list(ProcessJobFilter {
+                backend: Some(ProcessJobBackendKind::Native),
+                include_terminal: true,
+                ..ProcessJobFilter::default()
+            })
+            .await
+            .expect("list projects registry entries");
+        let summary = summaries.iter().find(|summary| summary.id.0 == id).expect("fixture summary listed");
+        assert_eq!(summary.backend, ProcessJobBackendKind::Native);
+        assert_eq!(summary.status, ProcessJobStatus::Running);
+        assert_eq!(summary.command_preview, "printf fixture");
+
+        let poll = service.poll(ProcessJobId(id.clone()), None).await.expect("poll projects output");
+        assert_eq!(poll.operation, ProcessJobOperation::Poll);
+        assert_eq!(poll.status, Some(ProcessJobStatus::Running));
+        assert!(poll.summary.contains("fixture line one"), "{}", poll.summary);
+
+        let log = service
+            .log(ProcessJobId(id.clone()), ProcessJobLogRange {
+                stream: ProcessJobStream::Combined,
+                offset: Some(0),
+                limit_bytes: 10,
+            })
+            .await
+            .expect("log projects output snapshot");
+        assert!(log.text.contains("[stdout] fixture line one"), "{}", log.text);
+        assert!(log.text.contains("[stderr] fixture line two"), "{}", log.text);
+
+        let missing = service
+            .poll(ProcessJobId("proc_in_memory_missing".to_string()), None)
+            .await
+            .expect_err("unknown in-memory id fails closed");
+        assert!(missing.to_string().contains("Unknown process session_id"), "{missing}");
+
+        let stdin = service
+            .write_stdin(ProcessJobId(id.clone()), b"input".to_vec(), false)
+            .await
+            .expect_err("in-memory entry has no live stdin");
+        assert!(stdin.to_string().contains("has no open stdin"), "{stdin}");
+        entry.set_status(ProcessStatus::Exited {
+            code: Some(0),
+            elapsed: Duration::from_secs(0),
+        });
+    }
+}
