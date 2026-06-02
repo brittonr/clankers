@@ -36,6 +36,8 @@ pub mod capability;
 pub mod client;
 pub mod command;
 pub(crate) mod command_images;
+pub(crate) mod command_responsibility;
+pub(crate) mod command_thinking;
 pub mod config;
 pub mod confirm;
 pub mod convert;

@@ -358,6 +358,23 @@
       "protocol_projection_owner": "convert::semantic_error_message_to_daemon_event",
       "typed_rail_kind": "Rust AST path, struct, function, and owner-diagnostic checks for display/protocol DTO drains"
     },
+    "controller_command_responsibility": {
+      "extracted_cluster": "thinking command parsing and CoreInput construction",
+      "inventory_module": "crates/clankers-controller/src/command_responsibility.rs",
+      "projection_owner": "crates/clankers-controller/src/convert.rs",
+      "responsibility_kinds": [
+        "translation",
+        "authorization",
+        "core_input",
+        "runtime_dispatch",
+        "persistence",
+        "continuation",
+        "projection"
+      ],
+      "root_command_module": "crates/clankers-controller/src/command.rs",
+      "thinking_command_module": "crates/clankers-controller/src/command_thinking.rs",
+      "typed_rail_kind": "Rust AST/source ownership rail for command responsibility drain"
+    },
     "controller_domain_event": {
       "compatibility_alias": "ControllerDomainEvent",
       "domain_event_module": "crates/clankers-controller/src/domain_event.rs",

@@ -6,6 +6,7 @@ use clanker_message::AgentMessage;
 use clanker_message::AssistantMessage;
 use clanker_message::Content;
 use clanker_message::MessageId;
+#[cfg(test)]
 use clanker_message::SemanticErrorClass;
 use clanker_message::StopReason;
 use clanker_message::UserMessage;
@@ -14,8 +15,8 @@ use clankers_core::CompletionStatus;
 use clankers_core::CoreFailure;
 use clankers_core::CoreInput;
 use clankers_core::CoreOutcome;
+#[cfg(test)]
 use clankers_core::CoreThinkingLevel;
-use clankers_core::CoreThinkingLevelInput;
 use clankers_core::DisabledToolsUpdate;
 use clankers_core::LoopRequest;
 use clankers_core::PromptRequest;
@@ -29,6 +30,7 @@ use tracing::warn;
 
 use crate::SessionController;
 use crate::command_images::prompt_images_to_provider_content;
+#[cfg(test)]
 use crate::convert::semantic_error_message_to_daemon_event;
 use crate::convert::semantic_event_to_daemon_event;
 use crate::runtime_adapter::AgentBackedRuntimeAdapter;
@@ -364,53 +366,6 @@ impl SessionController {
         true
     }
 
-    fn handle_set_thinking_level(&mut self, level: String) {
-        let input = CoreInput::SetThinkingLevel {
-            requested: Self::parse_core_thinking_level_input(&level),
-        };
-
-        match clankers_core::reduce(&self.core_state, &input) {
-            CoreOutcome::Transitioned { next_state, effects } => {
-                self.apply_core_state(next_state);
-                let thinking_change = self.execute_thinking_effects(effects);
-                self.emit(DaemonEvent::SystemMessage {
-                    text: format!(
-                        "Thinking: {} → {}",
-                        Self::thinking_label(thinking_change.previous),
-                        Self::thinking_label(thinking_change.current)
-                    ),
-                    is_error: false,
-                });
-            }
-            CoreOutcome::Rejected {
-                error: clankers_core::CoreError::InvalidThinkingLevel { raw },
-                ..
-            } => {
-                let event = semantic_error_message_to_daemon_event(
-                    &self.session_id,
-                    format!("Unknown thinking level: {raw}"),
-                    SemanticErrorClass::InvalidInput,
-                );
-                self.emit(event);
-            }
-            CoreOutcome::Rejected { .. } => unreachable!("thinking-level input should only reject as invalid"),
-        }
-    }
-
-    fn handle_cycle_thinking_level(&mut self) {
-        match clankers_core::reduce(&self.core_state, &CoreInput::CycleThinkingLevel) {
-            CoreOutcome::Transitioned { next_state, effects } => {
-                self.apply_core_state(next_state);
-                let _thinking_change = self.execute_thinking_effects(effects);
-                self.emit(DaemonEvent::SystemMessage {
-                    text: "Thinking level cycled".to_string(),
-                    is_error: false,
-                });
-            }
-            CoreOutcome::Rejected { .. } => unreachable!("cycle thinking level should not reject"),
-        }
-    }
-
     fn handle_set_disabled_tools(&mut self, tools: Vec<String>) {
         let input = CoreInput::SetDisabledTools(DisabledToolsUpdate {
             requested_disabled_tools: tools.clone(),
@@ -518,40 +473,6 @@ impl SessionController {
             }
             CoreOutcome::Rejected { .. } => unreachable!("stop-loop should reject only on inactive/pending loop state"),
         }
-    }
-
-    fn parse_core_thinking_level_input(level: &str) -> CoreThinkingLevelInput {
-        match Self::parse_core_thinking_level(level) {
-            Some(parsed) => CoreThinkingLevelInput::Level(parsed),
-            None => CoreThinkingLevelInput::Invalid(level.to_string()),
-        }
-    }
-
-    fn parse_core_thinking_level(level: &str) -> Option<CoreThinkingLevel> {
-        match level.trim().to_lowercase().as_str() {
-            "off" | "none" | "disable" | "disabled" => Some(CoreThinkingLevel::Off),
-            "low" | "lo" | "l" => Some(CoreThinkingLevel::Low),
-            "medium" | "med" | "m" => Some(CoreThinkingLevel::Medium),
-            "high" | "hi" | "h" => Some(CoreThinkingLevel::High),
-            "xhigh" | "x-high" | "extra-high" | "max" | "maximum" | "full" | "default" => {
-                Some(CoreThinkingLevel::Max)
-            }
-            _ => None,
-        }
-    }
-
-    pub(crate) fn provider_thinking_level(level: CoreThinkingLevel) -> clankers_provider::ThinkingLevel {
-        match level {
-            CoreThinkingLevel::Off => clankers_provider::ThinkingLevel::Off,
-            CoreThinkingLevel::Low => clankers_provider::ThinkingLevel::Low,
-            CoreThinkingLevel::Medium => clankers_provider::ThinkingLevel::Medium,
-            CoreThinkingLevel::High => clankers_provider::ThinkingLevel::High,
-            CoreThinkingLevel::Max => clankers_provider::ThinkingLevel::Max,
-        }
-    }
-
-    fn thinking_label(level: CoreThinkingLevel) -> &'static str {
-        Self::provider_thinking_level(level).label()
     }
 
     /// Submit a prompt through a controller runtime/session adapter.
@@ -684,39 +605,6 @@ impl SessionController {
             }
             RuntimeControlRequest::SetThinkingLevel { level } => self.apply_adapter_thinking_level(adapter, level),
             RuntimeControlRequest::SetDisabledTools { tools } => self.apply_adapter_disabled_tools(adapter, tools),
-        }
-    }
-
-    fn apply_adapter_thinking_level(
-        &mut self,
-        adapter: &mut dyn ControllerRuntimeAdapter,
-        level: CoreThinkingLevel,
-    ) -> bool {
-        let input = CoreInput::SetThinkingLevel {
-            requested: CoreThinkingLevelInput::Level(level),
-        };
-
-        match clankers_core::reduce(&self.core_state, &input) {
-            CoreOutcome::Transitioned { next_state, effects } => {
-                self.apply_core_state(next_state);
-                let applied_levels =
-                    crate::effect_interpretation::applied_thinking_levels(&effects).collect::<Vec<_>>();
-                let thinking_change = crate::effect_interpretation::interpret_thinking_change(&effects)
-                    .expect("thinking level change must emit a logical event");
-                for level in applied_levels {
-                    adapter.apply_control(RuntimeControlRequest::SetThinkingLevel { level });
-                }
-                self.emit(DaemonEvent::SystemMessage {
-                    text: format!(
-                        "Thinking: {} → {}",
-                        Self::thinking_label(thinking_change.previous),
-                        Self::thinking_label(thinking_change.current)
-                    ),
-                    is_error: false,
-                });
-                true
-            }
-            CoreOutcome::Rejected { .. } => false,
         }
     }
 
@@ -2248,14 +2136,6 @@ mod tests {
         // Should just log a warning, not crash
         let events = ctrl.drain_events();
         assert!(events.is_empty());
-    }
-
-    #[test]
-    fn controller_thinking_parser_uses_core_levels_without_tui_dto() {
-        assert_eq!(SessionController::parse_core_thinking_level("off"), Some(CoreThinkingLevel::Off));
-        assert_eq!(SessionController::parse_core_thinking_level("medium"), Some(CoreThinkingLevel::Medium));
-        assert_eq!(SessionController::parse_core_thinking_level("xhigh"), Some(CoreThinkingLevel::Max));
-        assert_eq!(SessionController::parse_core_thinking_level("bogus"), None);
     }
 
     #[tokio::test]

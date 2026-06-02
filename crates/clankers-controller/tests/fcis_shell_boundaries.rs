@@ -52,11 +52,14 @@ const DAEMON_AGENT_PROCESS_FILE: &str = "src/modes/daemon/agent_process.rs";
 const DAEMON_SESSION_BUILDER_FILE: &str = "src/modes/daemon/session_builder.rs";
 const DAEMON_SESSION_PLUGINS_FILE: &str = "src/modes/daemon/session_plugins.rs";
 const CONTROLLER_COMMAND_FILE: &str = "crates/clankers-controller/src/command.rs";
+const CONTROLLER_COMMAND_RESPONSIBILITY_FILE: &str = "crates/clankers-controller/src/command_responsibility.rs";
+const CONTROLLER_COMMAND_THINKING_FILE: &str = "crates/clankers-controller/src/command_thinking.rs";
 const CONTROLLER_LIB_FILE: &str = "crates/clankers-controller/src/lib.rs";
 const CONTROLLER_EFFECT_INTERPRETER_FILE: &str = "crates/clankers-controller/src/core_effects.rs";
 const CONTROLLER_EFFECT_PROJECTION_FILE: &str = "crates/clankers-controller/src/effect_interpretation.rs";
-const CONTROLLER_INPUT_TRANSLATION_FILES: [&str; 2] =
-    [CONTROLLER_COMMAND_FILE, "crates/clankers-controller/src/auto_test.rs"];
+const CONTROLLER_AUTO_TEST_FILE: &str = "crates/clankers-controller/src/auto_test.rs";
+const CONTROLLER_INPUT_TRANSLATION_FILES: [&str; 3] =
+    [CONTROLLER_COMMAND_FILE, CONTROLLER_AUTO_TEST_FILE, CONTROLLER_COMMAND_THINKING_FILE];
 const CONTROLLER_EVENT_TRANSLATION_FILE: &str = "crates/clankers-controller/src/convert.rs";
 const CONTROLLER_EVENT_TRANSLATION_CALLER_FILE: &str = "crates/clankers-controller/src/event_processing.rs";
 const TRANSPORT_PROTOCOL_CONVERSION_FILE: &str = "crates/clankers-controller/src/transport_convert.rs";
@@ -112,15 +115,19 @@ const CORE_EFFECT_PROJECTION_REQUIRED_PATHS: [&str; 4] = [
     "CoreEffect::ApplyThinkingLevel",
     "CoreEffect::ApplyToolFilter",
 ];
-const COMMAND_REQUIRED_INPUT_PATHS: [&str; 8] = [
-    "CoreInput::SetThinkingLevel",
-    "CoreInput::CycleThinkingLevel",
+const COMMAND_REQUIRED_INPUT_PATHS: [&str; 6] = [
     "CoreInput::SetDisabledTools",
     "CoreInput::ToolFilterApplied",
     "CoreInput::StartLoop",
     "CoreInput::StopLoop",
     "CoreInput::PromptRequested",
     "CoreInput::PromptCompleted",
+];
+const COMMAND_THINKING_REQUIRED_INPUT_PATHS: [&str; 4] = [
+    "CoreInput::SetThinkingLevel",
+    "CoreInput::CycleThinkingLevel",
+    "CoreThinkingLevel",
+    "CoreThinkingLevelInput",
 ];
 const CONTROLLER_RUNTIME_ADAPTER_OWNERSHIP_REQUIREMENT: &str =
     "r[controller-runtime-adapter-production.ownership.source-rail]";
@@ -1800,11 +1807,40 @@ fn controller_input_translation_stays_in_controller_translation_files() {
     let command_paths = collect_non_test_paths(CONTROLLER_INPUT_TRANSLATION_FILES[0]);
     assert_required_paths_present(CONTROLLER_INPUT_TRANSLATION_FILES[0], &command_paths, &COMMAND_REQUIRED_INPUT_PATHS);
 
-    let auto_test_paths = collect_non_test_paths(CONTROLLER_INPUT_TRANSLATION_FILES[1]);
+    let auto_test_paths = collect_non_test_paths(CONTROLLER_AUTO_TEST_FILE);
+    assert_required_paths_present(CONTROLLER_AUTO_TEST_FILE, &auto_test_paths, &AUTO_TEST_REQUIRED_INPUT_PATHS);
+
+    let thinking_paths = collect_non_test_paths(CONTROLLER_COMMAND_THINKING_FILE);
     assert_required_paths_present(
-        CONTROLLER_INPUT_TRANSLATION_FILES[1],
-        &auto_test_paths,
-        &AUTO_TEST_REQUIRED_INPUT_PATHS,
+        CONTROLLER_COMMAND_THINKING_FILE,
+        &thinking_paths,
+        &COMMAND_THINKING_REQUIRED_INPUT_PATHS,
+    );
+}
+
+#[test]
+fn controller_command_responsibility_inventory_names_extracted_thinking_owner() {
+    let inventory = read_relative_file(CONTROLLER_COMMAND_RESPONSIBILITY_FILE);
+    for required in [
+        "CONTROLLER_COMMAND_RESPONSIBILITY_DRAIN_REQUIREMENT",
+        "CommandResponsibilityKind::Translation",
+        "CommandResponsibilityKind::Authorization",
+        "CommandResponsibilityKind::CoreInputConstruction",
+        "CommandResponsibilityKind::RuntimeDispatch",
+        "CommandResponsibilityKind::Persistence",
+        "CommandResponsibilityKind::Continuation",
+        "CommandResponsibilityKind::Projection",
+        "crates/clankers-controller/src/command_thinking.rs",
+    ] {
+        assert!(inventory.contains(required), "{} missing responsibility marker `{required}`", CONTROLLER_COMMAND_RESPONSIBILITY_FILE);
+    }
+
+    let command_source = read_relative_file(CONTROLLER_COMMAND_FILE);
+    assert!(
+        !command_source.contains("fn parse_core_thinking_level"),
+        "{} must not reclaim thinking parser ownership from {}",
+        CONTROLLER_COMMAND_FILE,
+        CONTROLLER_COMMAND_THINKING_FILE
     );
 }
 
@@ -1927,28 +1963,28 @@ fn controller_display_inputs_stay_neutral_before_policy() {
         }
     }
 
-    let command_paths = collect_non_test_paths(CONTROLLER_INPUT_TRANSLATION_FILES[0]);
+    let thinking_paths = collect_non_test_paths(CONTROLLER_COMMAND_THINKING_FILE);
     assert_required_paths_present(
-        CONTROLLER_INPUT_TRANSLATION_FILES[0],
-        &command_paths,
+        CONTROLLER_COMMAND_THINKING_FILE,
+        &thinking_paths,
         &["CoreThinkingLevel", "CoreThinkingLevelInput"],
     );
 
-    let auto_test_source = read_relative_file(CONTROLLER_INPUT_TRANSLATION_FILES[1]);
+    let auto_test_source = read_relative_file(CONTROLLER_AUTO_TEST_FILE);
     assert!(
         auto_test_source.contains("pub struct ControllerLoopStatus"),
         "{} must own neutral ControllerLoopStatus instead of clanker_tui_types::LoopDisplayState for {}",
-        CONTROLLER_INPUT_TRANSLATION_FILES[1],
+        CONTROLLER_AUTO_TEST_FILE,
         CONTROLLER_DISPLAY_DTO_REQUIREMENT
     );
 }
 
 #[test]
 fn controller_command_user_visible_error_projects_through_semantic_owner() {
-    let command_paths = collect_non_test_paths(CONTROLLER_INPUT_TRANSLATION_FILES[0]);
+    let thinking_paths = collect_non_test_paths(CONTROLLER_COMMAND_THINKING_FILE);
     assert_required_paths_present(
-        CONTROLLER_INPUT_TRANSLATION_FILES[0],
-        &command_paths,
+        CONTROLLER_COMMAND_THINKING_FILE,
+        &thinking_paths,
         &COMMAND_SEMANTIC_OUTPUT_REQUIRED_PATHS,
     );
 

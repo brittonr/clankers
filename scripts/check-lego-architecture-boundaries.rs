@@ -57,6 +57,8 @@ const AGENT_TURN_TRANSCRIPT: &str = "crates/clankers-agent/src/turn/transcript.r
 const AGENT_TURN_USAGE: &str = "crates/clankers-agent/src/turn/usage.rs";
 const TOOL_HOST_LIB: &str = "crates/clankers-tool-host/src/lib.rs";
 const CONTROLLER_COMMAND: &str = "crates/clankers-controller/src/command.rs";
+const CONTROLLER_COMMAND_RESPONSIBILITY: &str = "crates/clankers-controller/src/command_responsibility.rs";
+const CONTROLLER_COMMAND_THINKING: &str = "crates/clankers-controller/src/command_thinking.rs";
 const CONTROLLER_AUTO_TEST: &str = "crates/clankers-controller/src/auto_test.rs";
 const CONTROLLER_CORE_EFFECTS: &str = "crates/clankers-controller/src/core_effects.rs";
 const CONTROLLER_CONVERT: &str = "crates/clankers-controller/src/convert.rs";
@@ -136,6 +138,7 @@ fn run() -> Result<PathBuf, String> {
     let provider_router_bridge = provider_router_bridge_signature()?;
     let controller_domain_event = controller_domain_event_signature()?;
     let controller_display_protocol_dtos = controller_display_protocol_dto_signature()?;
+    let controller_command_responsibility = controller_command_responsibility_signature()?;
     let session_command_policy = session_command_policy_signature()?;
     let daemon_session_assembly = daemon_session_assembly_signature()?;
 
@@ -176,6 +179,7 @@ fn run() -> Result<PathBuf, String> {
         "provider_router_bridge": provider_router_bridge,
         "controller_domain_event": controller_domain_event,
         "controller_display_protocol_dtos": controller_display_protocol_dtos,
+        "controller_command_responsibility": controller_command_responsibility,
         "session_command_policy": session_command_policy,
         "daemon_session_assembly": daemon_session_assembly,
     });
@@ -235,6 +239,8 @@ fn run() -> Result<PathBuf, String> {
             hash_artifact(Path::new(PROVIDER_ROUTER_ADAPTER))?,
             hash_artifact(Path::new(PROVIDER_RPC_ADAPTER))?,
             hash_artifact(Path::new(CONTROLLER_COMMAND))?,
+            hash_artifact(Path::new(CONTROLLER_COMMAND_RESPONSIBILITY))?,
+            hash_artifact(Path::new(CONTROLLER_COMMAND_THINKING))?,
             hash_artifact(Path::new(CONTROLLER_AUTO_TEST))?,
             hash_artifact(Path::new(SESSION_COMMAND_POLICY))?,
             hash_artifact(Path::new(ATTACH_COMMANDS))?,
@@ -1229,9 +1235,11 @@ fn controller_domain_event_signature() -> Result<Value, String> {
 
 fn controller_display_protocol_dto_signature() -> Result<Value, String> {
     let command_file = read_rust_file(CONTROLLER_COMMAND)?;
+    let thinking_file = read_rust_file(CONTROLLER_COMMAND_THINKING)?;
     let auto_test_file = read_rust_file(CONTROLLER_AUTO_TEST)?;
     let convert_file = read_rust_file(CONTROLLER_CONVERT)?;
     let command = &command_file.source;
+    let thinking = &thinking_file.source;
     let auto_test = &auto_test_file.source;
     let forbidden_display_dtos = [
         (
@@ -1253,6 +1261,11 @@ fn controller_display_protocol_dto_signature() -> Result<Value, String> {
             &format!("{requirement}: {dto} belongs to {allowed_owner}, not controller command policy"),
         )?;
         forbid_rust_path(
+            &thinking_file,
+            dto,
+            &format!("{requirement}: {dto} belongs to {allowed_owner}, not controller thinking command policy"),
+        )?;
+        forbid_rust_path(
             &auto_test_file,
             dto,
             &format!("{requirement}: {dto} belongs to {allowed_owner}, not controller auto-test policy"),
@@ -1263,22 +1276,27 @@ fn controller_display_protocol_dto_signature() -> Result<Value, String> {
             &format!("{requirement}: {dto} belongs to {allowed_owner}, not controller command policy"),
         )?;
         forbid_contains(
+            thinking,
+            dto,
+            &format!("{requirement}: {dto} belongs to {allowed_owner}, not controller thinking command policy"),
+        )?;
+        forbid_contains(
             auto_test,
             dto,
             &format!("{requirement}: {dto} belongs to {allowed_owner}, not controller auto-test policy"),
         )?;
     }
 
-    require_rust_path(&command_file, "CoreThinkingLevel", "neutral controller thinking DTO")?;
-    require_rust_path(&command_file, "CoreThinkingLevelInput", "neutral controller thinking input DTO")?;
+    require_rust_path(&thinking_file, "CoreThinkingLevel", "neutral controller thinking DTO")?;
+    require_rust_path(&thinking_file, "CoreThinkingLevelInput", "neutral controller thinking input DTO")?;
     require_rust_struct(&auto_test_file, "ControllerLoopStatus", "neutral controller loop status DTO")?;
     require_rust_path(
-        &command_file,
+        &thinking_file,
         "semantic_error_message_to_daemon_event",
         "command user-visible error semantic projection call",
     )?;
     require_rust_path(
-        &command_file,
+        &thinking_file,
         "SemanticErrorClass::InvalidInput",
         "invalid thinking-level semantic error classification",
     )?;
@@ -1290,8 +1308,8 @@ fn controller_display_protocol_dto_signature() -> Result<Value, String> {
     require_rust_path(&convert_file, "SemanticEvent::Error", "semantic error protocol projection owner")?;
     require_rust_path(&convert_file, "DaemonEvent::SystemMessage", "daemon system-message projection owner")?;
     require_contains(
-        command,
-        "controller_thinking_parser_uses_core_levels_without_tui_dto",
+        thinking,
+        "parser_uses_core_levels_without_tui_dto",
         "neutral thinking parser fixture",
     )?;
     require_contains(auto_test, "ControllerLoopStatus", "neutral loop status edge DTO")?;
@@ -1322,6 +1340,70 @@ fn controller_display_protocol_dto_signature() -> Result<Value, String> {
         "command_semantic_projection": "semantic_error_message_to_daemon_event",
         "protocol_projection_owner": "convert::semantic_error_message_to_daemon_event",
         "typed_rail_kind": "Rust AST path, struct, function, and owner-diagnostic checks for display/protocol DTO drains"
+    }))
+}
+
+fn controller_command_responsibility_signature() -> Result<Value, String> {
+    let inventory_file = read_rust_file(CONTROLLER_COMMAND_RESPONSIBILITY)?;
+    let thinking_file = read_rust_file(CONTROLLER_COMMAND_THINKING)?;
+    let command_file = read_rust_file(CONTROLLER_COMMAND)?;
+    let inventory = &inventory_file.source;
+    let thinking = &thinking_file.source;
+    let command = &command_file.source;
+
+    require_contains(
+        inventory,
+        "CONTROLLER_COMMAND_RESPONSIBILITY_DRAIN_REQUIREMENT",
+        "controller command responsibility drain requirement marker",
+    )?;
+    require_contains(
+        inventory,
+        "COMMAND_RESPONSIBILITY_INVENTORY",
+        "controller command responsibility inventory",
+    )?;
+    for marker in [
+        "CommandResponsibilityKind::Translation",
+        "CommandResponsibilityKind::Authorization",
+        "CommandResponsibilityKind::CoreInputConstruction",
+        "CommandResponsibilityKind::RuntimeDispatch",
+        "CommandResponsibilityKind::Persistence",
+        "CommandResponsibilityKind::Continuation",
+        "CommandResponsibilityKind::Projection",
+    ] {
+        require_contains(inventory, marker, "controller command responsibility owner")?;
+    }
+    require_rust_path(
+        &thinking_file,
+        "CoreInput::SetThinkingLevel",
+        "thinking command CoreInput owner",
+    )?;
+    require_rust_path(
+        &thinking_file,
+        "CoreInput::CycleThinkingLevel",
+        "thinking command CoreInput owner",
+    )?;
+    require_contains(thinking, "pub(crate) fn handle_set_thinking_level", "thinking set command owner")?;
+    require_contains(thinking, "pub(crate) fn handle_cycle_thinking_level", "thinking cycle command owner")?;
+    forbid_contains(command, "fn parse_core_thinking_level", "command root thinking parser owner")?;
+    require_contains(
+        command,
+        "self.handle_set_thinking_level(level)",
+        "command dispatch delegates thinking set cluster",
+    )?;
+    require_contains(
+        command,
+        "self.handle_cycle_thinking_level()",
+        "command dispatch delegates thinking cycle cluster",
+    )?;
+
+    Ok(json!({
+        "inventory_module": CONTROLLER_COMMAND_RESPONSIBILITY,
+        "thinking_command_module": CONTROLLER_COMMAND_THINKING,
+        "root_command_module": CONTROLLER_COMMAND,
+        "responsibility_kinds": ["translation", "authorization", "core_input", "runtime_dispatch", "persistence", "continuation", "projection"],
+        "extracted_cluster": "thinking command parsing and CoreInput construction",
+        "projection_owner": CONTROLLER_CONVERT,
+        "typed_rail_kind": "Rust AST/source ownership rail for command responsibility drain"
     }))
 }
 
