@@ -23,6 +23,10 @@ use adapters::AgentToolHost;
 use adapters::AgentUsageObserver;
 #[cfg(test)]
 use chrono::Utc;
+use clanker_message::ThinkingConfig;
+#[cfg(test)]
+use clanker_message::Usage;
+use clanker_message::*;
 use clankers_engine::EmbeddableEngine;
 #[cfg(test)]
 use clankers_engine::EngineCorrelationId;
@@ -57,10 +61,6 @@ use clankers_model_selection::cost_tracker::CostTracker;
 use clankers_provider::CompletionRequest;
 #[cfg(test)]
 use clankers_provider::Provider;
-use clanker_message::ThinkingConfig;
-#[cfg(test)]
-use clanker_message::Usage;
-use clanker_message::*;
 use execution::completion_request_from_engine_request;
 use execution::create_error_result;
 use execution::engine_messages_from_agent_messages;
@@ -102,6 +102,7 @@ pub(crate) use ports::AgentRuntimeServices;
 #[cfg(test)]
 pub(crate) use ports::AgentToolPort;
 pub(crate) use ports::ControllerToolPort;
+pub(crate) use ports::ControllerToolServices;
 pub(crate) use ports::CostTrackerPort;
 pub(crate) use ports::DESKTOP_AGENT_SERVICE_RECEIPTS;
 pub(crate) use ports::ProviderModelPort;
@@ -333,14 +334,16 @@ mod tests {
         let model_port = ProviderModelPort::new(provider);
         let tool_port = ControllerToolPort {
             controller_tools: tools,
-            event_tx,
-            cancel: cancel.clone(),
-            hook_pipeline,
-            session_id,
-            db,
-            capability_gate,
-            user_tool_filter,
-            steel_tool_substrate: config.steel_tool_substrate.clone(),
+            services: ControllerToolServices {
+                event_tx: event_tx.clone(),
+                cancel: cancel.clone(),
+                hook_pipeline,
+                session_id: session_id.to_string(),
+                db,
+                capability_gate,
+                user_tool_filter,
+                steel_tool_substrate: config.steel_tool_substrate.clone(),
+            },
         };
         let cost_port = CostTrackerPort::new(cost_tracker);
         let cancellation = TokenCancellationPort::new(cancel);

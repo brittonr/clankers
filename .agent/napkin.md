@@ -3,6 +3,7 @@
 ## Corrections
 | Date | Source | What Went Wrong | What To Do Instead |
 |------|--------|----------------|-------------------|
+| 2026-06-01 | self | Split `ControllerToolPort` fields into a `ControllerToolServices` bag but initially left the service-inventory rail asserting every edge was owned by `ControllerToolPort`, and left `session_id` inventoried as `&str` after it became `String` | When moving service fields between shell adapter structs, update both owner assertions and concrete-type inventory rows before rerunning nextest. |
 | 2026-05-31 | self | Focused stdio mixed-runtime test passed, but full auto-test failed with plugin state stuck at `Starting` under concurrent stdio/Extism startup and a 2s wait | For multi-runtime plugin startup tests, use a slightly longer bounded startup timeout instead of assuming focused-test timing matches full nextest load. |
 | 2026-05-31 | self | Wrote `.pipe(block_on)` in Rust test code out of habit; Rust has no standard `pipe` method here | Assign the future to a local and call `block_on(future)` explicitly in tests. |
 | 2026-05-31 | self | Regenerated the lego architecture baseline by copying the generated inventory wholesale, which changed the baseline schema to the inventory schema and made the rail fail | After copying generated inventory into `policy/lego-architecture/dependency-ownership-baseline.json`, restore `schema` to `clankers.lego_architecture.dependency_ownership_baseline.v1`. |

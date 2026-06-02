@@ -35,6 +35,7 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 use chrono::Utc;
+use clanker_message::ThinkingConfig;
 use clanker_message::*;
 use clankers_config::model_roles::ModelRoles;
 use clankers_config::settings::Settings;
@@ -44,7 +45,6 @@ use clankers_model_selection::orchestration;
 use clankers_model_selection::policy::RoutingPolicy;
 use clankers_model_selection::signals::ComplexitySignals;
 use clankers_model_selection::signals::ToolCallSummary;
-use clanker_message::ThinkingConfig;
 use clankers_provider::Provider;
 use clankers_provider::ThinkingLevel;
 use tokio::sync::broadcast;
@@ -463,14 +463,16 @@ impl Agent {
         let model_port = turn::ProviderModelPort::new(self.provider.as_ref());
         let tool_port = turn::ControllerToolPort {
             controller_tools: &self.tools,
-            event_tx: &self.event_tx,
-            cancel: self.cancel.clone(),
-            hook_pipeline: self.hook_pipeline.clone(),
-            session_id: &self.session_id,
-            db: self.db.clone(),
-            capability_gate: self.capability_gate.clone(),
-            user_tool_filter: self.user_tool_filter.clone(),
-            steel_tool_substrate: config.steel_tool_substrate.clone(),
+            services: turn::ControllerToolServices {
+                event_tx: self.event_tx.clone(),
+                cancel: self.cancel.clone(),
+                hook_pipeline: self.hook_pipeline.clone(),
+                session_id: self.session_id.clone(),
+                db: self.db.clone(),
+                capability_gate: self.capability_gate.clone(),
+                user_tool_filter: self.user_tool_filter.clone(),
+                steel_tool_substrate: config.steel_tool_substrate.clone(),
+            },
         };
         let cost_port = turn::CostTrackerPort::new(self.cost_tracker.as_ref());
         let cancellation = turn::TokenCancellationPort::new(self.cancel.clone());
@@ -1012,14 +1014,16 @@ impl Agent {
                 let model_port = turn::ProviderModelPort::new(self.provider.as_ref());
                 let tool_port = turn::ControllerToolPort {
                     controller_tools: &self.tools,
-                    event_tx: &self.event_tx,
-                    cancel: self.cancel.clone(),
-                    hook_pipeline: self.hook_pipeline.clone(),
-                    session_id: &self.session_id,
-                    db: self.db.clone(),
-                    capability_gate: self.capability_gate.clone(),
-                    user_tool_filter: self.user_tool_filter.clone(),
-                    steel_tool_substrate: config.steel_tool_substrate.clone(),
+                    services: turn::ControllerToolServices {
+                        event_tx: self.event_tx.clone(),
+                        cancel: self.cancel.clone(),
+                        hook_pipeline: self.hook_pipeline.clone(),
+                        session_id: self.session_id.clone(),
+                        db: self.db.clone(),
+                        capability_gate: self.capability_gate.clone(),
+                        user_tool_filter: self.user_tool_filter.clone(),
+                        steel_tool_substrate: config.steel_tool_substrate.clone(),
+                    },
                 };
                 let cost_port = turn::CostTrackerPort::new(self.cost_tracker.as_ref());
                 let cancellation = turn::TokenCancellationPort::new(self.cancel.clone());

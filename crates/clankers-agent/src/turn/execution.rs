@@ -4,6 +4,8 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 use chrono::Utc;
+use clanker_message::Usage;
+use clanker_message::*;
 use clankers_engine::EngineCorrelationId;
 use clankers_engine::EngineMessage;
 use clankers_engine::EngineMessageRole;
@@ -11,8 +13,6 @@ use clankers_engine::EngineModelRequest;
 use clankers_engine::EngineToolCall;
 use clankers_engine_host::stream::HostStreamEvent;
 use clankers_engine_host::stream::ProviderStreamError;
-use clanker_message::Usage;
-use clanker_message::*;
 use clankers_provider::CompletionRequest;
 use clankers_provider::Provider;
 use clankers_tool_host::ToolCatalog;
@@ -26,6 +26,8 @@ use tokio_util::sync::CancellationToken;
 
 use super::CollectedResponse;
 use super::ContentBlockBuilder;
+use super::ControllerToolServices;
+#[cfg(test)]
 use super::steel_tool_substrate::AgentToolSteelSubstrateConfig;
 use super::steel_tool_substrate::authorize_tool_invocation;
 use super::steel_tool_substrate::blocked_receipt_to_tool_result;
@@ -166,14 +168,7 @@ impl ToolCatalog for AgentToolCatalog<'_> {
 #[derive(Clone)]
 struct AgentSingleToolExecutor {
     tool: Option<Arc<dyn Tool>>,
-    event_tx: broadcast::Sender<AgentEvent>,
-    cancel: CancellationToken,
-    hook_pipeline: Option<Arc<clankers_hooks::HookPipeline>>,
-    session_id: String,
-    db: Option<clankers_db::Db>,
-    capability_gate: Option<Arc<dyn crate::tool::CapabilityGate>>,
-    user_tool_filter: Option<Vec<String>>,
-    steel_tool_substrate: Option<AgentToolSteelSubstrateConfig>,
+    services: ControllerToolServices,
 }
 
 impl ToolExecutor for AgentSingleToolExecutor {
@@ -183,14 +178,7 @@ impl ToolExecutor for AgentSingleToolExecutor {
             call.call_id.0.clone(),
             call.tool_name.clone(),
             call.input,
-            self.event_tx.clone(),
-            self.cancel.clone(),
-            self.hook_pipeline.clone(),
-            self.session_id.clone(),
-            self.db.clone(),
-            self.capability_gate.clone(),
-            self.user_tool_filter.clone(),
-            self.steel_tool_substrate.as_ref(),
+            self.services.clone(),
         )
         .await;
         tool_result_message_to_host_outcome(&message)
@@ -511,18 +499,16 @@ pub(super) async fn execute_tools_parallel(
     capability_gate: Option<Arc<dyn crate::tool::CapabilityGate>>,
     user_tool_filter: Option<Vec<String>>,
 ) -> Vec<ToolResultMessage> {
-    execute_tools_parallel_with_substrate(
-        controller_tools,
-        tool_calls,
-        event_tx,
+    execute_tools_parallel_with_substrate(controller_tools, tool_calls, ControllerToolServices {
+        event_tx: event_tx.clone(),
         cancel,
         hook_pipeline,
-        session_id,
+        session_id: session_id.to_string(),
         db,
         capability_gate,
         user_tool_filter,
-        None,
-    )
+        steel_tool_substrate: None,
+    })
     .await
 }
 
@@ -532,14 +518,7 @@ pub(super) async fn execute_tools_parallel(
 pub(super) async fn execute_tools_parallel_with_substrate(
     controller_tools: &HashMap<String, Arc<dyn Tool>>,
     tool_calls: &[(String, String, Value)],
-    event_tx: &broadcast::Sender<AgentEvent>,
-    cancel: CancellationToken,
-    hook_pipeline: Option<Arc<clankers_hooks::HookPipeline>>,
-    session_id: &str,
-    db: Option<clankers_db::Db>,
-    capability_gate: Option<Arc<dyn crate::tool::CapabilityGate>>,
-    user_tool_filter: Option<Vec<String>>,
-    steel_tool_substrate: Option<AgentToolSteelSubstrateConfig>,
+    services: ControllerToolServices,
 ) -> Vec<ToolResultMessage> {
     use futures::future::BoxFuture;
     use futures::future::FutureExt;
@@ -554,14 +533,7 @@ pub(super) async fn execute_tools_parallel_with_substrate(
             };
             let mut executor = AgentSingleToolExecutor {
                 tool: controller_tools.get(tool_name).cloned(),
-                event_tx: event_tx.clone(),
-                cancel: cancel.clone(),
-                hook_pipeline: hook_pipeline.clone(),
-                session_id: session_id.to_string(),
-                db: db.clone(),
-                capability_gate: capability_gate.clone(),
-                user_tool_filter: user_tool_filter.clone(),
-                steel_tool_substrate: steel_tool_substrate.clone(),
+                services: services.clone(),
             };
             let call_id = call_id.clone();
             let tool_name = tool_name.clone();
@@ -585,15 +557,17 @@ async fn execute_single_tool(
     call_id: String,
     tool_name: String,
     input: Value,
-    event_tx: broadcast::Sender<AgentEvent>,
-    cancel: CancellationToken,
-    hook_pipeline: Option<Arc<clankers_hooks::HookPipeline>>,
-    session_id: String,
-    db: Option<clankers_db::Db>,
-    capability_gate: Option<Arc<dyn crate::tool::CapabilityGate>>,
-    user_tool_filter: Option<Vec<String>>,
-    steel_tool_substrate: Option<&AgentToolSteelSubstrateConfig>,
+    services: ControllerToolServices,
 ) -> ToolResultMessage {
+    let event_tx = services.event_tx.clone();
+    let cancel = services.cancel.clone();
+    let hook_pipeline = services.hook_pipeline.clone();
+    let session_id = services.session_id.clone();
+    let db = services.db.clone();
+    let capability_gate = services.capability_gate.clone();
+    let user_tool_filter = services.user_tool_filter.clone();
+    let steel_tool_substrate = services.steel_tool_substrate.clone();
+
     // Emit ToolCall event
     event_tx
         .send(AgentEvent::ToolCall {
@@ -651,7 +625,7 @@ async fn execute_single_tool(
     };
 
     if let Err(receipt) = authorize_tool_invocation(
-        steel_tool_substrate,
+        steel_tool_substrate.as_ref(),
         tool.as_ref(),
         &call_id,
         &tool_name,
@@ -1117,18 +1091,16 @@ mod tests {
             disabled_actions: Vec::new(),
         };
 
-        let results = execute_tools_parallel_with_substrate(
-            &tools,
-            &tool_calls,
-            &event_tx,
-            CancellationToken::new(),
-            None,
-            "session",
-            None,
-            None,
-            None,
-            Some(config),
-        )
+        let results = execute_tools_parallel_with_substrate(&tools, &tool_calls, ControllerToolServices {
+            event_tx: event_tx.clone(),
+            cancel: CancellationToken::new(),
+            hook_pipeline: None,
+            session_id: "session".to_string(),
+            db: None,
+            capability_gate: None,
+            user_tool_filter: None,
+            steel_tool_substrate: Some(config),
+        })
         .await;
 
         assert_eq!(results.len(), 1);

@@ -136,6 +136,7 @@ pub(crate) enum AgentToolServiceKind {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum AgentToolServiceOwner {
     ControllerToolPort,
+    ControllerToolServices,
     LegacyToolContext,
 }
 
@@ -162,7 +163,7 @@ pub(crate) const CONTROLLER_TOOL_PORT_SERVICE_INVENTORY: &[AgentToolServiceInven
     },
     AgentToolServiceInventoryEntry {
         kind: AgentToolServiceKind::ProgressEvents,
-        owner: AgentToolServiceOwner::ControllerToolPort,
+        owner: AgentToolServiceOwner::ControllerToolServices,
         field: "event_tx",
         concrete_type: "broadcast::Sender<AgentEvent>",
         replacement: "neutral progress/event service",
@@ -170,7 +171,7 @@ pub(crate) const CONTROLLER_TOOL_PORT_SERVICE_INVENTORY: &[AgentToolServiceInven
     },
     AgentToolServiceInventoryEntry {
         kind: AgentToolServiceKind::Cancellation,
-        owner: AgentToolServiceOwner::ControllerToolPort,
+        owner: AgentToolServiceOwner::ControllerToolServices,
         field: "cancel",
         concrete_type: "CancellationToken",
         replacement: "neutral cancellation service",
@@ -178,7 +179,7 @@ pub(crate) const CONTROLLER_TOOL_PORT_SERVICE_INVENTORY: &[AgentToolServiceInven
     },
     AgentToolServiceInventoryEntry {
         kind: AgentToolServiceKind::Hooks,
-        owner: AgentToolServiceOwner::ControllerToolPort,
+        owner: AgentToolServiceOwner::ControllerToolServices,
         field: "hook_pipeline",
         concrete_type: "clankers_hooks::HookPipeline",
         replacement: "neutral hook decision service",
@@ -186,15 +187,15 @@ pub(crate) const CONTROLLER_TOOL_PORT_SERVICE_INVENTORY: &[AgentToolServiceInven
     },
     AgentToolServiceInventoryEntry {
         kind: AgentToolServiceKind::SessionIdentity,
-        owner: AgentToolServiceOwner::ControllerToolPort,
+        owner: AgentToolServiceOwner::ControllerToolServices,
         field: "session_id",
-        concrete_type: "&str",
+        concrete_type: "String",
         replacement: "neutral invocation identity DTO",
         convergence: "carry session identity in ToolInvocationContext metadata",
     },
     AgentToolServiceInventoryEntry {
         kind: AgentToolServiceKind::Storage,
-        owner: AgentToolServiceOwner::ControllerToolPort,
+        owner: AgentToolServiceOwner::ControllerToolServices,
         field: "db",
         concrete_type: "clankers_db::Db",
         replacement: "neutral storage/search service",
@@ -202,7 +203,7 @@ pub(crate) const CONTROLLER_TOOL_PORT_SERVICE_INVENTORY: &[AgentToolServiceInven
     },
     AgentToolServiceInventoryEntry {
         kind: AgentToolServiceKind::CapabilityGate,
-        owner: AgentToolServiceOwner::ControllerToolPort,
+        owner: AgentToolServiceOwner::ControllerToolServices,
         field: "capability_gate",
         concrete_type: "CapabilityGate",
         replacement: "neutral capability decision service",
@@ -210,7 +211,7 @@ pub(crate) const CONTROLLER_TOOL_PORT_SERVICE_INVENTORY: &[AgentToolServiceInven
     },
     AgentToolServiceInventoryEntry {
         kind: AgentToolServiceKind::UserToolFilter,
-        owner: AgentToolServiceOwner::ControllerToolPort,
+        owner: AgentToolServiceOwner::ControllerToolServices,
         field: "user_tool_filter",
         concrete_type: "Vec<String>",
         replacement: "neutral tool visibility policy",
@@ -218,7 +219,7 @@ pub(crate) const CONTROLLER_TOOL_PORT_SERVICE_INVENTORY: &[AgentToolServiceInven
     },
     AgentToolServiceInventoryEntry {
         kind: AgentToolServiceKind::SteelSubstratePolicy,
-        owner: AgentToolServiceOwner::ControllerToolPort,
+        owner: AgentToolServiceOwner::ControllerToolServices,
         field: "steel_tool_substrate",
         concrete_type: "AgentToolSteelSubstrateConfig",
         replacement: "neutral runtime policy service",
@@ -311,16 +312,21 @@ pub(crate) trait AgentToolPort: Send + Sync {
     async fn execute_tools(&self, tool_calls: &[(String, String, Value)]) -> Vec<ToolResultMessage>;
 }
 
-pub(crate) struct ControllerToolPort<'a> {
-    pub(crate) controller_tools: &'a HashMap<String, Arc<dyn Tool>>,
-    pub(crate) event_tx: &'a broadcast::Sender<AgentEvent>,
+#[derive(Clone)]
+pub(crate) struct ControllerToolServices {
+    pub(crate) event_tx: broadcast::Sender<AgentEvent>,
     pub(crate) cancel: CancellationToken,
     pub(crate) hook_pipeline: Option<Arc<clankers_hooks::HookPipeline>>,
-    pub(crate) session_id: &'a str,
+    pub(crate) session_id: String,
     pub(crate) db: Option<clankers_db::Db>,
     pub(crate) capability_gate: Option<Arc<dyn CapabilityGate>>,
     pub(crate) user_tool_filter: Option<Vec<String>>,
     pub(crate) steel_tool_substrate: Option<AgentToolSteelSubstrateConfig>,
+}
+
+pub(crate) struct ControllerToolPort<'a> {
+    pub(crate) controller_tools: &'a HashMap<String, Arc<dyn Tool>>,
+    pub(crate) services: ControllerToolServices,
 }
 
 #[async_trait]
@@ -336,19 +342,7 @@ impl AgentToolPort for ControllerToolPort<'_> {
     }
 
     async fn execute_tools(&self, tool_calls: &[(String, String, Value)]) -> Vec<ToolResultMessage> {
-        execute_tools_parallel_with_substrate(
-            self.controller_tools,
-            tool_calls,
-            self.event_tx,
-            self.cancel.clone(),
-            self.hook_pipeline.clone(),
-            self.session_id,
-            self.db.clone(),
-            self.capability_gate.clone(),
-            self.user_tool_filter.clone(),
-            self.steel_tool_substrate.clone(),
-        )
-        .await
+        execute_tools_parallel_with_substrate(self.controller_tools, tool_calls, self.services.clone()).await
     }
 }
 
@@ -471,7 +465,12 @@ mod tests {
             assert!(fields.contains(field), "missing ControllerToolPort field inventory for {field}");
         }
         assert!(CONTROLLER_TOOL_PORT_SERVICE_INVENTORY.iter().all(|entry| {
-            entry.owner == AgentToolServiceOwner::ControllerToolPort
+            let expected_owner = if entry.field == "controller_tools" {
+                AgentToolServiceOwner::ControllerToolPort
+            } else {
+                AgentToolServiceOwner::ControllerToolServices
+            };
+            entry.owner == expected_owner
                 && !entry.concrete_type.is_empty()
                 && !entry.replacement.is_empty()
                 && !entry.convergence.is_empty()
