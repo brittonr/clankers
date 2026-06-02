@@ -95,6 +95,81 @@ const NATIVE_RESTART_TERMINATION_TIMEOUT: Duration = Duration::from_secs(5);
 const NATIVE_RESTART_TERMINATION_POLL: Duration = Duration::from_millis(50);
 const ADOPTED_NATIVE_ID_PREFIX: &str = "native_pid_";
 
+#[allow(dead_code)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ProcessJobPolicyCluster {
+    RootProjection,
+    NativeBackend,
+    PueueBackend,
+    SystemdBackend,
+    DurableStorage,
+    RetentionGarbageCollection,
+    NotificationDelivery,
+}
+
+#[allow(dead_code)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct ProcessJobBackendOwnershipEntry {
+    cluster: ProcessJobPolicyCluster,
+    current_owner: &'static str,
+    target_owner: &'static str,
+    root_accountability: &'static str,
+    migration_step: &'static str,
+}
+
+#[allow(dead_code)]
+const PROCESS_JOB_BACKEND_ADAPTER_OWNERSHIP: &[ProcessJobBackendOwnershipEntry] = &[
+    ProcessJobBackendOwnershipEntry {
+        cluster: ProcessJobPolicyCluster::RootProjection,
+        current_owner: "src/tools/process.rs::ProcessTool",
+        target_owner: "src/tools/process.rs::ProcessTool",
+        root_accountability: "parse request, select backend service, project typed receipts",
+        migration_step: "keep root file as projection shell",
+    },
+    ProcessJobBackendOwnershipEntry {
+        cluster: ProcessJobPolicyCluster::NativeBackend,
+        current_owner: "src/tools/process.rs::NativeProcessJobService",
+        target_owner: "src/tools/process/native.rs::NativeProcessJobBackendAdapter",
+        root_accountability: "select native backend and project typed ProcessJobReceipt",
+        migration_step: "I2 native adapter extraction",
+    },
+    ProcessJobBackendOwnershipEntry {
+        cluster: ProcessJobPolicyCluster::PueueBackend,
+        current_owner: "src/tools/process.rs::PueueProcessJobService",
+        target_owner: "src/tools/process/pueue.rs::PueueProcessJobBackendAdapter",
+        root_accountability: "select pueue backend and surface degraded unavailable receipts",
+        migration_step: "I3 pueue fakeable runner extraction",
+    },
+    ProcessJobBackendOwnershipEntry {
+        cluster: ProcessJobPolicyCluster::SystemdBackend,
+        current_owner: "src/tools/process.rs::SystemdProcessJobService",
+        target_owner: "src/tools/process/systemd.rs::SystemdProcessJobBackendAdapter",
+        root_accountability: "select systemd backend and surface degraded unsupported receipts",
+        migration_step: "I4 systemd fakeable runner extraction",
+    },
+    ProcessJobBackendOwnershipEntry {
+        cluster: ProcessJobPolicyCluster::DurableStorage,
+        current_owner: "src/tools/process.rs::stored_record_from_entry",
+        target_owner: "clankers_runtime::process_jobs::ProcessJobDurableRecordPolicy",
+        root_accountability: "wire optional durable storage service",
+        migration_step: "I5 durable reconciliation extraction",
+    },
+    ProcessJobBackendOwnershipEntry {
+        cluster: ProcessJobPolicyCluster::RetentionGarbageCollection,
+        current_owner: "src/tools/process.rs::apply_process_job_retention",
+        target_owner: "clankers_runtime::process_jobs::ProcessJobRetentionPolicyService",
+        root_accountability: "invoke retention service and project typed GC receipt",
+        migration_step: "I5 retention and log-degradation extraction",
+    },
+    ProcessJobBackendOwnershipEntry {
+        cluster: ProcessJobPolicyCluster::NotificationDelivery,
+        current_owner: "src/tools/process.rs::ProcessEntry::evaluate_notification",
+        target_owner: "clankers_runtime::process_jobs::ProcessJobNotificationPolicyEngine",
+        root_accountability: "wire notification sink and project redacted observations",
+        migration_step: "I5 notification delivery extraction",
+    },
+];
+
 fn unsupported_backend_receipt(
     operation: ProcessJobOperation,
     id: Option<ProcessJobId>,

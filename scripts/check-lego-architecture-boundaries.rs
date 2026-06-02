@@ -491,6 +491,7 @@ fn process_tool_adapter_signature() -> Result<Value, String> {
     require_rust_path(&adapter_file, "ProcessJobToolRequest::Start", "process adapter typed start projection")?;
     require_contains(&adapter, "ProcessJobToolRequest::Start", "process adapter typed start projection")?;
     require_contains(&adapter, "Unknown process action", "process adapter fail-closed unsupported action")?;
+    let backend_ownership = process_backend_ownership_signature(&tool_file, tool)?;
     Ok(json!({
         "adapter_module": PROCESS_TOOL_ADAPTER,
         "tool_module": PROCESS_TOOL,
@@ -498,8 +499,67 @@ fn process_tool_adapter_signature() -> Result<Value, String> {
         "storage_dto_references": 0,
         "request_parser_owner": "ProcessToolJsonAdapter",
         "fail_closed_negative_path": "unsupported action returns ToolResult error before backend dispatch",
-        "typed_rail_kind": "Rust AST module, method, path, and forbidden dependency checks"
+        "backend_ownership": backend_ownership,
+        "backend_owner_count": 7,
+        "typed_rail_kind": "Rust AST module, method, path, forbidden dependency, and process backend ownership checks"
     }))
+}
+
+fn process_backend_ownership_signature(tool_file: &RustFile, tool: &str) -> Result<Value, String> {
+    require_contains(tool, "PROCESS_JOB_BACKEND_ADAPTER_OWNERSHIP", "process backend ownership map")?;
+    let expected = [
+        (
+            "RootProjection",
+            "src/tools/process.rs::ProcessTool",
+            "parse request, select backend service, project typed receipts",
+        ),
+        (
+            "NativeBackend",
+            "src/tools/process/native.rs::NativeProcessJobBackendAdapter",
+            "select native backend and project typed ProcessJobReceipt",
+        ),
+        (
+            "PueueBackend",
+            "src/tools/process/pueue.rs::PueueProcessJobBackendAdapter",
+            "select pueue backend and surface degraded unavailable receipts",
+        ),
+        (
+            "SystemdBackend",
+            "src/tools/process/systemd.rs::SystemdProcessJobBackendAdapter",
+            "select systemd backend and surface degraded unsupported receipts",
+        ),
+        (
+            "DurableStorage",
+            "clankers_runtime::process_jobs::ProcessJobDurableRecordPolicy",
+            "wire optional durable storage service",
+        ),
+        (
+            "RetentionGarbageCollection",
+            "clankers_runtime::process_jobs::ProcessJobRetentionPolicyService",
+            "invoke retention service and project typed GC receipt",
+        ),
+        (
+            "NotificationDelivery",
+            "clankers_runtime::process_jobs::ProcessJobNotificationPolicyEngine",
+            "wire notification sink and project redacted observations",
+        ),
+    ];
+    let mut owners = Vec::new();
+    for (cluster, target_owner, root_accountability) in expected {
+        require_rust_path(
+            tool_file,
+            &format!("ProcessJobPolicyCluster::{cluster}"),
+            &format!("process backend ownership cluster {cluster}"),
+        )?;
+        require_contains(tool, target_owner, &format!("process backend target owner {cluster}"))?;
+        require_contains(tool, root_accountability, &format!("process backend root accountability {cluster}"))?;
+        owners.push(json!({
+            "cluster": cluster,
+            "target_owner": target_owner,
+            "root_accountability": root_accountability,
+        }));
+    }
+    Ok(Value::Array(owners))
 }
 
 fn agent_turn_ports_signature() -> Result<Value, String> {

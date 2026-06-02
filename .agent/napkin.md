@@ -3,6 +3,7 @@
 ## Corrections
 | Date | Source | What Went Wrong | What To Do Instead |
 |------|--------|----------------|-------------------|
+| 2026-06-02 | self | Reused a Steel helper hardcoded to run `nix` for a `git status` label, so the transcript showed `nix` rejecting `--no-pager` after successful Cairn archive/validate | Make Steel process helpers take the program as an explicit parameter when mixing Nix and Git commands in one validation bundle. |
 | 2026-06-01 | self | Tried `cargo clippy -p clankers-agent -p clankers-tool-host --tests -- -D warnings` as a focused rail, but Clippy also linted local path dependency `clankers-ucan` and failed on pre-existing `unnested_or_patterns` / `assigning_clones` findings | Do not cite focused agent/tool-host Clippy green unless dependency lint debt is fixed or the command is scoped to avoid local path-dependency linting. |
 | 2026-06-01 | self | Despite existing warnings, ran `rustfmt` on `scripts/check-lego-architecture-boundaries.rs` and reformatted large unrelated owner tables | Do not rustfmt cargo-script architecture rails; restore the file and reapply only the intended exact edit by hand. |
 | 2026-06-01 | self | Split `ControllerToolPort` fields into a `ControllerToolServices` bag but initially left the service-inventory rail asserting every edge was owned by `ControllerToolPort`, and left `session_id` inventoried as `&str` after it became `String` | When moving service fields between shell adapter structs, update both owner assertions and concrete-type inventory rows before rerunning nextest. |

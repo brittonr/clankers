@@ -459,12 +459,50 @@
     ],
     "process_tool_adapter": {
       "adapter_module": "src/tools/process/adapter.rs",
+      "backend_owner_count": 7,
+      "backend_ownership": [
+        {
+          "cluster": "RootProjection",
+          "root_accountability": "parse request, select backend service, project typed receipts",
+          "target_owner": "src/tools/process.rs::ProcessTool"
+        },
+        {
+          "cluster": "NativeBackend",
+          "root_accountability": "select native backend and project typed ProcessJobReceipt",
+          "target_owner": "src/tools/process/native.rs::NativeProcessJobBackendAdapter"
+        },
+        {
+          "cluster": "PueueBackend",
+          "root_accountability": "select pueue backend and surface degraded unavailable receipts",
+          "target_owner": "src/tools/process/pueue.rs::PueueProcessJobBackendAdapter"
+        },
+        {
+          "cluster": "SystemdBackend",
+          "root_accountability": "select systemd backend and surface degraded unsupported receipts",
+          "target_owner": "src/tools/process/systemd.rs::SystemdProcessJobBackendAdapter"
+        },
+        {
+          "cluster": "DurableStorage",
+          "root_accountability": "wire optional durable storage service",
+          "target_owner": "clankers_runtime::process_jobs::ProcessJobDurableRecordPolicy"
+        },
+        {
+          "cluster": "RetentionGarbageCollection",
+          "root_accountability": "invoke retention service and project typed GC receipt",
+          "target_owner": "clankers_runtime::process_jobs::ProcessJobRetentionPolicyService"
+        },
+        {
+          "cluster": "NotificationDelivery",
+          "root_accountability": "wire notification sink and project redacted observations",
+          "target_owner": "clankers_runtime::process_jobs::ProcessJobNotificationPolicyEngine"
+        }
+      ],
       "fail_closed_negative_path": "unsupported action returns ToolResult error before backend dispatch",
       "request_parser_owner": "ProcessToolJsonAdapter",
       "storage_dto_imports": 0,
       "storage_dto_references": 0,
       "tool_module": "src/tools/process.rs",
-      "typed_rail_kind": "Rust AST module, method, path, and forbidden dependency checks"
+      "typed_rail_kind": "Rust AST module, method, path, forbidden dependency, and process backend ownership checks"
     },
     "provider_router_bridge": {
       "bridge_module": "crates/clankers-provider/src/router_request_bridge.rs",
