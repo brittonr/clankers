@@ -11,6 +11,7 @@ const ERROR_EXIT: u8 = 1;
 const RUNTIME_CONTRACTS: &str = "crates/clankers-runtime/src/process_jobs.rs";
 const TOOL: &str = "src/tools/process.rs";
 const TOOL_ADAPTER: &str = "src/tools/process/adapter.rs";
+const TOOL_DURABLE: &str = "src/tools/process/durable.rs";
 const TOOL_PUEUE: &str = "src/tools/process/pueue.rs";
 const TOOL_SYSTEMD: &str = "src/tools/process/systemd.rs";
 
@@ -38,11 +39,9 @@ const TOOL_MARKERS: &[&str] = &[
     "mod adapter;",
     "ProcessToolJsonAdapter::process_job_tool_request(params)",
     "struct NativeProcessJobService",
+    "mod durable;",
     "mod pueue;",
     "mod systemd;",
-    "fn stored_record_from_entry",
-    "fn stored_record_summary",
-    "fn apply_process_job_retention",
     "ProcessJobToolReceipt",
     "ProcessJobToolResult",
     "process_parser_produces_backend_neutral_request_dtos_for_all_actions",
@@ -89,6 +88,11 @@ fn run() -> Result<(), String> {
     }
     if tool.contains("params.get(\"command\")") && !tool.contains("ProcessToolJsonAdapter::process_job_tool_request(params)") {
         return Err(format!("{TOOL} parses process JSON directly instead of routing through {TOOL_ADAPTER}"));
+    }
+
+    let durable = read(TOOL_DURABLE)?;
+    for marker in ["fn stored_record_from_entry", "fn apply_process_job_retention", "fn durable_degraded_log_message"] {
+        require_contains(&durable, marker, TOOL_DURABLE)?;
     }
 
     let pueue = read(TOOL_PUEUE)?;

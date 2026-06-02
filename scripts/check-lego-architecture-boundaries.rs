@@ -35,6 +35,7 @@ const CHANGE_SPEC_ARCHIVE: &str =
 const ACCEPTED_SPEC: &str = "cairn/specs/lego-architecture-boundaries/spec.md";
 const PROCESS_TOOL: &str = "src/tools/process.rs";
 const PROCESS_TOOL_ADAPTER: &str = "src/tools/process/adapter.rs";
+const PROCESS_TOOL_DURABLE: &str = "src/tools/process/durable.rs";
 const PROCESS_TOOL_NATIVE: &str = "src/tools/process/native.rs";
 const PROCESS_TOOL_PUEUE: &str = "src/tools/process/pueue.rs";
 const PROCESS_TOOL_SYSTEMD: &str = "src/tools/process/systemd.rs";
@@ -205,6 +206,7 @@ fn run() -> Result<PathBuf, String> {
             hash_artifact(Path::new(ACCEPTED_SPEC))?,
             hash_artifact(Path::new(PROCESS_TOOL))?,
             hash_artifact(Path::new(PROCESS_TOOL_ADAPTER))?,
+            hash_artifact(Path::new(PROCESS_TOOL_DURABLE))?,
             hash_artifact(Path::new(PROCESS_TOOL_NATIVE))?,
             hash_artifact(Path::new(PROCESS_TOOL_PUEUE))?,
             hash_artifact(Path::new(PROCESS_TOOL_SYSTEMD))?,
@@ -475,19 +477,23 @@ fn shared_dto_crates(reverse_map: &BTreeMap<String, BTreeSet<String>>) -> Vec<Va
 fn process_tool_adapter_signature() -> Result<Value, String> {
     let tool_file = read_rust_file(PROCESS_TOOL)?;
     let adapter_file = read_rust_file(PROCESS_TOOL_ADAPTER)?;
+    let durable_file = read_rust_file(PROCESS_TOOL_DURABLE)?;
     let native_file = read_rust_file(PROCESS_TOOL_NATIVE)?;
     let pueue_file = read_rust_file(PROCESS_TOOL_PUEUE)?;
     let systemd_file = read_rust_file(PROCESS_TOOL_SYSTEMD)?;
     let tool = &tool_file.source;
     let adapter = &adapter_file.source;
+    let durable = &durable_file.source;
     let native = &native_file.source;
     let pueue = &pueue_file.source;
     let systemd = &systemd_file.source;
     require_rust_mod(&tool_file, "adapter", "process tool adapter module")?;
+    require_rust_mod(&tool_file, "durable", "process durable policy module")?;
     require_rust_mod(&tool_file, "native", "process native backend adapter module")?;
     require_rust_mod(&tool_file, "pueue", "process pueue backend adapter module")?;
     require_rust_mod(&tool_file, "systemd", "process systemd backend adapter module")?;
     require_contains(&tool, "mod adapter;", "process tool adapter module")?;
+    require_contains(&tool, "mod durable;", "process durable policy module")?;
     require_contains(&tool, "mod native;", "process native backend adapter module")?;
     require_contains(&tool, "mod pueue;", "process pueue backend adapter module")?;
     require_contains(&tool, "mod systemd;", "process systemd backend adapter module")?;
@@ -535,9 +541,16 @@ fn process_tool_adapter_signature() -> Result<Value, String> {
     require_contains(systemd, "fn parse_systemd_list_units", "process systemd list parser owner")?;
     forbid_contains(tool, "struct SystemdUnitProjection", "process root systemd projection owner")?;
     forbid_contains(tool, "fn parse_systemd_", "process root systemd parser owner")?;
+    require_contains(durable, "pub(super) fn stored_record_from_entry", "process durable record owner")?;
+    require_contains(durable, "pub(super) async fn apply_process_job_retention", "process durable retention owner")?;
+    require_contains(durable, "pub(super) async fn evaluate_process_entry_notification", "process notification policy owner")?;
+    forbid_contains(tool, "fn stored_record_from_entry", "process root durable record owner")?;
+    forbid_contains(tool, "fn apply_process_job_retention", "process root retention owner")?;
+    forbid_contains(tool, "DefaultProcessJobNotificationPolicyEngine", "process root notification policy owner")?;
     let backend_ownership = process_backend_ownership_signature(&tool_file, tool)?;
     Ok(json!({
         "adapter_module": PROCESS_TOOL_ADAPTER,
+        "durable_module": PROCESS_TOOL_DURABLE,
         "native_module": PROCESS_TOOL_NATIVE,
         "pueue_module": PROCESS_TOOL_PUEUE,
         "systemd_module": PROCESS_TOOL_SYSTEMD,
@@ -548,13 +561,16 @@ fn process_tool_adapter_signature() -> Result<Value, String> {
         "fail_closed_negative_path": "unsupported action returns ToolResult error before backend dispatch",
         "backend_ownership": backend_ownership,
         "backend_owner_count": 7,
+        "durable_record_owner": "stored_record_from_entry in src/tools/process/durable.rs",
+        "durable_retention_owner": "apply_process_job_retention in src/tools/process/durable.rs",
         "native_backend_adapter": "NativeProcessJobBackendAdapter",
         "native_registry_owner": "ProcessRegistry in src/tools/process/native.rs",
         "pueue_backend_service": "PueueProcessJobService",
         "pueue_runner_owner": "PueueRunner in src/tools/process/pueue.rs",
         "systemd_backend_service": "SystemdProcessJobService",
         "systemd_runner_owner": "SystemdRunner in src/tools/process/systemd.rs",
-        "typed_rail_kind": "Rust AST module, method, path, forbidden dependency, process native adapter/registry, pueue runner/parser, systemd runner/parser, and backend ownership checks"
+        "notification_policy_owner": "evaluate_process_entry_notification in src/tools/process/durable.rs",
+        "typed_rail_kind": "Rust AST module, method, path, forbidden dependency, process native adapter/registry, pueue runner/parser, systemd runner/parser, durable retention/notification, and backend ownership checks"
     }))
 }
 
@@ -583,17 +599,17 @@ fn process_backend_ownership_signature(tool_file: &RustFile, tool: &str) -> Resu
         ),
         (
             "DurableStorage",
-            "clankers_runtime::process_jobs::ProcessJobDurableRecordPolicy",
+            "src/tools/process/durable.rs::ProcessJobDurableRecordPolicy",
             "wire optional durable storage service",
         ),
         (
             "RetentionGarbageCollection",
-            "clankers_runtime::process_jobs::ProcessJobRetentionPolicyService",
+            "src/tools/process/durable.rs::ProcessJobRetentionPolicyService",
             "invoke retention service and project typed GC receipt",
         ),
         (
             "NotificationDelivery",
-            "clankers_runtime::process_jobs::ProcessJobNotificationPolicyEngine",
+            "src/tools/process/durable.rs::ProcessJobNotificationPolicyService",
             "wire notification sink and project redacted observations",
         ),
     ];

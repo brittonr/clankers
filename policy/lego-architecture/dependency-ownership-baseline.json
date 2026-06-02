@@ -484,20 +484,23 @@
         {
           "cluster": "DurableStorage",
           "root_accountability": "wire optional durable storage service",
-          "target_owner": "clankers_runtime::process_jobs::ProcessJobDurableRecordPolicy"
+          "target_owner": "src/tools/process/durable.rs::ProcessJobDurableRecordPolicy"
         },
         {
           "cluster": "RetentionGarbageCollection",
           "root_accountability": "invoke retention service and project typed GC receipt",
-          "target_owner": "clankers_runtime::process_jobs::ProcessJobRetentionPolicyService"
+          "target_owner": "src/tools/process/durable.rs::ProcessJobRetentionPolicyService"
         },
         {
           "cluster": "NotificationDelivery",
           "root_accountability": "wire notification sink and project redacted observations",
-          "target_owner": "clankers_runtime::process_jobs::ProcessJobNotificationPolicyEngine"
+          "target_owner": "src/tools/process/durable.rs::ProcessJobNotificationPolicyService"
         }
       ],
       "fail_closed_negative_path": "unsupported action returns ToolResult error before backend dispatch",
+      "durable_module": "src/tools/process/durable.rs",
+      "durable_record_owner": "stored_record_from_entry in src/tools/process/durable.rs",
+      "durable_retention_owner": "apply_process_job_retention in src/tools/process/durable.rs",
       "native_backend_adapter": "NativeProcessJobBackendAdapter",
       "native_module": "src/tools/process/native.rs",
       "native_registry_owner": "ProcessRegistry in src/tools/process/native.rs",
@@ -508,10 +511,11 @@
       "systemd_backend_service": "SystemdProcessJobService",
       "systemd_module": "src/tools/process/systemd.rs",
       "systemd_runner_owner": "SystemdRunner in src/tools/process/systemd.rs",
+      "notification_policy_owner": "evaluate_process_entry_notification in src/tools/process/durable.rs",
       "storage_dto_imports": 0,
       "storage_dto_references": 0,
       "tool_module": "src/tools/process.rs",
-      "typed_rail_kind": "Rust AST module, method, path, forbidden dependency, process native adapter/registry, pueue runner/parser, systemd runner/parser, and backend ownership checks"
+      "typed_rail_kind": "Rust AST module, method, path, forbidden dependency, process native adapter/registry, pueue runner/parser, systemd runner/parser, durable retention/notification, and backend ownership checks"
     },
     "provider_router_bridge": {
       "bridge_module": "crates/clankers-provider/src/router_request_bridge.rs",
