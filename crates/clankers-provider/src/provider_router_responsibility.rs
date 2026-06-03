@@ -7,6 +7,20 @@
 pub const PROVIDER_ROUTER_ABSTRACTION_COLLAPSE_REQUIREMENT: &str =
     "r[provider-router-abstraction-collapse.duplicate-inventory]";
 
+pub const SDK_PROVIDER_EDGE_CONCERNS_REQUIREMENT: &str = "r[sdk-provider-edge-boundary.concerns]";
+
+pub const SDK_PROVIDER_EDGE_NO_DISPLAY_DTOS_REQUIREMENT: &str =
+    "r[sdk-provider-edge-boundary.neutral-model-api.no-display-dtos]";
+
+pub const SDK_PROVIDER_EDGE_SDK_HOST_REQUIREMENT: &str =
+    "r[sdk-provider-edge-boundary.neutral-model-api.sdk-host-owned]";
+
+pub const SDK_PROVIDER_EDGE_LITERAL_FIXTURE_REQUIREMENT: &str =
+    "r[sdk-provider-edge-boundary.verification.literal-fixtures]";
+
+pub const SDK_PROVIDER_EDGE_DEPENDENCY_RAIL_REQUIREMENT: &str =
+    "r[sdk-provider-edge-boundary.verification.dependency-rails]";
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub enum ProviderRouterConcern {
     RequestDto,
@@ -20,6 +34,9 @@ pub enum ProviderRouterConcern {
     RetryFallbackCooldown,
     CostUsage,
     ErrorProjection,
+    DisplayDtoBoundary,
+    SdkProviderAdapter,
+    LiteralRequestFixtures,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -97,6 +114,24 @@ pub const PROVIDER_ROUTER_CONCERN_INVENTORY: &[ProviderRouterConcernOwner] = &[
         compatibility_boundary: "RouterCompatAdapter maps routed errors into clankers_provider::ProviderError",
         convergence_condition: "compatibility adapters translate errors without retry/fallback policy duplication",
     },
+    ProviderRouterConcernOwner {
+        concern: ProviderRouterConcern::DisplayDtoBoundary,
+        policy_owner: "clanker-message::ThinkingLevel and ThinkingConfig neutral DTOs",
+        compatibility_boundary: "display/app edges translate UI-only thinking levels before provider-facing APIs",
+        convergence_condition: "clankers-provider has no display or protocol dependency",
+    },
+    ProviderRouterConcernOwner {
+        concern: ProviderRouterConcern::SdkProviderAdapter,
+        policy_owner: "examples/embedded-provider-adapter host-owned ModelHost adapter",
+        compatibility_boundary: "embedded examples use clankers-engine-host and clankers-adapters, not provider/router/auth crates",
+        convergence_condition: "provider-adapter kit denies clankers-provider, clanker-router, OAuth, discovery, and live credentials",
+    },
+    ProviderRouterConcernOwner {
+        concern: ProviderRouterConcern::LiteralRequestFixtures,
+        policy_owner: "explicit JSON fixtures and inline golden request projections",
+        compatibility_boundary: "tests compare fixture JSON without calling the body builder under test for expected values",
+        convergence_condition: "request-shape tests stay fixture-backed when provider fields change",
+    },
 ];
 
 #[cfg(test)]
@@ -110,6 +145,23 @@ mod tests {
         assert_eq!(
             PROVIDER_ROUTER_ABSTRACTION_COLLAPSE_REQUIREMENT,
             "r[provider-router-abstraction-collapse.duplicate-inventory]"
+        );
+        assert_eq!(SDK_PROVIDER_EDGE_CONCERNS_REQUIREMENT, "r[sdk-provider-edge-boundary.concerns]");
+        assert_eq!(
+            SDK_PROVIDER_EDGE_NO_DISPLAY_DTOS_REQUIREMENT,
+            "r[sdk-provider-edge-boundary.neutral-model-api.no-display-dtos]"
+        );
+        assert_eq!(
+            SDK_PROVIDER_EDGE_SDK_HOST_REQUIREMENT,
+            "r[sdk-provider-edge-boundary.neutral-model-api.sdk-host-owned]"
+        );
+        assert_eq!(
+            SDK_PROVIDER_EDGE_LITERAL_FIXTURE_REQUIREMENT,
+            "r[sdk-provider-edge-boundary.verification.literal-fixtures]"
+        );
+        assert_eq!(
+            SDK_PROVIDER_EDGE_DEPENDENCY_RAIL_REQUIREMENT,
+            "r[sdk-provider-edge-boundary.verification.dependency-rails]"
         );
         let concerns: BTreeSet<ProviderRouterConcern> =
             PROVIDER_ROUTER_CONCERN_INVENTORY.iter().map(|entry| entry.concern).collect();
@@ -125,6 +177,9 @@ mod tests {
             ProviderRouterConcern::RetryFallbackCooldown,
             ProviderRouterConcern::CostUsage,
             ProviderRouterConcern::ErrorProjection,
+            ProviderRouterConcern::DisplayDtoBoundary,
+            ProviderRouterConcern::SdkProviderAdapter,
+            ProviderRouterConcern::LiteralRequestFixtures,
         ]);
 
         assert_eq!(concerns, expected);
