@@ -179,6 +179,75 @@ fn auto_compact_settings_from_config(
     }
 }
 
+fn agent_steel_turn_planning_settings_from_config(
+    settings: &clankers_config::settings::SteelTurnPlanningSettings,
+) -> turn::AgentSteelTurnPlanningSettings {
+    turn::AgentSteelTurnPlanningSettings {
+        enabled: settings.enabled,
+        profile_path: settings.profile_path.clone(),
+        script_path: settings.script_path.clone(),
+        script_blake3: settings.script_blake3.clone(),
+        profile_blake3: settings.profile_blake3.clone(),
+        rollout_stage: settings.rollout_stage.map(agent_steel_turn_planning_rollout_stage_from_config),
+        fallback_mode: settings.fallback_mode.map(agent_steel_turn_planning_fallback_mode_from_config),
+        planning_seam: settings.planning_seam.clone(),
+        session_capabilities: settings.session_capabilities.clone(),
+        granted_ucan_abilities: settings.granted_ucan_abilities.clone(),
+        ucan_authority_grants: settings
+            .ucan_authority_grants
+            .iter()
+            .map(agent_steel_turn_planning_authority_grant_from_config)
+            .collect(),
+        disabled_actions: settings.disabled_actions.clone(),
+        receipt_prefix: settings.receipt_prefix.clone(),
+        max_input_bytes: settings.max_input_bytes,
+        max_source_bytes: settings.max_source_bytes,
+    }
+}
+
+fn agent_steel_turn_planning_authority_grant_from_config(
+    grant: &clankers_config::settings::SteelTurnPlanningAuthorityGrantSettings,
+) -> turn::AgentSteelTurnPlanningAuthorityGrantSettings {
+    turn::AgentSteelTurnPlanningAuthorityGrantSettings {
+        resource: grant.resource.clone(),
+        ability: grant.ability.clone(),
+        audience: grant.audience.clone(),
+        proof_reference: grant.proof_reference.clone(),
+        expires_at: grant.expires_at,
+        revoked: grant.revoked,
+        caveats: grant.caveats.clone(),
+    }
+}
+
+fn agent_steel_turn_planning_rollout_stage_from_config(
+    stage: clankers_config::settings::SteelTurnPlanningRolloutStage,
+) -> turn::AgentSteelTurnPlanningRolloutStage {
+    match stage {
+        clankers_config::settings::SteelTurnPlanningRolloutStage::Disabled => {
+            turn::AgentSteelTurnPlanningRolloutStage::Disabled
+        }
+        clankers_config::settings::SteelTurnPlanningRolloutStage::Comparison => {
+            turn::AgentSteelTurnPlanningRolloutStage::Comparison
+        }
+        clankers_config::settings::SteelTurnPlanningRolloutStage::Default => {
+            turn::AgentSteelTurnPlanningRolloutStage::Default
+        }
+    }
+}
+
+fn agent_steel_turn_planning_fallback_mode_from_config(
+    mode: clankers_config::settings::SteelTurnPlanningFallbackMode,
+) -> turn::AgentSteelTurnPlanningFallbackMode {
+    match mode {
+        clankers_config::settings::SteelTurnPlanningFallbackMode::RustNative => {
+            turn::AgentSteelTurnPlanningFallbackMode::RustNative
+        }
+        clankers_config::settings::SteelTurnPlanningFallbackMode::Block => {
+            turn::AgentSteelTurnPlanningFallbackMode::Block
+        }
+    }
+}
+
 fn turn_hook_usage_since(messages: &[AgentMessage], start_index: usize) -> Option<clankers_hooks::HookUsage> {
     let mut saw_usage = false;
     let mut usage = clankers_hooks::HookUsage::default();
@@ -1141,7 +1210,8 @@ impl Agent {
         let base_dir = std::env::current_dir().map_err(|error| AgentError::Agent {
             message: format!("failed to resolve Steel turn planning base directory: {error}"),
         })?;
-        steel_turn_planning_config_from_settings(&self.settings.steel_turn_planning, &base_dir).map_err(|error| {
+        let settings = agent_steel_turn_planning_settings_from_config(&self.settings.steel_turn_planning);
+        steel_turn_planning_config_from_settings(&settings, &base_dir).map_err(|error| {
             AgentError::Agent {
                 message: format!("Steel turn planning activation failed closed: {error}"),
             }

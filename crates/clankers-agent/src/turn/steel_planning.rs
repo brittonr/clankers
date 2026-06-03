@@ -4,9 +4,6 @@ use std::path::PathBuf;
 
 use clanker_message::AgentMessage;
 use clankers_artifacts::ArtifactHash;
-use clankers_config::SteelTurnPlanningFallbackMode;
-use clankers_config::SteelTurnPlanningRolloutStage;
-use clankers_config::SteelTurnPlanningSettings;
 use clankers_runtime::DEFAULT_TURN_EXECUTION_SEAM;
 use clankers_runtime::DEFAULT_TURN_PLANNING_SEAM;
 use clankers_runtime::OrchestrationCandidate;
@@ -68,6 +65,138 @@ impl AgentTurnSteelPlanningConfig {
             profile,
         }
     }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AgentSteelTurnPlanningSettings {
+    pub enabled: bool,
+    pub profile_path: Option<String>,
+    pub script_path: Option<String>,
+    pub script_blake3: Option<String>,
+    pub profile_blake3: Option<String>,
+    pub rollout_stage: Option<AgentSteelTurnPlanningRolloutStage>,
+    pub fallback_mode: Option<AgentSteelTurnPlanningFallbackMode>,
+    pub planning_seam: Option<String>,
+    pub session_capabilities: Vec<String>,
+    pub granted_ucan_abilities: Vec<String>,
+    pub ucan_authority_grants: Vec<AgentSteelTurnPlanningAuthorityGrantSettings>,
+    pub disabled_actions: Vec<String>,
+    pub receipt_prefix: Option<String>,
+    pub max_input_bytes: Option<u64>,
+    pub max_source_bytes: u64,
+}
+
+impl Default for AgentSteelTurnPlanningSettings {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            profile_path: None,
+            script_path: None,
+            script_blake3: None,
+            profile_blake3: None,
+            rollout_stage: None,
+            fallback_mode: None,
+            planning_seam: None,
+            session_capabilities: vec![
+                "steel-orchestration".to_string(),
+                "turn-planning".to_string(),
+                "turn-execution".to_string(),
+            ],
+            granted_ucan_abilities: vec![
+                "clankers/steel/orchestrate.plan_turn".to_string(),
+                "clankers/steel/orchestrate.execute_turn".to_string(),
+            ],
+            ucan_authority_grants: Vec::new(),
+            disabled_actions: Vec::new(),
+            receipt_prefix: None,
+            max_input_bytes: None,
+            max_source_bytes: 4096,
+        }
+    }
+}
+
+impl AgentSteelTurnPlanningSettings {
+    #[must_use]
+    pub fn uses_bundled_profile(&self) -> bool {
+        self.profile_path.is_none() && self.script_path.is_none()
+    }
+
+    fn validate(&self) -> Result<(), String> {
+        if !self.enabled {
+            return Ok(());
+        }
+        match self.profile_path.as_deref() {
+            Some(path) if path.trim().is_empty() => return Err("Steel turn planning `profilePath` cannot be blank".to_string()),
+            Some(_) => {}
+            None if self.script_path.is_some() => return Err("enabled Steel turn planning requires `profilePath`".to_string()),
+            None => {}
+        }
+        match self.script_path.as_deref() {
+            Some(path) if path.trim().is_empty() => return Err("Steel turn planning `scriptPath` cannot be blank".to_string()),
+            Some(_) => {}
+            None if self.profile_path.is_some() => return Err("enabled Steel turn planning requires `scriptPath`".to_string()),
+            None => {}
+        }
+        if self.script_blake3.as_deref().is_some_and(|hash| hash.trim().is_empty())
+            || self.profile_blake3.as_deref().is_some_and(|hash| hash.trim().is_empty())
+        {
+            return Err("Steel turn planning hashes cannot be blank".to_string());
+        }
+        if self.session_capabilities.iter().any(|capability| capability.trim().is_empty()) {
+            return Err("Steel turn planning session capabilities cannot be blank".to_string());
+        }
+        if self.granted_ucan_abilities.iter().any(|ability| ability.trim().is_empty()) {
+            return Err("Steel turn planning UCAN abilities cannot be blank".to_string());
+        }
+        if self.ucan_authority_grants.iter().any(|grant| {
+            grant.resource.trim().is_empty()
+                || grant.ability.trim().is_empty()
+                || grant.audience.trim().is_empty()
+                || grant.proof_reference.as_deref().is_some_and(|proof| proof.trim().is_empty())
+                || grant.caveats.iter().any(|caveat| caveat.trim().is_empty())
+        }) {
+            return Err("Steel turn planning UCAN authority grants cannot contain blank resource, ability, audience, proof reference, or caveat entries".to_string());
+        }
+        if self.disabled_actions.iter().any(|action| action.trim().is_empty()) {
+            return Err("Steel turn planning disabled actions cannot be blank".to_string());
+        }
+        if matches!(self.max_input_bytes, Some(0)) {
+            return Err("Steel turn planning `maxInputBytes` must be greater than zero".to_string());
+        }
+        if self.max_source_bytes == 0 {
+            return Err("Steel turn planning `maxSourceBytes` must be greater than zero".to_string());
+        }
+        if let Some(prefix) = &self.receipt_prefix
+            && !prefix.starts_with("target/")
+        {
+            return Err("Steel turn planning `receiptPrefix` must stay under target/".to_string());
+        }
+        Ok(())
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AgentSteelTurnPlanningAuthorityGrantSettings {
+    pub resource: String,
+    pub ability: String,
+    pub audience: String,
+    pub proof_reference: Option<String>,
+    pub expires_at: Option<chrono::DateTime<chrono::Utc>>,
+    pub revoked: bool,
+    pub caveats: Vec<String>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AgentSteelTurnPlanningRolloutStage {
+    Disabled,
+    Comparison,
+    Default,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AgentSteelTurnPlanningFallbackMode {
+    RustNative,
+    Block,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -136,7 +265,7 @@ impl std::fmt::Display for SteelTurnPlanningActivationError {
 impl std::error::Error for SteelTurnPlanningActivationError {}
 
 pub fn steel_turn_planning_config_from_settings(
-    settings: &SteelTurnPlanningSettings,
+    settings: &AgentSteelTurnPlanningSettings,
     base_dir: &Path,
 ) -> Result<Option<AgentTurnSteelPlanningConfig>, SteelTurnPlanningActivationError> {
     if !settings.enabled {
@@ -155,7 +284,7 @@ struct SteelPlanningArtifacts {
 }
 
 fn build_config_from_artifacts(
-    settings: &SteelTurnPlanningSettings,
+    settings: &AgentSteelTurnPlanningSettings,
     artifacts: SteelPlanningArtifacts,
 ) -> Result<AgentTurnSteelPlanningConfig, SteelTurnPlanningActivationError> {
     let profile_bytes = artifacts.profile_bytes;
@@ -196,7 +325,7 @@ fn validate_turn_planning_script_source(source: &str) -> Result<(), SteelTurnPla
 }
 
 fn load_planning_artifacts(
-    settings: &SteelTurnPlanningSettings,
+    settings: &AgentSteelTurnPlanningSettings,
     base_dir: &Path,
 ) -> Result<SteelPlanningArtifacts, SteelTurnPlanningActivationError> {
     if settings.uses_bundled_profile() {
@@ -307,7 +436,7 @@ fn verify_optional_hash(
 }
 
 fn runtime_profile_from_export(
-    settings: &SteelTurnPlanningSettings,
+    settings: &AgentSteelTurnPlanningSettings,
     export: &NickelSteelOrchestrationProfile,
     script_hash: ArtifactHash,
     policy_hash: ArtifactHash,
@@ -376,7 +505,7 @@ fn required_host_action<'a>(
 }
 
 fn ensure_session_authority(
-    settings: &SteelTurnPlanningSettings,
+    settings: &AgentSteelTurnPlanningSettings,
     profile: &SteelOrchestrationProfile,
 ) -> Result<(), SteelTurnPlanningActivationError> {
     for capability in &profile.required_session_capabilities {
@@ -395,7 +524,7 @@ fn ensure_session_authority(
     Ok(())
 }
 
-fn authority_grants_from_settings(settings: &SteelTurnPlanningSettings) -> Vec<SteelTurnPlanningAuthorityGrant> {
+fn authority_grants_from_settings(settings: &AgentSteelTurnPlanningSettings) -> Vec<SteelTurnPlanningAuthorityGrant> {
     settings
         .ucan_authority_grants
         .iter()
@@ -411,18 +540,18 @@ fn authority_grants_from_settings(settings: &SteelTurnPlanningSettings) -> Vec<S
         .collect()
 }
 
-fn rollout_stage_to_runtime(stage: SteelTurnPlanningRolloutStage) -> OrchestrationRolloutStage {
+fn rollout_stage_to_runtime(stage: AgentSteelTurnPlanningRolloutStage) -> OrchestrationRolloutStage {
     match stage {
-        SteelTurnPlanningRolloutStage::Disabled => OrchestrationRolloutStage::Disabled,
-        SteelTurnPlanningRolloutStage::Comparison => OrchestrationRolloutStage::Comparison,
-        SteelTurnPlanningRolloutStage::Default => OrchestrationRolloutStage::Default,
+        AgentSteelTurnPlanningRolloutStage::Disabled => OrchestrationRolloutStage::Disabled,
+        AgentSteelTurnPlanningRolloutStage::Comparison => OrchestrationRolloutStage::Comparison,
+        AgentSteelTurnPlanningRolloutStage::Default => OrchestrationRolloutStage::Default,
     }
 }
 
-fn fallback_mode_to_runtime(mode: SteelTurnPlanningFallbackMode) -> OrchestrationFallbackMode {
+fn fallback_mode_to_runtime(mode: AgentSteelTurnPlanningFallbackMode) -> OrchestrationFallbackMode {
     match mode {
-        SteelTurnPlanningFallbackMode::RustNative => OrchestrationFallbackMode::RustNative,
-        SteelTurnPlanningFallbackMode::Block => OrchestrationFallbackMode::Block,
+        AgentSteelTurnPlanningFallbackMode::RustNative => OrchestrationFallbackMode::RustNative,
+        AgentSteelTurnPlanningFallbackMode::Block => OrchestrationFallbackMode::Block,
     }
 }
 
@@ -591,11 +720,7 @@ struct TurnPlanningHashMaterial<'a> {
 )]
 mod tests {
     use clankers_artifacts::ArtifactHash;
-    use clankers_config::SteelTurnPlanningAuthorityGrantSettings;
-    use clankers_config::SteelTurnPlanningFallbackMode;
-    use clankers_config::SteelTurnPlanningRolloutStage;
-    use clankers_config::SteelTurnPlanningSettings;
-    use clankers_runtime::OrchestrationFallbackMode;
+                    use clankers_runtime::OrchestrationFallbackMode;
     use clankers_runtime::OrchestrationPlanStatus;
     use clankers_runtime::OrchestrationRolloutStage;
     use clankers_runtime::SteelOrchestrationProfile;
@@ -606,7 +731,7 @@ mod tests {
         SteelOrchestrationProfile::comparison_default(ArtifactHash::digest(b"script"), ArtifactHash::digest(b"policy"))
     }
 
-    fn fixture_files() -> (tempfile::TempDir, SteelTurnPlanningSettings) {
+    fn fixture_files() -> (tempfile::TempDir, AgentSteelTurnPlanningSettings) {
         let temp = tempfile::tempdir().unwrap();
         let script = "(host \"steel.host.plan_turn\")\n";
         let script_hash = ArtifactHash::digest(script.as_bytes()).prefixed();
@@ -637,14 +762,14 @@ mod tests {
         let profile_text = serde_json::to_string_pretty(&profile).unwrap();
         std::fs::write(temp.path().join("profile.json"), profile_text.as_bytes()).unwrap();
         std::fs::write(temp.path().join("plan.scm"), script).unwrap();
-        let settings = SteelTurnPlanningSettings {
+        let settings = AgentSteelTurnPlanningSettings {
             enabled: true,
             profile_path: Some("profile.json".to_string()),
             script_path: Some("plan.scm".to_string()),
             script_blake3: Some(script_hash),
             profile_blake3: Some(ArtifactHash::digest(profile_text.as_bytes()).prefixed()),
-            rollout_stage: Some(SteelTurnPlanningRolloutStage::Comparison),
-            fallback_mode: Some(SteelTurnPlanningFallbackMode::RustNative),
+            rollout_stage: Some(AgentSteelTurnPlanningRolloutStage::Comparison),
+            fallback_mode: Some(AgentSteelTurnPlanningFallbackMode::RustNative),
             planning_seam: None,
             session_capabilities: vec![
                 "steel-orchestration".to_string(),
@@ -655,7 +780,7 @@ mod tests {
                 "clankers/steel/orchestrate.plan_turn".to_string(),
                 "clankers/steel/orchestrate.execute_turn".to_string(),
             ],
-            ucan_authority_grants: vec![SteelTurnPlanningAuthorityGrantSettings {
+            ucan_authority_grants: vec![AgentSteelTurnPlanningAuthorityGrantSettings {
                 resource: "session:session-fixture".to_string(),
                 ability: "clankers/steel/orchestrate.plan_turn".to_string(),
                 audience: "clankers:agent-turn-planning".to_string(),
@@ -675,7 +800,7 @@ mod tests {
     #[test]
     fn settings_activation_uses_bundled_default_without_paths() {
         let config = steel_turn_planning_config_from_settings(
-            &SteelTurnPlanningSettings::default(),
+            &AgentSteelTurnPlanningSettings::default(),
             Path::new("/path/that/does/not/contain/policy"),
         )
         .expect("bundled default settings are valid")
@@ -695,9 +820,9 @@ mod tests {
 
     #[test]
     fn settings_activation_explicit_disabled_uses_rust_native() {
-        let settings = SteelTurnPlanningSettings {
+        let settings = AgentSteelTurnPlanningSettings {
             enabled: false,
-            ..SteelTurnPlanningSettings::default()
+            ..AgentSteelTurnPlanningSettings::default()
         };
         let config = steel_turn_planning_config_from_settings(&settings, Path::new("."))
             .expect("explicitly disabled settings are valid");
@@ -706,9 +831,9 @@ mod tests {
 
     #[test]
     fn settings_activation_rejects_bundled_script_over_budget() {
-        let settings = SteelTurnPlanningSettings {
+        let settings = AgentSteelTurnPlanningSettings {
             max_source_bytes: 1,
-            ..SteelTurnPlanningSettings::default()
+            ..AgentSteelTurnPlanningSettings::default()
         };
         let err = steel_turn_planning_config_from_settings(&settings, Path::new(".")).unwrap_err();
         assert!(matches!(err, SteelTurnPlanningActivationError::ScriptTooLarge { .. }));
@@ -716,9 +841,9 @@ mod tests {
 
     #[test]
     fn settings_activation_rejects_bundled_hash_mismatch() {
-        let settings = SteelTurnPlanningSettings {
+        let settings = AgentSteelTurnPlanningSettings {
             script_blake3: Some(ArtifactHash::digest(b"wrong-script").prefixed()),
-            ..SteelTurnPlanningSettings::default()
+            ..AgentSteelTurnPlanningSettings::default()
         };
         let err = steel_turn_planning_config_from_settings(&settings, Path::new(".")).unwrap_err();
         assert!(matches!(err, SteelTurnPlanningActivationError::ScriptHashMismatch { .. }));
@@ -732,7 +857,7 @@ mod tests {
 
     #[test]
     fn artifact_core_rejects_malformed_profile_json() {
-        let settings = SteelTurnPlanningSettings::default();
+        let settings = AgentSteelTurnPlanningSettings::default();
         let err = build_config_from_artifacts(&settings, SteelPlanningArtifacts {
             profile_bytes: b"not-json".to_vec(),
             script_source: DEFAULT_STEEL_SOURCE.to_string(),
@@ -743,7 +868,7 @@ mod tests {
 
     #[test]
     fn artifact_core_rejects_malformed_script_before_steel_execution() {
-        let settings = SteelTurnPlanningSettings::default();
+        let settings = AgentSteelTurnPlanningSettings::default();
         let err = build_config_from_artifacts(&settings, SteelPlanningArtifacts {
             profile_bytes: BUNDLED_DEFAULT_PROFILE_BYTES.to_vec(),
             script_source: "(write-file \"/tmp/not-allowed\" \"blocked\")".to_string(),
@@ -771,7 +896,7 @@ mod tests {
     #[test]
     fn settings_activation_can_select_default_rollout_after_validation() {
         let (temp, mut settings) = fixture_files();
-        settings.rollout_stage = Some(SteelTurnPlanningRolloutStage::Default);
+        settings.rollout_stage = Some(AgentSteelTurnPlanningRolloutStage::Default);
         let config = steel_turn_planning_config_from_settings(&settings, temp.path())
             .expect("settings should activate")
             .expect("enabled config present");

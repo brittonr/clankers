@@ -653,6 +653,7 @@ fn agent_turn_ports_signature() -> Result<Value, String> {
     let turn_mod_file = read_rust_file(AGENT_TURN_MOD)?;
     let adapters_file = read_rust_file(AGENT_TURN_ADAPTERS)?;
     let ports_file = read_rust_file(AGENT_TURN_PORTS)?;
+    let steel_planning_file = read_rust_file(AGENT_TURN_STEEL_PLANNING)?;
     let steel_tool_substrate_file = read_rust_file(AGENT_TURN_STEEL_TOOL_SUBSTRATE)?;
     let compaction_file = read_rust_file(AGENT_COMPACTION)?;
     let context_file = read_rust_file(AGENT_CONTEXT)?;
@@ -661,6 +662,7 @@ fn agent_turn_ports_signature() -> Result<Value, String> {
     let turn_mod = &turn_mod_file.source;
     let adapters = &adapters_file.source;
     let ports = &ports_file.source;
+    let steel_planning = &steel_planning_file.source;
     let steel_tool_substrate = &steel_tool_substrate_file.source;
     let compaction = &compaction_file.source;
     let context = &context_file.source;
@@ -800,9 +802,19 @@ fn agent_turn_ports_signature() -> Result<Value, String> {
         "agent-owned Steel tool substrate settings DTO",
     )?;
     require_contains(
+        steel_planning,
+        "pub struct AgentSteelTurnPlanningSettings",
+        "agent-owned Steel turn planning settings DTO",
+    )?;
+    require_contains(
         agent_lib,
         "agent_tool_steel_substrate_settings_from_config",
         "Steel tool substrate app-edge settings adapter",
+    )?;
+    require_contains(
+        agent_lib,
+        "agent_steel_turn_planning_settings_from_config",
+        "Steel turn planning app-edge settings adapter",
     )?;
     require_contains(
         agent_lib,
@@ -823,6 +835,11 @@ fn agent_turn_ports_signature() -> Result<Value, String> {
         steel_tool_substrate,
         "clankers_config::",
         "Steel tool substrate reusable policy concrete config import",
+    )?;
+    forbid_contains(
+        steel_planning,
+        "clankers_config::",
+        "Steel turn planning reusable policy concrete config import",
     )?;
     forbid_contains(
         compaction,
@@ -894,7 +911,7 @@ fn agent_turn_ports_signature() -> Result<Value, String> {
         "tool_service_inventory": "CONTROLLER_TOOL_PORT_SERVICE_INVENTORY",
         "legacy_tool_context_inventory": "LEGACY_TOOL_CONTEXT_SERVICE_INVENTORY",
         "concrete_dependency_budget": "AGENT_CONCRETE_DEPENDENCY_BUDGET",
-        "selected_config_slice": "Steel tool substrate, auto-compaction, and system prompt affix settings now use agent-owned DTOs at app edge",
+        "selected_config_slice": "Steel tool substrate, Steel turn planning, auto-compaction, and system prompt affix settings now use agent-owned DTOs at app edge",
         "tool_context_module": AGENT_TOOL,
         "cost_adapter": "CostTrackerPort",
         "cancellation_adapter": "TokenCancellationPort",

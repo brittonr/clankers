@@ -1,7 +1,7 @@
 {
   "artifact_hashes": [
     {
-      "blake3": "1e520d26e04254f175d31b5e70b4b3001862c57b9e5a707a464d9950a666f4af",
+      "blake3": "f5f77ad01530e563150ceb55229444e2377aeee696b93d98d094aa72aff3c091",
       "path": "policy/lego-architecture/dependency-ownership-baseline.json"
     },
     {
@@ -41,7 +41,7 @@
       "path": "src/tools/process/systemd.rs"
     },
     {
-      "blake3": "5a2f7efc1b9b7cbbb9edf018ae63b8e3b974693d9d285706a815fb7053440d22",
+      "blake3": "6097e478ce2116f35f8f275d8abdb6d53f0e48f4e90f6cfcd8d9ffd9377f68c9",
       "path": "crates/clankers-agent/src/lib.rs"
     },
     {
@@ -69,7 +69,7 @@
       "path": "crates/clankers-agent/src/tool.rs"
     },
     {
-      "blake3": "0f8d1452fcea5c0f57e9ea3c7ec65b467dd4c023338f315f7816bf091a6b4430",
+      "blake3": "fc29946bb0231dabb193fdb1152f6f511b4308b39e8fff77676205cfa6202650",
       "path": "crates/clankers-agent/src/turn/mod.rs"
     },
     {
@@ -89,11 +89,11 @@
       "path": "crates/clankers-agent/src/turn/policy.rs"
     },
     {
-      "blake3": "8b5551e18ad6cb976d4cfa5c520de34763bcfb22ed048ebc6faa72f6a94b0f0d",
+      "blake3": "f9afa2a58fec1f6ae65a9d40dc978a1caddfe83900d9c80bcd1aaa6d469b82c4",
       "path": "crates/clankers-agent/src/turn/ports.rs"
     },
     {
-      "blake3": "9b43bb56b637c19b10210d05657979ce46f539b0abb13440aa3a8b311f3d61e9",
+      "blake3": "63ff22a0cef65b519c3e922db1373e3494b70846073ee1044f13a86bd160311a",
       "path": "crates/clankers-agent/src/turn/steel_planning.rs"
     },
     {
@@ -255,7 +255,7 @@
       "provider_adapter": "ProviderModelPort",
       "provider_adapter_owner": "crates/clankers-agent/src/lib.rs app-edge shell",
       "runtime_service_bundle": "AgentRuntimeServices",
-      "selected_config_slice": "Steel tool substrate, auto-compaction, and system prompt affix settings now use agent-owned DTOs at app edge",
+      "selected_config_slice": "Steel tool substrate, Steel turn planning, auto-compaction, and system prompt affix settings now use agent-owned DTOs at app edge",
       "service_receipt_kinds": [
         "model",
         "tools",
