@@ -1,15 +1,11 @@
 //! Builder for Agent with automatic routing and cost tracking setup
 
-use std::path::PathBuf;
 use std::sync::Arc;
 
 use clanker_message::ThinkingConfig;
 use clanker_message::ThinkingLevel;
 use clankers_db::Db;
-use clankers_model_selection::config::RoutingPolicyConfig;
 use clankers_model_selection::cost_tracker::CostTracker;
-use clankers_model_selection::cost_tracker::CostTrackerConfig;
-use clankers_model_selection::cost_tracker::pricing_from_models;
 use clankers_model_selection::policy::RoutingPolicy;
 use clankers_provider::Provider;
 
@@ -30,18 +26,17 @@ pub struct AgentBuilder {
     system_prompt: String,
     tools: Vec<Arc<dyn Tool>>,
     db: Option<Db>,
-    pricing_config_dir: Option<PathBuf>,
     thinking: Option<ThinkingConfig>,
     capability_gate: Option<Arc<dyn crate::tool::CapabilityGate>>,
 }
 
 /// Agent-owned configuration for the desktop compatibility builder.
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct AgentBuilderConfig {
     pub agent_settings: AgentSettings,
     pub model_roles: AgentModelRoles,
-    pub routing: Option<RoutingPolicyConfig>,
-    pub cost_tracking: Option<CostTrackerConfig>,
+    pub routing_policy: Option<RoutingPolicy>,
+    pub cost_tracker: Option<Arc<CostTracker>>,
     pub thinking_level: ThinkingLevel,
 }
 
@@ -50,8 +45,8 @@ impl Default for AgentBuilderConfig {
         Self {
             agent_settings: AgentSettings::default(),
             model_roles: AgentModelRoles::default(),
-            routing: None,
-            cost_tracking: None,
+            routing_policy: None,
+            cost_tracker: None,
             thinking_level: ThinkingLevel::Max,
         }
     }
@@ -67,7 +62,6 @@ impl AgentBuilder {
             system_prompt,
             tools: Vec::new(),
             db: None,
-            pricing_config_dir: None,
             thinking: None,
             capability_gate: None,
         }
@@ -97,17 +91,9 @@ impl AgentBuilder {
         self
     }
 
-    /// Set the optional config directory for resolving pricing data.
-    pub fn with_pricing_config_dir(mut self, path: PathBuf) -> Self {
-        self.pricing_config_dir = Some(path);
-        self
-    }
-
-    /// Build the Agent, automatically wiring routing policy and cost tracking from settings
+    /// Build the Agent, automatically wiring routing policy and cost tracking from the builder
+    /// config.
     pub fn build(self) -> Agent {
-        // Snapshot model pricing before moving the provider into the agent
-        let provider_models: Vec<clankers_provider::Model> = self.provider.models().to_vec();
-
         let mut agent = Agent::new_with_agent_settings(
             self.provider,
             self.tools,
@@ -121,18 +107,13 @@ impl AgentBuilder {
             agent = agent.with_db(db);
         }
 
-        // Wire routing policy from settings
-        if let Some(routing_config) = self.config.routing.as_ref()
-            && routing_config.enabled
-        {
-            let policy = RoutingPolicy::new(routing_config.clone());
+        // Wire routing policy from the app-edge adapter.
+        if let Some(policy) = self.config.routing_policy {
             agent = agent.with_routing_policy(policy).with_agent_model_roles(self.config.model_roles.clone());
         }
 
-        // Wire cost tracking from settings
-        if let Some(cost_config) = self.config.cost_tracking.as_ref() {
-            let pricing = pricing_from_models(&provider_models, self.pricing_config_dir.as_deref());
-            let tracker = Arc::new(CostTracker::new(pricing, cost_config.clone()));
+        // Wire cost tracking from the app-edge adapter.
+        if let Some(tracker) = self.config.cost_tracker {
             agent = agent.with_cost_tracker(tracker);
         }
 

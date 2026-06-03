@@ -199,7 +199,7 @@ pub(crate) const AGENT_CONCRETE_DEPENDENCY_BUDGET: &[AgentConcreteDependencyBudg
         crate_name: "clankers-config",
         owner: AgentConcreteDependencyOwner::AppEdgeSettingsAdapter,
         production_modules: &[],
-        selected_slice_status: "Agent runtime/model-role settings, Steel tool substrate, Steel turn planning, auto-compaction, context assembly, and prompt discovery settings converted to agent-owned DTOs at root app edge; clankers-agent has no clankers-config dependency",
+        selected_slice_status: "Agent runtime/model-role settings, routing/cost construction, Steel tool substrate, Steel turn planning, auto-compaction, context assembly, and prompt discovery settings converted to agent-owned DTOs at root app edge; clankers-agent has no clankers-config dependency",
         convergence: "keep settings-derived routing/cost policy construction in root/controller adapters and pass agent-owned DTOs into clankers-agent",
     },
     AgentConcreteDependencyBudgetEntry {

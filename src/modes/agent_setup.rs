@@ -80,10 +80,13 @@ pub(crate) fn build_agent_with_tools(
     let active_tools = crate::tool_gateway::allowed_tools_for_policy(&tiered_tools, &active_tiers, &app.disabled_tools);
 
     // Build the final agent with tools, db, routing, and cost tracking
-    let builder_config = crate::agent_config::agent_builder_config_from_settings(settings);
+    let builder_config = crate::agent_config::agent_builder_config_from_settings(
+        settings,
+        provider.models(),
+        Some(&paths.global_config_dir),
+    );
     let mut agent_builder = clankers_agent::builder::AgentBuilder::new(provider, builder_config, model, system_prompt)
-        .with_tools(active_tools)
-        .with_pricing_config_dir(paths.global_config_dir.clone());
+        .with_tools(active_tools);
 
     // Apply default capability restrictions from settings
     if let Some(caps) = &settings.default_capabilities {

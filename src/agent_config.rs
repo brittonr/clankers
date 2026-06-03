@@ -1,6 +1,8 @@
 //! Root-shell adapters from desktop settings to agent-owned DTOs.
 
 use std::collections::HashMap;
+use std::path::Path;
+use std::sync::Arc;
 
 use clankers_agent::AgentMemorySettings;
 use clankers_agent::AgentModelRoles;
@@ -11,15 +13,26 @@ use clankers_agent::compaction;
 use clankers_agent::turn;
 use clankers_config::model_roles::ModelRoles;
 use clankers_config::settings::Settings;
+use clankers_model_selection::cost_tracker::CostTracker;
+use clankers_model_selection::cost_tracker::pricing_from_models;
+use clankers_model_selection::policy::RoutingPolicy;
+use clankers_provider::Model;
 
 /// Convert desktop Clankers settings into agent-owned builder configuration.
 #[must_use]
-pub fn agent_builder_config_from_settings(settings: &Settings) -> AgentBuilderConfig {
+pub fn agent_builder_config_from_settings(
+    settings: &Settings,
+    provider_models: &[Model],
+    pricing_config_dir: Option<&Path>,
+) -> AgentBuilderConfig {
     AgentBuilderConfig {
         agent_settings: agent_settings_from_config(settings),
         model_roles: agent_model_roles_from_config(&settings.model_roles),
-        routing: settings.routing.clone(),
-        cost_tracking: settings.cost_tracking.clone(),
+        routing_policy: settings.routing.as_ref().filter(|routing| routing.enabled).cloned().map(RoutingPolicy::new),
+        cost_tracker: settings.cost_tracking.as_ref().map(|cost_config| {
+            let pricing = pricing_from_models(provider_models, pricing_config_dir);
+            Arc::new(CostTracker::new(pricing, cost_config.clone()))
+        }),
         thinking_level: settings.parsed_thinking_level(),
     }
 }
@@ -266,5 +279,19 @@ mod tests {
 
         assert_eq!(agent_roles.resolve("thinking", "fallback-model"), "slow-model");
         assert_eq!(agent_roles.resolve("unknown", "fallback-model"), "default-model");
+    }
+
+    #[test]
+    fn agent_builder_config_constructs_routing_and_cost_at_app_edge() {
+        let settings = Settings {
+            routing: Some(clankers_model_selection::config::RoutingPolicyConfig::default()),
+            cost_tracking: Some(clankers_model_selection::cost_tracker::CostTrackerConfig::default()),
+            ..Settings::default()
+        };
+
+        let config = agent_builder_config_from_settings(&settings, &[], None);
+
+        assert!(config.routing_policy.is_some());
+        assert!(config.cost_tracker.is_some());
     }
 }

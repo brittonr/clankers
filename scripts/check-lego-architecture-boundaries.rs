@@ -686,8 +686,38 @@ fn agent_turn_ports_signature() -> Result<Value, String> {
     )?;
     require_contains(
         builder,
+        "pub cost_tracker: Option<Arc<CostTracker>>",
+        "agent builder receives app-edge cost tracker service",
+    )?;
+    require_contains(
+        builder,
+        "pub routing_policy: Option<RoutingPolicy>",
+        "agent builder receives app-edge routing policy service",
+    )?;
+    require_contains(
+        agent_config,
+        "pricing_from_models(provider_models, pricing_config_dir)",
+        "root app edge resolves pricing config for agent cost tracking",
+    )?;
+    forbid_contains(
+        builder,
         "with_pricing_config_dir",
-        "agent builder receives pricing config dir from app edge",
+        "agent builder must not resolve pricing config dirs after cost DTO drain",
+    )?;
+    forbid_contains(
+        builder,
+        "pricing_from_models",
+        "agent builder must not construct cost pricing after cost DTO drain",
+    )?;
+    forbid_contains(
+        builder,
+        "RoutingPolicyConfig",
+        "agent builder must not consume routing config after routing DTO drain",
+    )?;
+    forbid_contains(
+        builder,
+        "CostTrackerConfig",
+        "agent builder must not consume cost config after cost DTO drain",
     )?;
     forbid_contains(
         builder,
@@ -958,7 +988,7 @@ fn agent_turn_ports_signature() -> Result<Value, String> {
         "tool_service_inventory": "CONTROLLER_TOOL_PORT_SERVICE_INVENTORY",
         "legacy_tool_context_inventory": "LEGACY_TOOL_CONTEXT_SERVICE_INVENTORY",
         "concrete_dependency_budget": "AGENT_CONCRETE_DEPENDENCY_BUDGET",
-        "selected_config_slice": "Agent runtime/model-role settings, Steel tool substrate, Steel turn planning, auto-compaction, context assembly, and prompt discovery settings now use agent-owned DTOs at root app edge; clankers-agent has no clankers-config dependency",
+        "selected_config_slice": "Agent runtime/model-role settings, routing/cost construction, Steel tool substrate, Steel turn planning, auto-compaction, context assembly, and prompt discovery settings now use agent-owned DTOs at root app edge; clankers-agent has no clankers-config dependency",
         "tool_context_module": AGENT_TOOL,
         "cost_adapter": "CostTrackerPort",
         "cancellation_adapter": "TokenCancellationPort",

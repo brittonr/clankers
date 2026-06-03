@@ -148,7 +148,11 @@ fn assemble_session_runtime_in_dir(
     let effective_caps =
         merge_session_capabilities(request.capabilities.as_deref(), factory.settings.default_capabilities.as_deref());
 
-    let builder_config = crate::agent_config::agent_builder_config_from_settings(&factory.settings);
+    let builder_config = crate::agent_config::agent_builder_config_from_settings(
+        &factory.settings,
+        factory.provider.models(),
+        pricing_config_dir.as_deref(),
+    );
     let mut builder = clankers_agent::builder::AgentBuilder::new(
         Arc::clone(&factory.provider),
         builder_config,
@@ -156,9 +160,6 @@ fn assemble_session_runtime_in_dir(
         system_prompt.clone(),
     )
     .with_tools(tools);
-    if let Some(pricing_config_dir) = pricing_config_dir {
-        builder = builder.with_pricing_config_dir(pricing_config_dir);
-    }
 
     if let Some(public_auth) = request.public_auth {
         let gate = Arc::new(crate::capability_gate::PublicUcanCapabilityGate::new(public_auth));

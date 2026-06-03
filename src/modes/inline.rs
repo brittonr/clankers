@@ -316,7 +316,7 @@ pub async fn run_inline_with_options(
     system_prompt: String,
     opts: InlineOptions,
 ) -> Result<()> {
-    let builder_config = crate::agent_config::agent_builder_config_from_settings(&settings);
+    let builder_config = crate::agent_config::agent_builder_config_from_settings(&settings, provider.models(), None);
     let mut builder = AgentBuilder::new(provider, builder_config, model, system_prompt).with_tools(tools);
     if let Some(thinking) = opts.thinking.clone() {
         builder = builder.with_thinking(thinking);
