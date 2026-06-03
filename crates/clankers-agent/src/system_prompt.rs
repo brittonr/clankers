@@ -14,8 +14,6 @@ use std::hash::Hasher;
 use std::path::Path;
 use std::path::PathBuf;
 
-use clankers_config::paths::ClankersPaths;
-use clankers_config::paths::ProjectPaths;
 use clankers_prompts as prompts;
 use clankers_skills as skills;
 
@@ -24,6 +22,20 @@ use clankers_skills as skills;
 pub struct ContextFile {
     pub path: PathBuf,
     pub content: String,
+}
+
+/// Agent-owned prompt discovery roots supplied by an application shell.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PromptDiscoveryPaths {
+    pub global_config_dir: PathBuf,
+    pub global_skills_dir: PathBuf,
+    pub global_prompts_dir: PathBuf,
+    pub project_root: PathBuf,
+    pub project_config_dir: PathBuf,
+    pub project_skills_dir: PathBuf,
+    pub project_prompts_dir: PathBuf,
+    pub project_context_file: PathBuf,
+    pub project_context_dir: PathBuf,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
@@ -86,15 +98,15 @@ pub struct PromptResources {
 }
 
 /// Discover all prompt resources from global and project paths
-pub fn discover_resources(global: &ClankersPaths, project: &ProjectPaths) -> PromptResources {
-    let skills = skills::discover_skills(&global.global_skills_dir, Some(&project.skills_dir));
-    let prompts = prompts::discover_prompts(&global.global_prompts_dir, Some(&project.prompts_dir));
-    let context_files = load_context_files(project);
-    let agents_files = load_agents_files(&global.global_config_dir, &project.root);
-    let soul_personality = load_soul_personality(&global.global_config_dir, project);
-    let spec_context = load_spec_context(&project.root);
-    let system_prompt_override = load_system_md(&global.global_config_dir, &project.config_dir);
-    let append_system_prompt = load_append_system_md(&global.global_config_dir, &project.config_dir);
+pub fn discover_resources(paths: &PromptDiscoveryPaths) -> PromptResources {
+    let skills = skills::discover_skills(&paths.global_skills_dir, Some(&paths.project_skills_dir));
+    let prompts = prompts::discover_prompts(&paths.global_prompts_dir, Some(&paths.project_prompts_dir));
+    let context_files = load_context_files(paths);
+    let agents_files = load_agents_files(&paths.global_config_dir, &paths.project_root);
+    let soul_personality = load_soul_personality(&paths.global_config_dir, paths);
+    let spec_context = load_spec_context(&paths.project_root);
+    let system_prompt_override = load_system_md(&paths.global_config_dir, &paths.project_config_dir);
+    let append_system_prompt = load_append_system_md(&paths.global_config_dir, &paths.project_config_dir);
 
     PromptResources {
         skills,
@@ -245,16 +257,16 @@ fn format_soul_personality_section(sections: &[ContextFile]) -> String {
     section
 }
 
-fn load_context_files(project: &ProjectPaths) -> Vec<String> {
+fn load_context_files(paths: &PromptDiscoveryPaths) -> Vec<String> {
     let mut files = Vec::new();
 
     // Single context file
-    if let Some(content) = read_non_empty_file(&project.context_file) {
+    if let Some(content) = read_non_empty_file(&paths.project_context_file) {
         files.push(content);
     }
 
     // Context directory (*.md files, sorted)
-    files.extend(load_md_files_from_dir(&project.context_dir));
+    files.extend(load_md_files_from_dir(&paths.project_context_dir));
 
     files
 }
@@ -348,7 +360,7 @@ fn load_agents_files(global_config_dir: &Path, cwd: &Path) -> Vec<ContextFile> {
     deduplicate_context_files(files)
 }
 
-fn load_soul_personality(global_config_dir: &Path, project: &ProjectPaths) -> SoulPromptAssembly {
+fn load_soul_personality(global_config_dir: &Path, paths: &PromptDiscoveryPaths) -> SoulPromptAssembly {
     let mut assembly = SoulPromptAssembly::default();
     if soul_disabled() {
         assembly.metadata.push(SoulPromptMetadata {
@@ -366,8 +378,8 @@ fn load_soul_personality(global_config_dir: &Path, project: &ProjectPaths) -> So
     }
 
     let soul_candidates = [
-        project.config_dir.join("SOUL.md"),
-        project.root.join("SOUL.md"),
+        paths.project_config_dir.join("SOUL.md"),
+        paths.project_root.join("SOUL.md"),
         global_config_dir.join("SOUL.md"),
     ];
     if let Some(path) = soul_candidates.iter().find(|path| path.is_file()) {
@@ -407,7 +419,7 @@ fn load_soul_personality(global_config_dir: &Path, project: &ProjectPaths) -> So
             return assembly;
         }
         let preset_path = [
-            project.config_dir.join("personality").join(format!("{preset_id}.md")),
+            paths.project_config_dir.join("personality").join(format!("{preset_id}.md")),
             global_config_dir.join("personality").join(format!("{preset_id}.md")),
         ]
         .into_iter()
@@ -808,6 +820,21 @@ mod tests {
         }
     }
 
+    fn prompt_paths(root: &std::path::Path, global_config_dir: PathBuf) -> PromptDiscoveryPaths {
+        let project_config_dir = root.join(".clankers");
+        PromptDiscoveryPaths {
+            global_config_dir: global_config_dir.clone(),
+            global_skills_dir: global_config_dir.join("skills"),
+            global_prompts_dir: global_config_dir.join("prompts"),
+            project_root: root.to_path_buf(),
+            project_config_dir: project_config_dir.clone(),
+            project_skills_dir: project_config_dir.join("skills"),
+            project_prompts_dir: project_config_dir.join("prompts"),
+            project_context_file: project_config_dir.join("context.md"),
+            project_context_dir: project_config_dir.join("context"),
+        }
+    }
+
     struct EnvGuard {
         key: &'static str,
         previous: Option<String>,
@@ -952,9 +979,9 @@ mod tests {
         std::fs::create_dir_all(&global).expect("global dir");
         std::fs::create_dir_all(&project_config).expect("project config dir");
         std::fs::write(project_config.join("SOUL.md"), "Private soul prompt").expect("SOUL.md");
-        let project = ProjectPaths::resolve(temp.path());
+        let paths = prompt_paths(temp.path(), global.clone());
 
-        let assembly = load_soul_personality(&global, &project);
+        let assembly = load_soul_personality(&global, &paths);
 
         assert_eq!(assembly.sections.len(), 1);
         assert_eq!(assembly.metadata.len(), 1);
@@ -979,9 +1006,9 @@ mod tests {
         let global = temp.path().join("global");
         std::fs::create_dir_all(&global).expect("global dir");
         std::fs::write(temp.path().join("SOUL.md"), "disabled soul").expect("SOUL.md");
-        let project = ProjectPaths::resolve(temp.path());
+        let paths = prompt_paths(temp.path(), global.clone());
 
-        let assembly = load_soul_personality(&global, &project);
+        let assembly = load_soul_personality(&global, &paths);
 
         assert!(assembly.sections.is_empty());
         assert_eq!(assembly.metadata.len(), 1);
@@ -1000,9 +1027,9 @@ mod tests {
         std::fs::create_dir_all(&global).expect("global dir");
         std::fs::create_dir_all(&personality_dir).expect("personality dir");
         std::fs::write(personality_dir.join("mentor.v1.md"), "Use concise mentoring.").expect("preset");
-        let project = ProjectPaths::resolve(temp.path());
+        let paths = prompt_paths(temp.path(), global.clone());
 
-        let assembly = load_soul_personality(&global, &project);
+        let assembly = load_soul_personality(&global, &paths);
 
         assert_eq!(assembly.sections.len(), 1);
         let metadata = assembly
@@ -1025,9 +1052,9 @@ mod tests {
         let temp = TempDir::new().expect("temp dir");
         let global = temp.path().join("global");
         std::fs::create_dir_all(&global).expect("global dir");
-        let project = ProjectPaths::resolve(temp.path());
+        let paths = prompt_paths(temp.path(), global.clone());
 
-        let assembly = load_soul_personality(&global, &project);
+        let assembly = load_soul_personality(&global, &paths);
 
         assert!(assembly.sections.is_empty());
         assert_eq!(assembly.metadata.len(), 1);
@@ -1094,8 +1121,8 @@ mod tests {
         let context_file = clankers_dir.join("context.md");
         std::fs::write(&context_file, "Test context").expect("failed to write context file");
 
-        let project = ProjectPaths::resolve(temp.path());
-        let files = load_context_files(&project);
+        let paths = prompt_paths(temp.path(), temp.path().join("global"));
+        let files = load_context_files(&paths);
 
         assert_eq!(files.len(), 1);
         assert_eq!(files[0], "Test context");
@@ -1111,8 +1138,8 @@ mod tests {
         std::fs::write(context_dir.join("b.md"), "Context B").expect("failed to write b.md");
         std::fs::write(context_dir.join("ignore.txt"), "Ignored").expect("failed to write ignore.txt");
 
-        let project = ProjectPaths::resolve(temp.path());
-        let files = load_context_files(&project);
+        let paths = prompt_paths(temp.path(), temp.path().join("global"));
+        let files = load_context_files(&paths);
 
         assert_eq!(files.len(), 2); // Only .md files
         assert!(files.iter().any(|f| f.contains("Context A")));
@@ -1122,8 +1149,8 @@ mod tests {
     #[test]
     fn test_load_context_files_empty() {
         let temp = TempDir::new().expect("failed to create temp dir");
-        let project = ProjectPaths::resolve(temp.path());
-        let files = load_context_files(&project);
+        let paths = prompt_paths(temp.path(), temp.path().join("global"));
+        let files = load_context_files(&paths);
         assert!(files.is_empty());
     }
 

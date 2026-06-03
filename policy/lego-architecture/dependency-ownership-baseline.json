@@ -1,7 +1,7 @@
 {
   "artifact_hashes": [
     {
-      "blake3": "f5f77ad01530e563150ceb55229444e2377aeee696b93d98d094aa72aff3c091",
+      "blake3": "fc1ddcd9264121ed522063b08712a6ae751e31b1a6db86491ce19118b75d02df",
       "path": "policy/lego-architecture/dependency-ownership-baseline.json"
     },
     {
@@ -65,6 +65,10 @@
       "path": "crates/clankers-agent/src/events.rs"
     },
     {
+      "blake3": "b84f9d8e37bac2444ff8a21bf228507925313245c294e9ac61adeb5a2605fb7e",
+      "path": "crates/clankers-agent/src/system_prompt.rs"
+    },
+    {
       "blake3": "85c55fa09fbc751c82e68cff928bbf277cb130977b70e289841d91346098dd3d",
       "path": "crates/clankers-agent/src/tool.rs"
     },
@@ -89,7 +93,7 @@
       "path": "crates/clankers-agent/src/turn/policy.rs"
     },
     {
-      "blake3": "f9afa2a58fec1f6ae65a9d40dc978a1caddfe83900d9c80bcd1aaa6d469b82c4",
+      "blake3": "44a93f8f27d06ad48df71f0d7ecfb96b3d4b0fb005eb918906b962a501cf2b0a",
       "path": "crates/clankers-agent/src/turn/ports.rs"
     },
     {
@@ -255,7 +259,7 @@
       "provider_adapter": "ProviderModelPort",
       "provider_adapter_owner": "crates/clankers-agent/src/lib.rs app-edge shell",
       "runtime_service_bundle": "AgentRuntimeServices",
-      "selected_config_slice": "Steel tool substrate, Steel turn planning, auto-compaction, and system prompt affix settings now use agent-owned DTOs at app edge",
+      "selected_config_slice": "Steel tool substrate, Steel turn planning, auto-compaction, context assembly, and prompt discovery settings now use agent-owned DTOs at app edge",
       "service_receipt_kinds": [
         "model",
         "tools",

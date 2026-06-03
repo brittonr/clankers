@@ -160,7 +160,18 @@ async fn main() -> Result<()> {
             })
         });
 
-    let resources = clankers_agent::system_prompt::discover_resources(&paths, &project_paths);
+    let prompt_paths = clankers_agent::system_prompt::PromptDiscoveryPaths {
+        global_config_dir: paths.global_config_dir.clone(),
+        global_skills_dir: paths.global_skills_dir.clone(),
+        global_prompts_dir: paths.global_prompts_dir.clone(),
+        project_root: project_paths.root.clone(),
+        project_config_dir: project_paths.config_dir.clone(),
+        project_skills_dir: project_paths.skills_dir.clone(),
+        project_prompts_dir: project_paths.prompts_dir.clone(),
+        project_context_file: project_paths.context_file.clone(),
+        project_context_dir: project_paths.context_dir.clone(),
+    };
+    let resources = clankers_agent::system_prompt::discover_resources(&prompt_paths);
     let system_prompt = clankers_agent::system_prompt::assemble_system_prompt(
         &base_prompt,
         &resources,
