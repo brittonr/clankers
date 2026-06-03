@@ -202,8 +202,8 @@ pub(crate) const AGENT_CONCRETE_DEPENDENCY_BUDGET: &[AgentConcreteDependencyBudg
             "crates/clankers-agent/src/lib.rs",
             "crates/clankers-agent/src/builder.rs",
         ],
-        selected_slice_status: "Steel tool substrate, Steel turn planning, auto-compaction, context assembly, and prompt discovery settings converted to agent-owned DTOs at app edge",
-        convergence: "move remaining settings-derived planning/prompt policy to agent-owned DTOs and shell adapters",
+        selected_slice_status: "Agent runtime/model-role settings, Steel tool substrate, Steel turn planning, auto-compaction, context assembly, and prompt discovery settings converted to agent-owned DTOs at app edge",
+        convergence: "move remaining settings-derived routing/cost policy construction to agent-owned DTOs and shell adapters",
     },
     AgentConcreteDependencyBudgetEntry {
         family: AgentConcreteDependencyFamily::Procmon,
@@ -619,10 +619,7 @@ mod tests {
     fn concrete_dependency_budget_names_current_agent_edges_and_selected_config_slice() {
         let families = dependency_families(AGENT_CONCRETE_DEPENDENCY_BUDGET);
 
-        assert_eq!(
-            AGENT_CONCRETE_DEPENDENCY_DRAIN_REQUIREMENT,
-            "r[agent-concrete-dependency-drain.dependency-budget]"
-        );
+        assert_eq!(AGENT_CONCRETE_DEPENDENCY_DRAIN_REQUIREMENT, "r[agent-concrete-dependency-drain.dependency-budget]");
         for family in [
             AgentConcreteDependencyFamily::Provider,
             AgentConcreteDependencyFamily::StorageSearch,

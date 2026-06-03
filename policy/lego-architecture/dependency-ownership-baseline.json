@@ -259,7 +259,7 @@
       "provider_adapter": "ProviderModelPort",
       "provider_adapter_owner": "crates/clankers-agent/src/lib.rs app-edge shell",
       "runtime_service_bundle": "AgentRuntimeServices",
-      "selected_config_slice": "Steel tool substrate, Steel turn planning, auto-compaction, context assembly, and prompt discovery settings now use agent-owned DTOs at app edge",
+      "selected_config_slice": "Agent runtime/model-role settings, Steel tool substrate, Steel turn planning, auto-compaction, context assembly, and prompt discovery settings now use agent-owned DTOs at app edge",
       "service_receipt_kinds": [
         "model",
         "tools",

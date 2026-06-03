@@ -937,7 +937,7 @@ fn agent_turn_ports_signature() -> Result<Value, String> {
         "tool_service_inventory": "CONTROLLER_TOOL_PORT_SERVICE_INVENTORY",
         "legacy_tool_context_inventory": "LEGACY_TOOL_CONTEXT_SERVICE_INVENTORY",
         "concrete_dependency_budget": "AGENT_CONCRETE_DEPENDENCY_BUDGET",
-        "selected_config_slice": "Steel tool substrate, Steel turn planning, auto-compaction, context assembly, and prompt discovery settings now use agent-owned DTOs at app edge",
+        "selected_config_slice": "Agent runtime/model-role settings, Steel tool substrate, Steel turn planning, auto-compaction, context assembly, and prompt discovery settings now use agent-owned DTOs at app edge",
         "tool_context_module": AGENT_TOOL,
         "cost_adapter": "CostTrackerPort",
         "cancellation_adapter": "TokenCancellationPort",

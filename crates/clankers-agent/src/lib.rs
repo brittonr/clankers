@@ -36,6 +36,7 @@ use std::sync::Arc;
 
 use chrono::Utc;
 use clanker_message::ThinkingConfig;
+use clanker_message::ThinkingLevel;
 use clanker_message::*;
 use clankers_config::model_roles::ModelRoles;
 use clankers_config::settings::Settings;
@@ -46,7 +47,6 @@ use clankers_model_selection::policy::RoutingPolicy;
 use clankers_model_selection::signals::ComplexitySignals;
 use clankers_model_selection::signals::ToolCallSummary;
 use clankers_provider::Provider;
-use clanker_message::ThinkingLevel;
 use tokio::sync::broadcast;
 use tokio_util::sync::CancellationToken;
 
@@ -70,6 +70,153 @@ const NO_SKILL_NUDGE_COUNT: usize = 0;
 const NORMAL_TURN_MODEL_REQUEST_SLOT_BUDGET: u32 = 25;
 const ORCHESTRATION_FOLLOW_UP_MODEL_REQUEST_SLOT_BUDGET: u32 = 10;
 const SKILL_MANAGE_TOOL_NAME: &str = "skill_manage";
+
+/// Agent-owned runtime settings consumed by turn execution.
+#[derive(Debug, Clone, PartialEq)]
+pub struct AgentSettings {
+    pub max_tokens: usize,
+    pub max_output_lines: usize,
+    pub max_output_bytes: usize,
+    pub no_cache: bool,
+    pub cache_ttl: Option<String>,
+    pub memory: AgentMemorySettings,
+    pub skills: AgentSkillSettings,
+    pub compression: compaction::AutoCompactSettings,
+    pub steel_turn_planning: turn::AgentSteelTurnPlanningSettings,
+    pub steel_tool_substrate: turn::AgentToolSteelSubstrateSettings,
+}
+
+impl Default for AgentSettings {
+    fn default() -> Self {
+        Self {
+            max_tokens: 16_384,
+            max_output_lines: 2_000,
+            max_output_bytes: 50 * 1024,
+            no_cache: false,
+            cache_ttl: None,
+            memory: AgentMemorySettings::default(),
+            skills: AgentSkillSettings::default(),
+            compression: compaction::AutoCompactSettings {
+                tail_budget_fraction: 0.40,
+                keep_recent: 4,
+                summary_model: Some("haiku".to_string()),
+            },
+            steel_turn_planning: turn::AgentSteelTurnPlanningSettings::default(),
+            steel_tool_substrate: turn::AgentToolSteelSubstrateSettings::default(),
+        }
+    }
+}
+
+impl AgentSettings {
+    /// Convert desktop Clankers settings at the app edge into agent-owned DTOs.
+    #[must_use]
+    pub fn from_config(settings: &Settings) -> Self {
+        Self {
+            max_tokens: settings.max_tokens,
+            max_output_lines: settings.max_output_lines,
+            max_output_bytes: settings.max_output_bytes,
+            no_cache: settings.no_cache,
+            cache_ttl: settings.cache_ttl.clone(),
+            memory: AgentMemorySettings {
+                global_char_limit: settings.memory.global_char_limit,
+                project_char_limit: settings.memory.project_char_limit,
+            },
+            skills: AgentSkillSettings {
+                creation_nudge_interval: settings.skills.creation_nudge_interval,
+            },
+            compression: auto_compact_settings_from_config(&settings.compression),
+            steel_turn_planning: agent_steel_turn_planning_settings_from_config(&settings.steel_turn_planning),
+            steel_tool_substrate: agent_tool_steel_substrate_settings_from_config(&settings.steel_tool_substrate),
+        }
+    }
+}
+
+impl From<&Settings> for AgentSettings {
+    fn from(settings: &Settings) -> Self {
+        Self::from_config(settings)
+    }
+}
+
+/// Agent-owned memory limits used when loading persistent memory context.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AgentMemorySettings {
+    pub global_char_limit: usize,
+    pub project_char_limit: usize,
+}
+
+impl Default for AgentMemorySettings {
+    fn default() -> Self {
+        Self {
+            global_char_limit: 2_200,
+            project_char_limit: 1_375,
+        }
+    }
+}
+
+/// Agent-owned skill reminder policy.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AgentSkillSettings {
+    pub creation_nudge_interval: usize,
+}
+
+impl Default for AgentSkillSettings {
+    fn default() -> Self {
+        Self {
+            creation_nudge_interval: 15,
+        }
+    }
+}
+
+/// Agent-owned model-role resolver used by orchestration and role routing.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct AgentModelRoles {
+    roles: HashMap<String, Option<String>>,
+}
+
+impl AgentModelRoles {
+    /// Create an agent-owned resolver from role names to optional model IDs.
+    #[must_use]
+    pub fn from_role_models(roles: HashMap<String, Option<String>>) -> Self {
+        Self { roles }
+    }
+
+    /// Convert desktop model-role settings into the agent-owned resolver DTO.
+    #[must_use]
+    pub fn from_config(roles: &ModelRoles) -> Self {
+        Self::from_role_models(roles.all().map(|role| (role.name.clone(), role.model.clone())).collect())
+    }
+
+    /// Resolve a role name to a concrete model, falling back to default then active model.
+    #[must_use]
+    pub fn resolve(&self, name: &str, fallback: &str) -> String {
+        let canonical = canonical_model_role_name(name);
+        if let Some(Some(model)) = self.roles.get(canonical.as_str()) {
+            return model.clone();
+        }
+        if let Some(Some(model)) = self.roles.get("default") {
+            return model.clone();
+        }
+        fallback.to_string()
+    }
+}
+
+impl From<&ModelRoles> for AgentModelRoles {
+    fn from(roles: &ModelRoles) -> Self {
+        Self::from_config(roles)
+    }
+}
+
+fn canonical_model_role_name(name: &str) -> String {
+    let lower = name.to_lowercase();
+    match lower.as_str() {
+        "small" | "fast" => "smol".to_string(),
+        "large" | "thinking" => "slow".to_string(),
+        "planning" | "architect" => "plan".to_string(),
+        "git" => "commit".to_string(),
+        "code-review" => "review".to_string(),
+        _ => lower,
+    }
+}
 
 struct TurnToolUsage {
     tool_call_count: usize,
@@ -291,8 +438,8 @@ pub struct Agent {
     event_tx: broadcast::Sender<AgentEvent>,
     /// Cancellation token for the current operation
     cancel: CancellationToken,
-    /// Settings
-    settings: Settings,
+    /// Agent-owned runtime settings.
+    settings: AgentSettings,
     /// Current model ID
     model: String,
     /// System prompt
@@ -305,8 +452,8 @@ pub struct Agent {
     db: Option<Db>,
     /// Routing policy for multi-model conversations
     routing_policy: Option<RoutingPolicy>,
-    /// Model roles for resolving role names to model IDs
-    model_roles: ModelRoles,
+    /// Model roles for resolving role names to model IDs.
+    model_roles: AgentModelRoles,
     /// Cost tracker for budget enforcement
     cost_tracker: Option<Arc<CostTracker>>,
     /// Shared slot for agent-initiated model switching
@@ -335,6 +482,17 @@ impl Agent {
         model: String,
         system_prompt: String,
     ) -> Self {
+        Self::new_with_agent_settings(provider, tools, AgentSettings::from_config(&settings), model, system_prompt)
+    }
+
+    /// Create a new agent from agent-owned runtime settings.
+    pub fn new_with_agent_settings(
+        provider: Arc<dyn Provider>,
+        tools: Vec<Arc<dyn Tool>>,
+        settings: AgentSettings,
+        model: String,
+        system_prompt: String,
+    ) -> Self {
         let (event_tx, _) = broadcast::channel(1024);
         let tool_map: HashMap<String, Arc<dyn Tool>> =
             tools.into_iter().map(|t| (t.definition().name.clone(), t)).collect();
@@ -353,7 +511,7 @@ impl Agent {
             thinking_level: ThinkingLevel::Off,
             db: None,
             routing_policy: None,
-            model_roles: ModelRoles::default(),
+            model_roles: AgentModelRoles::default(),
             cost_tracker: None,
             model_switch_slot: None,
             hook_pipeline: None,
@@ -381,8 +539,14 @@ impl Agent {
         self
     }
 
-    /// Set the model roles for resolving role names to model IDs
+    /// Set desktop model roles for resolving role names to model IDs.
     pub fn with_model_roles(mut self, roles: ModelRoles) -> Self {
+        self.model_roles = AgentModelRoles::from_config(&roles);
+        self
+    }
+
+    /// Set agent-owned model roles for resolving role names to model IDs.
+    pub fn with_agent_model_roles(mut self, roles: AgentModelRoles) -> Self {
         self.model_roles = roles;
         self
     }
@@ -767,8 +931,7 @@ impl Agent {
 
     /// Handle auto-compaction if messages exceed threshold
     async fn handle_auto_compaction(&mut self, max_input: usize) {
-        let auto_compact_settings = auto_compact_settings_from_config(&self.settings.compression);
-        let auto_compact_config = compaction::AutoCompactConfig::from_policy_settings(&auto_compact_settings);
+        let auto_compact_config = compaction::AutoCompactConfig::from_policy_settings(&self.settings.compression);
         if !compaction::should_auto_compact(&self.messages, max_input, &auto_compact_config) {
             return;
         }
@@ -1210,8 +1373,7 @@ impl Agent {
         let base_dir = std::env::current_dir().map_err(|error| AgentError::Agent {
             message: format!("failed to resolve Steel turn planning base directory: {error}"),
         })?;
-        let settings = agent_steel_turn_planning_settings_from_config(&self.settings.steel_turn_planning);
-        steel_turn_planning_config_from_settings(&settings, &base_dir).map_err(|error| {
+        steel_turn_planning_config_from_settings(&self.settings.steel_turn_planning, &base_dir).map_err(|error| {
             AgentError::Agent {
                 message: format!("Steel turn planning activation failed closed: {error}"),
             }
@@ -1219,9 +1381,10 @@ impl Agent {
     }
 
     fn steel_tool_substrate_config(&self) -> Result<Option<turn::AgentToolSteelSubstrateConfig>> {
-        let settings = agent_tool_steel_substrate_settings_from_config(&self.settings.steel_tool_substrate);
-        steel_tool_substrate_config_from_settings(&settings).map_err(|error| AgentError::Agent {
-            message: format!("Steel tool substrate activation failed closed: {error}"),
+        steel_tool_substrate_config_from_settings(&self.settings.steel_tool_substrate).map_err(|error| {
+            AgentError::Agent {
+                message: format!("Steel tool substrate activation failed closed: {error}"),
+            }
         })
     }
 
@@ -1735,6 +1898,57 @@ mod tests {
         assert_eq!(config.profile.rollout_stage, clankers_runtime::SteelToolSubstrateRolloutStage::Comparison);
         assert_eq!(config.profile.fallback_mode, clankers_runtime::SteelToolSubstrateFallbackMode::Block);
         assert!(!config.profile.allowed_executor_kinds.contains(&clankers_runtime::SteelToolExecutorKind::Subagent));
+    }
+
+    #[test]
+    fn agent_settings_adapter_preserves_runtime_config_at_agent_edge() {
+        let settings = Settings {
+            max_tokens: 12_345,
+            max_output_lines: 17,
+            max_output_bytes: 4096,
+            no_cache: true,
+            cache_ttl: Some("1h".to_string()),
+            memory: clankers_config::settings::MemoryLimits {
+                global_char_limit: 111,
+                project_char_limit: 222,
+            },
+            skills: clankers_config::settings::SkillSettings {
+                creation_nudge_interval: 3,
+            },
+            compression: clankers_config::settings::CompressionSettings {
+                keep_recent: 6,
+                tail_budget_fraction: 0.25,
+                summary_model: "compact-model".to_string(),
+                ..Settings::default().compression
+            },
+            ..Settings::default()
+        };
+
+        let agent_settings = AgentSettings::from_config(&settings);
+
+        assert_eq!(agent_settings.max_tokens, 12_345);
+        assert_eq!(agent_settings.max_output_lines, 17);
+        assert_eq!(agent_settings.max_output_bytes, 4096);
+        assert!(agent_settings.no_cache);
+        assert_eq!(agent_settings.cache_ttl.as_deref(), Some("1h"));
+        assert_eq!(agent_settings.memory.global_char_limit, 111);
+        assert_eq!(agent_settings.memory.project_char_limit, 222);
+        assert_eq!(agent_settings.skills.creation_nudge_interval, 3);
+        assert_eq!(agent_settings.compression.keep_recent, 6);
+        assert_eq!(agent_settings.compression.tail_budget_fraction, 0.25);
+        assert_eq!(agent_settings.compression.summary_model.as_deref(), Some("compact-model"));
+    }
+
+    #[test]
+    fn agent_model_roles_adapter_preserves_alias_and_default_resolution() {
+        let mut roles = ModelRoles::default();
+        roles.set_model("default", "default-model".to_string());
+        roles.set_model("slow", "slow-model".to_string());
+
+        let agent_roles = AgentModelRoles::from_config(&roles);
+
+        assert_eq!(agent_roles.resolve("thinking", "fallback-model"), "slow-model");
+        assert_eq!(agent_roles.resolve("unknown", "fallback-model"), "default-model");
     }
 
     fn stub_tool(name: &str) -> Arc<dyn Tool> {

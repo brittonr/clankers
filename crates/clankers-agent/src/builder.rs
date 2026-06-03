@@ -12,6 +12,7 @@ use clankers_model_selection::policy::RoutingPolicy;
 use clankers_provider::Provider;
 
 use crate::Agent;
+use crate::AgentSettings;
 use crate::tool::Tool;
 
 /// Builder for constructing an Agent with automatic routing and cost tracking setup.
@@ -82,7 +83,9 @@ impl AgentBuilder {
         // Snapshot model pricing before moving the provider into the agent
         let provider_models: Vec<clankers_provider::Model> = self.provider.models().to_vec();
 
-        let mut agent = Agent::new(self.provider, self.tools, self.settings.clone(), self.model, self.system_prompt);
+        let agent_settings = AgentSettings::from_config(&self.settings);
+        let mut agent =
+            Agent::new_with_agent_settings(self.provider, self.tools, agent_settings, self.model, self.system_prompt);
 
         // Attach database if provided
         if let Some(db) = self.db {
