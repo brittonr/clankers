@@ -690,6 +690,11 @@ fn agent_turn_ports_signature() -> Result<Value, String> {
         "ClankersPaths",
         "agent builder must not resolve global clankers paths for pricing",
     )?;
+    require_contains(
+        &agent_lib,
+        "pub fn new_with_agent_settings",
+        "agent runtime constructor accepts agent-owned settings DTO",
+    )?;
     require_contains(&agent_lib, "AgentRuntimeServices", "agent shell runtime service bundle construction")?;
     forbid_contains(&turn_mod, "ProviderModelPort::new(ctx.provider)", "turn loop concrete provider construction")?;
     require_contains(
@@ -823,19 +828,26 @@ fn agent_turn_ports_signature() -> Result<Value, String> {
         "agent-owned Steel turn planning settings DTO",
     )?;
     require_contains(
-        agent_lib,
+        builder,
         "agent_tool_steel_substrate_settings_from_config",
         "Steel tool substrate app-edge settings adapter",
     )?;
     require_contains(
-        agent_lib,
+        builder,
         "agent_steel_turn_planning_settings_from_config",
         "Steel turn planning app-edge settings adapter",
     )?;
     require_contains(
-        agent_lib,
+        builder,
         "auto_compact_settings_from_config",
         "auto-compaction app-edge settings adapter",
+    )?;
+    require_contains(builder, "agent_settings_from_config", "agent runtime settings app-edge adapter")?;
+    require_contains(builder, "agent_model_roles_from_config", "agent model-role app-edge adapter")?;
+    forbid_contains(
+        agent_lib,
+        "clankers_config",
+        "agent runtime lib concrete config import after DTO drain",
     )?;
     require_contains(
         compaction,
@@ -937,7 +949,7 @@ fn agent_turn_ports_signature() -> Result<Value, String> {
         "tool_service_inventory": "CONTROLLER_TOOL_PORT_SERVICE_INVENTORY",
         "legacy_tool_context_inventory": "LEGACY_TOOL_CONTEXT_SERVICE_INVENTORY",
         "concrete_dependency_budget": "AGENT_CONCRETE_DEPENDENCY_BUDGET",
-        "selected_config_slice": "Agent runtime/model-role settings, Steel tool substrate, Steel turn planning, auto-compaction, context assembly, and prompt discovery settings now use agent-owned DTOs at app edge",
+        "selected_config_slice": "Agent runtime/model-role settings, Steel tool substrate, Steel turn planning, auto-compaction, context assembly, and prompt discovery settings now use agent-owned DTOs at builder/app edge; runtime lib uses agent-owned DTOs only",
         "tool_context_module": AGENT_TOOL,
         "cost_adapter": "CostTrackerPort",
         "cancellation_adapter": "TokenCancellationPort",

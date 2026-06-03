@@ -527,10 +527,10 @@ mod tests {
             calls: AtomicUsize::new(0),
         });
         let provider_dyn: Arc<dyn Provider> = provider.clone();
-        let mut agent = Agent::new(
+        let mut agent = Agent::new_with_agent_settings(
             provider_dyn,
             Vec::new(),
-            clankers_config::Settings::default(),
+            clankers_agent::AgentSettings::default(),
             "test-model".to_string(),
             "test system".to_string(),
         );

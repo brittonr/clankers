@@ -38,8 +38,6 @@ use chrono::Utc;
 use clanker_message::ThinkingConfig;
 use clanker_message::ThinkingLevel;
 use clanker_message::*;
-use clankers_config::model_roles::ModelRoles;
-use clankers_config::settings::Settings;
 use clankers_db::Db;
 use clankers_model_selection::cost_tracker::CostTracker;
 use clankers_model_selection::orchestration;
@@ -107,36 +105,6 @@ impl Default for AgentSettings {
     }
 }
 
-impl AgentSettings {
-    /// Convert desktop Clankers settings at the app edge into agent-owned DTOs.
-    #[must_use]
-    pub fn from_config(settings: &Settings) -> Self {
-        Self {
-            max_tokens: settings.max_tokens,
-            max_output_lines: settings.max_output_lines,
-            max_output_bytes: settings.max_output_bytes,
-            no_cache: settings.no_cache,
-            cache_ttl: settings.cache_ttl.clone(),
-            memory: AgentMemorySettings {
-                global_char_limit: settings.memory.global_char_limit,
-                project_char_limit: settings.memory.project_char_limit,
-            },
-            skills: AgentSkillSettings {
-                creation_nudge_interval: settings.skills.creation_nudge_interval,
-            },
-            compression: auto_compact_settings_from_config(&settings.compression),
-            steel_turn_planning: agent_steel_turn_planning_settings_from_config(&settings.steel_turn_planning),
-            steel_tool_substrate: agent_tool_steel_substrate_settings_from_config(&settings.steel_tool_substrate),
-        }
-    }
-}
-
-impl From<&Settings> for AgentSettings {
-    fn from(settings: &Settings) -> Self {
-        Self::from_config(settings)
-    }
-}
-
 /// Agent-owned memory limits used when loading persistent memory context.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct AgentMemorySettings {
@@ -180,12 +148,6 @@ impl AgentModelRoles {
         Self { roles }
     }
 
-    /// Convert desktop model-role settings into the agent-owned resolver DTO.
-    #[must_use]
-    pub fn from_config(roles: &ModelRoles) -> Self {
-        Self::from_role_models(roles.all().map(|role| (role.name.clone(), role.model.clone())).collect())
-    }
-
     /// Resolve a role name to a concrete model, falling back to default then active model.
     #[must_use]
     pub fn resolve(&self, name: &str, fallback: &str) -> String {
@@ -197,12 +159,6 @@ impl AgentModelRoles {
             return model.clone();
         }
         fallback.to_string()
-    }
-}
-
-impl From<&ModelRoles> for AgentModelRoles {
-    fn from(roles: &ModelRoles) -> Self {
-        Self::from_config(roles)
     }
 }
 
@@ -263,135 +219,6 @@ fn token_count_to_u64(value: usize) -> u64 {
     match u64::try_from(value) {
         Ok(converted) => converted,
         Err(_) => u64::MAX,
-    }
-}
-
-fn agent_tool_steel_substrate_settings_from_config(
-    settings: &clankers_config::settings::SteelToolSubstrateSettings,
-) -> turn::AgentToolSteelSubstrateSettings {
-    turn::AgentToolSteelSubstrateSettings {
-        enabled: settings.enabled,
-        rollout_stage: settings.rollout_stage.map(agent_tool_steel_substrate_rollout_stage_from_config),
-        fallback_mode: settings.fallback_mode.map(agent_tool_steel_substrate_fallback_mode_from_config),
-        session_capabilities: settings.session_capabilities.clone(),
-        granted_ucan_abilities: settings.granted_ucan_abilities.clone(),
-        disabled_executors: settings.disabled_executors.clone(),
-        disabled_actions: settings.disabled_actions.clone(),
-        receipt_prefix: settings.receipt_prefix.clone(),
-        max_input_bytes: settings.max_input_bytes,
-        max_source_bytes: settings.max_source_bytes,
-    }
-}
-
-fn agent_tool_steel_substrate_rollout_stage_from_config(
-    stage: clankers_config::settings::SteelToolSubstrateRolloutStage,
-) -> turn::AgentToolSteelSubstrateRolloutStage {
-    match stage {
-        clankers_config::settings::SteelToolSubstrateRolloutStage::Disabled => {
-            turn::AgentToolSteelSubstrateRolloutStage::Disabled
-        }
-        clankers_config::settings::SteelToolSubstrateRolloutStage::Comparison => {
-            turn::AgentToolSteelSubstrateRolloutStage::Comparison
-        }
-        clankers_config::settings::SteelToolSubstrateRolloutStage::Default => {
-            turn::AgentToolSteelSubstrateRolloutStage::Default
-        }
-        clankers_config::settings::SteelToolSubstrateRolloutStage::Block => {
-            turn::AgentToolSteelSubstrateRolloutStage::Block
-        }
-    }
-}
-
-fn agent_tool_steel_substrate_fallback_mode_from_config(
-    mode: clankers_config::settings::SteelToolSubstrateFallbackMode,
-) -> turn::AgentToolSteelSubstrateFallbackMode {
-    match mode {
-        clankers_config::settings::SteelToolSubstrateFallbackMode::RustNative => {
-            turn::AgentToolSteelSubstrateFallbackMode::RustNative
-        }
-        clankers_config::settings::SteelToolSubstrateFallbackMode::Block => {
-            turn::AgentToolSteelSubstrateFallbackMode::Block
-        }
-    }
-}
-
-fn auto_compact_settings_from_config(
-    settings: &clankers_config::settings::CompressionSettings,
-) -> compaction::AutoCompactSettings {
-    let summary_model = settings.summary_model.trim();
-    compaction::AutoCompactSettings {
-        tail_budget_fraction: settings.tail_budget_fraction,
-        keep_recent: settings.keep_recent,
-        summary_model: (!summary_model.is_empty()).then(|| summary_model.to_string()),
-    }
-}
-
-fn agent_steel_turn_planning_settings_from_config(
-    settings: &clankers_config::settings::SteelTurnPlanningSettings,
-) -> turn::AgentSteelTurnPlanningSettings {
-    turn::AgentSteelTurnPlanningSettings {
-        enabled: settings.enabled,
-        profile_path: settings.profile_path.clone(),
-        script_path: settings.script_path.clone(),
-        script_blake3: settings.script_blake3.clone(),
-        profile_blake3: settings.profile_blake3.clone(),
-        rollout_stage: settings.rollout_stage.map(agent_steel_turn_planning_rollout_stage_from_config),
-        fallback_mode: settings.fallback_mode.map(agent_steel_turn_planning_fallback_mode_from_config),
-        planning_seam: settings.planning_seam.clone(),
-        session_capabilities: settings.session_capabilities.clone(),
-        granted_ucan_abilities: settings.granted_ucan_abilities.clone(),
-        ucan_authority_grants: settings
-            .ucan_authority_grants
-            .iter()
-            .map(agent_steel_turn_planning_authority_grant_from_config)
-            .collect(),
-        disabled_actions: settings.disabled_actions.clone(),
-        receipt_prefix: settings.receipt_prefix.clone(),
-        max_input_bytes: settings.max_input_bytes,
-        max_source_bytes: settings.max_source_bytes,
-    }
-}
-
-fn agent_steel_turn_planning_authority_grant_from_config(
-    grant: &clankers_config::settings::SteelTurnPlanningAuthorityGrantSettings,
-) -> turn::AgentSteelTurnPlanningAuthorityGrantSettings {
-    turn::AgentSteelTurnPlanningAuthorityGrantSettings {
-        resource: grant.resource.clone(),
-        ability: grant.ability.clone(),
-        audience: grant.audience.clone(),
-        proof_reference: grant.proof_reference.clone(),
-        expires_at: grant.expires_at,
-        revoked: grant.revoked,
-        caveats: grant.caveats.clone(),
-    }
-}
-
-fn agent_steel_turn_planning_rollout_stage_from_config(
-    stage: clankers_config::settings::SteelTurnPlanningRolloutStage,
-) -> turn::AgentSteelTurnPlanningRolloutStage {
-    match stage {
-        clankers_config::settings::SteelTurnPlanningRolloutStage::Disabled => {
-            turn::AgentSteelTurnPlanningRolloutStage::Disabled
-        }
-        clankers_config::settings::SteelTurnPlanningRolloutStage::Comparison => {
-            turn::AgentSteelTurnPlanningRolloutStage::Comparison
-        }
-        clankers_config::settings::SteelTurnPlanningRolloutStage::Default => {
-            turn::AgentSteelTurnPlanningRolloutStage::Default
-        }
-    }
-}
-
-fn agent_steel_turn_planning_fallback_mode_from_config(
-    mode: clankers_config::settings::SteelTurnPlanningFallbackMode,
-) -> turn::AgentSteelTurnPlanningFallbackMode {
-    match mode {
-        clankers_config::settings::SteelTurnPlanningFallbackMode::RustNative => {
-            turn::AgentSteelTurnPlanningFallbackMode::RustNative
-        }
-        clankers_config::settings::SteelTurnPlanningFallbackMode::Block => {
-            turn::AgentSteelTurnPlanningFallbackMode::Block
-        }
     }
 }
 
@@ -474,17 +301,6 @@ pub struct Agent {
 }
 
 impl Agent {
-    /// Create a new agent with the given provider and tools
-    pub fn new(
-        provider: Arc<dyn Provider>,
-        tools: Vec<Arc<dyn Tool>>,
-        settings: Settings,
-        model: String,
-        system_prompt: String,
-    ) -> Self {
-        Self::new_with_agent_settings(provider, tools, AgentSettings::from_config(&settings), model, system_prompt)
-    }
-
     /// Create a new agent from agent-owned runtime settings.
     pub fn new_with_agent_settings(
         provider: Arc<dyn Provider>,
@@ -536,12 +352,6 @@ impl Agent {
     /// Set the routing policy for multi-model conversations
     pub fn with_routing_policy(mut self, policy: RoutingPolicy) -> Self {
         self.routing_policy = Some(policy);
-        self
-    }
-
-    /// Set desktop model roles for resolving role names to model IDs.
-    pub fn with_model_roles(mut self, roles: ModelRoles) -> Self {
-        self.model_roles = AgentModelRoles::from_config(&roles);
         self
     }
 
@@ -1847,108 +1657,33 @@ mod tests {
     }
 
     fn make_test_agent() -> Agent {
-        Agent::new(
+        Agent::new_with_agent_settings(
             Arc::new(MockProvider),
             vec![],
-            Settings::default(),
+            AgentSettings::default(),
             "test-model".to_string(),
             "test system prompt".to_string(),
         )
     }
 
     fn make_structured_test_agent(provider: Arc<dyn clankers_provider::Provider>) -> Agent {
-        Agent::new(provider, vec![], Settings::default(), "test-model".to_string(), "test system prompt".to_string())
-    }
-
-    fn make_tool_agent(tools: Vec<Arc<dyn Tool>>) -> Agent {
-        Agent::new(
-            Arc::new(MockProvider),
-            tools,
-            Settings::default(),
+        Agent::new_with_agent_settings(
+            provider,
+            vec![],
+            AgentSettings::default(),
             "test-model".to_string(),
             "test system prompt".to_string(),
         )
     }
 
-    #[test]
-    fn steel_tool_substrate_settings_adapter_preserves_config_policy_at_agent_edge() {
-        let settings = clankers_config::settings::SteelToolSubstrateSettings {
-            rollout_stage: Some(clankers_config::settings::SteelToolSubstrateRolloutStage::Comparison),
-            fallback_mode: Some(clankers_config::settings::SteelToolSubstrateFallbackMode::Block),
-            session_capabilities: vec!["steel-tool-substrate".to_string(), "tool-dispatch".to_string()],
-            granted_ucan_abilities: vec!["clankers/steel/tool.call".to_string()],
-            disabled_executors: vec!["subagent".to_string()],
-            disabled_actions: vec!["steel.host.tool.call".to_string()],
-            receipt_prefix: Some("target/steel-tool-substrate".to_string()),
-            max_input_bytes: Some(42),
-            max_source_bytes: 256,
-            ..Settings::default().steel_tool_substrate
-        };
-
-        let agent_settings = agent_tool_steel_substrate_settings_from_config(&settings);
-        assert_eq!(agent_settings.rollout_stage, Some(turn::AgentToolSteelSubstrateRolloutStage::Comparison));
-        assert_eq!(agent_settings.fallback_mode, Some(turn::AgentToolSteelSubstrateFallbackMode::Block));
-        assert_eq!(agent_settings.max_input_bytes, Some(42));
-        assert_eq!(agent_settings.max_source_bytes, 256);
-        assert_eq!(agent_settings.disabled_executors, vec!["subagent"]);
-
-        let config = turn::steel_tool_substrate_config_from_settings(&agent_settings)
-            .expect("neutral settings activate")
-            .expect("enabled substrate config");
-        assert_eq!(config.profile.rollout_stage, clankers_runtime::SteelToolSubstrateRolloutStage::Comparison);
-        assert_eq!(config.profile.fallback_mode, clankers_runtime::SteelToolSubstrateFallbackMode::Block);
-        assert!(!config.profile.allowed_executor_kinds.contains(&clankers_runtime::SteelToolExecutorKind::Subagent));
-    }
-
-    #[test]
-    fn agent_settings_adapter_preserves_runtime_config_at_agent_edge() {
-        let settings = Settings {
-            max_tokens: 12_345,
-            max_output_lines: 17,
-            max_output_bytes: 4096,
-            no_cache: true,
-            cache_ttl: Some("1h".to_string()),
-            memory: clankers_config::settings::MemoryLimits {
-                global_char_limit: 111,
-                project_char_limit: 222,
-            },
-            skills: clankers_config::settings::SkillSettings {
-                creation_nudge_interval: 3,
-            },
-            compression: clankers_config::settings::CompressionSettings {
-                keep_recent: 6,
-                tail_budget_fraction: 0.25,
-                summary_model: "compact-model".to_string(),
-                ..Settings::default().compression
-            },
-            ..Settings::default()
-        };
-
-        let agent_settings = AgentSettings::from_config(&settings);
-
-        assert_eq!(agent_settings.max_tokens, 12_345);
-        assert_eq!(agent_settings.max_output_lines, 17);
-        assert_eq!(agent_settings.max_output_bytes, 4096);
-        assert!(agent_settings.no_cache);
-        assert_eq!(agent_settings.cache_ttl.as_deref(), Some("1h"));
-        assert_eq!(agent_settings.memory.global_char_limit, 111);
-        assert_eq!(agent_settings.memory.project_char_limit, 222);
-        assert_eq!(agent_settings.skills.creation_nudge_interval, 3);
-        assert_eq!(agent_settings.compression.keep_recent, 6);
-        assert_eq!(agent_settings.compression.tail_budget_fraction, 0.25);
-        assert_eq!(agent_settings.compression.summary_model.as_deref(), Some("compact-model"));
-    }
-
-    #[test]
-    fn agent_model_roles_adapter_preserves_alias_and_default_resolution() {
-        let mut roles = ModelRoles::default();
-        roles.set_model("default", "default-model".to_string());
-        roles.set_model("slow", "slow-model".to_string());
-
-        let agent_roles = AgentModelRoles::from_config(&roles);
-
-        assert_eq!(agent_roles.resolve("thinking", "fallback-model"), "slow-model");
-        assert_eq!(agent_roles.resolve("unknown", "fallback-model"), "default-model");
+    fn make_tool_agent(tools: Vec<Arc<dyn Tool>>) -> Agent {
+        Agent::new_with_agent_settings(
+            Arc::new(MockProvider),
+            tools,
+            AgentSettings::default(),
+            "test-model".to_string(),
+            "test system prompt".to_string(),
+        )
     }
 
     fn stub_tool(name: &str) -> Arc<dyn Tool> {
@@ -2475,10 +2210,10 @@ mod tests {
             }
         }
 
-        let mut agent = Agent::new(
+        let mut agent = Agent::new_with_agent_settings(
             Arc::new(PromptProvider),
             vec![],
-            Settings::default(),
+            AgentSettings::default(),
             "test-model".to_string(),
             "test system prompt".to_string(),
         );

@@ -138,10 +138,10 @@ mod tests {
         let session_manager =
             clankers_session::SessionManager::create(tmp.path(), &cwd, "test-model", None, None, None)
                 .expect("session manager should create");
-        let agent = clankers_agent::Agent::new(
+        let agent = clankers_agent::Agent::new_with_agent_settings(
             Arc::new(MockProvider),
             vec![],
-            clankers_config::settings::Settings::default(),
+            clankers_agent::AgentSettings::default(),
             "test-model".to_string(),
             "test system prompt".to_string(),
         )

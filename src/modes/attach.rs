@@ -961,10 +961,10 @@ mod tests {
 
     fn make_daemon_controller() -> SessionController {
         let provider = Arc::new(MockProvider);
-        let agent = Agent::new(
+        let agent = Agent::new_with_agent_settings(
             provider,
             vec![],
-            clankers_config::settings::Settings::default(),
+            clankers_agent::AgentSettings::default(),
             "test-model".to_string(),
             "You are a test assistant.".to_string(),
         );

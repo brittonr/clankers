@@ -32,8 +32,13 @@ pub(crate) fn build_agent_with_tools(
     schedule_engine: Option<Arc<clanker_scheduler::ScheduleEngine>>,
 ) -> (Agent, tokio::sync::broadcast::Receiver<AgentEvent>, crate::tools::bash::ConfirmRx) {
     // Create a temporary agent with empty tools to get event_tx for tool construction
-    let temp_agent =
-        Agent::new(Arc::clone(&provider), Vec::new(), settings.clone(), model.clone(), system_prompt.clone());
+    let temp_agent = Agent::new_with_agent_settings(
+        Arc::clone(&provider),
+        Vec::new(),
+        clankers_agent::builder::agent_settings_from_config(settings),
+        model.clone(),
+        system_prompt.clone(),
+    );
     let event_tx = temp_agent.event_sender();
     let (bash_confirm_tx, bash_confirm_rx) = crate::tools::bash::confirm_channel();
 
@@ -75,9 +80,10 @@ pub(crate) fn build_agent_with_tools(
     let active_tools = crate::tool_gateway::allowed_tools_for_policy(&tiered_tools, &active_tiers, &app.disabled_tools);
 
     // Build the final agent with tools, db, routing, and cost tracking
-    let mut agent_builder = clankers_agent::builder::AgentBuilder::new(provider, settings.clone(), model, system_prompt)
-        .with_tools(active_tools)
-        .with_pricing_config_dir(paths.global_config_dir.clone());
+    let mut agent_builder =
+        clankers_agent::builder::AgentBuilder::new(provider, settings.clone(), model, system_prompt)
+            .with_tools(active_tools)
+            .with_pricing_config_dir(paths.global_config_dir.clone());
 
     // Apply default capability restrictions from settings
     if let Some(caps) = &settings.default_capabilities {
@@ -114,7 +120,9 @@ pub(crate) fn build_agent_with_tools(
     dylint_lib = "tigerstyle",
     allow(unbounded_loop, reason = "traversal loop; bounded by config chain length")
 )]
-fn create_process_monitor(agent_tx: tokio::sync::broadcast::Sender<AgentEvent>) -> Arc<clankers_procmon::ProcessMonitor> {
+fn create_process_monitor(
+    agent_tx: tokio::sync::broadcast::Sender<AgentEvent>,
+) -> Arc<clankers_procmon::ProcessMonitor> {
     let config = clankers_procmon::ProcessMonitorConfig::default();
     let (proc_tx, mut proc_rx) = tokio::sync::broadcast::channel::<clankers_procmon::ProcessEvent>(256);
     let monitor = Arc::new(clankers_procmon::ProcessMonitor::new(config, Some(proc_tx)));

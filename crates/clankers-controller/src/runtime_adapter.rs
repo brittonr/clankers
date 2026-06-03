@@ -450,10 +450,10 @@ mod tests {
     }
 
     fn test_agent() -> Agent {
-        Agent::new(
+        Agent::new_with_agent_settings(
             Arc::new(StreamingProvider),
             Vec::new(),
-            clankers_config::settings::Settings::default(),
+            clankers_agent::AgentSettings::default(),
             "runtime-model".to_string(),
             "You are a runtime adapter test assistant.".to_string(),
         )

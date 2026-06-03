@@ -171,10 +171,10 @@ mod tests {
     fn make_ctrl() -> SessionController {
         // reuse the test helper from the parent module
         let provider = std::sync::Arc::new(MockProvider);
-        let agent = clankers_agent::Agent::new(
+        let agent = clankers_agent::Agent::new_with_agent_settings(
             provider,
             vec![],
-            clankers_config::settings::Settings::default(),
+            clankers_agent::AgentSettings::default(),
             "test-model".to_string(),
             "test".to_string(),
         );

@@ -941,10 +941,10 @@ mod tests {
     use std::sync::atomic::Ordering;
     use std::time::Duration;
 
+    use clanker_message::ThinkingLevel;
     use clankers_core::CoreEffect;
     use clankers_core::CoreLogicalEvent;
     use clankers_protocol::SessionCommand;
-    use clanker_message::ThinkingLevel;
 
     use super::*;
     use crate::PostPromptAction;
@@ -1428,10 +1428,10 @@ mod tests {
         provider: Arc<dyn clankers_provider::Provider>,
         hook_pipeline: Option<Arc<clankers_hooks::HookPipeline>>,
     ) -> SessionController {
-        let agent = clankers_agent::Agent::new(
+        let agent = clankers_agent::Agent::new_with_agent_settings(
             provider,
             vec![],
-            clankers_config::settings::Settings::default(),
+            clankers_agent::AgentSettings::default(),
             "test-model".to_string(),
             "You are a test assistant.".to_string(),
         );
@@ -1615,10 +1615,10 @@ mod tests {
                 input_schema: serde_json::json!({"type": "object"}),
             },
         });
-        let agent = clankers_agent::Agent::new(
+        let agent = clankers_agent::Agent::new_with_agent_settings(
             provider.clone(),
             vec![tool],
-            clankers_config::settings::Settings::default(),
+            clankers_agent::AgentSettings::default(),
             "test-model".to_string(),
             "You are a test assistant.".to_string(),
         );

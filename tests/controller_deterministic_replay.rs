@@ -148,7 +148,13 @@ async fn run_replay_once() -> Value {
         ..Default::default()
     };
 
-    let agent = Agent::new(provider.clone(), vec![tool], settings, MODEL.to_string(), SYSTEM_PROMPT.to_string());
+    let agent = Agent::new_with_agent_settings(
+        provider.clone(),
+        vec![tool],
+        clankers_agent::builder::agent_settings_from_config(&settings),
+        MODEL.to_string(),
+        SYSTEM_PROMPT.to_string(),
+    );
     let mut controller = SessionController::new(agent, ControllerConfig {
         session_id: SESSION_ID.to_string(),
         model: MODEL.to_string(),
