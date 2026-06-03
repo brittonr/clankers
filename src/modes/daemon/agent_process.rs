@@ -86,7 +86,7 @@ pub fn spawn_agent_process(
             runtime.panel_rx,
             runtime.bash_confirm_rx,
             &mut signal_rx,
-            runtime.plugin_projection,
+            runtime.actor_tick_service,
         ))
         .await
     });
@@ -109,15 +109,14 @@ async fn run_agent_actor(
     mut panel_rx: mpsc::UnboundedReceiver<SubagentEvent>,
     mut bash_confirm_rx: crate::tools::bash::ConfirmRx,
     signal_rx: &mut mpsc::UnboundedReceiver<Signal>,
-    plugin_projection: super::session_plugins::DaemonPluginProjection,
+    actor_tick_service: super::session_plugins::DaemonSessionTickService,
 ) -> DeathReason {
     info!("agent process started: {session_id}");
 
     let mut pending_commands = VecDeque::new();
 
     // Fire plugin_init so plugins can set up initial UI state
-    plugin_projection.fire_init(&event_tx);
-    plugin_projection.drain_runtime_events(&event_tx);
+    actor_tick_service.start_session(&event_tx);
 
     loop {
         if let Some(cmd) = pending_commands.pop_front() {
@@ -127,7 +126,7 @@ async fn run_agent_actor(
                 &mut cmd_rx,
                 &event_tx,
                 &mut panel_rx,
-                &plugin_projection,
+                &actor_tick_service,
                 &mut pending_commands,
             )
             .await
@@ -173,7 +172,7 @@ async fn run_agent_actor(
                     &mut cmd_rx,
                     &event_tx,
                     &mut panel_rx,
-                    &plugin_projection,
+                    &actor_tick_service,
                     &mut pending_commands,
                 )
                 .await
@@ -220,12 +219,7 @@ async fn run_agent_actor(
 
             // Periodic drain of background agent events
             () = tokio::time::sleep(tokio::time::Duration::from_millis(50)) => {
-                super::session_plugins::sync_tool_inventory(&mut controller, &event_tx);
-                super::socket_bridge::drain_and_broadcast(
-                    &mut controller, &event_tx, &mut panel_rx,
-                    plugin_projection.manager(),
-                );
-                plugin_projection.drain_runtime_events(&event_tx);
+                actor_tick_service.drain_background(&mut controller, &event_tx, &mut panel_rx);
             }
         }
     }
@@ -241,7 +235,7 @@ async fn handle_actor_session_command(
     cmd_rx: &mut mpsc::UnboundedReceiver<SessionCommand>,
     event_tx: &broadcast::Sender<DaemonEvent>,
     panel_rx: &mut mpsc::UnboundedReceiver<SubagentEvent>,
-    plugin_projection: &super::session_plugins::DaemonPluginProjection,
+    actor_tick_service: &super::session_plugins::DaemonSessionTickService,
     pending_commands: &mut VecDeque<SessionCommand>,
 ) -> bool {
     let is_disconnect = matches!(cmd, SessionCommand::Disconnect);
@@ -250,7 +244,7 @@ async fn handle_actor_session_command(
     if matches!(cmd, SessionCommand::GetPlugins) {
         event_tx
             .send(DaemonEvent::PluginList {
-                plugins: plugin_projection.summaries(),
+                plugins: actor_tick_service.plugin_summaries(),
             })
             .ok();
         return is_disconnect;
@@ -263,16 +257,11 @@ async fn handle_actor_session_command(
         cmd_rx,
         event_tx,
         panel_rx,
-        plugin_projection.manager(),
+        actor_tick_service.plugin_manager(),
         pending_commands,
     )
     .await;
-    super::socket_bridge::drain_and_broadcast(controller, event_tx, panel_rx, plugin_projection.manager());
-    let tools_after = controller.current_tool_infos();
-    if tools_after != tools_before {
-        event_tx.send(DaemonEvent::ToolList { tools: tools_after }).ok();
-    }
-    plugin_projection.drain_runtime_events(event_tx);
+    actor_tick_service.drain_after_command(controller, event_tx, panel_rx, tools_before);
 
     // Post-prompt actions (auto-test, loop continuation).
     if !controller.is_busy() {
@@ -286,11 +275,11 @@ async fn handle_actor_session_command(
                 cmd_rx,
                 event_tx,
                 panel_rx,
-                plugin_projection.manager(),
+                actor_tick_service.plugin_manager(),
                 pending_commands,
             )
             .await;
-            super::socket_bridge::drain_and_broadcast(controller, event_tx, panel_rx, plugin_projection.manager());
+            actor_tick_service.drain_controller_and_plugins(controller, event_tx, panel_rx);
         }
         controller.clear_auto_test();
     }
@@ -1259,9 +1248,10 @@ mod factory_plugin_tests {
 
         let (event_tx, mut event_rx) = broadcast::channel(32);
         let (_panel_tx, mut panel_rx) = mpsc::unbounded_channel();
-        crate::modes::daemon::socket_bridge::drain_and_broadcast(&mut controller, &event_tx, &mut panel_rx, Some(&pm));
+        let tick_service = super::super::session_plugins::DaemonSessionTickService::for_plugin_manager(Some(Arc::clone(&pm)));
+        tick_service.drain_controller_and_plugins(&mut controller, &event_tx, &mut panel_rx);
         tokio::time::sleep(Duration::from_millis(150)).await;
-        super::super::session_plugins::drain_plugin_runtime_events(&event_tx, Some(&pm));
+        tick_service.drain_controller_and_plugins(&mut controller, &event_tx, &mut panel_rx);
 
         let mut saw_system = false;
         let mut saw_status = false;

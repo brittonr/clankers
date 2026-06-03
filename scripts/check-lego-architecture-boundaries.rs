@@ -1421,6 +1421,9 @@ fn daemon_session_assembly_signature() -> Result<Value, String> {
         ("ScriptHookHandler", "hook pipeline construction belongs to session_builder"),
         ("GitHookHandler", "hook pipeline construction belongs to session_builder"),
         ("PluginHookHandler", "plugin hook attachment belongs to session_builder"),
+        ("sync_tool_inventory", "tool-list tick policy belongs to DaemonSessionTickService"),
+        ("drain_plugin_runtime_events", "plugin runtime drain policy belongs to DaemonSessionTickService"),
+        ("drain_and_broadcast", "controller event drain policy belongs to DaemonSessionTickService"),
         ("merge_session_capabilities", "capability merge belongs to session_builder"),
         ("build_session_hook_pipeline", "hook assembly belongs to session_builder"),
         ("build_all_tiered_tools", "tool catalog projection belongs to session_plugins"),
@@ -1445,8 +1448,8 @@ fn daemon_session_assembly_signature() -> Result<Value, String> {
     )?;
     require_contains(
         agent_process,
-        "session_plugins::sync_tool_inventory",
-        "actor loop triggers tool projection refresh without owning construction",
+        "actor_tick_service.drain_background",
+        "actor loop triggers periodic daemon projection through assembled tick service",
     )?;
     require_rust_struct(&builder_file, "DaemonSessionRuntime", "assembled daemon session runtime bundle")?;
     require_rust_struct(
@@ -1459,8 +1462,10 @@ fn daemon_session_assembly_signature() -> Result<Value, String> {
     require_rust_fn(&builder_file, "merge_session_capabilities", "builder-owned capability merge")?;
     require_rust_method(&builder_file, "plan_ephemeral_child_session", "ephemeral child socketless spawn plan")?;
     require_contains(builder, "clankers_agent::builder::AgentBuilder::new", "builder-owned agent construction")?;
+    require_rust_path(&builder_file, "DaemonSessionTickService", "builder assembles daemon tick service")?;
     require_rust_path(&builder_file, "tool_rebuilder_for_factory", "builder wires named tool rebuilder helper")?;
     require_rust_struct(&plugins_file, "DaemonPluginProjection", "daemon plugin protocol projection handle")?;
+    require_rust_struct(&plugins_file, "DaemonSessionTickService", "daemon actor-loop tick service owner")?;
     require_rust_struct(&plugins_file, "DaemonToolRebuilder", "daemon tool rebuilder projection owner")?;
     require_rust_fn(&plugins_file, "sync_tool_inventory", "daemon tool-list refresh helper")?;
     require_rust_fn(&plugins_file, "drain_plugin_runtime_events", "daemon plugin runtime drain helper")?;
@@ -1476,7 +1481,7 @@ fn daemon_session_assembly_signature() -> Result<Value, String> {
     )?;
     require_contains(
         builder,
-        "runtime_bundle_assembles_controller_channels_and_projection_without_actor_or_socket",
+        "runtime_bundle_assembles_controller_channels_and_tick_service_without_actor_or_socket",
         "socketless runtime bundle fixture",
     )?;
     require_contains(
@@ -1491,8 +1496,13 @@ fn daemon_session_assembly_signature() -> Result<Value, String> {
     )?;
     require_contains(
         plugins,
-        "Session actors trigger refresh and drain operations",
+        "Session actors trigger a tick service",
         "tool/plugin projection module purpose",
+    )?;
+    require_contains(
+        plugins,
+        "tick_service_refreshes_tool_inventory_without_socket",
+        "daemon tick service socketless fixture",
     )?;
 
     Ok(json!({
@@ -1507,6 +1517,7 @@ fn daemon_session_assembly_signature() -> Result<Value, String> {
         "capability_merge_owner": "session_builder::merge_session_capabilities",
         "tool_rebuilder_owner": "session_plugins::DaemonToolRebuilder",
         "plugin_projection_owner": "session_plugins::DaemonPluginProjection",
+        "tick_service_owner": "session_plugins::DaemonSessionTickService",
         "actor_forbidden_assembly_paths": [
             "AgentBuilder",
             "UcanCapabilityGate",
@@ -1514,6 +1525,9 @@ fn daemon_session_assembly_signature() -> Result<Value, String> {
             "ScriptHookHandler",
             "GitHookHandler",
             "PluginHookHandler",
+            "sync_tool_inventory",
+            "drain_plugin_runtime_events",
+            "drain_and_broadcast",
             "merge_session_capabilities",
             "build_session_hook_pipeline",
             "build_all_tiered_tools",
@@ -1524,7 +1538,9 @@ fn daemon_session_assembly_signature() -> Result<Value, String> {
             "create_plan_resolves_resume_messages_without_socket",
             "keyed_plans_prepare_new_and_recovered_actor_inputs_without_socket",
             "ephemeral_plan_prepares_child_actor_inputs_without_socket",
-            "runtime_bundle_assembles_controller_channels_and_projection_without_actor_or_socket"
+            "runtime_bundle_assembles_controller_channels_and_tick_service_without_actor_or_socket",
+            "tick_service_refreshes_tool_inventory_without_socket",
+            "tick_service_reports_tool_changes_after_controller_command_without_socket"
         ],
         "typed_rail_kind": "Rust AST path, struct, function, method, and source-owner checks for daemon session assembly"
     }))

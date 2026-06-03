@@ -76,7 +76,7 @@ const CORE_EFFECTS_REQUIRED_PATHS: [&str; 4] = [
     "CoreEffect::ApplyToolFilter",
     "CoreEffect::ReplayQueuedPrompt",
 ];
-const DAEMON_AGENT_PROCESS_FORBIDDEN_ASSEMBLY_SEGMENTS: [&str; 12] = [
+const DAEMON_AGENT_PROCESS_FORBIDDEN_ASSEMBLY_SEGMENTS: [&str; 15] = [
     "AgentBuilder",
     "SessionManager",
     "UcanCapabilityGate",
@@ -85,6 +85,9 @@ const DAEMON_AGENT_PROCESS_FORBIDDEN_ASSEMBLY_SEGMENTS: [&str; 12] = [
     "GitHookHandler",
     "PluginHookHandler",
     "DaemonToolRebuilder",
+    "sync_tool_inventory",
+    "drain_plugin_runtime_events",
+    "drain_and_broadcast",
     "merge_session_capabilities",
     "build_session_hook_pipeline",
     "build_all_tiered_tools",
@@ -95,18 +98,21 @@ const DAEMON_AGENT_PROCESS_REQUIRED_ASSEMBLY_PATHS: [&str; 3] = [
     "DaemonSessionRuntimeRequest",
     "run_agent_actor",
 ];
-const DAEMON_SESSION_BUILDER_REQUIRED_ASSEMBLY_PATHS: [&str; 5] = [
+const DAEMON_SESSION_BUILDER_REQUIRED_ASSEMBLY_PATHS: [&str; 6] = [
     "DaemonSessionRuntime",
     "DaemonSessionRuntimeRequest",
+    "DaemonSessionTickService",
     "build_session_hook_pipeline",
     "merge_session_capabilities",
     "tool_rebuilder_for_factory",
 ];
-const DAEMON_SESSION_PLUGINS_REQUIRED_PATHS: [&str; 5] = [
+const DAEMON_SESSION_PLUGINS_REQUIRED_PATHS: [&str; 7] = [
     "DaemonPluginProjection",
+    "DaemonSessionTickService",
     "DaemonToolRebuilder",
     "crate::plugin::build_protocol_plugin_summaries",
     "crate::modes::common::build_all_tiered_tools",
+    "super::socket_bridge::drain_and_broadcast",
     "crate::modes::plugin_dispatch::drain_stdio_runtime_outputs",
 ];
 const CORE_EFFECT_PROJECTION_REQUIRED_PATHS: [&str; 4] = [
@@ -1745,8 +1751,13 @@ fn daemon_session_actor_loop_consumes_socketless_assembly_bundle() {
         DAEMON_AGENT_PROCESS_FILE
     );
     assert!(
-        agent_process_source.contains("session_plugins::sync_tool_inventory"),
-        "{} must trigger tool refresh through the named daemon projection helper",
+        agent_process_source.contains("DaemonSessionTickService"),
+        "{} must receive the assembled daemon tick service input",
+        DAEMON_AGENT_PROCESS_FILE
+    );
+    assert!(
+        agent_process_source.contains("actor_tick_service.drain_background"),
+        "{} must trigger periodic projection through the assembled daemon tick service",
         DAEMON_AGENT_PROCESS_FILE
     );
 

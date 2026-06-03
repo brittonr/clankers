@@ -404,6 +404,9 @@
         "ScriptHookHandler",
         "GitHookHandler",
         "PluginHookHandler",
+        "sync_tool_inventory",
+        "drain_plugin_runtime_events",
+        "drain_and_broadcast",
         "merge_session_capabilities",
         "build_session_hook_pipeline",
         "build_all_tiered_tools",
@@ -423,8 +426,11 @@
         "create_plan_resolves_resume_messages_without_socket",
         "keyed_plans_prepare_new_and_recovered_actor_inputs_without_socket",
         "ephemeral_plan_prepares_child_actor_inputs_without_socket",
-        "runtime_bundle_assembles_controller_channels_and_projection_without_actor_or_socket"
+        "runtime_bundle_assembles_controller_channels_and_tick_service_without_actor_or_socket",
+        "tick_service_refreshes_tool_inventory_without_socket",
+        "tick_service_reports_tool_changes_after_controller_command_without_socket"
       ],
+      "tick_service_owner": "session_plugins::DaemonSessionTickService",
       "tool_plugin_projection_module": "src/modes/daemon/session_plugins.rs",
       "tool_rebuilder_owner": "session_plugins::DaemonToolRebuilder",
       "typed_rail_kind": "Rust AST path, struct, function, method, and source-owner checks for daemon session assembly"

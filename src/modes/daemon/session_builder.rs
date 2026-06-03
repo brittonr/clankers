@@ -23,7 +23,7 @@ use clankers_protocol::SessionKey;
 use tokio::sync::broadcast;
 use tokio::sync::mpsc;
 
-use super::session_plugins::DaemonPluginProjection;
+use super::session_plugins::DaemonSessionTickService;
 use super::session_plugins::tool_rebuilder_for_factory;
 use super::session_store::SessionCatalogEntry;
 use super::session_store::SessionLifecycle;
@@ -68,7 +68,7 @@ pub(crate) struct DaemonSessionRuntime {
     pub event_tx: broadcast::Sender<DaemonEvent>,
     pub panel_rx: mpsc::UnboundedReceiver<SubagentEvent>,
     pub bash_confirm_rx: crate::tools::bash::ConfirmRx,
-    pub plugin_projection: DaemonPluginProjection,
+    pub actor_tick_service: DaemonSessionTickService,
     pub automerge_path: Option<PathBuf>,
 }
 
@@ -205,7 +205,9 @@ fn assemble_session_runtime_in_dir(
         event_tx,
         panel_rx,
         bash_confirm_rx,
-        plugin_projection: DaemonPluginProjection::new(factory.plugin_manager.clone()),
+        actor_tick_service: DaemonSessionTickService::for_plugin_manager(
+            factory.plugin_manager.clone(),
+        ),
         automerge_path,
     }
 }
@@ -766,7 +768,7 @@ mod tests {
     }
 
     #[test]
-    fn runtime_bundle_assembles_controller_channels_and_projection_without_actor_or_socket() {
+    fn runtime_bundle_assembles_controller_channels_and_tick_service_without_actor_or_socket() {
         let dir = tempdir().unwrap();
         let factory = make_factory();
         let runtime = assemble_session_runtime_in_dir(
@@ -785,7 +787,7 @@ mod tests {
         assert!(runtime.cmd_tx.send(SessionCommand::GetToolList).is_ok());
         assert!(runtime.event_tx.receiver_count() == 0);
         assert!(runtime.automerge_path.as_ref().is_some_and(|path| path.starts_with(dir.path())));
-        assert!(runtime.plugin_projection.summaries().is_empty());
+        assert!(runtime.actor_tick_service.plugin_summaries().is_empty());
         assert!(runtime.bash_confirm_rx.is_empty());
         assert!(!runtime.controller.current_tool_infos().is_empty());
     }
