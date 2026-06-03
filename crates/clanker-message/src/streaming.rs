@@ -7,8 +7,8 @@
 use serde::Deserialize;
 use serde::Serialize;
 
+use crate::Content;
 use crate::Usage;
-use crate::message::Content;
 
 /// Metadata about a streaming message.
 #[derive(Debug, Clone, Serialize, Deserialize)]

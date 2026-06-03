@@ -1,27 +1,30 @@
 #![cfg_attr(dylint_lib = "tigerstyle", feature(register_tool), register_tool(tigerstyle))]
 //! Message types for LLM agent conversations
 //!
-//! Defines all message types used in the agent conversation loop:
-//! user messages, assistant responses, tool results, and various
-//! metadata messages (branching, compaction, custom).
+//! Defines stable content/tool/usage/streaming contracts for reusable SDK
+//! boundaries, plus explicitly separated Clankers transcript compatibility
+//! records for desktop/session adapters.
 //!
 //! Also provides router/provider-neutral streaming event types with typed
 //! [`Content`] blocks.
 
+pub mod content;
 pub mod contracts;
 pub mod message;
 pub mod result_streaming;
 pub mod semantic_event;
 pub mod streaming;
 pub mod tool_result;
+pub mod transcript;
 
 // Re-export core types at crate root for convenience
+pub use content::Content;
+pub use content::ImageSource;
+pub use content::StopReason;
 pub use contracts::ThinkingConfig;
 pub use contracts::ThinkingLevel;
 pub use contracts::ToolDefinition;
 pub use contracts::Usage;
-pub use message::generate_id;
-pub use message::*;
 // Re-export result streaming types at crate root
 pub use result_streaming::ResultChunk;
 pub use result_streaming::ToolResultAccumulator;
@@ -40,3 +43,14 @@ pub use streaming::StreamEvent;
 // Re-export tool result types at crate root
 pub use tool_result::ToolResult;
 pub use tool_result::ToolResultContent;
+// Re-export Clankers transcript compatibility types at crate root
+pub use transcript::AgentMessage;
+pub use transcript::AssistantMessage;
+pub use transcript::BashExecutionMessage;
+pub use transcript::BranchSummaryMessage;
+pub use transcript::CompactionSummaryMessage;
+pub use transcript::CustomMessage;
+pub use transcript::MessageId;
+pub use transcript::ToolResultMessage;
+pub use transcript::UserMessage;
+pub use transcript::generate_id;

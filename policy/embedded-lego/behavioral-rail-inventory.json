@@ -151,6 +151,23 @@
       ]
     },
     {
+      "script": "scripts/check-message-contract-boundary.rs",
+      "class": "ast_cargo_rail",
+      "owner": "embedded-sdk",
+      "requirement_ids": [
+        "sdk-message-contract-boundary.verification.boundary-rails",
+        "behavioral-lego-parity-rails.inventory.classification"
+      ],
+      "source_artifacts": [
+        "scripts/check-message-contract-boundary.rs",
+        "crates/clanker-message/src/content.rs",
+        "crates/clanker-message/src/transcript.rs",
+        "docs/src/generated/embedded-sdk-api.md",
+        "docs/src/tutorials/embedded-agent-sdk.md",
+        "cairn/specs/sdk-message-contract-boundary/spec.md"
+      ]
+    },
+    {
       "script": "scripts/check-brick-inventory-stability.rs",
       "class": "receipt_verifier",
       "owner": "embedded-sdk",
@@ -213,6 +230,21 @@
         "examples/embedded-provider-adapter/fixtures/provider-adapter-fixtures.json",
         "examples/embedded-provider-adapter/src/main.rs",
         "cairn/specs/embedded-composition-kits/spec.md"
+      ]
+    },
+    {
+      "script": "scripts/check-provider-router-boundary.rs",
+      "class": "ast_cargo_rail",
+      "owner": "embedded-sdk",
+      "requirement_ids": [
+        "sdk-provider-edge-boundary.verification.dependency-rails",
+        "behavioral-lego-parity-rails.inventory.classification"
+      ],
+      "source_artifacts": [
+        "scripts/check-provider-router-boundary.rs",
+        "crates/clankers-provider/src/router_request_bridge.rs",
+        "crates/clankers-provider/src/provider_router_responsibility.rs",
+        "cairn/specs/provider-router-runtime-services/spec.md"
       ]
     },
     {

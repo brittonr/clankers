@@ -14,6 +14,7 @@ const AGENT_TURN_TEST_FILTER: &str = "turn::tests::";
 
 const RUST_CHECKS: &[&str] = &[
     "scripts/check-embedded-sdk-api.rs",
+    "scripts/check-message-contract-boundary.rs",
     "scripts/check-brick-inventory-stability.rs",
     "scripts/check-behavioral-lego-rails.rs",
     "scripts/check-embedded-lego-contracts.rs",

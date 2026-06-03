@@ -25,6 +25,14 @@ Clankers-specific transcript variants should move to a transcript/session module
 
 Generic SDK contracts should not force random message IDs or wall-clock timestamps. Host/session adapters may add those at persistence edges.
 
+### 4. Compatibility paths stay explicit
+
+The implementation keeps `clanker_message::message::*` and root transcript re-exports for existing provider/controller/session code, but the generated SDK inventory labels the legacy `message` module and the new `transcript` module as unsupported/internal. Stable content contracts move into `content.rs`, while `transcript.rs` owns `AgentMessage`, `MessageId`, random ID generation, persisted timestamps, bash records, branch summaries, compaction summaries, and custom desktop history records.
+
+### 5. Boundary rail owns green API leakage
+
+`scripts/check-message-contract-boundary.rs` is the reusable receipt for this split. It checks the inventory labels/sources, requires the compatibility/transcript source markers, rejects transcript-internal tokens in embedded examples, and rejects transcript-internal tokens in public green SDK API declarations for engine, engine-host, tool-host, and adapters. Provider/controller/session adapters remain allowed app edges and are covered by focused cargo checks.
+
 ## Validation plan
 
 - Generated API inventory support-label update.

@@ -12,7 +12,7 @@ The supported embedding surface is the small reducer/host layer:
 | `clankers-engine-host` | Async effect interpreter that drives the reducer through caller adapters | `EngineRunSeed`, `HostAdapters`, `run_engine_turn`, `ModelHost`, `ModelHostOutcome`, `RetrySleeper`, `EngineEventSink`, `CancellationSource`, `UsageObserver`, stream accumulator types, runtime input helpers |
 | `clankers-tool-host` | Provider-neutral tool execution contracts and output truncation | `ToolExecutor`, `ToolHostOutcome`, `ToolOutputAccumulator`, `ToolTruncationLimits`, `ToolTruncationMetadata`, `ToolCatalog`, `CapabilityChecker`, `ToolHook` |
 | `clankers-adapters` | Shell-free reusable adapter bricks, embedded tool catalog DTOs, and capability-pack presets | `MemoryEventSink`, `AtomicCancellationSource`, `NoopRetrySleeper`, `CollectingUsageObserver`, `ScriptedModelHost`, `ScriptedToolExecutor`, `EmbeddedToolCatalog`, `CapabilityPack` |
-| `clanker-message` | Shared message/content/tool/usage data types | `Content`, `StopReason`, `ToolDefinition`, `ThinkingConfig`, `Usage`, streaming/content delta types |
+| `clanker-message` | Shared content/tool/usage/streaming and semantic-event data contracts | `Content`, `StopReason`, `ToolDefinition`, `ThinkingConfig`, `Usage`, `SemanticEvent`, streaming/content delta types |
 | `clankers-core` | Optional prompt-lifecycle reducer for hosts that want Clankers-style prompt/follow-up state before work reaches the engine | `CoreState`, `CoreInput`, `CoreOutcome`, `CoreEffect`, `reduce` |
 
 The durable API inventory for these entrypoints lives in [`../generated/embedded-sdk-api.md`](../generated/embedded-sdk-api.md). If guide text names an SDK entrypoint, the checker added with this change must map it to an exported Rust item or a checked-in example path.
@@ -85,6 +85,8 @@ The session-resume-brick evidence is fixture backed across two product-shaped st
 
 `clankers-runtime` provider services use `ProviderModelRequest`, `ProviderStreamEvent`, `ProviderModelResponse`, and explicit auth/credential-pool receipts instead of prompt-string receipts. Embedded defaults fail closed when provider/auth services are not injected. Desktop adapters may bridge those neutral DTOs to `clankers-provider`/`clanker-router`, but provider-native `CompletionRequest` construction now goes through the provider-owned `router_request_bridge` seam and final HTTP body/routing/cooldown policy remains in the provider/router crates.
 
+`clanker-message` splits stable SDK contracts from Clankers transcript compatibility records. `content`, `contracts`, `streaming`, `tool_result`, and `semantic_event` are the reusable message boundary; `transcript` contains `AgentMessage`, `MessageId`, random ID generation, wall-clock timestamps, bash records, branch/compaction summaries, and custom desktop history records for session/provider/controller adapters. The legacy `clanker_message::message::*` module remains only as a compatibility import path and is labeled unsupported/internal in the generated inventory.
+
 `clanker-message::SemanticEvent` is the shared session-event contract for prompt acceptance, assistant/thinking deltas, tool lifecycle, confirmations, usage, errors, completion, shutdown, user-input replay, and compaction. Runtime `SessionEvent` values convert to this stream with `to_semantic_event()`, and controller/daemon/TUI projections now use the same semantic event shape instead of a controller-private policy fork. Metadata is string-only and redacted before receipt or edge projection.
 
 `clankers-controller::ControllerRuntimeAdapter` is the controller shell seam for fake or product-owned runtime/session services. It accepts prompt and control requests, returns semantic events plus terminal prompt status, and is covered by fixtures that submit prompts, cancel work, change thinking, filter tools, preserve session identity, and project semantic events without sockets, TUI state, providers, or desktop storage.
@@ -122,7 +124,7 @@ Keep generic crates dependency-inverted:
 1. `clankers-engine` owns accepted turn policy only. It may use plain shared message/content data, but it must not import Clankers shell/runtime types.
 2. `clankers-engine-host` owns effect interpretation and correlation plumbing only. It calls host traits; it must not discover providers, tools, prompts, sessions, daemons, plugins, network services, or runtime handles.
 3. `clankers-tool-host` owns reusable tool outcome and truncation contracts only. It must not supervise plugins or call built-in tools.
-4. `clanker-message` stays provider/router-neutral. Provider-native request shaping belongs in host adapters.
+4. `clanker-message` stays provider/router-neutral. Generic SDK code should use stable content/tool/usage/streaming/semantic-event contracts; Clankers transcript records stay in the `transcript` compatibility module and provider-native request shaping belongs in host adapters.
 5. Application edge code may compose SDK crates with Clankers runtime crates, but that code is not part of the generic SDK surface.
 
 `scripts/check-embedded-agent-sdk.rs` is the Rust-owned required acceptance rail for these rules. It composes API inventory, docs freshness, example execution, feature/default checks, dependency denylist checks, source boundary checks, embedded lego contract validation, release-receipt generation, and focused Clankers parity rails. `scripts/check-embedded-agent-sdk.sh` remains only a compatibility wrapper that delegates to the Rust rail.
@@ -153,7 +155,7 @@ Current SDK crates are intended to work with their default features for the mini
 - `clankers-engine-host`: no optional features; depends on `clankers-engine`, `clankers-tool-host`, `clanker-message`, `serde`, `serde_json`, and `thiserror`.
 - `clankers-tool-host`: no optional features; depends on `clankers-engine`, `clanker-message`, `serde`, `serde_json`, and `thiserror`.
 - `clankers-adapters`: no optional features; depends only on SDK crates plus `serde`, `serde_json`, and `thiserror` for DTO validation and reusable test/product bricks.
-- `clanker-message`: default crate features are acceptable for embedding; it owns shared content/usage/message data, not application shells.
+- `clanker-message`: default crate features are acceptable for embedding; stable entrypoints are shared content/tool/usage/streaming/semantic-event contracts, while `transcript` and legacy `message::*` records are compatibility/internal and not required by minimal examples.
 - `clankers-core`: optional for hosts that want prompt lifecycle/follow-up reduction before engine submission; not required by the minimal engine-host example.
 
 ## Product embedding crate guidance
@@ -179,6 +181,7 @@ The receipt records the current commit/status, BLAKE3 hashes for the SDK guide, 
 
 Compatibility expectations:
 
+- `clanker-message::message::*` is a compatibility import path for older transcript/content callers; stable SDK consumers should import root or `content`/`semantic_event` contracts and avoid `transcript` unless they are writing Clankers session/provider/controller adapters. Validation command: `scripts/check-message-contract-boundary.rs`.
 - Supported entrypoints should not be removed, renamed, or semantically repurposed without an explicit migration note and refreshed `scripts/check-brick-inventory-stability.rs` receipt.
 - Compatibility aliases are supported migration shims and must name the canonical replacement before they are removed.
 - Additions are allowed when they do not force forbidden shell/runtime dependencies into generic SDK crates.
