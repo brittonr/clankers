@@ -1614,106 +1614,199 @@ fn session_command_policy_signature() -> Result<Value, String> {
     let attach_file = read_rust_file(ATTACH_COMMANDS)?;
     let slash_effects_file = read_rust_file(SLASH_EFFECTS)?;
     let agent_task_file = read_rust_file(AGENT_TASK)?;
-    let policy = &policy_file.source;
-    let attach = &attach_file.source;
-    let slash_effects = &slash_effects_file.source;
-    let agent_task = &agent_task_file.source;
+    let policy_owner = "src/modes/session_command_policy.rs reusable session policy";
+    let protocol_projection_owner = "src/slash_commands/effects.rs::session_command_intent_to_protocol";
+    let attach_projection_owner = "src/modes/attach/commands.rs::dispatch_disabled_tools_change";
 
-    require_rust_enum(&policy_file, "LocalSessionEffect", "typed local session effect DTO")?;
-    require_rust_enum(&policy_file, "SessionAckPolicy", "typed session ack policy DTO")?;
-    require_rust_enum(&policy_file, "SessionCommandIntent", "neutral session command intent DTO")?;
-    require_rust_struct(&policy_file, "SessionCommandEffect", "typed session command effect DTO")?;
+    require_rust_enum(&policy_file, "LocalSessionEffect", "source=session command policy target_owner=neutral local effect DTO replacement_path=LocalSessionEffect")?;
+    require_rust_enum_variants(
+        &policy_file,
+        "LocalSessionEffect",
+        &["ThinkingLevel", "DisabledTools"],
+        "source=session command policy target_owner=neutral local effect DTO replacement_path=LocalSessionEffect variants",
+    )?;
+    require_rust_enum(&policy_file, "SessionAckPolicy", "source=session command policy target_owner=neutral ack policy DTO replacement_path=SessionAckPolicy")?;
+    require_rust_enum_variants(
+        &policy_file,
+        "SessionAckPolicy",
+        &["ThinkingLevel", "DisabledTools", "ManualCompaction"],
+        "source=session command policy target_owner=neutral ack policy DTO replacement_path=SessionAckPolicy variants",
+    )?;
+    require_rust_enum(&policy_file, "SessionCommandIntent", "source=session command policy target_owner=neutral command intent DTO replacement_path=SessionCommandIntent")?;
+    require_rust_enum_variants(
+        &policy_file,
+        "SessionCommandIntent",
+        &["SetThinkingLevel", "CycleThinkingLevel", "SetDisabledTools", "CompactHistory"],
+        "source=session command policy target_owner=neutral command intent DTO replacement_path=SessionCommandIntent variants",
+    )?;
+    require_rust_struct(&policy_file, "SessionCommandEffect", "source=session command policy target_owner=neutral effect DTO replacement_path=SessionCommandEffect")?;
+    require_struct_field_type_path(
+        &policy_file,
+        "SessionCommandEffect",
+        "local",
+        "LocalSessionEffect",
+        "source=session command policy target_owner=neutral effect DTO replacement_path=SessionCommandEffect.local",
+    )?;
+    require_struct_field_type_path(
+        &policy_file,
+        "SessionCommandEffect",
+        "command",
+        "SessionCommandIntent",
+        "source=session command policy target_owner=neutral command intent replacement_path=SessionCommandEffect.command",
+    )?;
+    require_struct_field_type_path(
+        &policy_file,
+        "SessionCommandEffect",
+        "ack",
+        "SessionAckPolicy",
+        "source=session command policy target_owner=neutral ack policy replacement_path=SessionCommandEffect.ack",
+    )?;
+
     for function in [
         "set_thinking_level_effect",
         "cycle_thinking_level_effect",
         "disabled_tools_effect",
         "manual_compaction_effect",
-        "ack_matches",
     ] {
-        require_rust_fn(&policy_file, function, "shared session command policy function")?;
+        require_rust_fn(&policy_file, function, &format!("source={policy_owner} target_owner=shared effect factory replacement_path={function}"))?;
+        require_rust_fn_return_type_path(
+            &policy_file,
+            function,
+            "SessionCommandEffect",
+            &format!("source={policy_owner} target_owner=neutral effect DTO replacement_path={function} -> SessionCommandEffect"),
+        )?;
     }
-    require_rust_path(
+    require_rust_fn(&policy_file, "ack_matches", &format!("source={policy_owner} target_owner=shared ack matcher replacement_path=ack_matches"))?;
+    require_rust_fn_body_path(
+        &policy_file,
+        "set_thinking_level_effect",
+        "SessionCommandIntent::SetThinkingLevel",
+        &format!("source={policy_owner} target_owner=neutral command intent replacement_path=SessionCommandIntent::SetThinkingLevel"),
+    )?;
+    require_rust_fn_body_path(
+        &policy_file,
+        "cycle_thinking_level_effect",
+        "SessionCommandIntent::CycleThinkingLevel",
+        &format!("source={policy_owner} target_owner=neutral command intent replacement_path=SessionCommandIntent::CycleThinkingLevel"),
+    )?;
+    require_rust_fn_body_path(
+        &policy_file,
+        "disabled_tools_effect",
+        "SessionCommandIntent::SetDisabledTools",
+        &format!("source={policy_owner} target_owner=neutral command intent replacement_path=SessionCommandIntent::SetDisabledTools"),
+    )?;
+    require_rust_fn_body_path(
+        &policy_file,
+        "manual_compaction_effect",
+        "SessionCommandIntent::CompactHistory",
+        &format!("source={policy_owner} target_owner=neutral command intent replacement_path=SessionCommandIntent::CompactHistory"),
+    )?;
+    for path in [
+        "SessionAckPolicy::ThinkingLevel",
+        "SessionAckPolicy::DisabledTools",
+        "SessionAckPolicy::ManualCompaction",
+    ] {
+        require_rust_fn_body_path(
+            &policy_file,
+            "ack_matches",
+            path,
+            &format!("source={policy_owner} target_owner=neutral ack policy replacement_path={path}"),
+        )?;
+    }
+    require_rust_any_fn(
+        &policy_file,
+        "thinking_effect_projects_local_message_command_and_ack_policy",
+        "source=session command policy tests target_owner=behavior fixture replacement_path=positive neutral effect fixture",
+    )?;
+    require_rust_any_fn(
+        &policy_file,
+        "ack_policy_matches_only_expected_daemon_ack_shape",
+        "source=session command policy tests target_owner=behavior fixture replacement_path=negative ack fixture",
+    )?;
+    forbid_rust_path(
+        &policy_file,
+        "SessionCommand::SetDisabledTools",
+        &format!("source={policy_owner} target_owner={protocol_projection_owner} expected_replacement_path=SessionCommandIntent::SetDisabledTools"),
+    )?;
+    forbid_rust_path(
+        &policy_file,
+        "SessionCommand",
+        &format!("source={policy_owner} target_owner={protocol_projection_owner} expected_replacement_path=SessionCommandIntent plus edge projection"),
+    )?;
+    forbid_rust_use_path(
+        &policy_file,
+        "clankers_protocol::SessionCommand",
+        &format!("source={policy_owner} target_owner={protocol_projection_owner} expected_replacement_path=do not import daemon protocol commands in reusable policy"),
+    )?;
+
+    require_rust_fn(&slash_effects_file, "session_command_intent_to_protocol", &format!("source=slash effects target_owner={protocol_projection_owner} replacement_path=protocol projection adapter"))?;
+    require_rust_fn_return_type_path(
         &slash_effects_file,
+        "session_command_intent_to_protocol",
+        "SessionCommand",
+        &format!("source=slash effects target_owner={protocol_projection_owner} replacement_path=SessionCommand protocol DTO only at edge"),
+    )?;
+    for (intent, protocol) in [
+        ("SessionCommandIntent::SetThinkingLevel", "SessionCommand::SetThinkingLevel"),
+        ("SessionCommandIntent::CycleThinkingLevel", "SessionCommand::CycleThinkingLevel"),
+        ("SessionCommandIntent::SetDisabledTools", "SessionCommand::SetDisabledTools"),
+        ("SessionCommandIntent::CompactHistory", "SessionCommand::CompactHistory"),
+    ] {
+        require_rust_fn_body_path(
+            &slash_effects_file,
+            "session_command_intent_to_protocol",
+            intent,
+            &format!("source=slash effects target_owner={protocol_projection_owner} replacement_path={intent}"),
+        )?;
+        require_rust_fn_body_path(
+            &slash_effects_file,
+            "session_command_intent_to_protocol",
+            protocol,
+            &format!("source=slash effects target_owner={protocol_projection_owner} replacement_path={protocol}"),
+        )?;
+    }
+    require_rust_fn_body_path(
+        &slash_effects_file,
+        "agent_command_effect",
         "session_command_policy::cycle_thinking_level_effect",
-        "slash cycle thinking delegates to shared policy before attach dispatch",
+        "source=slash effects target_owner=session command policy expected_replacement_path=cycle thinking delegates to shared policy before attach dispatch",
     )?;
-    require_rust_path(
-        &attach_file,
-        "session_command_policy::ack_matches",
-        "attach ack suppression delegates to shared policy",
+    require_rust_fn_body_path(
+        &slash_effects_file,
+        "agent_command_effect",
+        "session_command_policy::disabled_tools_effect",
+        "source=slash effects target_owner=session command policy expected_replacement_path=disabled-tools delegates to shared policy before projection",
     )?;
-    require_rust_path(
+    require_rust_any_fn(
+        &slash_effects_file,
+        "disabled_tools_neutral_intent_projects_to_protocol_and_standalone_command",
+        "source=slash effects tests target_owner=behavior fixture replacement_path=disabled-tools neutral projection fixture",
+    )?;
+
+    require_rust_fn(&attach_file, "dispatch_session_command_effect", "source=attach command edge target_owner=attach parity dispatcher replacement_path=dispatch_session_command_effect")?;
+    require_rust_fn_body_path(
         &attach_file,
+        "dispatch_session_command_effect",
         "slash_commands::effects::session_command_intent_to_protocol",
-        "attach edge projects neutral command intents to daemon protocol",
+        &format!("source=attach command edge target_owner={protocol_projection_owner} expected_replacement_path=project neutral intents before ClientAdapter::send"),
+    )?;
+    require_rust_fn(&attach_file, "dispatch_disabled_tools_change", &format!("source=attach command edge target_owner={attach_projection_owner} replacement_path=disabled-tools projection adapter"))?;
+    require_rust_fn_body_path(
+        &attach_file,
+        "dispatch_disabled_tools_change",
+        "session_command_policy::disabled_tools_effect",
+        &format!("source=attach command edge target_owner={attach_projection_owner} expected_replacement_path=build disabled-tools neutral effect before projection"),
+    )?;
+    require_rust_fn_body_path(
+        &attach_file,
+        "should_suppress_disabled_tools_message",
+        "session_command_policy::ack_matches",
+        "source=attach parity tracker target_owner=session command policy expected_replacement_path=ack suppression delegates to shared policy",
     )?;
     require_rust_path(
         &agent_task_file,
         "session_command_policy::thinking_level_message",
-        "standalone thinking message delegates to shared policy",
-    )?;
-
-    require_contains(&policy, "Shared session command/effect/ack policy", "session command policy module purpose")?;
-    require_contains(&policy, "neutral command intents", "neutral display/protocol command intent policy note")?;
-    require_contains(&policy, "enum LocalSessionEffect", "typed local session effect DTO")?;
-    require_contains(&policy, "enum SessionAckPolicy", "typed session ack policy DTO")?;
-    require_contains(&policy, "enum SessionCommandIntent", "neutral session command intent DTO")?;
-    require_contains(&policy, "struct SessionCommandEffect", "typed session command effect DTO")?;
-    require_contains(&policy, "set_thinking_level_effect", "shared thinking set effect")?;
-    require_contains(&policy, "cycle_thinking_level_effect", "shared thinking cycle effect")?;
-    require_contains(&policy, "disabled_tools_effect", "shared disabled-tools effect")?;
-    require_contains(&policy, "manual_compaction_effect", "shared compaction effect")?;
-    require_contains(&policy, "ack_matches", "shared ack matcher")?;
-    require_contains(
-        &policy,
-        "thinking_effect_projects_local_message_command_and_ack_policy",
-        "positive shared policy fixture",
-    )?;
-    require_contains(&policy, "ack_policy_matches_only_expected_daemon_ack_shape", "negative ack fixture")?;
-    forbid_contains(
-        &policy,
-        "SessionCommand::SetDisabledTools",
-        "disabled-tools reusable policy must stay protocol-neutral",
-    )?;
-    forbid_contains(
-        &policy,
-        "clankers_protocol::SessionCommand",
-        "selected reusable slash policy must not import daemon protocol commands",
-    )?;
-    require_contains(
-        &attach,
-        "dispatch_session_command_effect",
-        "attach command shell delegates through shared effect dispatcher",
-    )?;
-    require_contains(
-        &attach,
-        "dispatch_disabled_tools_change",
-        "attach disabled-tools projection adapter",
-    )?;
-    require_contains(
-        &slash_effects,
-        "session_command_policy::cycle_thinking_level_effect(current_thinking_level)",
-        "slash cycle thinking delegates to shared policy before attach dispatch",
-    )?;
-    require_contains(
-        &slash_effects,
-        "session_command_intent_to_protocol",
-        "slash/attach projection adapter converts neutral command intents to daemon protocol",
-    )?;
-    require_contains(
-        &slash_effects,
-        "disabled_tools_neutral_intent_projects_to_protocol_and_standalone_command",
-        "disabled-tools neutral effect projection fixture",
-    )?;
-    require_contains(
-        &attach,
-        "session_command_policy::ack_matches(SessionAckPolicy::ThinkingLevel, event)",
-        "attach ack suppression delegates to shared policy",
-    )?;
-    require_contains(
-        &agent_task,
-        "session_command_policy::thinking_level_message(level)",
-        "standalone thinking message delegates to shared policy",
+        "source=standalone agent task target_owner=session command policy expected_replacement_path=thinking message delegates to shared policy",
     )?;
 
     Ok(json!({
@@ -1721,10 +1814,19 @@ fn session_command_policy_signature() -> Result<Value, String> {
         "attach_adapter_module": ATTACH_COMMANDS,
         "slash_effects_module": SLASH_EFFECTS,
         "standalone_agent_task_module": AGENT_TASK,
+        "hardened_cluster": "neutral display/protocol session command effects",
         "local_effect_dto": "LocalSessionEffect",
+        "local_effect_variants": ["ThinkingLevel", "DisabledTools"],
         "ack_policy_dto": "SessionAckPolicy",
+        "ack_policy_variants": ["ThinkingLevel", "DisabledTools", "ManualCompaction"],
         "neutral_command_intent_dto": "SessionCommandIntent",
+        "neutral_command_intent_variants": ["SetThinkingLevel", "CycleThinkingLevel", "SetDisabledTools", "CompactHistory"],
         "effect_dto": "SessionCommandEffect",
+        "effect_fields": {
+            "local": "Option<LocalSessionEffect>",
+            "command": "Option<SessionCommandIntent>",
+            "ack": "SessionAckPolicy"
+        },
         "shared_effects": [
             "set_thinking_level_effect",
             "cycle_thinking_level_effect",
@@ -1738,7 +1840,28 @@ fn session_command_policy_signature() -> Result<Value, String> {
         "disabled_tools_fixture": "disabled_tools_neutral_intent_projects_to_protocol_and_standalone_command",
         "negative_fixture": "ack_policy_matches_only_expected_daemon_ack_shape",
         "forbidden_policy_protocol_constructors": ["SessionCommand::SetDisabledTools", "clankers_protocol::SessionCommand"],
-        "typed_rail_kind": "Rust AST enum, struct, function, call-path, and forbidden protocol-constructor checks"
+        "source_anchor_inventory": [
+            {
+                "concern": "neutral session command effect policy",
+                "classification": "replaced",
+                "former_anchor_kind": "exact source string",
+                "replacement": "Rust AST enum variants, struct field types, function return types, function-body path ownership, use-path forbids, and nested fixture function inventory"
+            }
+        ],
+        "diagnostics": {
+            "source_owner": SESSION_COMMAND_POLICY,
+            "target_owner": "SessionCommandIntent reusable policy; SessionCommand protocol projection only at slash_commands::effects::session_command_intent_to_protocol",
+            "expected_replacement_path": "policy returns neutral SessionCommandIntent; attach/slash edges project to clankers_protocol::SessionCommand"
+        },
+        "typed_checks": [
+            "enum_variant_inventory",
+            "struct_field_type_inventory",
+            "function_return_type_inventory",
+            "function_body_path_inventory",
+            "forbidden_protocol_use_path_inventory",
+            "nested_fixture_function_inventory"
+        ],
+        "typed_rail_kind": "Rust AST enum variant, struct field, function return, function-body path, use-path, and nested fixture checks for neutral session command effects"
     }))
 }
 
@@ -1765,6 +1888,91 @@ fn require_rust_fn(file: &RustFile, name: &str, label: &str) -> Result<(), Strin
         return Ok(());
     }
     Err(format!("missing {label}: Rust function `{name}`"))
+}
+
+fn require_rust_any_fn(file: &RustFile, name: &str, label: &str) -> Result<(), String> {
+    if rust_function_names(file).contains(name) {
+        return Ok(());
+    }
+    Err(format!("missing {label}: Rust function or fixture `{name}`"))
+}
+
+fn require_rust_fn_return_type_path(file: &RustFile, name: &str, type_path: &str, label: &str) -> Result<(), String> {
+    for item in &file.ast.items {
+        let syn::Item::Fn(function) = item else { continue };
+        if function.sig.ident != name {
+            continue;
+        }
+        let syn::ReturnType::Type(_, ty) = &function.sig.output else {
+            return Err(format!("missing {label}: Rust function `{name}` return type"));
+        };
+        if type_mentions_path(ty, type_path) {
+            return Ok(());
+        }
+        return Err(format!("missing {label}: Rust function `{name}` return type does not reference `{type_path}`"));
+    }
+    Err(format!("missing {label}: Rust function `{name}`"))
+}
+
+fn require_rust_fn_body_path(file: &RustFile, function_name: &str, path: &str, label: &str) -> Result<(), String> {
+    for item in &file.ast.items {
+        let syn::Item::Fn(function) = item else { continue };
+        if function.sig.ident != function_name {
+            continue;
+        }
+        let mut collector = PathCollector::default();
+        collector.visit_block(&function.block);
+        if collector.paths.iter().any(|actual| path_matches(actual, path)) {
+            return Ok(());
+        }
+        return Err(format!(
+            "missing {label}: Rust function `{function_name}` body path `{path}`"
+        ));
+    }
+    for item in &file.ast.items {
+        let syn::Item::Impl(item_impl) = item else { continue };
+        for impl_item in &item_impl.items {
+            let syn::ImplItem::Fn(function) = impl_item else { continue };
+            if function.sig.ident != function_name {
+                continue;
+            }
+            let mut collector = PathCollector::default();
+            collector.visit_block(&function.block);
+            if collector.paths.iter().any(|actual| path_matches(actual, path)) {
+                return Ok(());
+            }
+            return Err(format!(
+                "missing {label}: Rust method `{function_name}` body path `{path}`"
+            ));
+        }
+    }
+    Err(format!("missing {label}: Rust function or method `{function_name}`"))
+}
+
+fn require_rust_enum_variants(
+    file: &RustFile,
+    enum_name: &str,
+    variants: &[&str],
+    label: &str,
+) -> Result<(), String> {
+    for item in &file.ast.items {
+        let syn::Item::Enum(item_enum) = item else { continue };
+        if item_enum.ident != enum_name {
+            continue;
+        }
+        let actual = item_enum
+            .variants
+            .iter()
+            .map(|variant| variant.ident.to_string())
+            .collect::<BTreeSet<_>>();
+        for variant in variants {
+            if !actual.contains(*variant) {
+                return Err(format!("missing {label}: Rust enum `{enum_name}` variant `{variant}`"));
+            }
+        }
+        return Ok(());
+    }
+    Err(format!("missing {label}: Rust enum `{enum_name}`"))
 }
 
 fn forbid_rust_fn(file: &RustFile, name: &str, label: &str) -> Result<(), String> {
@@ -1883,6 +2091,13 @@ fn forbid_rust_path(file: &RustFile, path: &str, label: &str) -> Result<(), Stri
     Ok(())
 }
 
+fn forbid_rust_use_path(file: &RustFile, path: &str, label: &str) -> Result<(), String> {
+    if rust_use_paths(file).iter().any(|actual| path_matches(actual, path)) {
+        return Err(format!("forbidden {label}: Rust use path `{path}`"));
+    }
+    Ok(())
+}
+
 fn rust_paths(file: &RustFile) -> BTreeSet<String> {
     let mut collector = PathCollector::default();
     collector.visit_file(&file.ast);
@@ -1898,6 +2113,71 @@ impl<'ast> Visit<'ast> for PathCollector {
     fn visit_path(&mut self, path: &'ast syn::Path) {
         self.paths.insert(path_to_string(path));
         syn::visit::visit_path(self, path);
+    }
+}
+
+fn rust_function_names(file: &RustFile) -> BTreeSet<String> {
+    let mut collector = FunctionNameCollector::default();
+    collector.visit_file(&file.ast);
+    collector.names
+}
+
+fn rust_use_paths(file: &RustFile) -> BTreeSet<String> {
+    let mut collector = UsePathCollector::default();
+    collector.visit_file(&file.ast);
+    collector.paths
+}
+
+#[derive(Default)]
+struct FunctionNameCollector {
+    names: BTreeSet<String>,
+}
+
+impl<'ast> Visit<'ast> for FunctionNameCollector {
+    fn visit_item_fn(&mut self, item: &'ast syn::ItemFn) {
+        self.names.insert(item.sig.ident.to_string());
+        syn::visit::visit_item_fn(self, item);
+    }
+
+    fn visit_impl_item_fn(&mut self, item: &'ast syn::ImplItemFn) {
+        self.names.insert(item.sig.ident.to_string());
+        syn::visit::visit_impl_item_fn(self, item);
+    }
+}
+
+#[derive(Default)]
+struct UsePathCollector {
+    paths: BTreeSet<String>,
+}
+
+impl<'ast> Visit<'ast> for UsePathCollector {
+    fn visit_item_use(&mut self, item: &'ast syn::ItemUse) {
+        collect_use_tree_paths("", &item.tree, &mut self.paths);
+        syn::visit::visit_item_use(self, item);
+    }
+}
+
+fn collect_use_tree_paths(prefix: &str, tree: &syn::UseTree, output: &mut BTreeSet<String>) {
+    match tree {
+        syn::UseTree::Path(path) => {
+            let next_prefix = format!("{}{ident}::", prefix, ident = path.ident);
+            collect_use_tree_paths(&next_prefix, &path.tree, output);
+        }
+        syn::UseTree::Name(name) => {
+            output.insert(format!("{}{}", prefix, name.ident));
+        }
+        syn::UseTree::Rename(rename) => {
+            output.insert(format!("{}{}", prefix, rename.ident));
+            output.insert(format!("{}{}", prefix, rename.rename));
+        }
+        syn::UseTree::Glob(_) => {
+            output.insert(format!("{}*", prefix.trim_end_matches("::")));
+        }
+        syn::UseTree::Group(group) => {
+            for item in &group.items {
+                collect_use_tree_paths(prefix, item, output);
+            }
+        }
     }
 }
 
