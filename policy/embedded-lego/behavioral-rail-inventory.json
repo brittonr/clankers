@@ -310,6 +310,23 @@
       ]
     },
     {
+      "script": "scripts/check-session-ledger-boundary.rs",
+      "class": "temporary_string_presence_check",
+      "owner": "embedded-sdk",
+      "requirement_ids": [
+        "sdk-session-ledger-boundary.verification",
+        "behavioral-lego-parity-rails.inventory.classification"
+      ],
+      "source_artifacts": [
+        "scripts/check-session-ledger-boundary.rs",
+        "crates/clankers-runtime/src/ledger.rs",
+        "src/modes/session_ledger.rs",
+        "docs/src/tutorials/embedded-agent-sdk.md"
+      ],
+      "failure_mode": "string inventory checks can pass after resume replay behavior is weakened",
+      "replacement_path": "replace with end-to-end runtime resume and daemon seed replay fixture receipt"
+    },
+    {
       "script": "scripts/check-tool-catalog-manifest.rs",
       "class": "executable_fixture",
       "owner": "embedded-sdk",

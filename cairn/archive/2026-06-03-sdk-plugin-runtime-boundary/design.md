@@ -25,6 +25,12 @@ Extism, stdio, built-in, and product-owned runtimes each have one loader/dispatc
 
 Supervisor loops, directories, child processes, and UI queues stay yellow/red desktop composition unless a future kit explicitly narrows them.
 
+## Selected drain slice
+
+`scripts/check-plugin-runtime-boundary.rs` records responsibility owners for manifest schema, stdio protocol DTOs, host facade queries, stdio runtime dispatch, desktop UI projection, and the dispatch matrix rail. Neutral manifest/runtime/protocol modules are checked for absence of TUI/protocol display DTOs, while `ui.rs` remains the explicit desktop projection edge.
+
+The existing `scripts/check-plugin-runtime-dispatch.rs` fixture remains the runtime-kind matrix for Extism, stdio, built-in, product-owned, and forbidden-loader cases.
+
 ## Validation plan
 
 - Manifest/runtime responsibility inventory.

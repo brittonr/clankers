@@ -1,0 +1,12 @@
+## Phase 1: Plugin boundary split
+
+- [x] [serial] I1: Inventory plugin responsibilities as manifest schema, runtime dispatch, sandbox/launch policy, tool registration, supervision, hooks, host events, and UI projection. r[sdk-plugin-runtime-boundary.inventory] [covers=sdk-plugin-runtime-boundary.inventory] [evidence=cairn/archive/2026-06-03-sdk-plugin-runtime-boundary/evidence/boundary-closeout.md]
+- [x] [serial] I2: Define neutral manifest/tool runtime DTOs or owner modules that do not depend on TUI/protocol display types. r[sdk-plugin-runtime-boundary.neutral-contracts.no-display-dtos] [covers=sdk-plugin-runtime-boundary.neutral-contracts.no-display-dtos] [evidence=cairn/archive/2026-06-03-sdk-plugin-runtime-boundary/evidence/boundary-closeout.md]
+- [x] [parallel] I3: Keep Extism, stdio, built-in, and product-owned runtime dispatch owners separate with fail-closed routing. r[sdk-plugin-runtime-boundary.dispatch.separate-owners] [covers=sdk-plugin-runtime-boundary.dispatch.separate-owners] [evidence=cairn/archive/2026-06-03-sdk-plugin-runtime-boundary/evidence/boundary-closeout.md]
+- [x] [parallel] I4: Move or isolate plugin UI/status projection to desktop display adapters. r[sdk-plugin-runtime-boundary.neutral-contracts.ui-edge] [covers=sdk-plugin-runtime-boundary.neutral-contracts.ui-edge] [evidence=cairn/archive/2026-06-03-sdk-plugin-runtime-boundary/evidence/boundary-closeout.md]
+
+## Phase 2: Verification
+
+- [x] [serial] V1: Add or update plugin runtime dispatch matrix fixtures covering Extism, stdio, built-in, product-owned, forbidden-loader, and missing-policy cases. r[sdk-plugin-runtime-boundary.verification.dispatch-matrix] [covers=sdk-plugin-runtime-boundary.verification.dispatch-matrix] [evidence=cairn/archive/2026-06-03-sdk-plugin-runtime-boundary/evidence/boundary-closeout.md]
+- [x] [serial] V2: Add source/dependency rails rejecting TUI/protocol imports from neutral plugin manifest/runtime modules. r[sdk-plugin-runtime-boundary.verification.boundary-rails] [covers=sdk-plugin-runtime-boundary.verification.boundary-rails] [evidence=cairn/archive/2026-06-03-sdk-plugin-runtime-boundary/evidence/boundary-closeout.md]
+- [x] [serial] V3: Run plugin focused tests, dispatch checker, SDK dependency checks, Cairn gates/validate, and `git diff --check`. r[sdk-plugin-runtime-boundary.verification] [covers=sdk-plugin-runtime-boundary.verification] [evidence=cairn/archive/2026-06-03-sdk-plugin-runtime-boundary/evidence/boundary-closeout.md]

@@ -24,6 +24,12 @@ Daemon/TUI/protocol events are edge projections from semantic/domain events. Com
 
 Session persistence/search should be accessed through controller/runtime session services with a compatibility adapter for the current `SessionManager` path.
 
+## Selected drain slice
+
+`scripts/check-controller-runtime-boundary.rs` is the closeout owner receipt for this change. It classifies `SessionController` concrete fields, keeps `runtime_adapter.rs` as the prompt/control runtime owner, limits `persistence.rs` to the desktop compatibility persistence/search adapter, and keeps daemon/TUI/semantic projection in `convert.rs`.
+
+The selected production-compatible command lifecycle is `SessionController::{submit_prompt_with_runtime_adapter,apply_control_with_runtime_adapter,handle_command_with_runtime_adapter_for_test}`. Existing fake-runtime and agent-backed tests exercise prompt, abort/reset, thinking, disabled tools, session identity, and semantic projection without sockets/providers for the reusable path while preserving the agent-backed desktop path.
+
 ## Validation plan
 
 - Fake-runtime fixtures for prompt, cancel, thinking, disabled tools, resume identity, and semantic event projection.

@@ -25,6 +25,12 @@ The migration should choose one policy cluster with clear tests. Candidates incl
 
 If root keeps policy temporarily, the lego baseline must say why and where it should move.
 
+## Selected drain slice
+
+Selected cluster: `process-job-profile`. `scripts/check-root-brick-extraction.rs` records the root inventory and selected owner receipt for process-job profile policy across `src/tools/process/{native,pueue,systemd}.rs`, with root `src/tools/process.rs` retained as the product-shell parser/wiring/projection owner.
+
+The existing `scripts/check-process-job-profile-kit.rs` rail verifies typed profile metadata and safe receipt projection for native, pueue, and systemd backends.
+
 ## Validation plan
 
 - Root policy inventory with module cluster, owner, and target crate/module.

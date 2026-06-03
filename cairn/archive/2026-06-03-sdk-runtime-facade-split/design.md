@@ -25,6 +25,12 @@ Potential kits include prompt-source services, session ledger/resume, neutral pr
 
 A kit must not probe filesystem paths, global auth, plugins, or network services unless the app injects an explicit desktop adapter or policy.
 
+## Selected drain slice
+
+Selected kit: `session-ledger-resume`. `scripts/check-runtime-facade-split.rs` records the selected kit boundary and support labels. The kit's green DTOs live in `crates/clankers-runtime/src/ledger.rs`, host-owned execution runs through `Runtime::resume_session` in `session.rs`, and host service defaults in `services.rs` fail closed through `DisabledSessionStore` rather than discovering desktop globals.
+
+Out-of-scope surfaces for this selected kit are provider/router/auth/plugin/TUI/daemon/process/Steel surfaces unless a host injects them through an explicit service adapter.
+
 ## Validation plan
 
 - Runtime public API/module inventory with support labels.
