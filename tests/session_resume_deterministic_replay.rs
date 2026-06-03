@@ -173,7 +173,7 @@ async fn run_resume_replay_once() -> Value {
     let initial_agent = Agent::new_with_agent_settings(
         initial_provider.clone(),
         vec![initial_tool],
-        clankers_agent::builder::agent_settings_from_config(&initial_settings),
+        clankers::agent_config::agent_settings_from_config(&initial_settings),
         MODEL.to_string(),
         SYSTEM_PROMPT.to_string(),
     );
@@ -206,7 +206,7 @@ async fn run_resume_replay_once() -> Value {
     let mut follow_agent = Agent::new_with_agent_settings(
         follow_provider.clone(),
         vec![follow_tool],
-        clankers_agent::builder::agent_settings_from_config(&follow_settings),
+        clankers::agent_config::agent_settings_from_config(&follow_settings),
         MODEL.to_string(),
         SYSTEM_PROMPT.to_string(),
     );

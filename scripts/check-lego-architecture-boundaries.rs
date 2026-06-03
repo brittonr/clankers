@@ -39,6 +39,7 @@ const PROCESS_TOOL_DURABLE: &str = "src/tools/process/durable.rs";
 const PROCESS_TOOL_NATIVE: &str = "src/tools/process/native.rs";
 const PROCESS_TOOL_PUEUE: &str = "src/tools/process/pueue.rs";
 const PROCESS_TOOL_SYSTEMD: &str = "src/tools/process/systemd.rs";
+const AGENT_CONFIG_ADAPTER: &str = "src/agent_config.rs";
 const AGENT_LIB: &str = "crates/clankers-agent/src/lib.rs";
 const AGENT_BUILDER: &str = "crates/clankers-agent/src/builder.rs";
 const AGENT_COMPACTION: &str = "crates/clankers-agent/src/compaction.rs";
@@ -217,6 +218,7 @@ fn run() -> Result<PathBuf, String> {
             hash_artifact(Path::new(PROCESS_TOOL_NATIVE))?,
             hash_artifact(Path::new(PROCESS_TOOL_PUEUE))?,
             hash_artifact(Path::new(PROCESS_TOOL_SYSTEMD))?,
+            hash_artifact(Path::new(AGENT_CONFIG_ADAPTER))?,
             hash_artifact(Path::new(AGENT_LIB))?,
             hash_artifact(Path::new(AGENT_BUILDER))?,
             hash_artifact(Path::new(AGENT_COMPACTION))?,
@@ -651,6 +653,7 @@ fn process_backend_ownership_signature(tool_file: &RustFile, tool: &str) -> Resu
 }
 
 fn agent_turn_ports_signature() -> Result<Value, String> {
+    let agent_config_file = read_rust_file(AGENT_CONFIG_ADAPTER)?;
     let agent_lib_file = read_rust_file(AGENT_LIB)?;
     let builder_file = read_rust_file(AGENT_BUILDER)?;
     let turn_mod_file = read_rust_file(AGENT_TURN_MOD)?;
@@ -662,6 +665,7 @@ fn agent_turn_ports_signature() -> Result<Value, String> {
     let context_file = read_rust_file(AGENT_CONTEXT)?;
     let system_prompt_file = read_rust_file(AGENT_SYSTEM_PROMPT)?;
     let tool_file = read_rust_file(AGENT_TOOL)?;
+    let agent_config = &agent_config_file.source;
     let agent_lib = &agent_lib_file.source;
     let builder = &builder_file.source;
     let turn_mod = &turn_mod_file.source;
@@ -828,26 +832,31 @@ fn agent_turn_ports_signature() -> Result<Value, String> {
         "agent-owned Steel turn planning settings DTO",
     )?;
     require_contains(
-        builder,
+        agent_config,
         "agent_tool_steel_substrate_settings_from_config",
         "Steel tool substrate app-edge settings adapter",
     )?;
     require_contains(
-        builder,
+        agent_config,
         "agent_steel_turn_planning_settings_from_config",
         "Steel turn planning app-edge settings adapter",
     )?;
     require_contains(
-        builder,
+        agent_config,
         "auto_compact_settings_from_config",
         "auto-compaction app-edge settings adapter",
     )?;
-    require_contains(builder, "agent_settings_from_config", "agent runtime settings app-edge adapter")?;
-    require_contains(builder, "agent_model_roles_from_config", "agent model-role app-edge adapter")?;
+    require_contains(agent_config, "agent_settings_from_config", "agent runtime settings app-edge adapter")?;
+    require_contains(agent_config, "agent_model_roles_from_config", "agent model-role app-edge adapter")?;
     forbid_contains(
         agent_lib,
         "clankers_config",
         "agent runtime lib concrete config import after DTO drain",
+    )?;
+    forbid_contains(
+        builder,
+        "clankers_config",
+        "agent builder concrete config import after DTO drain",
     )?;
     require_contains(
         compaction,
@@ -949,7 +958,7 @@ fn agent_turn_ports_signature() -> Result<Value, String> {
         "tool_service_inventory": "CONTROLLER_TOOL_PORT_SERVICE_INVENTORY",
         "legacy_tool_context_inventory": "LEGACY_TOOL_CONTEXT_SERVICE_INVENTORY",
         "concrete_dependency_budget": "AGENT_CONCRETE_DEPENDENCY_BUDGET",
-        "selected_config_slice": "Agent runtime/model-role settings, Steel tool substrate, Steel turn planning, auto-compaction, context assembly, and prompt discovery settings now use agent-owned DTOs at builder/app edge; runtime lib uses agent-owned DTOs only",
+        "selected_config_slice": "Agent runtime/model-role settings, Steel tool substrate, Steel turn planning, auto-compaction, context assembly, and prompt discovery settings now use agent-owned DTOs at root app edge; clankers-agent has no clankers-config dependency",
         "tool_context_module": AGENT_TOOL,
         "cost_adapter": "CostTrackerPort",
         "cancellation_adapter": "TokenCancellationPort",

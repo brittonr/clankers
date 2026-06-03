@@ -2050,7 +2050,7 @@ async fn capability_gate_blocks_stdio_tool_calls_in_turn_loop() {
             calls: AtomicUsize::new(0),
         }),
         tools,
-        clankers_agent::builder::agent_settings_from_config(&settings),
+        crate::agent_config::agent_settings_from_config(&settings),
         "test-model".to_string(),
         "You are a test assistant.".to_string(),
     )
@@ -2206,7 +2206,7 @@ async fn capability_gate_allows_stdio_tool_calls_in_turn_loop() {
             calls: AtomicUsize::new(0),
         }),
         tools,
-        clankers_agent::builder::agent_settings_from_config(&settings),
+        crate::agent_config::agent_settings_from_config(&settings),
         "test-model".to_string(),
         "You are a test assistant.".to_string(),
     )

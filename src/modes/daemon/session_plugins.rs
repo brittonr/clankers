@@ -274,7 +274,7 @@ mod tests {
         let model = "test-model".to_string();
         let agent = clankers_agent::builder::AgentBuilder::new(
             Arc::new(StubProvider),
-            clankers_config::settings::Settings::default(),
+            clankers_agent::builder::AgentBuilderConfig::default(),
             model.clone(),
             String::new(),
         )

@@ -27,7 +27,8 @@ pub async fn run_json_with_options(
     system_prompt: String,
     opts: JsonOptions,
 ) -> Result<()> {
-    let mut builder = AgentBuilder::new(provider, settings.clone(), model, system_prompt).with_tools(tools);
+    let builder_config = crate::agent_config::agent_builder_config_from_settings(&settings);
+    let mut builder = AgentBuilder::new(provider, builder_config, model, system_prompt).with_tools(tools);
     if let Some(thinking) = opts.thinking.clone() {
         builder = builder.with_thinking(thinking);
     }

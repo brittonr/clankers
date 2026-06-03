@@ -198,7 +198,6 @@
   "inventory_signature": {
     "agent_crate": {
       "concrete_dependencies": [
-        "clankers-config",
         "clankers-db",
         "clankers-hooks",
         "clankers-model-selection",
@@ -208,8 +207,8 @@
         "clankers-skills",
         "clankers-util"
       ],
-      "concrete_dependency_count": 9,
-      "internal_dependency_count": 17,
+      "concrete_dependency_count": 8,
+      "internal_dependency_count": 16,
       "owner": "turn orchestration shell; concrete systems should migrate behind model/tool/config/storage/hook/prompt/skill/cost ports",
       "package": "clankers-agent"
     },
@@ -259,7 +258,7 @@
       "provider_adapter": "ProviderModelPort",
       "provider_adapter_owner": "crates/clankers-agent/src/lib.rs app-edge shell",
       "runtime_service_bundle": "AgentRuntimeServices",
-      "selected_config_slice": "Agent runtime/model-role settings, Steel tool substrate, Steel turn planning, auto-compaction, context assembly, and prompt discovery settings now use agent-owned DTOs at builder/app edge; runtime lib uses agent-owned DTOs only",
+      "selected_config_slice": "Agent runtime/model-role settings, Steel tool substrate, Steel turn planning, auto-compaction, context assembly, and prompt discovery settings now use agent-owned DTOs at root app edge; clankers-agent has no clankers-config dependency",
       "service_receipt_kinds": [
         "model",
         "tools",

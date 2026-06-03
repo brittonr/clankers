@@ -151,7 +151,7 @@ async fn run_replay_once() -> Value {
     let agent = Agent::new_with_agent_settings(
         provider.clone(),
         vec![tool],
-        clankers_agent::builder::agent_settings_from_config(&settings),
+        clankers::agent_config::agent_settings_from_config(&settings),
         MODEL.to_string(),
         SYSTEM_PROMPT.to_string(),
     );

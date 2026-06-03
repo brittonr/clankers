@@ -172,7 +172,7 @@ fn make_steel_smoke_controller(settings: clankers_config::settings::Settings) ->
     let agent = Agent::new_with_agent_settings(
         provider,
         vec![],
-        clankers_agent::builder::agent_settings_from_config(&settings),
+        clankers::agent_config::agent_settings_from_config(&settings),
         "test-model".to_string(),
         "You are a test.".to_string(),
     );
@@ -302,7 +302,7 @@ fn make_structured_agent(provider: Arc<dyn clankers_provider::Provider>) -> Agen
     Agent::new_with_agent_settings(
         provider,
         vec![],
-        clankers_agent::builder::agent_settings_from_config(&settings),
+        clankers::agent_config::agent_settings_from_config(&settings),
         "test-model".to_string(),
         "test system prompt".to_string(),
     )

@@ -129,11 +129,7 @@ pub(crate) fn build_session_hook_pipeline(
 
 pub(crate) fn assemble_session_runtime(request: DaemonSessionRuntimeRequest<'_>) -> DaemonSessionRuntime {
     let paths = clankers_config::ClankersPaths::get();
-    assemble_session_runtime_in_dir(
-        request,
-        paths.global_sessions_dir.clone(),
-        Some(paths.global_config_dir.clone()),
-    )
+    assemble_session_runtime_in_dir(request, paths.global_sessions_dir.clone(), Some(paths.global_config_dir.clone()))
 }
 
 fn assemble_session_runtime_in_dir(
@@ -152,9 +148,10 @@ fn assemble_session_runtime_in_dir(
     let effective_caps =
         merge_session_capabilities(request.capabilities.as_deref(), factory.settings.default_capabilities.as_deref());
 
+    let builder_config = crate::agent_config::agent_builder_config_from_settings(&factory.settings);
     let mut builder = clankers_agent::builder::AgentBuilder::new(
         Arc::clone(&factory.provider),
-        factory.settings.clone(),
+        builder_config,
         model.clone(),
         system_prompt.clone(),
     )
