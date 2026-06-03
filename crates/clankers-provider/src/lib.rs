@@ -55,6 +55,7 @@ pub mod error_classifier;
 pub mod fake;
 pub mod message;
 pub mod openai_codex;
+pub mod provider_router_responsibility;
 /// Model registry — re-exported from `clanker-router`.
 pub use clanker_router::registry;
 /// Retry logic — re-exported from `clanker-router`.

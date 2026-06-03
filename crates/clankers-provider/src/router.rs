@@ -15,7 +15,6 @@ use std::sync::Arc;
 
 use async_trait::async_trait;
 use clanker_router::RouterDb;
-use clanker_router::db::cache::CacheKeyInput;
 use clanker_router::retry::RetryConfig;
 use clanker_router::router::FallbackConfig;
 use tokio::sync::mpsc;
@@ -550,19 +549,7 @@ impl RouterProvider {
             return None;
         }
 
-        let messages: Vec<serde_json::Value> =
-            request.messages.iter().filter_map(|m| serde_json::to_value(m).ok()).collect();
-
-        let input = CacheKeyInput {
-            model: &request.model,
-            system_prompt: request.system_prompt.as_deref(),
-            messages: &messages,
-            tools: &request.tools,
-            temperature: request.temperature,
-            thinking_enabled: request.thinking.as_ref().is_some_and(|t| t.enabled),
-        };
-
-        Some(input.compute_key())
+        Some(crate::router_request_bridge::compute_router_cache_key_from_request_projection(request.clone()))
     }
 }
 
@@ -967,7 +954,10 @@ mod tests {
                 .await
                 .expect("cache write-back path should forward before provider completion")
                 .expect("stream should stay open before provider completion");
-            if matches!(event, StreamEvent::ContentBlockDelta { delta: crate::streaming::ContentDelta::ThinkingDelta { .. }, .. }) {
+            if matches!(event, StreamEvent::ContentBlockDelta {
+                delta: crate::streaming::ContentDelta::ThinkingDelta { .. },
+                ..
+            }) {
                 saw_thinking = true;
                 break;
             }

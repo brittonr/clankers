@@ -152,6 +152,19 @@ pub(crate) fn build_router_request(request: CompletionRequest) -> clanker_router
     }
 }
 
+pub(crate) fn compute_router_cache_key_from_request_projection(request: CompletionRequest) -> String {
+    let router_request = build_router_request(request);
+    let input = clanker_router::db::cache::CacheKeyInput {
+        model: &router_request.model,
+        system_prompt: router_request.system_prompt.as_deref(),
+        messages: &router_request.messages,
+        tools: &router_request.tools,
+        temperature: router_request.temperature,
+        thinking_enabled: router_request.thinking.as_ref().is_some_and(|thinking| thinking.enabled),
+    };
+    input.compute_key()
+}
+
 fn messages_to_router_json(messages: &[AgentMessage]) -> Vec<serde_json::Value> {
     let mut out = Vec::new();
     for message in messages {
@@ -329,5 +342,45 @@ mod tests {
         assert_eq!(router_request.messages[0]["role"], json!("user"));
         assert_eq!(router_request.messages[0]["content"][0]["text"], json!("[Branch summary]\nbranch state"));
         assert_eq!(router_request.messages[1]["content"][0]["text"], json!("[Compaction summary]\ncompact state"));
+    }
+
+    #[test]
+    fn cache_key_uses_router_message_projection_literal() {
+        let request = request(vec![
+            AgentMessage::User(UserMessage {
+                id: MessageId::new("user-cache"),
+                content: vec![Content::Text {
+                    text: "cache me".to_string(),
+                }],
+                timestamp: Utc::now(),
+            }),
+            AgentMessage::BranchSummary(BranchSummaryMessage {
+                id: MessageId::new("branch-cache"),
+                from_id: MessageId::new("user-cache"),
+                summary: "branch cache state".to_string(),
+                timestamp: Utc::now(),
+            }),
+        ]);
+        let actual = compute_router_cache_key_from_request_projection(request);
+        let expected_messages = vec![
+            json!({
+                "role": "user",
+                "content": [{"type": "text", "text": "cache me"}],
+            }),
+            json!({
+                "role": "user",
+                "content": [{"type": "text", "text": "[Branch summary]\nbranch cache state"}],
+            }),
+        ];
+        let expected_input = clanker_router::db::cache::CacheKeyInput {
+            model: "openai-codex/gpt-5.3-codex",
+            system_prompt: Some("Be helpful"),
+            messages: &expected_messages,
+            tools: &[],
+            temperature: Some(0.2),
+            thinking_enabled: false,
+        };
+
+        assert_eq!(actual, expected_input.compute_key());
     }
 }

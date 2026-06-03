@@ -544,13 +544,17 @@
     },
     "provider_router_bridge": {
       "bridge_module": "crates/clankers-provider/src/router_request_bridge.rs",
+      "cache_key_projection_owner": "router_request_bridge::compute_router_cache_key_from_request_projection",
+      "concern_inventory_module": "crates/clankers-provider/src/provider_router_responsibility.rs",
+      "local_adapter_duplicate_cache_key_message_projection": 0,
       "local_adapter_duplicate_message_projection": 0,
       "local_adapter_module": "crates/clankers-provider/src/router.rs",
       "request_projection_owner": "router_request_bridge::build_router_request",
       "rpc_adapter_duplicate_message_projection": 0,
       "rpc_adapter_module": "crates/clankers-provider/src/rpc_provider.rs",
+      "selected_concern": "ProviderRouterConcern::CacheKeyRequestProjection",
       "summary_context_preserved": true,
-      "typed_rail_kind": "Rust AST function ownership and call-path checks"
+      "typed_rail_kind": "Rust AST function/enum/struct ownership and call-path checks"
     },
     "root_crate": {
       "internal_dependencies": [

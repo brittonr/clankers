@@ -65,6 +65,7 @@ const CONTROLLER_CONVERT: &str = "crates/clankers-controller/src/convert.rs";
 const CONTROLLER_DOMAIN_EVENT: &str = "crates/clankers-controller/src/domain_event.rs";
 const CONTROLLER_EFFECT_INTERPRETATION: &str = "crates/clankers-controller/src/effect_interpretation.rs";
 const PROVIDER_ROUTER_BRIDGE: &str = "crates/clankers-provider/src/router_request_bridge.rs";
+const PROVIDER_ROUTER_RESPONSIBILITY: &str = "crates/clankers-provider/src/provider_router_responsibility.rs";
 const PROVIDER_ROUTER_ADAPTER: &str = "crates/clankers-provider/src/router.rs";
 const PROVIDER_RPC_ADAPTER: &str = "crates/clankers-provider/src/rpc_provider.rs";
 const SESSION_COMMAND_POLICY: &str = "src/modes/session_command_policy.rs";
@@ -236,6 +237,7 @@ fn run() -> Result<PathBuf, String> {
             hash_artifact(Path::new(CONTROLLER_DOMAIN_EVENT))?,
             hash_artifact(Path::new(CONTROLLER_EFFECT_INTERPRETATION))?,
             hash_artifact(Path::new(PROVIDER_ROUTER_BRIDGE))?,
+            hash_artifact(Path::new(PROVIDER_ROUTER_RESPONSIBILITY))?,
             hash_artifact(Path::new(PROVIDER_ROUTER_ADAPTER))?,
             hash_artifact(Path::new(PROVIDER_RPC_ADAPTER))?,
             hash_artifact(Path::new(CONTROLLER_COMMAND))?,
@@ -1073,13 +1075,20 @@ fn controller_effect_interpretation_signature() -> Result<Value, String> {
 
 fn provider_router_bridge_signature() -> Result<Value, String> {
     let bridge_file = read_rust_file(PROVIDER_ROUTER_BRIDGE)?;
+    let responsibility_file = read_rust_file(PROVIDER_ROUTER_RESPONSIBILITY)?;
     let router_adapter_file = read_rust_file(PROVIDER_ROUTER_ADAPTER)?;
     let rpc_adapter_file = read_rust_file(PROVIDER_RPC_ADAPTER)?;
     let bridge = &bridge_file.source;
+    let responsibility = &responsibility_file.source;
     let router_adapter = &router_adapter_file.source;
     let rpc_adapter = &rpc_adapter_file.source;
 
     require_rust_fn(&bridge_file, "build_router_request", "provider/router bridge entrypoint")?;
+    require_rust_fn(
+        &bridge_file,
+        "compute_router_cache_key_from_request_projection",
+        "provider/router cache-key request projection owner",
+    )?;
     require_rust_fn(&bridge_file, "messages_to_router_json", "provider/router message projection owner")?;
     require_rust_path(
         &router_adapter_file,
@@ -1091,12 +1100,27 @@ fn provider_router_bridge_signature() -> Result<Value, String> {
         "crate::router_request_bridge::build_router_request",
         "rpc router adapter delegates request projection",
     )?;
+    require_rust_enum(
+        &responsibility_file,
+        "ProviderRouterConcern",
+        "provider/router duplicate concern inventory enum",
+    )?;
+    require_rust_struct(
+        &responsibility_file,
+        "ProviderRouterConcernOwner",
+        "provider/router duplicate concern inventory row",
+    )?;
     require_contains(
         &bridge,
         "Single clankers-provider owned bridge into `clanker_router::CompletionRequest`",
         "provider/router bridge ownership doc",
     )?;
     require_contains(&bridge, "pub(crate) fn build_router_request", "provider/router bridge entrypoint")?;
+    require_contains(
+        &bridge,
+        "compute_router_cache_key_from_request_projection",
+        "provider/router cache-key request projection owner",
+    )?;
     require_contains(&bridge, "messages_to_router_json", "provider/router message projection owner")?;
     require_contains(&bridge, "Branch summary", "branch summary preservation fixture")?;
     require_contains(&bridge, "Compaction summary", "compaction summary preservation fixture")?;
@@ -1106,9 +1130,39 @@ fn provider_router_bridge_signature() -> Result<Value, String> {
         "local router adapter delegates request projection",
     )?;
     require_contains(
+        &router_adapter,
+        "crate::router_request_bridge::compute_router_cache_key_from_request_projection",
+        "local router cache key delegates request projection",
+    )?;
+    require_contains(
         &rpc_adapter,
         "crate::router_request_bridge::build_router_request(request)",
         "rpc router adapter delegates request projection",
+    )?;
+    require_contains(
+        &responsibility,
+        "PROVIDER_ROUTER_CONCERN_INVENTORY",
+        "provider/router duplicate concern inventory",
+    )?;
+    require_contains(
+        &responsibility,
+        "ProviderRouterConcern::CacheKeyRequestProjection",
+        "selected provider/router cache key projection concern",
+    )?;
+    require_contains(
+        &responsibility,
+        "compute_router_cache_key_from_request_projection",
+        "selected provider/router single policy owner",
+    )?;
+    require_contains(
+        &responsibility,
+        "inventory_names_owner_for_each_provider_router_concern",
+        "provider/router duplicate concern inventory fixture",
+    )?;
+    require_contains(
+        &responsibility,
+        "selected_cache_key_projection_has_single_bridge_owner",
+        "selected provider/router owner fixture",
     )?;
     forbid_rust_fn(
         &router_adapter_file,
@@ -1122,18 +1176,27 @@ fn provider_router_bridge_signature() -> Result<Value, String> {
         "fn messages_to_router_json",
         "local router adapter duplicate message projection",
     )?;
+    forbid_contains(
+        &router_adapter,
+        "serde_json::to_value(m)",
+        "local router cache key duplicate AgentMessage serialization",
+    )?;
     forbid_contains(&rpc_adapter, "fn convert_messages_to_api", "rpc router adapter duplicate message projection")?;
     forbid_contains(&rpc_adapter, "fn content_to_json", "rpc router adapter duplicate content projection")?;
 
     Ok(json!({
         "bridge_module": PROVIDER_ROUTER_BRIDGE,
+        "concern_inventory_module": PROVIDER_ROUTER_RESPONSIBILITY,
         "local_adapter_module": PROVIDER_ROUTER_ADAPTER,
         "rpc_adapter_module": PROVIDER_RPC_ADAPTER,
         "request_projection_owner": "router_request_bridge::build_router_request",
+        "cache_key_projection_owner": "router_request_bridge::compute_router_cache_key_from_request_projection",
+        "selected_concern": "ProviderRouterConcern::CacheKeyRequestProjection",
         "local_adapter_duplicate_message_projection": 0,
+        "local_adapter_duplicate_cache_key_message_projection": 0,
         "rpc_adapter_duplicate_message_projection": 0,
         "summary_context_preserved": true,
-        "typed_rail_kind": "Rust AST function ownership and call-path checks"
+        "typed_rail_kind": "Rust AST function/enum/struct ownership and call-path checks"
     }))
 }
 
