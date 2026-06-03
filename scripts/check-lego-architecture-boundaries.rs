@@ -837,6 +837,21 @@ fn agent_turn_ports_signature() -> Result<Value, String> {
     )?;
     require_contains(
         &ports,
+        "SDK_AGENT_PORT_BOUNDARY_INVENTORY_REQUIREMENT",
+        "sdk agent port boundary inventory requirement marker",
+    )?;
+    require_contains(
+        &ports,
+        "SDK_AGENT_PORT_BOUNDARY_PORT_REQUIREMENT",
+        "sdk agent port boundary explicit-services requirement marker",
+    )?;
+    require_contains(
+        &ports,
+        "SDK_AGENT_PORT_BOUNDARY_RAIL_REQUIREMENT",
+        "sdk agent port boundary rail requirement marker",
+    )?;
+    require_contains(
+        &ports,
         "AGENT_CONCRETE_DEPENDENCY_BUDGET",
         "agent concrete dependency budget inventory",
     )?;

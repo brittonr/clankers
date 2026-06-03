@@ -132,6 +132,16 @@ pub(crate) const AGENT_CONCRETE_DEPENDENCY_DRAIN_REQUIREMENT: &str =
     "r[agent-concrete-dependency-drain.dependency-budget]";
 
 #[allow(dead_code)]
+pub(crate) const SDK_AGENT_PORT_BOUNDARY_INVENTORY_REQUIREMENT: &str = "r[sdk-agent-port-boundary.inventory]";
+
+#[allow(dead_code)]
+pub(crate) const SDK_AGENT_PORT_BOUNDARY_PORT_REQUIREMENT: &str = "r[sdk-agent-port-boundary.ports.explicit-services]";
+
+#[allow(dead_code)]
+pub(crate) const SDK_AGENT_PORT_BOUNDARY_RAIL_REQUIREMENT: &str =
+    "r[sdk-agent-port-boundary.verification.boundary-rail]";
+
+#[allow(dead_code)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub(crate) enum AgentConcreteDependencyFamily {
     Provider,
@@ -199,7 +209,7 @@ pub(crate) const AGENT_CONCRETE_DEPENDENCY_BUDGET: &[AgentConcreteDependencyBudg
         crate_name: "clankers-config",
         owner: AgentConcreteDependencyOwner::AppEdgeSettingsAdapter,
         production_modules: &[],
-        selected_slice_status: "Agent runtime/model-role settings, routing/cost construction, Steel tool substrate, Steel turn planning, auto-compaction, context assembly, and prompt discovery settings converted to agent-owned DTOs at root app edge; clankers-agent has no clankers-config dependency",
+        selected_slice_status: "Agent runtime/model-role settings, routing/cost construction, AgentToolSteelSubstrateSettings, AgentSteelTurnPlanningSettings, auto-compaction, context assembly, and prompt discovery settings converted to agent-owned DTOs at root app edge; clankers-agent has no clankers-config dependency",
         convergence: "keep settings-derived routing/cost policy construction in root/controller adapters and pass agent-owned DTOs into clankers-agent",
     },
     AgentConcreteDependencyBudgetEntry {
@@ -617,6 +627,9 @@ mod tests {
         let families = dependency_families(AGENT_CONCRETE_DEPENDENCY_BUDGET);
 
         assert_eq!(AGENT_CONCRETE_DEPENDENCY_DRAIN_REQUIREMENT, "r[agent-concrete-dependency-drain.dependency-budget]");
+        assert_eq!(SDK_AGENT_PORT_BOUNDARY_INVENTORY_REQUIREMENT, "r[sdk-agent-port-boundary.inventory]");
+        assert_eq!(SDK_AGENT_PORT_BOUNDARY_PORT_REQUIREMENT, "r[sdk-agent-port-boundary.ports.explicit-services]");
+        assert_eq!(SDK_AGENT_PORT_BOUNDARY_RAIL_REQUIREMENT, "r[sdk-agent-port-boundary.verification.boundary-rail]");
         for family in [
             AgentConcreteDependencyFamily::Provider,
             AgentConcreteDependencyFamily::StorageSearch,
