@@ -7,19 +7,17 @@ edition = "2024"
 use std::fs;
 
 fn main() {
-    let process_jobs = fs::read_to_string("crates/clankers-runtime/src/process_jobs.rs")
-        .expect("read process jobs runtime");
-    let process_tool = fs::read_to_string("src/tools/process.rs").expect("read process tool");
+    let process_jobs =
+        fs::read_to_string("crates/clankers-runtime/src/process_jobs.rs").expect("read process jobs runtime");
+    let native_process_tool = fs::read_to_string("src/tools/process/native.rs").expect("read native process tool");
+    let pueue_process_tool = fs::read_to_string("src/tools/process/pueue.rs").expect("read pueue process tool");
+    let systemd_process_tool = fs::read_to_string("src/tools/process/systemd.rs").expect("read systemd process tool");
     require(
         &process_jobs,
         "process_job_profile_kit_validates_manifest_policy_identity_and_redaction",
         "process job profile kit fixture missing",
     );
-    require(
-        &process_jobs,
-        "ProjectProcessJobProfiles::from_json_str",
-        "profile manifest parser missing",
-    );
+    require(&process_jobs, "ProjectProcessJobProfiles::from_json_str", "profile manifest parser missing");
     require(
         &process_jobs,
         "profile manifest parses without contacting a backend",
@@ -35,11 +33,7 @@ fn main() {
         "secret env keys reject before backend dispatch",
         "negative fixture must reject secret env keys before backend dispatch",
     );
-    require(
-        &process_jobs,
-        "ProcessJobIdentityEnvelope::for_start_request",
-        "identity envelope fixture missing",
-    );
+    require(&process_jobs, "ProcessJobIdentityEnvelope::for_start_request", "identity envelope fixture missing");
     require(
         &process_jobs,
         "profile_manifest_sources_resolve_by_deterministic_precedence",
@@ -55,44 +49,33 @@ fn main() {
         "profile_policy_rejects_paths_resources_and_unsupported_manifest_versions",
         "path/resource/schema negative fixture missing",
     );
+    require(&process_jobs, "ProjectProcessJobProfileValidationError", "typed profile validation error missing");
+    require(&process_jobs, "ProcessJobProfileReceiptMetadata", "safe profile receipt metadata missing");
     require(
-        &process_jobs,
-        "ProjectProcessJobProfileValidationError",
-        "typed profile validation error missing",
-    );
-    require(
-        &process_jobs,
-        "ProcessJobProfileReceiptMetadata",
-        "safe profile receipt metadata missing",
-    );
-    require(
-        &process_tool,
+        &native_process_tool,
         "ProcessJobProfileReceiptMetadata::from_metadata(&request.metadata)",
-        "process tool must project safe profile metadata into start receipts",
+        "native process backend must project safe profile metadata into start receipts",
     );
     require(
-        &process_tool,
+        &pueue_process_tool,
+        "ProcessJobProfileReceiptMetadata::from_metadata(&request.metadata)",
+        "pueue process backend must project safe profile metadata into start receipts",
+    );
+    require(
+        &systemd_process_tool,
+        "ProcessJobProfileReceiptMetadata::from_metadata(&request.metadata)",
+        "systemd process backend must project safe profile metadata into start receipts",
+    );
+    require(
+        &native_process_tool,
         "native_process_job_service_preserves_default_start_list_wait_flow",
         "native service profile receipt/list regression missing",
     );
-    require(
-        &process_jobs,
-        "PROCESS_JOB_PROFILE_METADATA_SOURCE",
-        "safe profile source metadata missing",
-    );
-    require(
-        &process_jobs,
-        "PROCESS_JOB_REDACTED",
-        "redaction assertion missing",
-    );
+    require(&process_jobs, "PROCESS_JOB_PROFILE_METADATA_SOURCE", "safe profile source metadata missing");
+    require(&process_jobs, "PROCESS_JOB_REDACTED", "redaction assertion missing");
 
-    let docs = fs::read_to_string("docs/src/reference/process-jobs.md")
-        .expect("read process job docs");
-    require(
-        &docs,
-        "process-job-profile-kit",
-        "process jobs docs must name process-job-profile-kit",
-    );
+    let docs = fs::read_to_string("docs/src/reference/process-jobs.md").expect("read process job docs");
+    require(&docs, "process-job-profile-kit", "process jobs docs must name process-job-profile-kit");
     require(
         &docs,
         "Resolving a profile is pure",
@@ -118,14 +101,9 @@ fn main() {
         "Safe profile identity metadata is copied into the resolved start request",
         "process jobs docs must state safe profile metadata projection",
     );
-    require(
-        &docs,
-        "scripts/check-process-job-profile-kit.rs",
-        "process jobs docs must name the drift rail",
-    );
+    require(&docs, "scripts/check-process-job-profile-kit.rs", "process jobs docs must name the drift rail");
 
-    let spec = fs::read_to_string("cairn/specs/durable-process-jobs/spec.md")
-        .expect("read durable process jobs spec");
+    let spec = fs::read_to_string("cairn/specs/durable-process-jobs/spec.md").expect("read durable process jobs spec");
     require(
         &spec,
         "Process job profile kit validates backend-neutral job manifests",
@@ -141,11 +119,7 @@ fn main() {
         "disallowed backend, malformed command shape, secret-like environment key, resource limit above policy, disallowed cwd, disallowed writable path, or ambiguous manifest source",
         "canonical spec must require fail-closed policy cases",
     );
-    require(
-        &spec,
-        "disallowed writable path",
-        "canonical spec must require writable path denial",
-    );
+    require(&spec, "disallowed writable path", "canonical spec must require writable path denial");
 
     println!("process-job-profile-kit checker passed");
 }

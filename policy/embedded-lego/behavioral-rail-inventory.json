@@ -558,6 +558,10 @@
       "source_artifacts": [
         "scripts/check-process-job-profile-kit.rs",
         "crates/clankers-runtime/src/process_jobs.rs",
+        "src/tools/process/native.rs",
+        "src/tools/process/pueue.rs",
+        "src/tools/process/systemd.rs",
+        "docs/src/reference/process-jobs.md",
         "cairn/specs/durable-process-jobs/spec.md"
       ],
       "failure_mode": "symbol-presence checks can pass after behavior is weakened",
