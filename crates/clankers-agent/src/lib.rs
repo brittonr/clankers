@@ -168,6 +168,17 @@ fn agent_tool_steel_substrate_fallback_mode_from_config(
     }
 }
 
+fn auto_compact_settings_from_config(
+    settings: &clankers_config::settings::CompressionSettings,
+) -> compaction::AutoCompactSettings {
+    let summary_model = settings.summary_model.trim();
+    compaction::AutoCompactSettings {
+        tail_budget_fraction: settings.tail_budget_fraction,
+        keep_recent: settings.keep_recent,
+        summary_model: (!summary_model.is_empty()).then(|| summary_model.to_string()),
+    }
+}
+
 fn turn_hook_usage_since(messages: &[AgentMessage], start_index: usize) -> Option<clankers_hooks::HookUsage> {
     let mut saw_usage = false;
     let mut usage = clankers_hooks::HookUsage::default();
@@ -687,7 +698,8 @@ impl Agent {
 
     /// Handle auto-compaction if messages exceed threshold
     async fn handle_auto_compaction(&mut self, max_input: usize) {
-        let auto_compact_config = compaction::AutoCompactConfig::from_settings(&self.settings.compression);
+        let auto_compact_settings = auto_compact_settings_from_config(&self.settings.compression);
+        let auto_compact_config = compaction::AutoCompactConfig::from_policy_settings(&auto_compact_settings);
         if !compaction::should_auto_compact(&self.messages, max_input, &auto_compact_config) {
             return;
         }

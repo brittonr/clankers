@@ -43,6 +43,7 @@ const AGENT_LIB: &str = "crates/clankers-agent/src/lib.rs";
 const AGENT_BUILDER: &str = "crates/clankers-agent/src/builder.rs";
 const AGENT_COMPACTION: &str = "crates/clankers-agent/src/compaction.rs";
 const AGENT_COMPACTION_TOOL_SUMMARIES: &str = "crates/clankers-agent/src/compaction/tool_summaries.rs";
+const AGENT_CONTEXT: &str = "crates/clankers-agent/src/context.rs";
 const AGENT_EVENTS: &str = "crates/clankers-agent/src/events.rs";
 const AGENT_TOOL: &str = "crates/clankers-agent/src/tool.rs";
 const AGENT_TURN_MOD: &str = "crates/clankers-agent/src/turn/mod.rs";
@@ -219,6 +220,7 @@ fn run() -> Result<PathBuf, String> {
             hash_artifact(Path::new(AGENT_BUILDER))?,
             hash_artifact(Path::new(AGENT_COMPACTION))?,
             hash_artifact(Path::new(AGENT_COMPACTION_TOOL_SUMMARIES))?,
+            hash_artifact(Path::new(AGENT_CONTEXT))?,
             hash_artifact(Path::new(AGENT_EVENTS))?,
             hash_artifact(Path::new(AGENT_TOOL))?,
             hash_artifact(Path::new(AGENT_TURN_MOD))?,
@@ -652,12 +654,16 @@ fn agent_turn_ports_signature() -> Result<Value, String> {
     let adapters_file = read_rust_file(AGENT_TURN_ADAPTERS)?;
     let ports_file = read_rust_file(AGENT_TURN_PORTS)?;
     let steel_tool_substrate_file = read_rust_file(AGENT_TURN_STEEL_TOOL_SUBSTRATE)?;
+    let compaction_file = read_rust_file(AGENT_COMPACTION)?;
+    let context_file = read_rust_file(AGENT_CONTEXT)?;
     let tool_file = read_rust_file(AGENT_TOOL)?;
     let agent_lib = &agent_lib_file.source;
     let turn_mod = &turn_mod_file.source;
     let adapters = &adapters_file.source;
     let ports = &ports_file.source;
     let steel_tool_substrate = &steel_tool_substrate_file.source;
+    let compaction = &compaction_file.source;
+    let context = &context_file.source;
 
     require_rust_mod(&turn_mod_file, "ports", "agent turn ports module")?;
     require_contains(&turn_mod, "mod ports;", "agent turn ports module")?;
@@ -798,10 +804,35 @@ fn agent_turn_ports_signature() -> Result<Value, String> {
         "agent_tool_steel_substrate_settings_from_config",
         "Steel tool substrate app-edge settings adapter",
     )?;
+    require_contains(
+        agent_lib,
+        "auto_compact_settings_from_config",
+        "auto-compaction app-edge settings adapter",
+    )?;
+    require_contains(
+        compaction,
+        "pub struct AutoCompactSettings",
+        "agent-owned auto-compaction settings DTO",
+    )?;
+    require_contains(
+        context,
+        "pub struct AgentSystemPromptSettings",
+        "agent-owned system prompt affix settings DTO",
+    )?;
     forbid_contains(
         steel_tool_substrate,
         "clankers_config::",
         "Steel tool substrate reusable policy concrete config import",
+    )?;
+    forbid_contains(
+        compaction,
+        "clankers_config::",
+        "auto-compaction reusable policy concrete config import",
+    )?;
+    forbid_contains(
+        context,
+        "clankers_config",
+        "system prompt context reusable policy concrete config import",
     )?;
     for (owner, field, type_path, label) in [
         ("ControllerToolPort", "controller_tools", "HashMap", "legacy tool registry service field"),
@@ -863,7 +894,7 @@ fn agent_turn_ports_signature() -> Result<Value, String> {
         "tool_service_inventory": "CONTROLLER_TOOL_PORT_SERVICE_INVENTORY",
         "legacy_tool_context_inventory": "LEGACY_TOOL_CONTEXT_SERVICE_INVENTORY",
         "concrete_dependency_budget": "AGENT_CONCRETE_DEPENDENCY_BUDGET",
-        "selected_config_slice": "Steel tool substrate settings now convert to AgentToolSteelSubstrateSettings at app edge",
+        "selected_config_slice": "Steel tool substrate, auto-compaction, and system prompt affix settings now use agent-owned DTOs at app edge",
         "tool_context_module": AGENT_TOOL,
         "cost_adapter": "CostTrackerPort",
         "cancellation_adapter": "TokenCancellationPort",

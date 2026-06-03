@@ -3,7 +3,6 @@
 //! Maintains a global deny-list of paths (SSH keys, cloud credentials, etc.)
 //! that tools should never read or write.
 
-use std::path::Path;
 use std::path::PathBuf;
 use std::sync::OnceLock;
 
@@ -83,11 +82,17 @@ impl PathPolicy {
     ///
     /// Returns `Some(reason)` if denied, `None` if allowed.
     pub fn check(&self, raw_path: &str) -> Option<String> {
-        let path = Path::new(raw_path);
+        let path = if let Some(relative_home_path) = raw_path.strip_prefix("~/") {
+            dirs::home_dir()
+                .map(|home| home.join(relative_home_path))
+                .unwrap_or_else(|| PathBuf::from(raw_path))
+        } else {
+            PathBuf::from(raw_path)
+        };
 
         // Resolve to absolute
         let absolute = if path.is_absolute() {
-            path.to_path_buf()
+            path
         } else {
             std::env::current_dir().unwrap_or_else(|_| PathBuf::from(".")).join(path)
         };
@@ -157,6 +162,15 @@ mod tests {
         if let Some(home) = dirs::home_dir() {
             let p = home.join(".aws/credentials");
             assert!(policy.check(p.to_str().unwrap()).is_some());
+        }
+    }
+
+    #[test]
+    fn expands_home_relative_sensitive_paths() {
+        let policy = PathPolicy::new();
+        if dirs::home_dir().is_some() {
+            assert!(policy.check("~/.ssh/id_rsa").is_some());
+            assert!(policy.check("~/.aws/credentials").is_some());
         }
     }
 

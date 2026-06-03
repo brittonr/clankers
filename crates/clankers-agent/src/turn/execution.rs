@@ -1012,8 +1012,7 @@ fn check_tool_paths(input: &Value) -> Option<String> {
     // Shell commands: scan for paths that look sensitive.
     // We check each whitespace-delimited token that starts with / or ~.
     if let Some(cmd) = input.get("command").and_then(|v| v.as_str()) {
-        let expanded = cmd.replace('~', &dirs::home_dir().unwrap_or_default().to_string_lossy());
-        for token in expanded.split_whitespace() {
+        for token in cmd.split_whitespace() {
             if (token.starts_with('/') || token.starts_with("~/"))
                 && let Some(reason) = check_path(token)
             {

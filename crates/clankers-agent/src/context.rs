@@ -1,7 +1,13 @@
 //! Context building, token estimation, window management
 
 use clanker_message::message::*;
-use clankers_config::settings::Settings;
+
+/// Agent-owned prompt-affix settings used by context assembly.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct AgentSystemPromptSettings {
+    pub system_prompt_prefix: Option<String>,
+    pub system_prompt_suffix: Option<String>,
+}
 
 /// Built context ready for an LLM request
 #[derive(Debug, Clone)]
@@ -25,7 +31,7 @@ pub struct AgentContext {
 /// 6. Settings suffix (if any)
 pub fn build_system_prompt(
     base_prompt: &str,
-    settings: &Settings,
+    settings: &AgentSystemPromptSettings,
     tool_names: &[String],
     agent_names: &[String],
     additional_context: &[String],
@@ -200,14 +206,14 @@ mod tests {
 
     #[test]
     fn test_build_system_prompt_basic() {
-        let settings = Settings::default();
+        let settings = AgentSystemPromptSettings::default();
         let result = build_system_prompt("base prompt", &settings, &[], &[], &[]);
         assert!(result.contains("base prompt"));
     }
 
     #[test]
     fn test_build_system_prompt_with_tools() {
-        let settings = Settings::default();
+        let settings = AgentSystemPromptSettings::default();
         let tools = vec!["read".to_string(), "write".to_string()];
         let result = build_system_prompt("base", &settings, &tools, &[], &[]);
         assert!(result.contains("read"));
@@ -216,10 +222,9 @@ mod tests {
 
     #[test]
     fn test_build_system_prompt_with_prefix_suffix() {
-        let settings = Settings {
+        let settings = AgentSystemPromptSettings {
             system_prompt_prefix: Some("PREFIX".to_string()),
             system_prompt_suffix: Some("SUFFIX".to_string()),
-            ..Default::default()
         };
         let result = build_system_prompt("base", &settings, &[], &[], &[]);
         assert!(result.starts_with("PREFIX"));

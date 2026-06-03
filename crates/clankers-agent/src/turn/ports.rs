@@ -205,7 +205,7 @@ pub(crate) const AGENT_CONCRETE_DEPENDENCY_BUDGET: &[AgentConcreteDependencyBudg
             "crates/clankers-agent/src/system_prompt.rs",
             "crates/clankers-agent/src/turn/steel_planning.rs",
         ],
-        selected_slice_status: "steel_tool_substrate settings converted to AgentToolSteelSubstrateSettings at app edge",
+        selected_slice_status: "Steel tool substrate, auto-compaction, and system prompt affix settings converted to agent-owned DTOs at app edge",
         convergence: "move remaining settings-derived planning/prompt policy to agent-owned DTOs and shell adapters",
     },
     AgentConcreteDependencyBudgetEntry {

@@ -2,8 +2,8 @@
 
 - [ ] [serial] I1: Inventory concrete `clankers-agent` dependencies by service family and mark each as reusable policy, compatibility adapter, or app-edge shell. r[sdk-agent-port-boundary.inventory] [covers=sdk-agent-port-boundary.inventory]
 - [ ] [serial] I2: Define or select narrow agent-shell ports for model execution, prompt/config, storage/search, hooks, skills, cost, and cancellation. r[sdk-agent-port-boundary.ports.explicit-services] [covers=sdk-agent-port-boundary.ports.explicit-services]
-- [ ] [serial] I3: Move at least one concrete dependency family out of reusable turn modules and into a desktop/runtime adapter. r[sdk-agent-port-boundary.ports.adapter-owned] [covers=sdk-agent-port-boundary.ports.adapter-owned]
-- [ ] [parallel] I4: Update lego/SKD docs and owner receipts so `clankers-agent` remains yellow shell and new concrete imports need an owner. r[sdk-agent-port-boundary.rails.owner-receipts] [covers=sdk-agent-port-boundary.rails.owner-receipts]
+- [x] [serial] I3: Move at least one concrete dependency family out of reusable turn modules and into a desktop/runtime adapter. r[sdk-agent-port-boundary.ports.adapter-owned] [covers=sdk-agent-port-boundary.ports.adapter-owned]
+- [x] [parallel] I4: Update lego/SDK docs and owner receipts so `clankers-agent` remains yellow shell and new concrete imports need an owner. r[sdk-agent-port-boundary.rails.owner-receipts] [covers=sdk-agent-port-boundary.rails.owner-receipts]
 
 ## Phase 2: Verification
 

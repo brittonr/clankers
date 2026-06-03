@@ -1,7 +1,7 @@
 {
   "artifact_hashes": [
     {
-      "blake3": "b65beda1d4c5b3e1497103ddf5d08419c7a5253a7474cd82e2aa59bb8e70c0e3",
+      "blake3": "1e520d26e04254f175d31b5e70b4b3001862c57b9e5a707a464d9950a666f4af",
       "path": "policy/lego-architecture/dependency-ownership-baseline.json"
     },
     {
@@ -41,7 +41,7 @@
       "path": "src/tools/process/systemd.rs"
     },
     {
-      "blake3": "f767beea26f9f66faf788f9a8dcb9f693414c2b707c831b7998dfd3d6e7b6cb1",
+      "blake3": "5a2f7efc1b9b7cbbb9edf018ae63b8e3b974693d9d285706a815fb7053440d22",
       "path": "crates/clankers-agent/src/lib.rs"
     },
     {
@@ -49,12 +49,16 @@
       "path": "crates/clankers-agent/src/builder.rs"
     },
     {
-      "blake3": "932a3b5995d90696d5202584e6028693f90017d36127703771084777b9ff0fe2",
+      "blake3": "bada2989fcf1540fea25b05e994d141657beff79b5fea875eacc772a3daeddb4",
       "path": "crates/clankers-agent/src/compaction.rs"
     },
     {
       "blake3": "a14426a1f6d2ee53208e3ab5d5eb690a74c556ca831034ca3e3880487a0d384e",
       "path": "crates/clankers-agent/src/compaction/tool_summaries.rs"
+    },
+    {
+      "blake3": "0934b89a442c74895b9e70bef262c31df07087aa5d0a5a16aa447bd0d3ac7dc3",
+      "path": "crates/clankers-agent/src/context.rs"
     },
     {
       "blake3": "c10a333c95ec5862bc309381e85c2a877dd879cd9f8d1b818400ec9940b3eadc",
@@ -73,7 +77,7 @@
       "path": "crates/clankers-agent/src/turn/adapters.rs"
     },
     {
-      "blake3": "9ee2e007a64a1098ee09e46c4c80bf05c901263f1a6aec49d23d25cac2a76cd9",
+      "blake3": "1c024dfa091039a790e5084ec4424dbaf45d8e71aa6aba78fe1292a03024a406",
       "path": "crates/clankers-agent/src/turn/execution.rs"
     },
     {
@@ -85,7 +89,7 @@
       "path": "crates/clankers-agent/src/turn/policy.rs"
     },
     {
-      "blake3": "1230980e8d03385bceadabaa0b1cc8072f28d4615a2acbea6b06ae602a1e9d57",
+      "blake3": "8b5551e18ad6cb976d4cfa5c520de34763bcfb22ed048ebc6faa72f6a94b0f0d",
       "path": "crates/clankers-agent/src/turn/ports.rs"
     },
     {
@@ -251,7 +255,7 @@
       "provider_adapter": "ProviderModelPort",
       "provider_adapter_owner": "crates/clankers-agent/src/lib.rs app-edge shell",
       "runtime_service_bundle": "AgentRuntimeServices",
-      "selected_config_slice": "Steel tool substrate settings now convert to AgentToolSteelSubstrateSettings at app edge",
+      "selected_config_slice": "Steel tool substrate, auto-compaction, and system prompt affix settings now use agent-owned DTOs at app edge",
       "service_receipt_kinds": [
         "model",
         "tools",

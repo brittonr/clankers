@@ -60,6 +60,27 @@ pub enum CompactionStrategy {
     Structured,
 }
 
+/// Agent-owned settings used to derive automatic compaction policy.
+#[derive(Debug, Clone, PartialEq)]
+pub struct AutoCompactSettings {
+    /// Fraction of the context window reserved for recent-message tail protection.
+    pub tail_budget_fraction: f64,
+    /// Number of recent messages to preserve for manual/fallback flows.
+    pub keep_recent: usize,
+    /// Auxiliary summary model for structured summarization.
+    pub summary_model: Option<String>,
+}
+
+impl Default for AutoCompactSettings {
+    fn default() -> Self {
+        Self {
+            tail_budget_fraction: DEFAULT_TAIL_BUDGET_FRACTION,
+            keep_recent: DEFAULT_AUTO_COMPACT_KEEP_RECENT,
+            summary_model: None,
+        }
+    }
+}
+
 /// Configuration for automatic compaction
 #[derive(Debug, Clone)]
 pub struct AutoCompactConfig {
@@ -91,23 +112,19 @@ impl Default for AutoCompactConfig {
 }
 
 impl AutoCompactConfig {
-    pub fn from_settings(settings: &clankers_config::settings::CompressionSettings) -> Self {
-        let summary_model = settings.summary_model.trim();
-        let configured_summary_model = if summary_model.is_empty() {
-            None
-        } else {
-            Some(summary_model.to_string())
-        };
+    pub fn from_policy_settings(settings: &AutoCompactSettings) -> Self {
+        let summary_model = settings.summary_model.as_deref().map(str::trim).filter(|model| !model.is_empty());
+        let configured_summary_model = summary_model.map(str::to_string);
 
         Self {
             threshold: DEFAULT_AUTO_COMPACT_THRESHOLD,
             tail_budget_fraction: settings.tail_budget_fraction,
             keep_recent: settings.keep_recent,
             summary_model: configured_summary_model,
-            strategy: if summary_model.is_empty() {
-                CompactionStrategy::Truncation
-            } else {
+            strategy: if summary_model.is_some() {
                 CompactionStrategy::Structured
+            } else {
+                CompactionStrategy::Truncation
             },
             enabled: true,
         }
@@ -725,15 +742,20 @@ mod tests {
 
     #[test]
     fn test_auto_compact_config_selects_structured_only_when_summary_model_configured() {
-        let structured = AutoCompactConfig::from_settings(&clankers_config::settings::CompressionSettings::default());
+        let structured_settings = AutoCompactSettings {
+            tail_budget_fraction: 0.40,
+            keep_recent: 4,
+            summary_model: Some("haiku".to_string()),
+        };
+        let structured = AutoCompactConfig::from_policy_settings(&structured_settings);
         assert_eq!(structured.strategy, CompactionStrategy::Structured);
         assert_eq!(structured.summary_model.as_deref(), Some("haiku"));
 
-        let truncation_settings = clankers_config::settings::CompressionSettings {
-            summary_model: String::new(),
-            ..Default::default()
+        let truncation_settings = AutoCompactSettings {
+            summary_model: Some(String::new()),
+            ..AutoCompactSettings::default()
         };
-        let truncation = AutoCompactConfig::from_settings(&truncation_settings);
+        let truncation = AutoCompactConfig::from_policy_settings(&truncation_settings);
         assert_eq!(truncation.strategy, CompactionStrategy::Truncation);
         assert!(truncation.summary_model.is_none());
     }
