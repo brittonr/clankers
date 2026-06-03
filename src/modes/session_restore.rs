@@ -4,8 +4,8 @@ use clankers_tui::app::App;
 
 /// Rebuild the display blocks from restored session messages so the user
 /// can see the prior conversation in the TUI.
-pub(crate) fn restore_display_blocks(app: &mut App, messages: &[clankers_provider::message::AgentMessage]) {
-    use clankers_provider::message::AgentMessage;
+pub(crate) fn restore_display_blocks(app: &mut App, messages: &[clanker_message::AgentMessage]) {
+    use clanker_message::AgentMessage;
 
     for (i, msg) in messages.iter().enumerate() {
         match msg {
@@ -28,8 +28,8 @@ pub(crate) fn restore_display_blocks(app: &mut App, messages: &[clankers_provide
 }
 
 /// Restore a user message by extracting text content and starting a new block.
-fn restore_user_message(app: &mut App, user_msg: &clankers_provider::message::UserMessage, index: usize) {
-    use clankers_provider::message::Content;
+fn restore_user_message(app: &mut App, user_msg: &clanker_message::UserMessage, index: usize) {
+    use clanker_message::Content;
 
     let text = user_msg
         .content
@@ -47,8 +47,8 @@ fn restore_user_message(app: &mut App, user_msg: &clankers_provider::message::Us
 }
 
 /// Restore an assistant message by processing its content (text, tool use, thinking).
-fn restore_assistant_message(app: &mut App, asst_msg: &clankers_provider::message::AssistantMessage) {
-    use clankers_provider::message::Content;
+fn restore_assistant_message(app: &mut App, asst_msg: &clanker_message::AssistantMessage) {
+    use clanker_message::Content;
 
     for content in &asst_msg.content {
         match content {
@@ -118,12 +118,11 @@ fn add_thinking_response(app: &mut App, thinking: &str) {
 }
 
 /// Restore a tool result by extracting text and images.
-fn restore_tool_result(app: &mut App, tool_result: &clankers_provider::message::ToolResultMessage) {
+fn restore_tool_result(app: &mut App, tool_result: &clanker_message::ToolResultMessage) {
+    use clanker_message::Content;
     use clanker_tui_types::DisplayImage;
     use clanker_tui_types::DisplayMessage;
     use clanker_tui_types::MessageRole;
-
-    use clankers_provider::message::Content;
 
     let display = tool_result
         .content
@@ -141,7 +140,7 @@ fn restore_tool_result(app: &mut App, tool_result: &clankers_provider::message::
         .iter()
         .filter_map(|c| match c {
             Content::Image {
-                source: clankers_provider::message::ImageSource::Base64 { media_type, data },
+                source: clanker_message::ImageSource::Base64 { media_type, data },
             } => Some(DisplayImage {
                 data: data.clone(),
                 media_type: media_type.clone(),
@@ -176,44 +175,44 @@ mod tests {
         }
     }
 
-    fn make_messages() -> Vec<clankers_provider::message::AgentMessage> {
+    fn make_messages() -> Vec<clanker_message::AgentMessage> {
         let user_timestamp = parse_test_timestamp("2026-04-22T12:34:56Z");
         let assistant_timestamp = parse_test_timestamp("2026-04-22T12:35:10Z");
         let tool_timestamp = parse_test_timestamp("2026-04-22T12:35:20Z");
         vec![
-            clankers_provider::message::AgentMessage::User(clankers_provider::message::UserMessage {
-                id: clankers_provider::message::MessageId::new("u1"),
-                content: vec![clankers_provider::message::Content::Text {
+            clanker_message::AgentMessage::User(clanker_message::UserMessage {
+                id: clanker_message::MessageId::new("u1"),
+                content: vec![clanker_message::Content::Text {
                     text: "hello".to_string(),
                 }],
                 timestamp: user_timestamp,
             }),
-            clankers_provider::message::AgentMessage::Assistant(clankers_provider::message::AssistantMessage {
-                id: clankers_provider::message::MessageId::new("a1"),
+            clanker_message::AgentMessage::Assistant(clanker_message::AssistantMessage {
+                id: clanker_message::MessageId::new("a1"),
                 content: vec![
-                    clankers_provider::message::Content::Thinking {
+                    clanker_message::Content::Thinking {
                         thinking: "pondering".to_string(),
                         signature: String::new(),
                     },
-                    clankers_provider::message::Content::ToolUse {
+                    clanker_message::Content::ToolUse {
                         id: "call-1".to_string(),
                         name: "bash".to_string(),
                         input: serde_json::json!({"command": "ls"}),
                     },
-                    clankers_provider::message::Content::Text {
+                    clanker_message::Content::Text {
                         text: "done".to_string(),
                     },
                 ],
                 model: "test-model".to_string(),
-                usage: clankers_provider::Usage::default(),
-                stop_reason: clankers_provider::message::StopReason::Stop,
+                usage: clanker_message::Usage::default(),
+                stop_reason: clanker_message::StopReason::Stop,
                 timestamp: assistant_timestamp,
             }),
-            clankers_provider::message::AgentMessage::ToolResult(clankers_provider::message::ToolResultMessage {
-                id: clankers_provider::message::MessageId::new("t1"),
+            clanker_message::AgentMessage::ToolResult(clanker_message::ToolResultMessage {
+                id: clanker_message::MessageId::new("t1"),
                 call_id: "call-1".to_string(),
                 tool_name: "bash".to_string(),
-                content: vec![clankers_provider::message::Content::Text {
+                content: vec![clanker_message::Content::Text {
                     text: "tool output".to_string(),
                 }],
                 is_error: false,

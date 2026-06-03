@@ -4,6 +4,7 @@ use std::sync::Mutex;
 use std::sync::OnceLock;
 
 use async_trait::async_trait;
+use clanker_message::streaming::StreamEvent;
 use serde_json::json;
 use tokio::sync::mpsc;
 
@@ -14,7 +15,6 @@ use crate::auth::StoredCredential;
 use crate::auth::openai_codex_account_id_from_credential;
 use crate::credential_manager::CredentialManager;
 use crate::error::Result;
-use crate::streaming::StreamEvent;
 
 pub const OPENAI_CODEX_PROVIDER: &str = "openai-codex";
 const OPENAI_CODEX_RESPONSES_URL: &str = "https://chatgpt.com/backend-api/codex/responses";

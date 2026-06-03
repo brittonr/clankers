@@ -3,17 +3,17 @@
 //! This module contains all keyboard input handling logic, extracted from
 //! the main event loop runner for better organization.
 
+use clankers_config::keybindings::Action;
+use clankers_config::keybindings::InputMode;
+use clankers_tui::clipboard;
+use clankers_tui::selectors;
 use crossterm::event::KeyCode;
 use crossterm::event::KeyModifiers;
 
 use super::EventLoopRunner;
-use clankers_config::keybindings::Action;
-use clankers_config::keybindings::InputMode;
 use crate::modes::event_handlers;
 use crate::modes::interactive::AgentCommand;
 use crate::modes::peers_background;
-use clankers_tui::clipboard;
-use clankers_tui::selectors;
 
 fn resume_selected_session(
     app: &mut clankers_tui::app::App,
@@ -445,14 +445,17 @@ impl<'a> EventLoopRunner<'a> {
                     .expect("subagent panel registered at startup")
                     .selected_id()
                 {
-                    self.panel_tx.send(clankers_tui::components::subagent_event::SubagentEvent::KillRequest { id }).ok();
+                    self.panel_tx
+                        .send(clankers_tui::components::subagent_event::SubagentEvent::KillRequest { id })
+                        .ok();
                 }
                 true
             }
             (PanelId::Peers, KeyCode::Char('p'), m) if m.is_empty() => {
                 let peers_panel = super::peers_panel(self.app);
                 if let Some(peer) = peers_panel.selected_peer().cloned() {
-                    peers_panel.update_status(&peer.node_id, clankers_tui::components::peers_panel::PeerStatus::Probing);
+                    peers_panel
+                        .update_status(&peer.node_id, clankers_tui::components::peers_panel::PeerStatus::Probing);
                     let node_id = peer.node_id.clone();
                     let paths = clankers_config::ClankersPaths::get();
                     let registry_path = crate::modes::rpc::peers::registry_path(paths);
@@ -560,7 +563,7 @@ impl<'a> EventLoopRunner<'a> {
     }
 
     pub(super) fn handle_merge_confirmed(&mut self) {
-        use clankers_provider::message::MessageId;
+        use clanker_message::MessageId;
         let selected: Vec<MessageId> =
             self.app.branching.merge_interactive.selected_ids().into_iter().map(MessageId::from).collect();
         let source: Option<MessageId> =
@@ -596,22 +599,22 @@ mod tests {
     use std::time::Duration;
 
     use async_trait::async_trait;
+    use clanker_message::AgentMessage;
+    use clanker_message::Content;
+    use clanker_message::MessageId;
+    use clanker_message::UserMessage;
+    use clankers_agent::Agent;
+    use clankers_provider::Model;
+    use clankers_provider::Provider;
+    use clankers_provider::router::RouterCompatAdapter;
     use serde_json::json;
     use tokio::time::timeout;
 
     use super::resume_selected_session;
-    use clankers_agent::Agent;
     use crate::modes::agent_task::spawn_agent_task;
     use crate::modes::common::ToolEnv;
     use crate::modes::interactive::AgentCommand;
     use crate::modes::interactive::TaskResult;
-    use clankers_provider::Model;
-    use clankers_provider::Provider;
-    use clankers_provider::message::AgentMessage;
-    use clankers_provider::message::Content;
-    use clankers_provider::message::MessageId;
-    use clankers_provider::message::UserMessage;
-    use clankers_provider::router::RouterCompatAdapter;
 
     struct CapturingRouterProvider {
         captured: Mutex<Option<clanker_router::CompletionRequest>>,

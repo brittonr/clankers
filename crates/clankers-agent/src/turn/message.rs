@@ -1,7 +1,7 @@
 use chrono::Utc;
 use clanker_message::Usage;
-use clanker_message::*;
 use clanker_message::streaming::ContentDelta;
+use clanker_message::*;
 use serde_json::Value;
 
 /// Result of collecting a streamed response

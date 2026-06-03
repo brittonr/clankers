@@ -39,7 +39,7 @@ impl SessionController {
 }
 
 /// Persist a batch of agent messages to the session manager.
-fn persist_messages(sm: &mut SessionManager, messages: &[clankers_provider::message::AgentMessage]) {
+fn persist_messages(sm: &mut SessionManager, messages: &[clanker_message::AgentMessage]) {
     for msg in messages {
         let parent = sm.active_leaf_id().cloned();
         if let Err(e) = sm.append_message(msg.clone(), parent) {
@@ -52,7 +52,7 @@ fn persist_messages(sm: &mut SessionManager, messages: &[clankers_provider::mess
 pub(crate) fn index_messages_for_search(
     search_index: &clankers_db::search_index::SearchIndex,
     session_id: &str,
-    messages: &[clankers_provider::message::AgentMessage],
+    messages: &[clanker_message::AgentMessage],
 ) {
     let mut batch: Vec<(&str, String, &str, String, i64)> = Vec::new();
 

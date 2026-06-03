@@ -5,7 +5,7 @@
 //! suppression, and user-visible messages.
 
 use clankers_protocol::DaemonEvent;
-use clankers_provider::ThinkingLevel;
+use clanker_message::ThinkingLevel;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum LocalSessionEffect {

@@ -191,7 +191,7 @@ mod tests {
         async fn complete(
             &self,
             _: clankers_provider::CompletionRequest,
-            _: tokio::sync::mpsc::Sender<clankers_provider::streaming::StreamEvent>,
+            _: tokio::sync::mpsc::Sender<clanker_message::streaming::StreamEvent>,
         ) -> clankers_provider::error::Result<()> {
             Ok(())
         }

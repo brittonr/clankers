@@ -112,11 +112,11 @@ impl AgentBuilder {
         // builder overrides taking precedence.
         let thinking_level = if let Some(ref thinking) = self.thinking {
             if thinking.enabled {
-                clankers_provider::ThinkingLevel::from_budget(
+                clanker_message::ThinkingLevel::from_budget(
                     u32::try_from(thinking.budget_tokens.unwrap_or(128_000)).unwrap_or(u32::MAX),
                 )
             } else {
-                clankers_provider::ThinkingLevel::Off
+                clanker_message::ThinkingLevel::Off
             }
         } else {
             self.settings.parsed_thinking_level()
@@ -137,12 +137,12 @@ mod tests {
     use std::sync::Arc;
 
     use async_trait::async_trait;
+    use clanker_message::streaming::StreamEvent;
     use clankers_config::settings::Settings;
     use clankers_provider::CompletionRequest;
     use clankers_provider::Model;
     use clankers_provider::Provider;
     use clankers_provider::error::Result;
-    use clankers_provider::streaming::StreamEvent;
     use tokio::sync::mpsc;
 
     use super::AgentBuilder;
@@ -174,7 +174,7 @@ mod tests {
         )
         .build();
 
-        assert_eq!(agent.thinking_level(), clankers_provider::ThinkingLevel::Max);
+        assert_eq!(agent.thinking_level(), clanker_message::ThinkingLevel::Max);
         assert!(agent.is_thinking_enabled());
     }
 
@@ -187,7 +187,7 @@ mod tests {
         let agent =
             AgentBuilder::new(Arc::new(MockProvider), settings, "test-model".to_string(), "system".to_string()).build();
 
-        assert_eq!(agent.thinking_level(), clankers_provider::ThinkingLevel::Off);
+        assert_eq!(agent.thinking_level(), clanker_message::ThinkingLevel::Off);
         assert!(!agent.is_thinking_enabled());
     }
 }

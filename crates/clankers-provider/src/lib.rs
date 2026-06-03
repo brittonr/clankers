@@ -53,7 +53,6 @@ pub mod credential_manager;
 pub mod discovery;
 pub mod error_classifier;
 pub mod fake;
-pub mod message;
 pub mod openai_codex;
 pub mod provider_router_responsibility;
 /// Model registry — re-exported from `clanker-router`.
@@ -63,7 +62,6 @@ pub use clanker_router::retry;
 pub mod router;
 pub mod router_request_bridge;
 pub mod rpc_provider;
-pub mod streaming;
 
 /// Provider trait for LLM API implementations.
 ///
@@ -73,9 +71,13 @@ pub mod streaming;
 pub trait Provider: Send + Sync {
     /// Send a completion request and stream the response via the provided channel.
     ///
-    /// The provider should send [`StreamEvent`](streaming::StreamEvent) items as they arrive,
-    /// and close the channel when the response is complete.
-    async fn complete(&self, request: CompletionRequest, tx: mpsc::Sender<streaming::StreamEvent>) -> Result<()>;
+    /// The provider should send [`StreamEvent`](clanker_message::streaming::StreamEvent) items as
+    /// they arrive, and close the channel when the response is complete.
+    async fn complete(
+        &self,
+        request: CompletionRequest,
+        tx: mpsc::Sender<clanker_message::streaming::StreamEvent>,
+    ) -> Result<()>;
 
     /// Returns the list of models supported by this provider.
     fn models(&self) -> &[Model];
@@ -103,7 +105,7 @@ pub struct CompletionRequest {
     pub model: String,
 
     /// Conversation messages (user, assistant, tool results, etc.)
-    pub messages: Vec<message::AgentMessage>,
+    pub messages: Vec<clanker_message::message::AgentMessage>,
 
     /// System prompt (provider-dependent placement)
     pub system_prompt: Option<String>,
@@ -115,10 +117,10 @@ pub struct CompletionRequest {
     pub temperature: Option<f64>,
 
     /// Available tools for the model to call
-    pub tools: Vec<ToolDefinition>,
+    pub tools: Vec<clanker_message::ToolDefinition>,
 
     /// Extended thinking configuration (if supported)
-    pub thinking: Option<ThinkingConfig>,
+    pub thinking: Option<clanker_message::ThinkingConfig>,
 
     /// Disable prompt caching (skip cache_control breakpoints)
     #[serde(default)]
@@ -133,17 +135,12 @@ pub struct CompletionRequest {
     pub extra_params: HashMap<String, serde_json::Value>,
 }
 
-// Re-export ThinkingConfig from clanker-message (canonical definition)
-pub use clanker_message::ThinkingConfig;
-// Re-export ToolDefinition from clanker-message (canonical definition)
-pub use clanker_message::ToolDefinition;
-// ThinkingLevel re-exported from clanker-tui-types (canonical definition).
-pub use clanker_tui_types::ThinkingLevel;
-
 /// Extension: convert ThinkingLevel to provider-specific ThinkingConfig.
-pub fn thinking_level_to_config(level: ThinkingLevel) -> Option<ThinkingConfig> {
+pub fn thinking_level_to_config(
+    level: clanker_message::ThinkingLevel,
+) -> Option<clanker_message::ThinkingConfig> {
     if level.is_enabled() {
-        Some(ThinkingConfig {
+        Some(clanker_message::ThinkingConfig {
             enabled: true,
             budget_tokens: level.budget_tokens().map(|tokens| tokens as usize),
         })
@@ -152,8 +149,6 @@ pub fn thinking_level_to_config(level: ThinkingLevel) -> Option<ThinkingConfig> 
     }
 }
 
-// Re-export Usage from clanker-message and Cost from clanker-router.
-pub use clanker_message::Usage;
 pub use clanker_router::provider::Cost;
 
 #[cfg(test)]
@@ -161,20 +156,20 @@ mod tests {
     use std::collections::HashMap;
     use std::path::PathBuf;
 
+    use clanker_message::message::AgentMessage;
+    use clanker_message::message::Content;
+    use clanker_message::message::MessageId;
+    use clanker_message::message::UserMessage;
+    use clanker_message::streaming::ContentDelta;
+    use clanker_message::streaming::MessageMetadata;
+    use clanker_message::streaming::StreamDelta;
     use serde_json::Value;
     use serde_json::json;
 
     use super::CompletionRequest;
-    use super::ThinkingConfig;
-    use super::ToolDefinition;
-    use super::Usage;
-    use crate::message::AgentMessage;
-    use crate::message::Content;
-    use crate::message::MessageId;
-    use crate::message::UserMessage;
-    use crate::streaming::ContentDelta;
-    use crate::streaming::MessageMetadata;
-    use crate::streaming::StreamDelta;
+    use clanker_message::ThinkingConfig;
+    use clanker_message::ToolDefinition;
+    use clanker_message::Usage;
 
     const TEST_MAX_TOKENS: usize = 256;
     const TEST_TEMPERATURE: f64 = 0.1;

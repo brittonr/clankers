@@ -14,6 +14,7 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 use async_trait::async_trait;
+use clanker_message::streaming::StreamEvent;
 use clanker_router::RouterDb;
 use clanker_router::retry::RetryConfig;
 use clanker_router::router::FallbackConfig;
@@ -27,7 +28,6 @@ use crate::Model;
 use crate::Provider;
 use crate::error::Result;
 use crate::registry::ModelRegistry;
-use crate::streaming::StreamEvent;
 
 /// Record of a single provider attempt during fallback routing.
 #[derive(Debug, Clone)]
@@ -558,13 +558,13 @@ mod tests {
     use std::sync::Mutex;
     use std::time::Duration;
 
+    use clanker_message::streaming::StreamEvent;
     use serde_json::json;
     use tokio::io::AsyncReadExt;
     use tokio::io::AsyncWriteExt;
     use tokio::net::TcpListener;
 
     use super::*;
-    use crate::streaming::StreamEvent;
 
     const CAPTURING_MODEL_MAX_INPUT_TOKENS: usize = 200_000;
     const CAPTURING_MODEL_MAX_OUTPUT_TOKENS: usize = 16_384;
@@ -728,7 +728,7 @@ mod tests {
         async fn complete(&self, _request: CompletionRequest, tx: mpsc::Sender<StreamEvent>) -> Result<()> {
             self.call_count.fetch_add(1, Ordering::SeqCst);
             tx.send(StreamEvent::MessageStart {
-                message: crate::streaming::MessageMetadata {
+                message: clanker_message::streaming::MessageMetadata {
                     id: "msg-1".into(),
                     model: "test-model".into(),
                     role: "assistant".into(),
@@ -744,14 +744,14 @@ mod tests {
             .ok();
             tx.send(StreamEvent::ContentBlockDelta {
                 index: 0,
-                delta: crate::streaming::ContentDelta::TextDelta { text: "Hello!".into() },
+                delta: clanker_message::streaming::ContentDelta::TextDelta { text: "Hello!".into() },
             })
             .await
             .ok();
             tx.send(StreamEvent::ContentBlockStop { index: 0 }).await.ok();
             tx.send(StreamEvent::MessageDelta {
                 stop_reason: Some("end_turn".into()),
-                usage: crate::Usage {
+                usage: clanker_message::Usage {
                     input_tokens: 100,
                     output_tokens: 20,
                     cache_creation_input_tokens: 0,
@@ -810,7 +810,7 @@ mod tests {
     impl Provider for GatedStreamingProvider {
         async fn complete(&self, _request: CompletionRequest, tx: mpsc::Sender<StreamEvent>) -> Result<()> {
             tx.send(StreamEvent::MessageStart {
-                message: crate::streaming::MessageMetadata {
+                message: clanker_message::streaming::MessageMetadata {
                     id: "msg-gated".into(),
                     model: "test-model".into(),
                     role: "assistant".into(),
@@ -829,7 +829,7 @@ mod tests {
             .ok();
             tx.send(StreamEvent::ContentBlockDelta {
                 index: 0,
-                delta: crate::streaming::ContentDelta::ThinkingDelta {
+                delta: clanker_message::streaming::ContentDelta::ThinkingDelta {
                     thinking: "planning".into(),
                 },
             })
@@ -955,7 +955,7 @@ mod tests {
                 .expect("cache write-back path should forward before provider completion")
                 .expect("stream should stay open before provider completion");
             if matches!(event, StreamEvent::ContentBlockDelta {
-                delta: crate::streaming::ContentDelta::ThinkingDelta { .. },
+                delta: clanker_message::streaming::ContentDelta::ThinkingDelta { .. },
                 ..
             }) {
                 saw_thinking = true;
@@ -1375,7 +1375,7 @@ mod tests {
             tx: mpsc::Sender<clanker_router::streaming::StreamEvent>,
         ) -> std::result::Result<(), clanker_router::Error> {
             tx.send(clanker_router::streaming::StreamEvent::MessageStart {
-                message: crate::streaming::MessageMetadata {
+                message: clanker_message::streaming::MessageMetadata {
                     id: "msg-1".into(),
                     model: "test-model".into(),
                     role: "assistant".into(),
@@ -1391,7 +1391,7 @@ mod tests {
             .ok();
             tx.send(clanker_router::streaming::StreamEvent::ContentBlockDelta {
                 index: 0,
-                delta: crate::streaming::ContentDelta::TextDelta {
+                delta: clanker_message::streaming::ContentDelta::TextDelta {
                     text: "Hello from router provider".into(),
                 },
             })
@@ -1400,7 +1400,7 @@ mod tests {
             tx.send(clanker_router::streaming::StreamEvent::ContentBlockStop { index: 0 }).await.ok();
             tx.send(clanker_router::streaming::StreamEvent::MessageDelta {
                 stop_reason: Some("end_turn".into()),
-                usage: crate::Usage {
+                usage: clanker_message::Usage {
                     input_tokens: 10,
                     output_tokens: 5,
                     cache_creation_input_tokens: 0,
@@ -2210,7 +2210,7 @@ mod tests {
         let req1 = test_request("model-a");
 
         let mut req2 = test_request("model-a");
-        req2.tools = vec![crate::ToolDefinition {
+        req2.tools = vec![clanker_message::ToolDefinition {
             name: "bash".into(),
             description: "Run bash".into(),
             input_schema: serde_json::json!({"type": "object"}),

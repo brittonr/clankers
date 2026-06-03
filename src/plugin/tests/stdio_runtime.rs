@@ -6,13 +6,13 @@ use std::sync::MutexGuard;
 use std::sync::OnceLock;
 use std::time::Duration;
 
+use clankers_agent::events::AgentEvent;
+use clankers_plugin::PluginRuntimeMode;
+use clankers_plugin::PluginState;
 use tempfile::tempdir;
 use tokio::sync::broadcast;
 use tokio_util::sync::CancellationToken;
 
-use clankers_agent::events::AgentEvent;
-use clankers_plugin::PluginRuntimeMode;
-use clankers_plugin::PluginState;
 use crate::tools::ToolContext;
 
 const HELPER_SOURCE: &str = r#"
@@ -1489,7 +1489,8 @@ async fn mixed_runtime_host_preserves_extism_behavior_and_stdio_visibility() {
     })
     .await;
     wait_for_live_tool(&manager, "clankers-stdio-echo", "stdio_echo_fixture", mixed_runtime_startup_timeout).await;
-    wait_for_live_tool(&manager, "stdio-mixed-event-ui", "stdio_mixed_event_ui_tool", mixed_runtime_startup_timeout).await;
+    wait_for_live_tool(&manager, "stdio-mixed-event-ui", "stdio_mixed_event_ui_tool", mixed_runtime_startup_timeout)
+        .await;
 
     let summaries = crate::plugin::build_protocol_plugin_summaries(&manager);
     let extism = summaries.iter().find(|summary| summary.name == "clankers-test-plugin").unwrap();
@@ -1925,14 +1926,13 @@ async fn capability_gate_blocks_stdio_tool_calls_in_turn_loop() {
     use std::sync::atomic::AtomicUsize;
     use std::sync::atomic::Ordering;
 
-    use clankers_ucan::Capability;
-    use tokio::sync::mpsc;
-
     use clanker_message::AgentMessage;
     use clanker_message::Content;
-    use clankers_provider::Usage;
-    use clankers_provider::streaming::MessageMetadata;
-    use clankers_provider::streaming::StreamEvent;
+    use clanker_message::Usage;
+    use clanker_message::streaming::MessageMetadata;
+    use clanker_message::streaming::StreamEvent;
+    use clankers_ucan::Capability;
+    use tokio::sync::mpsc;
 
     struct ToolUseProvider {
         calls: AtomicUsize,
@@ -1997,7 +1997,7 @@ async fn capability_gate_blocks_stdio_tool_calls_in_turn_loop() {
                 .ok();
                 tx.send(StreamEvent::ContentBlockDelta {
                     index: 0,
-                    delta: clankers_provider::streaming::ContentDelta::TextDelta { text: "done".into() },
+                    delta: clanker_message::streaming::ContentDelta::TextDelta { text: "done".into() },
                 })
                 .await
                 .ok();
@@ -2082,14 +2082,13 @@ async fn capability_gate_allows_stdio_tool_calls_in_turn_loop() {
     use std::sync::atomic::AtomicUsize;
     use std::sync::atomic::Ordering;
 
-    use clankers_ucan::Capability;
-    use tokio::sync::mpsc;
-
     use clanker_message::AgentMessage;
     use clanker_message::Content;
-    use clankers_provider::Usage;
-    use clankers_provider::streaming::MessageMetadata;
-    use clankers_provider::streaming::StreamEvent;
+    use clanker_message::Usage;
+    use clanker_message::streaming::MessageMetadata;
+    use clanker_message::streaming::StreamEvent;
+    use clankers_ucan::Capability;
+    use tokio::sync::mpsc;
 
     struct ToolUseProvider {
         calls: AtomicUsize,
@@ -2154,7 +2153,7 @@ async fn capability_gate_allows_stdio_tool_calls_in_turn_loop() {
                 .ok();
                 tx.send(StreamEvent::ContentBlockDelta {
                     index: 0,
-                    delta: clankers_provider::streaming::ContentDelta::TextDelta { text: "done".into() },
+                    delta: clanker_message::streaming::ContentDelta::TextDelta { text: "done".into() },
                 })
                 .await
                 .ok();

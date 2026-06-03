@@ -5,6 +5,7 @@ use std::sync::Arc;
 
 use clankers_agent::builder::AgentBuilder;
 use clankers_agent::events::AgentEvent;
+
 use crate::error::Result;
 
 /// Options for JSON output mode
@@ -13,7 +14,7 @@ pub struct JsonOptions {
     /// Output file (None = stdout)
     pub output_file: Option<String>,
     /// Extended thinking configuration
-    pub thinking: Option<clankers_provider::ThinkingConfig>,
+    pub thinking: Option<clanker_message::ThinkingConfig>,
 }
 
 /// Run JSON mode with options
@@ -84,7 +85,7 @@ fn format_event_json(event: &AgentEvent) -> String {
         }
         AgentEvent::ContentBlockStop { index } => json!({"type": "content_block_stop", "index": index}).to_string(),
         AgentEvent::MessageUpdate { index, delta } => {
-            use clankers_provider::streaming::ContentDelta;
+            use clanker_message::streaming::ContentDelta;
             match delta {
                 ContentDelta::TextDelta { text } => {
                     json!({"type": "text_delta", "index": index, "text": text}).to_string()

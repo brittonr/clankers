@@ -755,7 +755,7 @@ mod factory_plugin_tests {
         async fn complete(
             &self,
             _req: clankers_provider::CompletionRequest,
-            _tx: tokio::sync::mpsc::Sender<clankers_provider::streaming::StreamEvent>,
+            _tx: tokio::sync::mpsc::Sender<clanker_message::streaming::StreamEvent>,
         ) -> std::result::Result<(), clankers_provider::error::ProviderError> {
             Ok(())
         }
@@ -772,10 +772,10 @@ mod factory_plugin_tests {
         async fn complete(
             &self,
             _req: clankers_provider::CompletionRequest,
-            tx: tokio::sync::mpsc::Sender<clankers_provider::streaming::StreamEvent>,
+            tx: tokio::sync::mpsc::Sender<clanker_message::streaming::StreamEvent>,
         ) -> std::result::Result<(), clankers_provider::error::ProviderError> {
-            tx.send(clankers_provider::streaming::StreamEvent::MessageStart {
-                message: clankers_provider::streaming::MessageMetadata {
+            tx.send(clanker_message::streaming::StreamEvent::MessageStart {
+                message: clanker_message::streaming::MessageMetadata {
                     id: "delayed-message".to_string(),
                     model: "test".to_string(),
                     role: "assistant".to_string(),
@@ -783,7 +783,7 @@ mod factory_plugin_tests {
             })
             .await
             .ok();
-            tx.send(clankers_provider::streaming::StreamEvent::ContentBlockStart {
+            tx.send(clanker_message::streaming::StreamEvent::ContentBlockStart {
                 index: 0,
                 content_block: clanker_message::Content::Thinking {
                     thinking: String::new(),
@@ -792,24 +792,24 @@ mod factory_plugin_tests {
             })
             .await
             .ok();
-            tx.send(clankers_provider::streaming::StreamEvent::ContentBlockDelta {
+            tx.send(clanker_message::streaming::StreamEvent::ContentBlockDelta {
                 index: 0,
-                delta: clankers_provider::streaming::ContentDelta::ThinkingDelta {
+                delta: clanker_message::streaming::ContentDelta::ThinkingDelta {
                     thinking: "actor thought".to_string(),
                 },
             })
             .await
             .ok();
-            tx.send(clankers_provider::streaming::StreamEvent::ContentBlockStop { index: 0 }).await.ok();
-            tx.send(clankers_provider::streaming::StreamEvent::ContentBlockStart {
+            tx.send(clanker_message::streaming::StreamEvent::ContentBlockStop { index: 0 }).await.ok();
+            tx.send(clanker_message::streaming::StreamEvent::ContentBlockStart {
                 index: 1,
                 content_block: clanker_message::Content::Text { text: String::new() },
             })
             .await
             .ok();
-            tx.send(clankers_provider::streaming::StreamEvent::ContentBlockDelta {
+            tx.send(clanker_message::streaming::StreamEvent::ContentBlockDelta {
                 index: 1,
-                delta: clankers_provider::streaming::ContentDelta::TextDelta {
+                delta: clanker_message::streaming::ContentDelta::TextDelta {
                     text: "actor stream".to_string(),
                 },
             })
@@ -818,14 +818,14 @@ mod factory_plugin_tests {
             self.streamed.notify_waiters();
             self.release.notified().await;
             self.returned.store(true, Ordering::SeqCst);
-            tx.send(clankers_provider::streaming::StreamEvent::ContentBlockStop { index: 1 }).await.ok();
-            tx.send(clankers_provider::streaming::StreamEvent::MessageDelta {
+            tx.send(clanker_message::streaming::StreamEvent::ContentBlockStop { index: 1 }).await.ok();
+            tx.send(clanker_message::streaming::StreamEvent::MessageDelta {
                 stop_reason: Some("end_turn".to_string()),
                 usage: clanker_message::Usage::default(),
             })
             .await
             .ok();
-            tx.send(clankers_provider::streaming::StreamEvent::MessageStop).await.ok();
+            tx.send(clanker_message::streaming::StreamEvent::MessageStop).await.ok();
             Ok(())
         }
 
@@ -1248,7 +1248,8 @@ mod factory_plugin_tests {
 
         let (event_tx, mut event_rx) = broadcast::channel(32);
         let (_panel_tx, mut panel_rx) = mpsc::unbounded_channel();
-        let tick_service = super::super::session_plugins::DaemonSessionTickService::for_plugin_manager(Some(Arc::clone(&pm)));
+        let tick_service =
+            super::super::session_plugins::DaemonSessionTickService::for_plugin_manager(Some(Arc::clone(&pm)));
         tick_service.drain_controller_and_plugins(&mut controller, &event_tx, &mut panel_rx);
         tokio::time::sleep(Duration::from_millis(150)).await;
         tick_service.drain_controller_and_plugins(&mut controller, &event_tx, &mut panel_rx);
@@ -1455,15 +1456,9 @@ mod factory_plugin_tests {
         let sessions_dir = dir.path().join("sessions");
         let cwd = dir.path().join("project");
         let cwd_text = cwd.to_string_lossy().to_string();
-        let session = clankers_session::SessionManager::create(
-            &sessions_dir,
-            &cwd_text,
-            "catalog-model",
-            None,
-            None,
-            None,
-        )
-        .expect("fixture session should be created");
+        let session =
+            clankers_session::SessionManager::create(&sessions_dir, &cwd_text, "catalog-model", None, None, None)
+                .expect("fixture session should be created");
         let session_id = session.session_id().to_string();
         let entry = super::super::session_store::SessionCatalogEntry {
             session_id: session_id.clone(),
@@ -1482,20 +1477,17 @@ mod factory_plugin_tests {
         catalog.insert_key(&key, &session_id);
 
         let mut daemon_state = clankers_controller::transport::DaemonState::new();
-        daemon_state.sessions.insert(
-            session_id.clone(),
-            clankers_controller::transport::SessionHandle {
-                session_id: session_id.clone(),
-                model: "catalog-model".to_string(),
-                turn_count: 0,
-                last_active: "now".to_string(),
-                client_count: 0,
-                cmd_tx: None,
-                event_tx: None,
-                socket_path: clankers_controller::transport::session_socket_path(&session_id),
-                state: "suspended".to_string(),
-            },
-        );
+        daemon_state.sessions.insert(session_id.clone(), clankers_controller::transport::SessionHandle {
+            session_id: session_id.clone(),
+            model: "catalog-model".to_string(),
+            turn_count: 0,
+            last_active: "now".to_string(),
+            client_count: 0,
+            cmd_tx: None,
+            event_tx: None,
+            socket_path: clankers_controller::transport::session_socket_path(&session_id),
+            state: "suspended".to_string(),
+        });
         daemon_state.register_key(key.clone(), session_id.clone());
         let state = tokio::sync::Mutex::new(daemon_state);
         let registry = ProcessRegistry::new();

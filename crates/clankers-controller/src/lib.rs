@@ -185,9 +185,9 @@ pub enum PostPromptAction {
 /// terminals, sockets, or rendering.
 ///
 /// Two modes:
-/// - **Daemon mode** (`new`): compatibility assembly owns an `Agent`, and
-///   production command branches construct an `AgentBackedRuntimeAdapter` at
-///   the command boundary for concrete prompt/control operations.
+/// - **Daemon mode** (`new`): compatibility assembly owns an `Agent`, and production command
+///   branches construct an `AgentBackedRuntimeAdapter` at the command boundary for concrete
+///   prompt/control operations.
 /// - **Embedded mode** (`new_embedded`): no agent ownership. Events fed via `feed_event()`, agent
 ///   managed externally by `agent_task`.
 #[allow(dead_code)] // Fields used incrementally as phases are implemented
@@ -553,7 +553,7 @@ pub(crate) mod test_helpers {
         async fn complete(
             &self,
             _request: clankers_provider::CompletionRequest,
-            _tx: tokio::sync::mpsc::Sender<clankers_provider::streaming::StreamEvent>,
+            _tx: tokio::sync::mpsc::Sender<clanker_message::streaming::StreamEvent>,
         ) -> clankers_provider::error::Result<()> {
             Ok(())
         }

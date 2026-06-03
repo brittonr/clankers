@@ -1,6 +1,11 @@
 use std::sync::Arc;
 use std::sync::Mutex;
 
+use clanker_message::Content;
+use clanker_message::Usage;
+use clanker_message::streaming::ContentDelta;
+use clanker_message::streaming::MessageMetadata;
+use clanker_message::streaming::StreamEvent;
 use clankers_agent::Agent;
 use clankers_agent::Tool;
 use clankers_agent::ToolContext;
@@ -13,11 +18,6 @@ use clankers_protocol::DaemonEvent;
 use clankers_protocol::SessionCommand;
 use clankers_provider::CompletionRequest;
 use clankers_provider::Model;
-use clankers_provider::Usage;
-use clankers_provider::message::Content;
-use clankers_provider::streaming::ContentDelta;
-use clankers_provider::streaming::MessageMetadata;
-use clankers_provider::streaming::StreamEvent;
 use clankers_session::SessionManager;
 use serde_json::Value;
 use serde_json::json;
@@ -365,23 +365,23 @@ fn normalize_request(request: &CompletionRequest) -> Value {
     })
 }
 
-fn message_role(message: &clankers_provider::message::AgentMessage) -> &'static str {
+fn message_role(message: &clanker_message::AgentMessage) -> &'static str {
     match message {
-        clankers_provider::message::AgentMessage::User(_) => "user",
-        clankers_provider::message::AgentMessage::Assistant(_) => "assistant",
-        clankers_provider::message::AgentMessage::ToolResult(_) => "tool",
-        clankers_provider::message::AgentMessage::BashExecution(_) => "bash",
-        clankers_provider::message::AgentMessage::Custom(_) => "custom",
-        clankers_provider::message::AgentMessage::BranchSummary(_) => "branch_summary",
-        clankers_provider::message::AgentMessage::CompactionSummary(_) => "compaction_summary",
+        clanker_message::AgentMessage::User(_) => "user",
+        clanker_message::AgentMessage::Assistant(_) => "assistant",
+        clanker_message::AgentMessage::ToolResult(_) => "tool",
+        clanker_message::AgentMessage::BashExecution(_) => "bash",
+        clanker_message::AgentMessage::Custom(_) => "custom",
+        clanker_message::AgentMessage::BranchSummary(_) => "branch_summary",
+        clanker_message::AgentMessage::CompactionSummary(_) => "compaction_summary",
     }
 }
 
-fn normalize_message_content(message: &clankers_provider::message::AgentMessage) -> Value {
+fn normalize_message_content(message: &clanker_message::AgentMessage) -> Value {
     match message {
-        clankers_provider::message::AgentMessage::User(user) => json!(user.content),
-        clankers_provider::message::AgentMessage::Assistant(assistant) => json!(assistant.content),
-        clankers_provider::message::AgentMessage::ToolResult(tool) => json!({
+        clanker_message::AgentMessage::User(user) => json!(user.content),
+        clanker_message::AgentMessage::Assistant(assistant) => json!(assistant.content),
+        clanker_message::AgentMessage::ToolResult(tool) => json!({
             "call_id": tool.call_id,
             "tool_name": tool.tool_name,
             "content": tool.content,

@@ -1158,7 +1158,7 @@ mod tests {
         assert_eq!(agent_order, runtime_order);
     }
 
-    fn sorted_tool_names(tools: &[clankers_provider::ToolDefinition]) -> Vec<String> {
+    fn sorted_tool_names(tools: &[clanker_message::ToolDefinition]) -> Vec<String> {
         let mut names = tools.iter().map(|tool| tool.name.clone()).collect::<Vec<_>>();
         names.sort();
         names

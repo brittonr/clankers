@@ -10,17 +10,16 @@ use std::path::Path;
 use std::path::PathBuf;
 use std::sync::Arc;
 
+use clanker_message::AgentMessage;
+use clanker_message::Content;
+use clanker_message::MessageId;
+use clanker_message::UserMessage;
+use clanker_message::streaming::StreamEvent;
+use clankers_provider::CompletionRequest;
+use clankers_provider::Provider;
 use tokio::sync::mpsc;
 use tracing::info;
 use tracing::warn;
-
-use clankers_provider::CompletionRequest;
-use clankers_provider::Provider;
-use clankers_provider::message::AgentMessage;
-use clankers_provider::message::Content;
-use clankers_provider::message::MessageId;
-use clankers_provider::message::UserMessage;
-use clankers_provider::streaming::StreamEvent;
 
 /// Attempt to resolve a conflicted file using the LLM.
 ///
@@ -97,7 +96,7 @@ pub async fn resolve_conflict(
     let mut resolved = String::new();
     while let Some(event) = rx.recv().await {
         if let StreamEvent::ContentBlockDelta {
-            delta: clankers_provider::streaming::ContentDelta::TextDelta { text },
+            delta: clanker_message::streaming::ContentDelta::TextDelta { text },
             ..
         } = event
         {

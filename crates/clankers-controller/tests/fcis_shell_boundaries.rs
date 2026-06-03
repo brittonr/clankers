@@ -58,8 +58,11 @@ const CONTROLLER_LIB_FILE: &str = "crates/clankers-controller/src/lib.rs";
 const CONTROLLER_EFFECT_INTERPRETER_FILE: &str = "crates/clankers-controller/src/core_effects.rs";
 const CONTROLLER_EFFECT_PROJECTION_FILE: &str = "crates/clankers-controller/src/effect_interpretation.rs";
 const CONTROLLER_AUTO_TEST_FILE: &str = "crates/clankers-controller/src/auto_test.rs";
-const CONTROLLER_INPUT_TRANSLATION_FILES: [&str; 3] =
-    [CONTROLLER_COMMAND_FILE, CONTROLLER_AUTO_TEST_FILE, CONTROLLER_COMMAND_THINKING_FILE];
+const CONTROLLER_INPUT_TRANSLATION_FILES: [&str; 3] = [
+    CONTROLLER_COMMAND_FILE,
+    CONTROLLER_AUTO_TEST_FILE,
+    CONTROLLER_COMMAND_THINKING_FILE,
+];
 const CONTROLLER_EVENT_TRANSLATION_FILE: &str = "crates/clankers-controller/src/convert.rs";
 const CONTROLLER_EVENT_TRANSLATION_CALLER_FILE: &str = "crates/clankers-controller/src/event_processing.rs";
 const TRANSPORT_PROTOCOL_CONVERSION_FILE: &str = "crates/clankers-controller/src/transport_convert.rs";
@@ -171,10 +174,7 @@ const COMMAND_SEMANTIC_OUTPUT_REQUIRED_PATHS: [&str; 2] = [
     "semantic_error_message_to_daemon_event",
     "SemanticErrorClass::InvalidInput",
 ];
-const CONVERT_SEMANTIC_OUTPUT_REQUIRED_PATHS: [&str; 2] = [
-    "SemanticEvent::Error",
-    "DaemonEvent::SystemMessage",
-];
+const CONVERT_SEMANTIC_OUTPUT_REQUIRED_PATHS: [&str; 2] = ["SemanticEvent::Error", "DaemonEvent::SystemMessage"];
 const EVENT_TRANSLATION_REQUIRED_FUNCTIONS: [&str; 3] = [
     AGENT_EVENT_TO_DAEMON_FUNCTION,
     DAEMON_EVENT_TO_TUI_FUNCTION,
@@ -1774,11 +1774,7 @@ fn daemon_session_actor_loop_consumes_socketless_assembly_bundle() {
     );
 
     let plugin_paths = collect_non_test_paths(DAEMON_SESSION_PLUGINS_FILE);
-    assert_required_paths_present(
-        DAEMON_SESSION_PLUGINS_FILE,
-        &plugin_paths,
-        &DAEMON_SESSION_PLUGINS_REQUIRED_PATHS,
-    );
+    assert_required_paths_present(DAEMON_SESSION_PLUGINS_FILE, &plugin_paths, &DAEMON_SESSION_PLUGINS_REQUIRED_PATHS);
 }
 
 #[test]
@@ -1843,7 +1839,11 @@ fn controller_command_responsibility_inventory_names_extracted_thinking_owner() 
         "CommandResponsibilityKind::Projection",
         "crates/clankers-controller/src/command_thinking.rs",
     ] {
-        assert!(inventory.contains(required), "{} missing responsibility marker `{required}`", CONTROLLER_COMMAND_RESPONSIBILITY_FILE);
+        assert!(
+            inventory.contains(required),
+            "{} missing responsibility marker `{required}`",
+            CONTROLLER_COMMAND_RESPONSIBILITY_FILE
+        );
     }
 
     let command_source = read_relative_file(CONTROLLER_COMMAND_FILE);
@@ -1877,7 +1877,11 @@ fn controller_compatibility_constructor_documents_adapter_convergence() {
 #[test]
 fn controller_command_prompt_path_uses_agent_backed_runtime_adapter() {
     let paths = collect_non_test_paths(CONTROLLER_COMMAND_FILE);
-    for required_segment in ["AgentBackedRuntimeAdapter", "AgentRuntimePromptRequest", "RuntimePromptCompletion"] {
+    for required_segment in [
+        "AgentBackedRuntimeAdapter",
+        "AgentRuntimePromptRequest",
+        "RuntimePromptCompletion",
+    ] {
         assert!(
             !find_paths_with_segment(&paths, required_segment).is_empty(),
             "{} prompt command branch must reference {required_segment} for {}",
@@ -1975,11 +1979,10 @@ fn controller_display_inputs_stay_neutral_before_policy() {
     }
 
     let thinking_paths = collect_non_test_paths(CONTROLLER_COMMAND_THINKING_FILE);
-    assert_required_paths_present(
-        CONTROLLER_COMMAND_THINKING_FILE,
-        &thinking_paths,
-        &["CoreThinkingLevel", "CoreThinkingLevelInput"],
-    );
+    assert_required_paths_present(CONTROLLER_COMMAND_THINKING_FILE, &thinking_paths, &[
+        "CoreThinkingLevel",
+        "CoreThinkingLevelInput",
+    ]);
 
     let auto_test_source = read_relative_file(CONTROLLER_AUTO_TEST_FILE);
     assert!(

@@ -16,21 +16,21 @@ use std::io;
 use std::sync::Arc;
 use std::time::Duration;
 
-use clankers_controller::SessionController;
-use clankers_controller::auto_test::ControllerLoopStatus;
-use ratatui::Terminal;
-use ratatui::backend::CrosstermBackend;
-
-use super::interactive::AgentCommand;
-use super::interactive::TaskResult;
 use clankers_agent::events::AgentEvent;
 use clankers_config::keybindings::InputMode;
-use crate::error::Result;
+use clankers_controller::SessionController;
+use clankers_controller::auto_test::ControllerLoopStatus;
 use clankers_tui::app::App;
 use clankers_tui::event as tui_event;
 use clankers_tui::event::AppEvent;
 use clankers_tui::keymap::Keymap;
 use clankers_tui::render;
+use ratatui::Terminal;
+use ratatui::backend::CrosstermBackend;
+
+use super::interactive::AgentCommand;
+use super::interactive::TaskResult;
+use crate::error::Result;
 
 mod key_handler;
 
@@ -574,13 +574,15 @@ impl<'a> EventLoopRunner<'a> {
                     };
 
                     if !completed_dispatched_follow_up {
-                        // Sync edge-projected TUI loop state to controller before post-prompt planning only for ordinary prompts.
-                        let controller_loop_status = self.app.loop_status.as_ref().map(|loop_status| ControllerLoopStatus {
-                            name: loop_status.name.clone(),
-                            prompt: loop_status.prompt.clone(),
-                            max_iterations: loop_status.max_iterations,
-                            break_text: loop_status.break_text.clone(),
-                        });
+                        // Sync edge-projected TUI loop state to controller before post-prompt planning only for
+                        // ordinary prompts.
+                        let controller_loop_status =
+                            self.app.loop_status.as_ref().map(|loop_status| ControllerLoopStatus {
+                                name: loop_status.name.clone(),
+                                prompt: loop_status.prompt.clone(),
+                                max_iterations: loop_status.max_iterations,
+                                break_text: loop_status.break_text.clone(),
+                            });
                         self.controller.sync_loop_status(controller_loop_status.as_ref());
                     }
                     if !self.controller.has_active_loop() {
@@ -717,9 +719,10 @@ fn process_todo_action(
     panel: &mut clankers_tui::components::todo_panel::TodoPanel,
     action: crate::tools::todo::TodoAction,
 ) -> crate::tools::todo::TodoResponse {
+    use clankers_tui::components::todo_panel::TodoStatus;
+
     use crate::tools::todo::TodoAction;
     use crate::tools::todo::TodoResponse;
-    use clankers_tui::components::todo_panel::TodoStatus;
 
     match action {
         TodoAction::Add { text } => {
@@ -777,7 +780,9 @@ fn process_todo_action(
 #[cfg_attr(dylint_lib = "tigerstyle", allow(no_unwrap, reason = "panel registered at startup"))]
 pub(super) fn subagent_panel(app: &mut App) -> &mut clankers_tui::components::subagent_panel::SubagentPanel {
     app.panels
-        .downcast_mut::<clankers_tui::components::subagent_panel::SubagentPanel>(clankers_tui::panel::PanelId::Subagents)
+        .downcast_mut::<clankers_tui::components::subagent_panel::SubagentPanel>(
+            clankers_tui::panel::PanelId::Subagents,
+        )
         .expect("subagent panel registered at startup")
 }
 
@@ -799,12 +804,14 @@ pub(super) fn peers_panel(app: &mut App) -> &mut clankers_tui::components::peers
 mod tests {
     use std::io;
 
+    use clanker_message::streaming::ContentDelta;
     use clanker_scheduler::ScheduleEvent;
     use clanker_tui_types::BlockEntry;
     use clankers_controller::SessionController;
     use clankers_controller::config::ControllerConfig;
     use clankers_controller::loop_mode::LoopConfig;
-    use clankers_provider::streaming::ContentDelta;
+    use clankers_tui::app::App;
+    use clankers_tui::keymap::Keymap;
     use ratatui::Terminal;
     use ratatui::backend::CrosstermBackend;
 
@@ -813,8 +820,6 @@ mod tests {
     use super::sync_controller_session_id;
     use crate::modes::interactive::AgentCommand;
     use crate::modes::interactive::TaskResult;
-    use clankers_tui::app::App;
-    use clankers_tui::keymap::Keymap;
 
     struct RunnerHarness {
         terminal: Terminal<CrosstermBackend<io::Stdout>>,
@@ -962,8 +967,11 @@ mod tests {
 
     #[test]
     fn sync_controller_session_id_updates_stale_controller_state() {
-        let mut app =
-            clankers_tui::app::App::new("test-model".to_string(), "/tmp".to_string(), clankers_tui::theme::Theme::dark());
+        let mut app = clankers_tui::app::App::new(
+            "test-model".to_string(),
+            "/tmp".to_string(),
+            clankers_tui::theme::Theme::dark(),
+        );
         app.session_id = "session-from-app".to_string();
 
         let mut controller =

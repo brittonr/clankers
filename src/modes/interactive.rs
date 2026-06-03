@@ -9,14 +9,14 @@
 use std::io;
 use std::sync::Arc;
 
-use ratatui::Terminal;
-use ratatui::backend::CrosstermBackend;
-
 use clankers_agent::Agent;
-use crate::error::Result;
 use clankers_provider::auth::AuthStoreExt;
 use clankers_tui::app::App;
 use clankers_tui::keymap::Keymap;
+use ratatui::Terminal;
+use ratatui::backend::CrosstermBackend;
+
+use crate::error::Result;
 use crate::tui_config::load_theme;
 
 /// Options for resuming a session.
@@ -290,7 +290,7 @@ async fn run_event_loop(
     panel_tx: tokio::sync::mpsc::UnboundedSender<clankers_tui::components::subagent_event::SubagentEvent>,
     keymap: Keymap,
     plugin_manager: Option<Arc<std::sync::Mutex<clankers_plugin::PluginManager>>>,
-    seed_messages: Vec<clankers_provider::message::AgentMessage>,
+    seed_messages: Vec<clanker_message::AgentMessage>,
     latest_compaction_summary: Option<String>,
     db: Option<clankers_db::Db>,
     settings: &clankers_config::settings::Settings,
@@ -366,7 +366,7 @@ pub(crate) fn resume_session_from_file(
             let resumed_session_id = mgr.session_id().to_string();
             let latest_compaction_summary = mgr.latest_compaction_summary().map(str::to_string);
             app.session_id.clone_from(&resumed_session_id);
-            mgr.record_resume(clankers_provider::message::MessageId::new("slash-resume")).ok();
+            mgr.record_resume(clanker_message::MessageId::new("slash-resume")).ok();
             *session_manager = Some(mgr);
 
             cmd_tx.send(AgentCommand::SetCompactionSummary(latest_compaction_summary)).ok();

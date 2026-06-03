@@ -178,7 +178,10 @@ fn thinking_slash_bridges_explicit_and_cycle_paths_before_suppressing_daemon_ack
     assert_has(&attach_commands.call_paths, "apply_local_session_effect", "attach command local apply calls");
     assert_has(&attach_commands.method_calls, "expect_ack", "attach command ack methods");
 
-    for path in ["SessionCommandIntent::SetThinkingLevel", "SessionCommandIntent::CycleThinkingLevel"] {
+    for path in [
+        "SessionCommandIntent::SetThinkingLevel",
+        "SessionCommandIntent::CycleThinkingLevel",
+    ] {
         assert_has(&session_policy.paths, path, "session command policy neutral thinking intent paths");
     }
 }

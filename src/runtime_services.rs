@@ -477,53 +477,53 @@ async fn run_provider_completion(
     Ok(stats)
 }
 
-fn record_provider_stream_event(stats: &mut ProviderExecutionStats, event: &clankers_provider::streaming::StreamEvent) {
+fn record_provider_stream_event(stats: &mut ProviderExecutionStats, event: &clanker_message::streaming::StreamEvent) {
     match event {
-        clankers_provider::streaming::StreamEvent::MessageStart { message } => {
+        clanker_message::streaming::StreamEvent::MessageStart { message } => {
             stats.stream_events.push(ProviderStreamEvent::MessageStart {
                 model: message.model.clone(),
                 role: message.role.clone(),
             });
         }
-        clankers_provider::streaming::StreamEvent::ContentBlockStart { index, content_block } => {
+        clanker_message::streaming::StreamEvent::ContentBlockStart { index, content_block } => {
             stats.content.push(content_block.clone());
             stats.stream_events.push(ProviderStreamEvent::ContentBlockStart {
                 index: *index,
                 content: content_block.clone(),
             });
         }
-        clankers_provider::streaming::StreamEvent::ContentBlockDelta { index, delta } => match delta {
-            clankers_provider::streaming::ContentDelta::TextDelta { text } => {
+        clanker_message::streaming::StreamEvent::ContentBlockDelta { index, delta } => match delta {
+            clanker_message::streaming::ContentDelta::TextDelta { text } => {
                 stats.text_delta_bytes += text.len();
                 stats.stream_events.push(ProviderStreamEvent::TextDelta {
                     index: *index,
                     text: text.clone(),
                 });
             }
-            clankers_provider::streaming::ContentDelta::ThinkingDelta { thinking } => {
+            clanker_message::streaming::ContentDelta::ThinkingDelta { thinking } => {
                 stats.thinking_delta_bytes += thinking.len();
                 stats.stream_events.push(ProviderStreamEvent::ThinkingDelta {
                     index: *index,
                     thinking: thinking.clone(),
                 });
             }
-            clankers_provider::streaming::ContentDelta::InputJsonDelta { partial_json } => {
+            clanker_message::streaming::ContentDelta::InputJsonDelta { partial_json } => {
                 stats.stream_events.push(ProviderStreamEvent::ToolInputJsonDelta {
                     index: *index,
                     partial_json: partial_json.clone(),
                 });
             }
-            clankers_provider::streaming::ContentDelta::SignatureDelta { signature } => {
+            clanker_message::streaming::ContentDelta::SignatureDelta { signature } => {
                 stats.stream_events.push(ProviderStreamEvent::SignatureDelta {
                     index: *index,
                     signature: signature.clone(),
                 });
             }
         },
-        clankers_provider::streaming::StreamEvent::ContentBlockStop { index } => {
+        clanker_message::streaming::StreamEvent::ContentBlockStop { index } => {
             stats.stream_events.push(ProviderStreamEvent::ContentBlockStop { index: *index });
         }
-        clankers_provider::streaming::StreamEvent::MessageDelta { stop_reason, usage } => {
+        clanker_message::streaming::StreamEvent::MessageDelta { stop_reason, usage } => {
             let stop_reason = parse_provider_stop_reason(stop_reason.as_deref());
             stats.usage = Some(usage.clone());
             stats.stop_reason = stop_reason.clone();
@@ -532,10 +532,10 @@ fn record_provider_stream_event(stats: &mut ProviderExecutionStats, event: &clan
                 usage: usage.clone(),
             });
         }
-        clankers_provider::streaming::StreamEvent::MessageStop => {
+        clanker_message::streaming::StreamEvent::MessageStop => {
             stats.stream_events.push(ProviderStreamEvent::MessageStop);
         }
-        clankers_provider::streaming::StreamEvent::Error { error } => {
+        clanker_message::streaming::StreamEvent::Error { error } => {
             stats.stream_events.push(ProviderStreamEvent::Error {
                 message: clankers_runtime::EventMetadata::empty().with("error", error).fields["error"].clone(),
             });
@@ -802,10 +802,10 @@ mod tests {
         async fn complete(
             &self,
             request: clankers_provider::CompletionRequest,
-            tx: tokio::sync::mpsc::Sender<clankers_provider::streaming::StreamEvent>,
+            tx: tokio::sync::mpsc::Sender<clanker_message::streaming::StreamEvent>,
         ) -> clankers_provider::error::Result<()> {
             self.requests.lock().unwrap().push(request);
-            tx.send(clankers_provider::streaming::StreamEvent::ContentBlockStart {
+            tx.send(clanker_message::streaming::StreamEvent::ContentBlockStart {
                 index: 0,
                 content_block: clanker_message::Content::Text {
                     text: "model output that must not appear in receipt".to_string(),
@@ -813,15 +813,15 @@ mod tests {
             })
             .await
             .ok();
-            tx.send(clankers_provider::streaming::StreamEvent::ContentBlockDelta {
+            tx.send(clanker_message::streaming::StreamEvent::ContentBlockDelta {
                 index: 0,
-                delta: clankers_provider::streaming::ContentDelta::TextDelta {
+                delta: clanker_message::streaming::ContentDelta::TextDelta {
                     text: "model output that must not appear in receipt".to_string(),
                 },
             })
             .await
             .ok();
-            tx.send(clankers_provider::streaming::StreamEvent::MessageDelta {
+            tx.send(clanker_message::streaming::StreamEvent::MessageDelta {
                 stop_reason: Some("stop".to_string()),
                 usage: clanker_message::Usage {
                     input_tokens: 3,
@@ -849,7 +849,7 @@ mod tests {
         async fn complete(
             &self,
             _request: clankers_provider::CompletionRequest,
-            _tx: tokio::sync::mpsc::Sender<clankers_provider::streaming::StreamEvent>,
+            _tx: tokio::sync::mpsc::Sender<clanker_message::streaming::StreamEvent>,
         ) -> clankers_provider::error::Result<()> {
             Err(clankers_provider::error::provider_err_with_status_for_provider(
                 self.status,

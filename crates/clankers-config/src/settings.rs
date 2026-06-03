@@ -4,7 +4,7 @@ use std::collections::BTreeMap;
 use std::path::Path;
 
 use clanker_tui_types::MenuPlacement;
-use clanker_tui_types::ThinkingLevel;
+use clanker_message::ThinkingLevel;
 use clankers_agent_defs::definition::AgentScope;
 use serde::Deserialize;
 use serde::Serialize;

@@ -228,13 +228,13 @@ mod tests {
 
     use super::*;
 
-    fn test_assistant_message() -> clankers_provider::message::AssistantMessage {
-        clankers_provider::message::AssistantMessage {
-            id: clankers_provider::message::MessageId::new("a1"),
+    fn test_assistant_message() -> clanker_message::AssistantMessage {
+        clanker_message::AssistantMessage {
+            id: clanker_message::MessageId::new("a1"),
             content: vec![],
             model: "test".to_string(),
-            usage: clankers_provider::Usage::default(),
-            stop_reason: clankers_provider::message::StopReason::Stop,
+            usage: clanker_message::Usage::default(),
+            stop_reason: clanker_message::StopReason::Stop,
             timestamp: chrono::Utc::now(),
         }
     }
@@ -283,7 +283,7 @@ mod tests {
     fn usage_captured() {
         let mut c = MetricsCollector::new("s1".into());
         c.set_model("sonnet".into());
-        let usage = clankers_provider::Usage {
+        let usage = clanker_message::Usage {
             input_tokens: 500,
             output_tokens: 200,
             cache_creation_input_tokens: 10,

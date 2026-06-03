@@ -31,13 +31,13 @@ use crate::tools::Tool;
 
 // ── Thinking setup ──────────────────────────────────────────────────────────
 
-pub(crate) fn core_thinking_level(level: clanker_tui_types::ThinkingLevel) -> clankers_core::CoreThinkingLevel {
+pub(crate) fn core_thinking_level(level: clanker_message::ThinkingLevel) -> clankers_core::CoreThinkingLevel {
     match level {
-        clanker_tui_types::ThinkingLevel::Off => clankers_core::CoreThinkingLevel::Off,
-        clanker_tui_types::ThinkingLevel::Low => clankers_core::CoreThinkingLevel::Low,
-        clanker_tui_types::ThinkingLevel::Medium => clankers_core::CoreThinkingLevel::Medium,
-        clanker_tui_types::ThinkingLevel::High => clankers_core::CoreThinkingLevel::High,
-        clanker_tui_types::ThinkingLevel::Max => clankers_core::CoreThinkingLevel::Max,
+        clanker_message::ThinkingLevel::Off => clankers_core::CoreThinkingLevel::Off,
+        clanker_message::ThinkingLevel::Low => clankers_core::CoreThinkingLevel::Low,
+        clanker_message::ThinkingLevel::Medium => clankers_core::CoreThinkingLevel::Medium,
+        clanker_message::ThinkingLevel::High => clankers_core::CoreThinkingLevel::High,
+        clanker_message::ThinkingLevel::Max => clankers_core::CoreThinkingLevel::Max,
     }
 }
 

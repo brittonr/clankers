@@ -63,10 +63,10 @@ impl SlashHandler for ThinkHandler {
     fn handle(&self, args: &str, ctx: &mut SlashContext<'_>) {
         if args.is_empty() {
             ctx.cmd_tx.send(AgentCommand::CycleThinkingLevel).ok();
-        } else if let Some(level) = clankers_provider::ThinkingLevel::from_str_or_budget(args) {
+        } else if let Some(level) = clanker_message::ThinkingLevel::from_str_or_budget(args) {
             ctx.cmd_tx.send(AgentCommand::SetThinkingLevel(level)).ok();
         } else if let Ok(budget) = args.trim().parse::<u32>() {
-            let level = clankers_provider::ThinkingLevel::from_budget(budget);
+            let level = clanker_message::ThinkingLevel::from_budget(budget);
             ctx.cmd_tx.send(AgentCommand::SetThinkingLevel(level)).ok();
         } else {
             ctx.app

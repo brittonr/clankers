@@ -1,9 +1,10 @@
 //! Branching slash command handlers.
 
+use clanker_message::MessageId;
+
 use super::SlashContext;
 use super::SlashHandler;
 use crate::modes::interactive::AgentCommand;
-use clankers_provider::message::MessageId;
 
 pub struct ForkHandler;
 

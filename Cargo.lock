@@ -1465,6 +1465,7 @@ version = "0.1.0"
 dependencies = [
  "blake3",
  "chrono",
+ "clanker-message",
  "rat-branches",
  "rat-leaderkey",
  "rat-markdown",
@@ -1660,6 +1661,7 @@ name = "clankers-config"
 version = "0.1.0"
 dependencies = [
  "chrono",
+ "clanker-message",
  "clanker-router",
  "clanker-tui-types",
  "clankers-agent-defs",
@@ -1864,7 +1866,6 @@ dependencies = [
  "chrono",
  "clanker-message",
  "clanker-router",
- "clanker-tui-types",
  "fs4",
  "futures",
  "rand 0.9.4",

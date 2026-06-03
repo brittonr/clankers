@@ -4,7 +4,7 @@
 //! interpret these effects instead of re-implementing command-specific policy.
 
 use clankers_protocol::SessionCommand;
-use clankers_provider::ThinkingLevel;
+use clanker_message::ThinkingLevel;
 use clankers_tui::app::App;
 
 use crate::modes::interactive::AgentCommand;

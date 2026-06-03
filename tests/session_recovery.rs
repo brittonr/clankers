@@ -13,21 +13,21 @@ use clanker_message::MessageId;
 use clanker_message::StopReason;
 use clanker_message::Usage;
 use clanker_message::UserMessage;
+use clanker_message::streaming::ContentDelta;
+use clanker_message::streaming::MessageMetadata;
+use clanker_message::streaming::StreamEvent;
 use clankers::modes::daemon::agent_process::get_or_create_keyed_session;
 use clankers::modes::daemon::agent_process::prompt_and_collect;
 use clankers::modes::daemon::session_store::SessionCatalog;
 use clankers::modes::daemon::session_store::SessionCatalogEntry;
 use clankers::modes::daemon::session_store::SessionLifecycle;
 use clankers::modes::daemon::socket_bridge::SessionFactory;
-use clankers_provider::CompletionRequest;
-use clankers_provider::Model;
-use clankers_provider::Provider;
-use clankers_provider::streaming::ContentDelta;
-use clankers_provider::streaming::MessageMetadata;
-use clankers_provider::streaming::StreamEvent;
 use clankers_controller::transport::DaemonState;
 use clankers_controller::transport::SessionHandle;
 use clankers_protocol::SessionKey;
+use clankers_provider::CompletionRequest;
+use clankers_provider::Model;
+use clankers_provider::Provider;
 
 fn temp_catalog() -> (tempfile::TempDir, Arc<SessionCatalog>) {
     let tmp = tempfile::tempdir().unwrap();
@@ -376,15 +376,9 @@ async fn keyed_matrix_prompt_recovers_suspended_session_before_replying() {
     let sessions_dir = home.join(".clankers").join("agent").join("sessions");
     std::fs::create_dir_all(&sessions_dir).unwrap();
 
-    let mut mgr = clankers_session::SessionManager::create(
-        &sessions_dir,
-        "/tmp/matrix-recovery",
-        "test-model",
-        None,
-        None,
-        None,
-    )
-    .unwrap();
+    let mut mgr =
+        clankers_session::SessionManager::create(&sessions_dir, "/tmp/matrix-recovery", "test-model", None, None, None)
+            .unwrap();
     let session_id = mgr.session_id().to_string();
     let user_id = MessageId::new("user-1");
     mgr.append_message(

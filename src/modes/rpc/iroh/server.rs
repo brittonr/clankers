@@ -4,6 +4,8 @@ use std::path::Path;
 use std::path::PathBuf;
 use std::sync::Arc;
 
+use clanker_message::streaming::ContentDelta;
+use clankers_agent::events::AgentEvent;
 use iroh::Endpoint;
 use serde_json::json;
 use tracing::info;
@@ -12,10 +14,8 @@ use tracing::warn;
 use super::ServerState;
 use super::protocol::read_frame;
 use super::protocol::write_frame;
-use clankers_agent::events::AgentEvent;
 use crate::modes::rpc::protocol::Request;
 use crate::modes::rpc::protocol::Response;
-use clankers_provider::streaming::ContentDelta;
 
 // ── Server: accept connections ──────────────────────────────────────────────
 
@@ -336,9 +336,13 @@ pub async fn handle_prompt_streaming_pub(request: &Request, state: &ServerState,
     };
 
     // Create agent and set up event streaming
-    let mut builder =
-        clankers_agent::builder::AgentBuilder::new(Arc::clone(&ctx.provider), ctx.settings.clone(), model, system_prompt)
-            .with_tools(ctx.tools.clone());
+    let mut builder = clankers_agent::builder::AgentBuilder::new(
+        Arc::clone(&ctx.provider),
+        ctx.settings.clone(),
+        model,
+        system_prompt,
+    )
+    .with_tools(ctx.tools.clone());
     if let Some(caps) = &ctx.settings.default_capabilities {
         let gate = std::sync::Arc::new(crate::capability_gate::UcanCapabilityGate::new(caps.clone()));
         builder = builder.with_capability_gate(gate);

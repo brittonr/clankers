@@ -41,9 +41,9 @@ pub(crate) fn tool_content_to_domain_parts(content: &[ToolResultContent]) -> (St
 #[cfg(test)]
 mod tests {
     use clanker_message::SemanticToolStatus;
+    use clanker_message::streaming::ContentDelta;
     use clankers_agent::ToolResult;
     use clankers_agent::events::AgentEvent;
-    use clankers_provider::streaming::ContentDelta;
 
     use super::*;
 

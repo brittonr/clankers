@@ -19,9 +19,9 @@ pub(crate) enum AgentCommand {
     SetModel(String),
     ClearHistory,
     TruncateMessages(usize),
-    SetThinkingLevel(clankers_provider::ThinkingLevel),
+    SetThinkingLevel(clanker_message::ThinkingLevel),
     CycleThinkingLevel,
-    SeedMessages(Vec<clankers_provider::message::AgentMessage>),
+    SeedMessages(Vec<clanker_message::AgentMessage>),
     SetSessionId(String),
     SetCompactionSummary(Option<String>),
     Quit,
@@ -55,6 +55,6 @@ pub(crate) enum AgentCommand {
 pub(crate) enum TaskResult {
     PromptDone(Option<crate::error::Error>),
     LoginDone(std::result::Result<String, String>),
-    ThinkingToggled(String, clankers_provider::ThinkingLevel),
+    ThinkingToggled(String, clanker_message::ThinkingLevel),
     AccountSwitched(std::result::Result<String, String>),
 }

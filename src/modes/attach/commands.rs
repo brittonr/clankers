@@ -181,8 +181,8 @@ pub(super) fn submit_input_attach(
             .images
             .into_iter()
             .filter_map(|content| match content {
-                clankers_provider::message::Content::Image {
-                    source: clankers_provider::message::ImageSource::Base64 { media_type, data },
+                clanker_message::Content::Image {
+                    source: clanker_message::ImageSource::Base64 { media_type, data },
                 } => Some(clankers_protocol::ImageData { data, media_type }),
                 _ => None,
             })
@@ -315,7 +315,7 @@ pub(super) fn bridge_attach_thinking_level_change(
     client: &ClientAdapter,
     parity_tracker: &mut AttachParityTracker,
     command: SessionCommandIntent,
-    level: clankers_provider::ThinkingLevel,
+    level: clanker_message::ThinkingLevel,
 ) {
     let mut effect = session_command_policy::set_thinking_level_effect(level);
     effect.command = Some(command);
@@ -350,13 +350,13 @@ pub(super) fn dispatch_disabled_tools_change(
 }
 
 #[cfg(test)]
-pub(super) fn apply_standalone_thinking_level(app: &mut App, level: clankers_provider::ThinkingLevel) {
+pub(super) fn apply_standalone_thinking_level(app: &mut App, level: clanker_message::ThinkingLevel) {
     let effect = session_command_policy::set_thinking_level_effect(level);
     apply_local_session_effect(app, effect.local);
 }
 
 #[cfg(test)]
-pub(crate) fn format_attach_thinking_message(level: clankers_provider::ThinkingLevel) -> String {
+pub(crate) fn format_attach_thinking_message(level: clanker_message::ThinkingLevel) -> String {
     session_command_policy::thinking_level_message(level)
 }
 

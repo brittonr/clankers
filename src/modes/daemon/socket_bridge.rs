@@ -8,6 +8,7 @@ use std::sync::Arc;
 
 use clanker_actor::ProcessRegistry;
 use clanker_tui_types::SubagentEvent;
+use clankers_config::settings::Settings;
 use clankers_controller::SessionController;
 use clankers_controller::transport::DaemonState;
 use clankers_controller::transport_convert::control_attached;
@@ -25,6 +26,7 @@ use clankers_protocol::SessionCommand;
 use clankers_protocol::control::ControlCommand;
 use clankers_protocol::control::ControlResponse;
 use clankers_protocol::frame::{self};
+use clankers_provider::Provider;
 use tokio::net::UnixListener;
 use tokio::sync::Mutex;
 use tokio::sync::broadcast;
@@ -34,8 +36,6 @@ use tracing::error;
 use tracing::info;
 use tracing::warn;
 
-use clankers_config::settings::Settings;
-use clankers_provider::Provider;
 use crate::tools::Tool;
 
 /// Resources needed to create new sessions.
@@ -256,10 +256,7 @@ async fn handle_control(
             if let Some(command) = plan.seed_command() {
                 let count = plan.seed_messages.len();
                 cmd_tx.send(command).ok();
-                info!(
-                    "created session {} (model: {}, resumed {count} messages)",
-                    plan.session_id, plan.resolved_model
-                );
+                info!("created session {} (model: {}, resumed {count} messages)", plan.session_id, plan.resolved_model);
             } else {
                 info!("created session {} (model: {})", plan.session_id, plan.resolved_model);
             }
@@ -444,7 +441,7 @@ mod tests {
         async fn complete(
             &self,
             _req: clankers_provider::CompletionRequest,
-            _tx: tokio::sync::mpsc::Sender<clankers_provider::streaming::StreamEvent>,
+            _tx: tokio::sync::mpsc::Sender<clanker_message::streaming::StreamEvent>,
         ) -> std::result::Result<(), clankers_provider::error::ProviderError> {
             Ok(())
         }

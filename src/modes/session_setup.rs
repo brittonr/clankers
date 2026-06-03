@@ -18,7 +18,7 @@ pub(crate) fn setup_session(
     resume_opts: super::interactive::ResumeOptions,
 ) -> (
     Option<clankers_session::SessionManager>,
-    Vec<clankers_provider::message::AgentMessage>,
+    Vec<clanker_message::AgentMessage>,
     Option<String>,
     Option<crate::worktree::session_bridge::WorktreeSetup>,
 ) {
@@ -54,7 +54,7 @@ fn create_new_session(
     should_use_worktrees: bool,
 ) -> (
     Option<clankers_session::SessionManager>,
-    Vec<clankers_provider::message::AgentMessage>,
+    Vec<clanker_message::AgentMessage>,
     Option<String>,
     Option<crate::worktree::session_bridge::WorktreeSetup>,
 ) {
@@ -97,7 +97,7 @@ fn resume_session(
     from_label: &str,
 ) -> (
     Option<clankers_session::SessionManager>,
-    Vec<clankers_provider::message::AgentMessage>,
+    Vec<clanker_message::AgentMessage>,
     Option<String>,
     Option<crate::worktree::session_bridge::WorktreeSetup>,
 ) {
@@ -105,7 +105,7 @@ fn resume_session(
     let latest_compaction_summary = mgr.latest_compaction_summary().map(str::to_string);
     app.session_id = mgr.session_id().to_string();
 
-    mgr.record_resume(clankers_provider::message::MessageId::new(from_label)).ok();
+    mgr.record_resume(clanker_message::MessageId::new(from_label)).ok();
 
     let msg_count = msgs.len();
     app.push_system(format!("Resumed session {} ({} messages)", mgr.session_id(), msg_count), false);
@@ -128,7 +128,7 @@ fn resume_latest(
     should_use_worktrees: bool,
 ) -> (
     Option<clankers_session::SessionManager>,
-    Vec<clankers_provider::message::AgentMessage>,
+    Vec<clanker_message::AgentMessage>,
     Option<String>,
     Option<crate::worktree::session_bridge::WorktreeSetup>,
 ) {
@@ -158,7 +158,7 @@ fn resume_by_id(
     session_id: &str,
 ) -> (
     Option<clankers_session::SessionManager>,
-    Vec<clankers_provider::message::AgentMessage>,
+    Vec<clanker_message::AgentMessage>,
     Option<String>,
     Option<crate::worktree::session_bridge::WorktreeSetup>,
 ) {

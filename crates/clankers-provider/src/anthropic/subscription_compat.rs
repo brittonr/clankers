@@ -13,15 +13,15 @@
 
 use std::collections::BTreeMap;
 
+use clanker_message::message::Content;
+use clanker_message::streaming::ContentDelta;
+use clanker_message::streaming::StreamEvent;
 use serde_json::Value;
 
 use super::api::ApiContentBlock;
 use super::api::ApiRequest;
 use super::api::ApiTool;
 use super::api::SystemBlock;
-use crate::message::Content;
-use crate::streaming::ContentDelta;
-use crate::streaming::StreamEvent;
 
 pub(crate) const DISABLE_ENV: &str = "CLANKERS_DISABLE_CLAUDE_SUBSCRIPTION_COMPAT";
 pub(crate) const BILLING_HEADER_ENV: &str = "CLANKERS_ANTHROPIC_BILLING_HEADER";
@@ -366,10 +366,10 @@ mod tests {
     use std::sync::Mutex;
     use std::sync::OnceLock;
 
+    use clanker_message::streaming::ContentDelta;
     use serde_json::json;
 
     use super::*;
-    use crate::streaming::ContentDelta;
 
     fn env_lock() -> &'static Mutex<()> {
         static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
@@ -406,11 +406,11 @@ mod tests {
                 StreamEvent::ContentBlockDelta {
                     delta: ContentDelta::TextDelta { text },
                     ..
-                } => out.push_str(text),
+                } => out.push_str(text.as_str()),
                 StreamEvent::ContentBlockDelta {
                     delta: ContentDelta::ThinkingDelta { thinking },
                     ..
-                } => out.push_str(thinking),
+                } => out.push_str(thinking.as_str()),
                 _ => {}
             }
         }
@@ -425,7 +425,7 @@ mod tests {
                 ..
             } = event
             {
-                out.push_str(partial_json);
+                out.push_str(partial_json.as_str());
             }
         }
         out

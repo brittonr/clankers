@@ -6,6 +6,11 @@
 use std::sync::OnceLock;
 
 use async_trait::async_trait;
+use clanker_message::message::AgentMessage;
+use clanker_message::message::Content;
+use clanker_message::streaming::ContentDelta;
+use clanker_message::streaming::MessageMetadata;
+use clanker_message::streaming::StreamEvent;
 use serde_json::Value;
 use serde_json::json;
 use tokio::sync::mpsc;
@@ -13,13 +18,8 @@ use tokio::sync::mpsc;
 use crate::CompletionRequest;
 use crate::Model;
 use crate::Provider;
-use crate::Usage;
+use clanker_message::Usage;
 use crate::error::Result;
-use crate::message::AgentMessage;
-use crate::message::Content;
-use crate::streaming::ContentDelta;
-use crate::streaming::MessageMetadata;
-use crate::streaming::StreamEvent;
 
 pub const ENV_FAKE_PROVIDER: &str = "CLANKERS_FAKE_PROVIDER";
 const FAKE_MODEL_ID: &str = "clankers-fake";
@@ -298,9 +298,10 @@ async fn send_tool_response(tx: &mpsc::Sender<StreamEvent>, model: &str, call_id
 
 #[cfg(test)]
 mod tests {
+    use clanker_message::message::MessageId;
+    use clanker_message::message::UserMessage;
+
     use super::*;
-    use crate::message::MessageId;
-    use crate::message::UserMessage;
 
     fn request(prompt: &str, messages: Vec<AgentMessage>) -> CompletionRequest {
         let mut all_messages = vec![AgentMessage::User(UserMessage {
@@ -326,7 +327,7 @@ mod tests {
     }
 
     fn tool_result(tool_name: &str) -> AgentMessage {
-        AgentMessage::ToolResult(crate::message::ToolResultMessage {
+        AgentMessage::ToolResult(clanker_message::message::ToolResultMessage {
             id: MessageId::new(format!("result-{tool_name}")),
             call_id: format!("call-{tool_name}"),
             tool_name: tool_name.to_string(),

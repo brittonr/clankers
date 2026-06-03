@@ -4,10 +4,11 @@ use std::fmt::Write as _;
 use std::io::Write;
 use std::sync::Arc;
 
+use clanker_message::streaming::ContentDelta;
 use clankers_agent::builder::AgentBuilder;
 use clankers_agent::events::AgentEvent;
+
 use crate::error::Result;
-use clankers_provider::streaming::ContentDelta;
 
 /// Options controlling headless print behaviour
 #[derive(Debug, Clone, Default)]
@@ -21,7 +22,7 @@ pub struct PrintOptions {
     /// Output format
     pub format: PrintFormat,
     /// Extended thinking configuration
-    pub thinking: Option<clankers_provider::ThinkingConfig>,
+    pub thinking: Option<clanker_message::ThinkingConfig>,
 }
 
 /// Output format for print mode

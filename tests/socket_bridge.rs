@@ -39,7 +39,7 @@ impl clankers_provider::Provider for MockProvider {
     async fn complete(
         &self,
         _request: clankers_provider::CompletionRequest,
-        _tx: tokio::sync::mpsc::Sender<clankers_provider::streaming::StreamEvent>,
+        _tx: tokio::sync::mpsc::Sender<clanker_message::streaming::StreamEvent>,
     ) -> clankers_provider::error::Result<()> {
         Ok(())
     }

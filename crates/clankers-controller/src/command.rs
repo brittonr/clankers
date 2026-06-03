@@ -136,9 +136,8 @@ impl SessionController {
                 });
             }
             SessionCommand::GetSystemPrompt => {
-                let prompt = self
-                    .with_agent_runtime_adapter(|adapter| adapter.system_prompt().to_string())
-                    .unwrap_or_default();
+                let prompt =
+                    self.with_agent_runtime_adapter(|adapter| adapter.system_prompt().to_string()).unwrap_or_default();
                 self.emit(DaemonEvent::SystemPromptResponse { prompt });
             }
             SessionCommand::SwitchAccount { account } => {
@@ -350,9 +349,8 @@ impl SessionController {
 
     fn set_model_from_command(&mut self, model: String, reason: &str) -> bool {
         let from = self.model.clone();
-        let authorization_error = self
-            .with_agent_runtime_adapter(|adapter| adapter.try_set_model(model.clone()).err())
-            .flatten();
+        let authorization_error =
+            self.with_agent_runtime_adapter(|adapter| adapter.try_set_model(model.clone()).err()).flatten();
         if let Some(error) = authorization_error {
             self.emit_authorization_error(error);
             return false;
@@ -560,10 +558,9 @@ impl SessionController {
                 self.apply_control_with_runtime_adapter(adapter, RuntimeControlRequest::ResetCancel)
             }
             SessionCommand::SetThinkingLevel { level } => match Self::parse_core_thinking_level(&level) {
-                Some(level) => self.apply_control_with_runtime_adapter(
-                    adapter,
-                    RuntimeControlRequest::SetThinkingLevel { level },
-                ),
+                Some(level) => {
+                    self.apply_control_with_runtime_adapter(adapter, RuntimeControlRequest::SetThinkingLevel { level })
+                }
                 None => {
                     let event = semantic_error_message_to_daemon_event(
                         &self.session_id,
@@ -887,9 +884,8 @@ impl SessionController {
                 });
             }
             "prompt" => {
-                let prompt = self
-                    .with_agent_runtime_adapter(|adapter| adapter.system_prompt().to_string())
-                    .unwrap_or_default();
+                let prompt =
+                    self.with_agent_runtime_adapter(|adapter| adapter.system_prompt().to_string()).unwrap_or_default();
                 self.emit(DaemonEvent::SystemPromptResponse { prompt });
             }
             _ => {
@@ -948,7 +944,7 @@ mod tests {
     use clankers_core::CoreEffect;
     use clankers_core::CoreLogicalEvent;
     use clankers_protocol::SessionCommand;
-    use clankers_provider::ThinkingLevel;
+    use clanker_message::ThinkingLevel;
 
     use super::*;
     use crate::PostPromptAction;
@@ -993,7 +989,7 @@ mod tests {
         async fn complete(
             &self,
             request: clankers_provider::CompletionRequest,
-            _tx: tokio::sync::mpsc::Sender<clankers_provider::streaming::StreamEvent>,
+            _tx: tokio::sync::mpsc::Sender<clanker_message::streaming::StreamEvent>,
         ) -> clankers_provider::error::Result<()> {
             record_prompt_request(&self.requests, request);
             Ok(())
@@ -1024,12 +1020,12 @@ mod tests {
         async fn complete(
             &self,
             request: clankers_provider::CompletionRequest,
-            tx: tokio::sync::mpsc::Sender<clankers_provider::streaming::StreamEvent>,
+            tx: tokio::sync::mpsc::Sender<clanker_message::streaming::StreamEvent>,
         ) -> clankers_provider::error::Result<()> {
             let recorded = record_prompt_request(&self.requests, request);
             let streamed_text = format!("stream:{}", recorded.prompt_text);
-            tx.send(clankers_provider::streaming::StreamEvent::MessageStart {
-                message: clankers_provider::streaming::MessageMetadata {
+            tx.send(clanker_message::streaming::StreamEvent::MessageStart {
+                message: clanker_message::streaming::MessageMetadata {
                     id: format!("msg-{}", recorded.prompt_text),
                     model: recorded.model,
                     role: "assistant".to_string(),
@@ -1037,26 +1033,26 @@ mod tests {
             })
             .await
             .ok();
-            tx.send(clankers_provider::streaming::StreamEvent::ContentBlockStart {
+            tx.send(clanker_message::streaming::StreamEvent::ContentBlockStart {
                 index: 0,
                 content_block: clanker_message::Content::Text { text: String::new() },
             })
             .await
             .ok();
-            tx.send(clankers_provider::streaming::StreamEvent::ContentBlockDelta {
+            tx.send(clanker_message::streaming::StreamEvent::ContentBlockDelta {
                 index: 0,
-                delta: clankers_provider::streaming::ContentDelta::TextDelta { text: streamed_text },
+                delta: clanker_message::streaming::ContentDelta::TextDelta { text: streamed_text },
             })
             .await
             .ok();
-            tx.send(clankers_provider::streaming::StreamEvent::ContentBlockStop { index: 0 }).await.ok();
-            tx.send(clankers_provider::streaming::StreamEvent::MessageDelta {
+            tx.send(clanker_message::streaming::StreamEvent::ContentBlockStop { index: 0 }).await.ok();
+            tx.send(clanker_message::streaming::StreamEvent::MessageDelta {
                 stop_reason: Some("end_turn".to_string()),
                 usage: clanker_message::Usage::default(),
             })
             .await
             .ok();
-            tx.send(clankers_provider::streaming::StreamEvent::MessageStop).await.ok();
+            tx.send(clanker_message::streaming::StreamEvent::MessageStop).await.ok();
             Ok(())
         }
 
@@ -1074,11 +1070,11 @@ mod tests {
         async fn complete(
             &self,
             request: clankers_provider::CompletionRequest,
-            tx: tokio::sync::mpsc::Sender<clankers_provider::streaming::StreamEvent>,
+            tx: tokio::sync::mpsc::Sender<clanker_message::streaming::StreamEvent>,
         ) -> clankers_provider::error::Result<()> {
             let recorded = record_prompt_request(&self.requests, request);
-            tx.send(clankers_provider::streaming::StreamEvent::MessageStart {
-                message: clankers_provider::streaming::MessageMetadata {
+            tx.send(clanker_message::streaming::StreamEvent::MessageStart {
+                message: clanker_message::streaming::MessageMetadata {
                     id: format!("msg-{}", recorded.prompt_text),
                     model: recorded.model,
                     role: "assistant".to_string(),
@@ -1086,15 +1082,15 @@ mod tests {
             })
             .await
             .ok();
-            tx.send(clankers_provider::streaming::StreamEvent::ContentBlockStart {
+            tx.send(clanker_message::streaming::StreamEvent::ContentBlockStart {
                 index: 0,
                 content_block: clanker_message::Content::Text { text: String::new() },
             })
             .await
             .ok();
-            tx.send(clankers_provider::streaming::StreamEvent::ContentBlockDelta {
+            tx.send(clanker_message::streaming::StreamEvent::ContentBlockDelta {
                 index: 0,
-                delta: clankers_provider::streaming::ContentDelta::TextDelta {
+                delta: clanker_message::streaming::ContentDelta::TextDelta {
                     text: "stream:delayed".to_string(),
                 },
             })
@@ -1103,14 +1099,14 @@ mod tests {
             self.streamed.notify_waiters();
             self.release.notified().await;
             self.returned.store(true, Ordering::SeqCst);
-            tx.send(clankers_provider::streaming::StreamEvent::ContentBlockStop { index: 0 }).await.ok();
-            tx.send(clankers_provider::streaming::StreamEvent::MessageDelta {
+            tx.send(clanker_message::streaming::StreamEvent::ContentBlockStop { index: 0 }).await.ok();
+            tx.send(clanker_message::streaming::StreamEvent::MessageDelta {
                 stop_reason: Some("end_turn".to_string()),
                 usage: clanker_message::Usage::default(),
             })
             .await
             .ok();
-            tx.send(clankers_provider::streaming::StreamEvent::MessageStop).await.ok();
+            tx.send(clanker_message::streaming::StreamEvent::MessageStop).await.ok();
             Ok(())
         }
 
@@ -1166,11 +1162,11 @@ mod tests {
         ctrl.agent = Some(agent);
     }
 
-    fn extract_last_user_prompt_text(messages: &[clankers_provider::message::AgentMessage]) -> Option<String> {
+    fn extract_last_user_prompt_text(messages: &[clanker_message::AgentMessage]) -> Option<String> {
         messages.iter().rev().find_map(|message| match message {
-            clankers_provider::message::AgentMessage::User(user_message) => {
+            clanker_message::AgentMessage::User(user_message) => {
                 user_message.content.iter().find_map(|content| match content {
-                    clankers_provider::message::Content::Text { text } => Some(text.clone()),
+                    clanker_message::Content::Text { text } => Some(text.clone()),
                     _ => None,
                 })
             }
@@ -1347,7 +1343,7 @@ mod tests {
         async fn complete(
             &self,
             _request: clankers_provider::CompletionRequest,
-            tx: tokio::sync::mpsc::Sender<clankers_provider::streaming::StreamEvent>,
+            tx: tokio::sync::mpsc::Sender<clanker_message::streaming::StreamEvent>,
         ) -> clankers_provider::error::Result<()> {
             let call_index = self.call_count.fetch_add(1, Ordering::SeqCst);
             // The provider waits for controller lifecycle-hook observation before producing
@@ -1359,8 +1355,8 @@ mod tests {
                 self.recorder.wait_for_count(clankers_hooks::HookPoint::TurnEnd, 1).await;
             }
 
-            tx.send(clankers_provider::streaming::StreamEvent::MessageStart {
-                message: clankers_provider::streaming::MessageMetadata {
+            tx.send(clanker_message::streaming::StreamEvent::MessageStart {
+                message: clanker_message::streaming::MessageMetadata {
                     id: format!("ordering-{call_index}"),
                     model: "test-model".to_string(),
                     role: "assistant".to_string(),
@@ -1370,7 +1366,7 @@ mod tests {
             .ok();
 
             if call_index == 0 {
-                tx.send(clankers_provider::streaming::StreamEvent::ContentBlockStart {
+                tx.send(clanker_message::streaming::StreamEvent::ContentBlockStart {
                     index: 0,
                     content_block: clanker_message::Content::ToolUse {
                         id: "call-1".to_string(),
@@ -1380,30 +1376,30 @@ mod tests {
                 })
                 .await
                 .ok();
-                tx.send(clankers_provider::streaming::StreamEvent::ContentBlockStop { index: 0 }).await.ok();
-                tx.send(clankers_provider::streaming::StreamEvent::MessageDelta {
+                tx.send(clanker_message::streaming::StreamEvent::ContentBlockStop { index: 0 }).await.ok();
+                tx.send(clanker_message::streaming::StreamEvent::MessageDelta {
                     stop_reason: Some("tool_use".to_string()),
                     usage: clanker_message::Usage::default(),
                 })
                 .await
                 .ok();
             } else {
-                tx.send(clankers_provider::streaming::StreamEvent::ContentBlockStart {
+                tx.send(clanker_message::streaming::StreamEvent::ContentBlockStart {
                     index: 0,
                     content_block: clanker_message::Content::Text { text: String::new() },
                 })
                 .await
                 .ok();
-                tx.send(clankers_provider::streaming::StreamEvent::ContentBlockDelta {
+                tx.send(clanker_message::streaming::StreamEvent::ContentBlockDelta {
                     index: 0,
-                    delta: clankers_provider::streaming::ContentDelta::TextDelta {
+                    delta: clanker_message::streaming::ContentDelta::TextDelta {
                         text: "done".to_string(),
                     },
                 })
                 .await
                 .ok();
-                tx.send(clankers_provider::streaming::StreamEvent::ContentBlockStop { index: 0 }).await.ok();
-                tx.send(clankers_provider::streaming::StreamEvent::MessageDelta {
+                tx.send(clanker_message::streaming::StreamEvent::ContentBlockStop { index: 0 }).await.ok();
+                tx.send(clanker_message::streaming::StreamEvent::MessageDelta {
                     stop_reason: Some("end_turn".to_string()),
                     usage: clanker_message::Usage::default(),
                 })
@@ -1411,7 +1407,7 @@ mod tests {
                 .ok();
             }
 
-            tx.send(clankers_provider::streaming::StreamEvent::MessageStop).await.ok();
+            tx.send(clanker_message::streaming::StreamEvent::MessageStop).await.ok();
             Ok(())
         }
 
@@ -1788,35 +1784,26 @@ mod tests {
             }]),
         ]);
 
-        assert!(ctrl.handle_command_with_runtime_adapter_for_test(
-            &mut adapter,
-            SessionCommand::Prompt {
-                text: "hello fake command".to_string(),
-                images: vec![
-                    ImageData {
-                        media_type: "image/png".to_string(),
-                        data: "ZmFrZTE=".to_string(),
-                    },
-                    ImageData {
-                        media_type: "image/jpeg".to_string(),
-                        data: "ZmFrZTI=".to_string(),
-                    },
-                ],
-            },
-        ));
+        assert!(ctrl.handle_command_with_runtime_adapter_for_test(&mut adapter, SessionCommand::Prompt {
+            text: "hello fake command".to_string(),
+            images: vec![
+                ImageData {
+                    media_type: "image/png".to_string(),
+                    data: "ZmFrZTE=".to_string(),
+                },
+                ImageData {
+                    media_type: "image/jpeg".to_string(),
+                    data: "ZmFrZTI=".to_string(),
+                },
+            ],
+        },));
         assert!(ctrl.handle_command_with_runtime_adapter_for_test(&mut adapter, SessionCommand::ResetCancel));
-        assert!(ctrl.handle_command_with_runtime_adapter_for_test(
-            &mut adapter,
-            SessionCommand::SetThinkingLevel {
-                level: "high".to_string(),
-            },
-        ));
-        assert!(ctrl.handle_command_with_runtime_adapter_for_test(
-            &mut adapter,
-            SessionCommand::SetDisabledTools {
-                tools: vec!["bash".to_string()],
-            },
-        ));
+        assert!(ctrl.handle_command_with_runtime_adapter_for_test(&mut adapter, SessionCommand::SetThinkingLevel {
+            level: "high".to_string(),
+        },));
+        assert!(ctrl.handle_command_with_runtime_adapter_for_test(&mut adapter, SessionCommand::SetDisabledTools {
+            tools: vec!["bash".to_string()],
+        },));
         assert!(ctrl.start_embedded_prompt("cancel me", 0));
         assert!(ctrl.handle_command_with_runtime_adapter_for_test(&mut adapter, SessionCommand::Abort));
 

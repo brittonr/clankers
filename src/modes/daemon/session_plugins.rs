@@ -65,9 +65,7 @@ impl DaemonSessionTickService {
         Self { plugin_projection }
     }
 
-    pub(crate) fn for_plugin_manager(
-        plugin_manager: Option<Arc<Mutex<clankers_plugin::PluginManager>>>,
-    ) -> Self {
+    pub(crate) fn for_plugin_manager(plugin_manager: Option<Arc<Mutex<clankers_plugin::PluginManager>>>) -> Self {
         Self::new(DaemonPluginProjection::new(plugin_manager))
     }
 
@@ -114,12 +112,7 @@ impl DaemonSessionTickService {
         event_tx: &broadcast::Sender<DaemonEvent>,
         panel_rx: &mut tokio::sync::mpsc::UnboundedReceiver<SubagentEvent>,
     ) {
-        super::socket_bridge::drain_and_broadcast(
-            controller,
-            event_tx,
-            panel_rx,
-            self.plugin_manager(),
-        );
+        super::socket_bridge::drain_and_broadcast(controller, event_tx, panel_rx, self.plugin_manager());
         self.plugin_projection.drain_runtime_events(event_tx);
     }
 }
@@ -214,7 +207,7 @@ mod tests {
         async fn complete(
             &self,
             _req: clankers_provider::CompletionRequest,
-            _tx: tokio::sync::mpsc::Sender<clankers_provider::streaming::StreamEvent>,
+            _tx: tokio::sync::mpsc::Sender<clanker_message::streaming::StreamEvent>,
         ) -> std::result::Result<(), clankers_provider::error::ProviderError> {
             Ok(())
         }

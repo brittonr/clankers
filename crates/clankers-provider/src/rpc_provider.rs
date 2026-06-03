@@ -7,6 +7,7 @@
 use std::sync::Arc;
 
 use async_trait::async_trait;
+use clanker_message::streaming::StreamEvent;
 use clanker_router::rpc::client::RpcClient;
 use clanker_router::rpc::daemon::DaemonInfo;
 use tokio::sync::mpsc;
@@ -17,7 +18,6 @@ use crate::CompletionRequest;
 use crate::Model;
 use crate::Provider;
 use crate::error::Result;
-use crate::streaming::StreamEvent;
 
 /// Provider that talks to a clanker-router daemon over iroh QUIC RPC.
 pub struct RpcProvider {
@@ -128,13 +128,13 @@ impl Provider for RpcProvider {
 mod tests {
     use std::collections::HashMap;
 
+    use clanker_message::message::AgentMessage;
+    use clanker_message::message::Content;
+    use clanker_message::message::MessageId;
+    use clanker_message::message::UserMessage;
     use serde_json::json;
 
     use crate::CompletionRequest;
-    use crate::message::AgentMessage;
-    use crate::message::Content;
-    use crate::message::MessageId;
-    use crate::message::UserMessage;
     use crate::router_request_bridge::build_router_request;
 
     fn make_request() -> CompletionRequest {

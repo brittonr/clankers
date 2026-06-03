@@ -7,6 +7,7 @@ pub(crate) mod subscription_compat;
 use std::sync::Arc;
 
 use async_trait::async_trait;
+use clanker_message::streaming::StreamEvent;
 use clanker_router::credential_pool::CredentialPool;
 use tokio::sync::mpsc;
 use tracing::info;
@@ -19,7 +20,6 @@ use crate::auth::Credential;
 use crate::classify_api_error;
 use crate::credential_manager::CredentialManager;
 use crate::error::Result;
-use crate::streaming::StreamEvent;
 
 pub struct AnthropicProvider {
     client: api::AnthropicClient,

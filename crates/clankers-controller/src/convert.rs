@@ -434,9 +434,9 @@ fn parse_user_input_timestamp(timestamp: &str) -> DateTime<Utc> {
 
 #[cfg(test)]
 mod tests {
+    use clanker_message::streaming::ContentDelta;
     use clankers_agent::ToolResult;
     use clankers_agent::ToolResultContent;
-    use clankers_provider::streaming::ContentDelta;
 
     use super::*;
 

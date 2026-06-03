@@ -537,7 +537,7 @@ async fn run_headless(
     }
 
     let thinking_config = if cli.thinking || cli.thinking_budget.is_some() {
-        Some(clankers_provider::ThinkingConfig {
+        Some(clanker_message::ThinkingConfig {
             enabled: true,
             budget_tokens: cli.thinking_budget.or(Some(128_000)),
         })

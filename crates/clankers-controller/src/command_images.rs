@@ -3,8 +3,8 @@
 //! Keeps protocol image DTOs at the command boundary and hands the agent a
 //! provider-native content vector only after explicit projection.
 
+use clanker_message::Content as ProviderContent;
 use clankers_protocol::ImageData;
-use clankers_provider::message::Content as ProviderContent;
 
 pub(crate) fn prompt_images_to_provider_content(images: Vec<ImageData>) -> Option<Vec<ProviderContent>> {
     if images.is_empty() {
@@ -15,7 +15,7 @@ pub(crate) fn prompt_images_to_provider_content(images: Vec<ImageData>) -> Optio
         images
             .into_iter()
             .map(|image| ProviderContent::Image {
-                source: clankers_provider::message::ImageSource::Base64 {
+                source: clanker_message::ImageSource::Base64 {
                     media_type: image.media_type,
                     data: image.data,
                 },
@@ -26,8 +26,8 @@ pub(crate) fn prompt_images_to_provider_content(images: Vec<ImageData>) -> Optio
 
 #[cfg(test)]
 mod tests {
-    use clankers_provider::message::Content;
-    use clankers_provider::message::ImageSource;
+    use clanker_message::Content;
+    use clanker_message::ImageSource;
 
     use super::*;
 

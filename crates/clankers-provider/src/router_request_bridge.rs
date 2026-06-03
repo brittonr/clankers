@@ -8,21 +8,21 @@
 use std::collections::HashMap;
 
 use chrono::Utc;
+use clanker_message::message::AgentMessage;
+use clanker_message::message::AssistantMessage;
+use clanker_message::message::Content;
+use clanker_message::message::ImageSource;
+use clanker_message::message::MessageId;
+use clanker_message::message::StopReason;
+use clanker_message::message::ToolResultMessage;
+use clanker_message::message::UserMessage;
 use serde::Deserialize;
 use serde::Serialize;
 use serde_json::Value;
 use serde_json::json;
 
 use crate::CompletionRequest;
-use crate::Usage;
-use crate::message::AgentMessage;
-use crate::message::AssistantMessage;
-use crate::message::Content;
-use crate::message::ImageSource;
-use crate::message::MessageId;
-use crate::message::StopReason;
-use crate::message::ToolResultMessage;
-use crate::message::UserMessage;
+use clanker_message::Usage;
 
 const BRANCH_SUMMARY_MESSAGE_PREFIX: &str = "Branch summary";
 const COMPACTION_SUMMARY_MESSAGE_PREFIX: &str = "Compaction summary";
@@ -34,8 +34,8 @@ pub struct CompletionRequestBridgeInput {
     pub system_prompt: Option<String>,
     pub max_tokens: Option<usize>,
     pub temperature: Option<f64>,
-    pub tools: Vec<crate::ToolDefinition>,
-    pub thinking: Option<crate::ThinkingConfig>,
+    pub tools: Vec<clanker_message::ToolDefinition>,
+    pub thinking: Option<clanker_message::ThinkingConfig>,
     pub no_cache: bool,
     pub cache_ttl: Option<String>,
     pub extra_params: HashMap<String, Value>,
@@ -245,16 +245,16 @@ mod tests {
     use std::collections::HashMap;
 
     use chrono::Utc;
+    use clanker_message::message::AssistantMessage;
+    use clanker_message::message::BranchSummaryMessage;
+    use clanker_message::message::CompactionSummaryMessage;
+    use clanker_message::message::MessageId;
+    use clanker_message::message::StopReason;
+    use clanker_message::message::ToolResultMessage;
+    use clanker_message::message::UserMessage;
     use serde_json::json;
 
     use super::*;
-    use crate::message::AssistantMessage;
-    use crate::message::BranchSummaryMessage;
-    use crate::message::CompactionSummaryMessage;
-    use crate::message::MessageId;
-    use crate::message::StopReason;
-    use crate::message::ToolResultMessage;
-    use crate::message::UserMessage;
 
     fn request(messages: Vec<AgentMessage>) -> CompletionRequest {
         CompletionRequest {

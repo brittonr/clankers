@@ -205,9 +205,7 @@ fn assemble_session_runtime_in_dir(
         event_tx,
         panel_rx,
         bash_confirm_rx,
-        actor_tick_service: DaemonSessionTickService::for_plugin_manager(
-            factory.plugin_manager.clone(),
-        ),
+        actor_tick_service: DaemonSessionTickService::for_plugin_manager(factory.plugin_manager.clone()),
         automerge_path,
     }
 }
@@ -564,7 +562,7 @@ mod tests {
         async fn complete(
             &self,
             _req: clankers_provider::CompletionRequest,
-            _tx: tokio::sync::mpsc::Sender<clankers_provider::streaming::StreamEvent>,
+            _tx: tokio::sync::mpsc::Sender<clanker_message::streaming::StreamEvent>,
         ) -> std::result::Result<(), clankers_provider::error::ProviderError> {
             Ok(())
         }

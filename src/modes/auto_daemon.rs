@@ -157,7 +157,7 @@ pub async fn run_auto_daemon_attach(opts: AutoDaemonOptions) -> Result<()> {
     super::common::apply_thinking_settings(&mut app, &opts.settings);
     if opts.thinking {
         app.thinking_enabled = true;
-        app.thinking_level = clanker_tui_types::ThinkingLevel::Max;
+        app.thinking_level = clanker_message::ThinkingLevel::Max;
     }
 
     let slash_registry = build_client_slash_registry();

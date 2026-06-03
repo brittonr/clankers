@@ -347,8 +347,8 @@ pub(crate) fn build_api_request(request: &CompletionRequest, is_oauth: bool) -> 
     }
 }
 
-fn convert_messages(messages: &[crate::message::AgentMessage]) -> Vec<ApiMessage> {
-    use crate::message::AgentMessage;
+fn convert_messages(messages: &[clanker_message::message::AgentMessage]) -> Vec<ApiMessage> {
+    use clanker_message::message::AgentMessage;
     let mut api_messages = Vec::new();
 
     for msg in messages {
@@ -389,9 +389,9 @@ fn convert_messages(messages: &[crate::message::AgentMessage]) -> Vec<ApiMessage
     api_messages
 }
 
-fn convert_content_block(content: &crate::message::Content) -> ApiContentBlock {
-    use crate::message::Content;
-    use crate::message::ImageSource;
+fn convert_content_block(content: &clanker_message::message::Content) -> ApiContentBlock {
+    use clanker_message::message::Content;
+    use clanker_message::message::ImageSource;
     match content {
         Content::Text { text } => ApiContentBlock::Text {
             text: text.clone(),
@@ -440,7 +440,7 @@ fn convert_content_block(content: &crate::message::Content) -> ApiContentBlock {
     }
 }
 
-fn convert_tools(tools: &[crate::ToolDefinition]) -> Vec<ApiTool> {
+fn convert_tools(tools: &[clanker_message::ToolDefinition]) -> Vec<ApiTool> {
     tools
         .iter()
         .map(|t| ApiTool {

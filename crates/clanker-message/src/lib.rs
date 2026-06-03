@@ -17,6 +17,7 @@ pub mod tool_result;
 
 // Re-export core types at crate root for convenience
 pub use contracts::ThinkingConfig;
+pub use contracts::ThinkingLevel;
 pub use contracts::ToolDefinition;
 pub use contracts::Usage;
 pub use message::generate_id;

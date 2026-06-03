@@ -2,14 +2,14 @@
 
 use chrono::DateTime;
 use chrono::Utc;
-use clanker_message::SemanticErrorClass;
-use clanker_message::SemanticEvent;
-use clanker_message::SemanticEventMetadata;
-use clanker_message::SemanticImage;
 use clanker_message::AgentMessage;
 use clanker_message::AssistantMessage;
 use clanker_message::Content;
 use clanker_message::MessageId;
+use clanker_message::SemanticErrorClass;
+use clanker_message::SemanticEvent;
+use clanker_message::SemanticEventMetadata;
+use clanker_message::SemanticImage;
 use clanker_message::SemanticToolStatus;
 use clanker_message::ToolResultMessage;
 use clanker_message::Usage;
@@ -275,9 +275,7 @@ impl AgentEvent {
                 metadata: SemanticEventMetadata::empty().with("source", "agent"),
             }),
             Self::SessionShutdown { session_id } => Some(SemanticEvent::Shutdown {
-                metadata: SemanticEventMetadata::empty()
-                    .with("source", "agent")
-                    .with_session_id(session_id.clone()),
+                metadata: SemanticEventMetadata::empty().with("source", "agent").with_session_id(session_id.clone()),
             }),
             _ => None,
         }
@@ -318,13 +316,13 @@ fn stream_delta_to_semantic_event(delta: &StreamDelta) -> Option<SemanticEvent> 
             text: text.clone(),
             metadata: SemanticEventMetadata::empty().with("source", "agent"),
         }),
-        clanker_message::ContentDelta::ThinkingDelta { thinking } => {
-            Some(SemanticEvent::ThinkingDelta {
-                text: thinking.clone(),
-                metadata: SemanticEventMetadata::empty().with("source", "agent"),
-            })
+        clanker_message::ContentDelta::ThinkingDelta { thinking } => Some(SemanticEvent::ThinkingDelta {
+            text: thinking.clone(),
+            metadata: SemanticEventMetadata::empty().with("source", "agent"),
+        }),
+        clanker_message::ContentDelta::InputJsonDelta { .. } | clanker_message::ContentDelta::SignatureDelta { .. } => {
+            None
         }
-        clanker_message::ContentDelta::InputJsonDelta { .. } | clanker_message::ContentDelta::SignatureDelta { .. } => None,
     }
 }
 
@@ -351,8 +349,8 @@ fn tool_result_content_to_semantic_parts(content: &[crate::tool::ToolResultConte
 /// Convert a `ProcessEvent` from the procmon crate into an `AgentEvent`.
 #[cfg(test)]
 mod tests {
-    use clanker_message::SemanticToolStatus;
     use clanker_message::ContentDelta;
+    use clanker_message::SemanticToolStatus;
 
     use super::*;
     use crate::tool::ToolResult;
@@ -381,9 +379,7 @@ mod tests {
             AgentEvent::ToolExecutionEnd {
                 call_id: "call-1".to_string(),
                 result: ToolResult {
-                    content: vec![ToolResultContent::Text {
-                        text: "ok".to_string(),
-                    }],
+                    content: vec![ToolResultContent::Text { text: "ok".to_string() }],
                     details: None,
                     full_output_path: None,
                     is_error: false,
@@ -397,24 +393,18 @@ mod tests {
             .map(|event| event.to_semantic_event().expect("fixture events map to semantic"))
             .collect();
         let kinds: Vec<_> = semantic.iter().map(SemanticEvent::kind).collect();
-        assert_eq!(
-            kinds,
-            vec![
-                "agent_start",
-                "thinking_delta",
-                "assistant_delta",
-                "tool_started",
-                "tool_finished",
-                "agent_end"
-            ]
-        );
-        assert!(matches!(
-            &semantic[4],
-            SemanticEvent::ToolFinished {
-                status: SemanticToolStatus::Succeeded,
-                ..
-            }
-        ));
+        assert_eq!(kinds, vec![
+            "agent_start",
+            "thinking_delta",
+            "assistant_delta",
+            "tool_started",
+            "tool_finished",
+            "agent_end"
+        ]);
+        assert!(matches!(&semantic[4], SemanticEvent::ToolFinished {
+            status: SemanticToolStatus::Succeeded,
+            ..
+        }));
     }
 }
 

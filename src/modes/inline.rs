@@ -8,6 +8,9 @@ use std::collections::HashMap;
 use std::io::Write;
 use std::sync::Arc;
 
+use clanker_message::streaming::ContentDelta;
+use clankers_agent::builder::AgentBuilder;
+use clankers_agent::events::AgentEvent;
 use rat_inline::InlineMarkdown;
 use rat_inline::InlineRenderer;
 use rat_inline::InlineText;
@@ -15,10 +18,7 @@ use rat_inline::InlineView;
 use ratatui::style::Modifier;
 use ratatui::style::Style;
 
-use clankers_agent::builder::AgentBuilder;
-use clankers_agent::events::AgentEvent;
 use crate::error::Result;
-use clankers_provider::streaming::ContentDelta;
 
 /// Options controlling inline output behaviour.
 #[derive(Debug, Clone, Default)]
@@ -30,7 +30,7 @@ pub struct InlineOptions {
     /// Show tool calls and results
     pub show_tools: bool,
     /// Extended thinking configuration
-    pub thinking: Option<clankers_provider::ThinkingConfig>,
+    pub thinking: Option<clanker_message::ThinkingConfig>,
 }
 
 // ---------------------------------------------------------------------------
@@ -113,7 +113,7 @@ impl InlineState {
             }
 
             AgentEvent::ContentBlockStart { content_block, .. } => {
-                use clankers_provider::message::Content;
+                use clanker_message::Content;
                 match content_block {
                     Content::Thinking { .. } => {
                         self.current_blocks_mut().push(Block::Thinking { content: String::new() });
@@ -452,12 +452,12 @@ fn extract_tool_text(result: &clankers_agent::tool::ToolResult) -> String {
 
 #[cfg(test)]
 mod tests {
+    use clanker_message::streaming::ContentDelta;
+    use clankers_agent::events::AgentEvent;
+    use clankers_agent::tool::ToolResult;
     use serde_json::json;
 
     use super::*;
-    use clankers_agent::events::AgentEvent;
-    use clankers_agent::tool::ToolResult;
-    use clankers_provider::streaming::ContentDelta;
 
     fn text_delta(text: &str) -> AgentEvent {
         AgentEvent::MessageUpdate {
@@ -619,13 +619,13 @@ mod tests {
         state.apply(&AgentEvent::TurnStart { index: 0 });
         state.apply(&text_delta("hi"));
         state.apply(&AgentEvent::UsageUpdate {
-            turn_usage: clankers_provider::Usage {
+            turn_usage: clanker_message::Usage {
                 input_tokens: 10,
                 output_tokens: 5,
                 cache_read_input_tokens: 0,
                 cache_creation_input_tokens: 0,
             },
-            cumulative_usage: clankers_provider::Usage {
+            cumulative_usage: clanker_message::Usage {
                 input_tokens: 100,
                 output_tokens: 50,
                 cache_read_input_tokens: 0,

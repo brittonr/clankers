@@ -6,6 +6,7 @@
 
 use std::sync::Arc;
 
+use clanker_message::streaming::StreamEvent;
 use tracing::info;
 
 use super::Provider;
@@ -18,7 +19,6 @@ use crate::Model;
 use crate::auth::AuthStore;
 use crate::auth::AuthStoreExt;
 use crate::error::Result;
-use crate::streaming::StreamEvent;
 
 /// Build a multi-provider router that auto-discovers available providers.
 ///

@@ -10,6 +10,10 @@ use std::sync::Mutex;
 use std::sync::atomic::AtomicUsize;
 use std::sync::atomic::Ordering;
 
+use clanker_message::AgentMessage;
+use clanker_message::Content;
+use clanker_message::MessageId;
+use clanker_message::UserMessage;
 use clankers_agent::Agent;
 use clankers_agent::events::AgentEvent;
 use clankers_controller::PostPromptAction;
@@ -19,10 +23,6 @@ use clankers_controller::config::ControllerConfig;
 use clankers_controller::loop_mode::LoopConfig;
 use clankers_protocol::DaemonEvent;
 use clankers_protocol::SessionCommand;
-use clankers_provider::message::AgentMessage;
-use clankers_provider::message::Content;
-use clankers_provider::message::MessageId;
-use clankers_provider::message::UserMessage;
 
 // ── Test helpers ─────────────────────────────────────────────────────────
 
@@ -44,7 +44,7 @@ impl clankers_provider::Provider for MockProvider {
     async fn complete(
         &self,
         _: clankers_provider::CompletionRequest,
-        _: tokio::sync::mpsc::Sender<clankers_provider::streaming::StreamEvent>,
+        _: tokio::sync::mpsc::Sender<clanker_message::streaming::StreamEvent>,
     ) -> clankers_provider::error::Result<()> {
         Ok(())
     }
@@ -61,12 +61,12 @@ impl clankers_provider::Provider for CountingProvider {
     async fn complete(
         &self,
         _: clankers_provider::CompletionRequest,
-        tx: tokio::sync::mpsc::Sender<clankers_provider::streaming::StreamEvent>,
+        tx: tokio::sync::mpsc::Sender<clanker_message::streaming::StreamEvent>,
     ) -> clankers_provider::error::Result<()> {
         self.calls.fetch_add(1, Ordering::SeqCst);
-        tx.send(clankers_provider::streaming::StreamEvent::ContentBlockDelta {
+        tx.send(clanker_message::streaming::StreamEvent::ContentBlockDelta {
             index: 0,
-            delta: clankers_provider::streaming::ContentDelta::TextDelta {
+            delta: clanker_message::streaming::ContentDelta::TextDelta {
                 text: "provider-ok".to_string(),
             },
         })
@@ -87,7 +87,7 @@ impl clankers_provider::Provider for CapturingSummaryProvider {
     async fn complete(
         &self,
         request: clankers_provider::CompletionRequest,
-        tx: tokio::sync::mpsc::Sender<clankers_provider::streaming::StreamEvent>,
+        tx: tokio::sync::mpsc::Sender<clanker_message::streaming::StreamEvent>,
     ) -> clankers_provider::error::Result<()> {
         let prompt = request
             .messages
@@ -106,9 +106,9 @@ impl clankers_provider::Provider for CapturingSummaryProvider {
             return Err(clankers_provider::error::provider_err("summary model unavailable"));
         }
 
-        tx.send(clankers_provider::streaming::StreamEvent::ContentBlockDelta {
+        tx.send(clanker_message::streaming::StreamEvent::ContentBlockDelta {
             index: 0,
-            delta: clankers_provider::streaming::ContentDelta::TextDelta {
+            delta: clanker_message::streaming::ContentDelta::TextDelta {
                 text: self.response.to_string(),
             },
         })
@@ -346,7 +346,7 @@ fn embedded_text_delta_produces_daemon_event() {
     let mut ctrl = make_embedded_controller();
     ctrl.feed_event(&AgentEvent::MessageUpdate {
         index: 0,
-        delta: clankers_provider::streaming::ContentDelta::TextDelta {
+        delta: clanker_message::streaming::ContentDelta::TextDelta {
             text: "hello world".to_string(),
         },
     });
@@ -366,7 +366,7 @@ fn embedded_thinking_delta_produces_daemon_event() {
     let mut ctrl = make_embedded_controller();
     ctrl.feed_event(&AgentEvent::MessageUpdate {
         index: 0,
-        delta: clankers_provider::streaming::ContentDelta::ThinkingDelta {
+        delta: clanker_message::streaming::ContentDelta::ThinkingDelta {
             thinking: "reasoning about X".to_string(),
         },
     });
@@ -974,13 +974,13 @@ fn internal_events_not_forwarded() {
 fn usage_update_produces_daemon_event() {
     let mut ctrl = make_embedded_controller();
     ctrl.feed_event(&AgentEvent::UsageUpdate {
-        turn_usage: clankers_provider::Usage {
+        turn_usage: clanker_message::Usage {
             input_tokens: 100,
             output_tokens: 50,
             cache_creation_input_tokens: 0,
             cache_read_input_tokens: 0,
         },
-        cumulative_usage: clankers_provider::Usage {
+        cumulative_usage: clanker_message::Usage {
             input_tokens: 100,
             output_tokens: 50,
             cache_creation_input_tokens: 0,

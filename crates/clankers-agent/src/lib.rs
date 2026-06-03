@@ -46,7 +46,7 @@ use clankers_model_selection::policy::RoutingPolicy;
 use clankers_model_selection::signals::ComplexitySignals;
 use clankers_model_selection::signals::ToolCallSummary;
 use clankers_provider::Provider;
-use clankers_provider::ThinkingLevel;
+use clanker_message::ThinkingLevel;
 use tokio::sync::broadcast;
 use tokio_util::sync::CancellationToken;
 
@@ -1266,7 +1266,7 @@ mod tests {
         async fn complete(
             &self,
             _request: clankers_provider::CompletionRequest,
-            _tx: tokio::sync::mpsc::Sender<clankers_provider::streaming::StreamEvent>,
+            _tx: tokio::sync::mpsc::Sender<clanker_message::streaming::StreamEvent>,
         ) -> clankers_provider::error::Result<()> {
             Ok(())
         }
@@ -1300,7 +1300,7 @@ mod tests {
         async fn complete(
             &self,
             request: clankers_provider::CompletionRequest,
-            tx: tokio::sync::mpsc::Sender<clankers_provider::streaming::StreamEvent>,
+            tx: tokio::sync::mpsc::Sender<clanker_message::streaming::StreamEvent>,
         ) -> clankers_provider::error::Result<()> {
             self.calls.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
             let prompt = request
@@ -1316,8 +1316,8 @@ mod tests {
                 })
                 .unwrap_or_default();
             self.captured_prompts.lock().unwrap_or_else(|poisoned| poisoned.into_inner()).push(prompt);
-            tx.send(clankers_provider::streaming::StreamEvent::MessageStart {
-                message: clankers_provider::streaming::MessageMetadata {
+            tx.send(clanker_message::streaming::StreamEvent::MessageStart {
+                message: clanker_message::streaming::MessageMetadata {
                     id: "msg-1".into(),
                     model: "test-model".into(),
                     role: "assistant".into(),
@@ -1325,22 +1325,22 @@ mod tests {
             })
             .await
             .ok();
-            tx.send(clankers_provider::streaming::StreamEvent::ContentBlockStart {
+            tx.send(clanker_message::streaming::StreamEvent::ContentBlockStart {
                 index: 0,
                 content_block: Content::Text { text: String::new() },
             })
             .await
             .ok();
-            tx.send(clankers_provider::streaming::StreamEvent::ContentBlockDelta {
+            tx.send(clanker_message::streaming::StreamEvent::ContentBlockDelta {
                 index: 0,
-                delta: clankers_provider::streaming::ContentDelta::TextDelta { text: "ok".into() },
+                delta: clanker_message::streaming::ContentDelta::TextDelta { text: "ok".into() },
             })
             .await
             .ok();
-            tx.send(clankers_provider::streaming::StreamEvent::ContentBlockStop { index: 0 }).await.ok();
-            tx.send(clankers_provider::streaming::StreamEvent::MessageDelta {
+            tx.send(clanker_message::streaming::StreamEvent::ContentBlockStop { index: 0 }).await.ok();
+            tx.send(clanker_message::streaming::StreamEvent::MessageDelta {
                 stop_reason: Some("end_turn".into()),
-                usage: clankers_provider::Usage {
+                usage: clanker_message::Usage {
                     input_tokens: 1,
                     output_tokens: 1,
                     cache_creation_input_tokens: 0,
@@ -1349,7 +1349,7 @@ mod tests {
             })
             .await
             .ok();
-            tx.send(clankers_provider::streaming::StreamEvent::MessageStop).await.ok();
+            tx.send(clanker_message::streaming::StreamEvent::MessageStop).await.ok();
             Ok(())
         }
 
@@ -1556,7 +1556,7 @@ mod tests {
         async fn complete(
             &self,
             request: clankers_provider::CompletionRequest,
-            tx: tokio::sync::mpsc::Sender<clankers_provider::streaming::StreamEvent>,
+            tx: tokio::sync::mpsc::Sender<clanker_message::streaming::StreamEvent>,
         ) -> clankers_provider::error::Result<()> {
             let prompt = request
                 .messages
@@ -1570,9 +1570,9 @@ mod tests {
                 })
                 .unwrap_or_default();
             *self.captured_prompt.lock().unwrap_or_else(|poisoned| poisoned.into_inner()) = Some(prompt);
-            tx.send(clankers_provider::streaming::StreamEvent::ContentBlockDelta {
+            tx.send(clanker_message::streaming::StreamEvent::ContentBlockDelta {
                 index: 0,
-                delta: clankers_provider::streaming::ContentDelta::TextDelta {
+                delta: clanker_message::streaming::ContentDelta::TextDelta {
                     text: self.response.to_string(),
                 },
             })
@@ -1650,10 +1650,7 @@ mod tests {
         let config = turn::steel_tool_substrate_config_from_settings(&agent_settings)
             .expect("neutral settings activate")
             .expect("enabled substrate config");
-        assert_eq!(
-            config.profile.rollout_stage,
-            clankers_runtime::SteelToolSubstrateRolloutStage::Comparison
-        );
+        assert_eq!(config.profile.rollout_stage, clankers_runtime::SteelToolSubstrateRolloutStage::Comparison);
         assert_eq!(config.profile.fallback_mode, clankers_runtime::SteelToolSubstrateFallbackMode::Block);
         assert!(!config.profile.allowed_executor_kinds.contains(&clankers_runtime::SteelToolExecutorKind::Subagent));
     }
@@ -1677,7 +1674,7 @@ mod tests {
                 input,
             }],
             model: "test-model".to_string(),
-            usage: clankers_provider::Usage::default(),
+            usage: clanker_message::Usage::default(),
             stop_reason: StopReason::ToolUse,
             timestamp: Utc::now(),
         })
@@ -1786,11 +1783,11 @@ mod tests {
     fn cycle_thinking_level_follows_expected_order() {
         let mut agent = make_test_agent();
         let expected_levels = [
-            clankers_provider::ThinkingLevel::Low,
-            clankers_provider::ThinkingLevel::Medium,
-            clankers_provider::ThinkingLevel::High,
-            clankers_provider::ThinkingLevel::Max,
-            clankers_provider::ThinkingLevel::Off,
+            clanker_message::ThinkingLevel::Low,
+            clanker_message::ThinkingLevel::Medium,
+            clanker_message::ThinkingLevel::High,
+            clanker_message::ThinkingLevel::Max,
+            clanker_message::ThinkingLevel::Off,
         ];
 
         for expected_level in expected_levels {
@@ -2134,10 +2131,10 @@ mod tests {
             async fn complete(
                 &self,
                 _request: clankers_provider::CompletionRequest,
-                tx: mpsc::Sender<clankers_provider::streaming::StreamEvent>,
+                tx: mpsc::Sender<clanker_message::streaming::StreamEvent>,
             ) -> clankers_provider::error::Result<()> {
-                tx.send(clankers_provider::streaming::StreamEvent::MessageStart {
-                    message: clankers_provider::streaming::MessageMetadata {
+                tx.send(clanker_message::streaming::StreamEvent::MessageStart {
+                    message: clanker_message::streaming::MessageMetadata {
                         id: "msg-1".into(),
                         model: "test-model".into(),
                         role: "assistant".into(),
@@ -2145,22 +2142,22 @@ mod tests {
                 })
                 .await
                 .ok();
-                tx.send(clankers_provider::streaming::StreamEvent::ContentBlockStart {
+                tx.send(clanker_message::streaming::StreamEvent::ContentBlockStart {
                     index: 0,
-                    content_block: clankers_provider::message::Content::Text { text: String::new() },
+                    content_block: clanker_message::Content::Text { text: String::new() },
                 })
                 .await
                 .ok();
-                tx.send(clankers_provider::streaming::StreamEvent::ContentBlockDelta {
+                tx.send(clanker_message::streaming::StreamEvent::ContentBlockDelta {
                     index: 0,
-                    delta: clankers_provider::streaming::ContentDelta::TextDelta { text: "ok".into() },
+                    delta: clanker_message::streaming::ContentDelta::TextDelta { text: "ok".into() },
                 })
                 .await
                 .ok();
-                tx.send(clankers_provider::streaming::StreamEvent::ContentBlockStop { index: 0 }).await.ok();
-                tx.send(clankers_provider::streaming::StreamEvent::MessageDelta {
+                tx.send(clanker_message::streaming::StreamEvent::ContentBlockStop { index: 0 }).await.ok();
+                tx.send(clanker_message::streaming::StreamEvent::MessageDelta {
                     stop_reason: Some("end_turn".into()),
-                    usage: clankers_provider::Usage {
+                    usage: clanker_message::Usage {
                         input_tokens: 1,
                         output_tokens: 1,
                         cache_creation_input_tokens: 0,
@@ -2169,7 +2166,7 @@ mod tests {
                 })
                 .await
                 .ok();
-                tx.send(clankers_provider::streaming::StreamEvent::MessageStop).await.ok();
+                tx.send(clanker_message::streaming::StreamEvent::MessageStop).await.ok();
                 Ok(())
             }
 

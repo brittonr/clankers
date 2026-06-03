@@ -5,9 +5,10 @@
 
 use std::sync::Arc;
 
+use clankers_agent::Agent;
+
 use super::interactive::AgentCommand;
 use super::interactive::TaskResult;
-use clankers_agent::Agent;
 
 /// Spawn the background agent task that processes commands.
 ///
@@ -29,10 +30,10 @@ pub(crate) fn spawn_agent_task(
                     handle_prompt(&mut agent, &mut cmd_rx, &done_tx, &text, None).await;
                 }
                 AgentCommand::PromptWithImages { text, images } => {
-                    let img_contents: Vec<clankers_provider::message::Content> = images
+                    let img_contents: Vec<clanker_message::Content> = images
                         .into_iter()
-                        .map(|img| clankers_provider::message::Content::Image {
-                            source: clankers_provider::message::ImageSource::Base64 {
+                        .map(|img| clanker_message::Content::Image {
+                            source: clanker_message::ImageSource::Base64 {
                                 media_type: img.media_type,
                                 data: img.data,
                             },
@@ -46,10 +47,10 @@ pub(crate) fn spawn_agent_task(
                 }
                 AgentCommand::RewriteAndPromptWithImages { text, images } => {
                     let improved = rewrite_prompt(agent.provider(), agent.model(), agent.session_id(), &text).await;
-                    let img_contents: Vec<clankers_provider::message::Content> = images
+                    let img_contents: Vec<clanker_message::Content> = images
                         .into_iter()
-                        .map(|img| clankers_provider::message::Content::Image {
-                            source: clankers_provider::message::ImageSource::Base64 {
+                        .map(|img| clanker_message::Content::Image {
+                            source: clanker_message::ImageSource::Base64 {
                                 media_type: img.media_type,
                                 data: img.data,
                             },
@@ -145,7 +146,7 @@ async fn handle_prompt(
     cmd_rx: &mut tokio::sync::mpsc::UnboundedReceiver<AgentCommand>,
     done_tx: &tokio::sync::mpsc::UnboundedSender<TaskResult>,
     text: &str,
-    images: Option<Vec<clankers_provider::message::Content>>,
+    images: Option<Vec<clanker_message::Content>>,
 ) {
     agent.reset_cancel();
     let cancel = agent.cancel_token();
@@ -290,12 +291,12 @@ pub(crate) async fn rewrite_prompt(
     session_id: &str,
     original: &str,
 ) -> String {
+    use clanker_message::AgentMessage;
+    use clanker_message::Content;
+    use clanker_message::MessageId;
+    use clanker_message::UserMessage;
+    use clanker_message::streaming::StreamEvent;
     use clankers_provider::CompletionRequest;
-    use clankers_provider::message::AgentMessage;
-    use clankers_provider::message::Content;
-    use clankers_provider::message::MessageId;
-    use clankers_provider::message::UserMessage;
-    use clankers_provider::streaming::StreamEvent;
 
     let system = "You are a prompt engineer. Your job is to rewrite the user's prompt \
         to be clearer, more specific, and more effective for an AI coding assistant. \
@@ -342,7 +343,7 @@ pub(crate) async fn rewrite_prompt(
     let mut result = String::new();
     while let Some(event) = rx.recv().await {
         if let StreamEvent::ContentBlockDelta {
-            delta: clankers_provider::streaming::ContentDelta::TextDelta { text },
+            delta: clanker_message::streaming::ContentDelta::TextDelta { text },
             ..
         } = event
         {
@@ -376,15 +377,15 @@ mod tests {
     use std::sync::Arc;
 
     use async_trait::async_trait;
-    use tokio::sync::mpsc;
-
+    use clanker_message::streaming::ContentDelta;
+    use clanker_message::streaming::StreamEvent;
     use clankers_agent::Agent;
-    use crate::modes::interactive::TaskResult;
     use clankers_provider::CompletionRequest;
     use clankers_provider::Model;
     use clankers_provider::Provider;
-    use clankers_provider::streaming::ContentDelta;
-    use clankers_provider::streaming::StreamEvent;
+    use tokio::sync::mpsc;
+
+    use crate::modes::interactive::TaskResult;
 
     /// Mock provider that streams back a fixed response.
     struct MockRewriteProvider {
@@ -482,7 +483,7 @@ mod tests {
             ) -> clankers_provider::error::Result<()> {
                 self.calls.fetch_add(1, Ordering::SeqCst);
                 tx.send(StreamEvent::MessageStart {
-                    message: clankers_provider::streaming::MessageMetadata {
+                    message: clanker_message::streaming::MessageMetadata {
                         id: "standalone-msg".to_string(),
                         model: "test-model".to_string(),
                         role: "assistant".to_string(),

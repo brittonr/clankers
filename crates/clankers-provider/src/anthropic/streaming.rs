@@ -1,13 +1,13 @@
 //! SSE stream parsing for Anthropic Messages API
 
+use clanker_message::message::Content;
+use clanker_message::streaming::*;
 use serde::Deserialize;
 use serde_json::Value;
 use tokio::sync::mpsc;
 
 use super::subscription_compat;
 use crate::error::Result;
-use crate::message::Content;
-use crate::streaming::*;
 
 // SSE raw event types from Anthropic
 #[derive(Debug, Deserialize)]
@@ -232,7 +232,7 @@ fn parse_sse_event(event_type: &str, data: &str) -> Option<StreamEvent> {
         }
         "message_delta" => {
             let parsed: SseMessageDelta = serde_json::from_str(data).ok()?;
-            let usage = crate::Usage {
+            let usage = clanker_message::Usage {
                 input_tokens: parsed.usage.input_tokens,
                 output_tokens: parsed.usage.output_tokens,
                 cache_creation_input_tokens: parsed.usage.cache_creation_input_tokens,

@@ -3,14 +3,14 @@
 //! This module is the single point where agent/provider types are converted
 //! into TUI-native events. The TUI crate never imports agent types directly.
 
+use clanker_message::Content;
+use clanker_message::streaming::ContentDelta;
 use clanker_tui_types::DisplayImage;
 use clanker_tui_types::ProgressKind;
 use clanker_tui_types::ToolProgress;
 use clanker_tui_types::TuiEvent;
 use clankers_agent::events::AgentEvent;
 use clankers_agent::tool::progress as agent_progress;
-use clankers_provider::message::Content;
-use clankers_provider::streaming::ContentDelta;
 
 use crate::tools::ToolResultContent;
 
@@ -172,12 +172,12 @@ fn extract_tool_content(content: &[ToolResultContent]) -> (String, Vec<DisplayIm
 #[cfg(test)]
 mod tests {
     use chrono::Utc;
-    use clankers_provider::Usage;
-    use clankers_provider::message::AssistantMessage;
-    use clankers_provider::message::Content;
-    use clankers_provider::message::MessageId;
-    use clankers_provider::message::StopReason;
-    use clankers_provider::streaming::ContentDelta;
+    use clanker_message::AssistantMessage;
+    use clanker_message::Content;
+    use clanker_message::MessageId;
+    use clanker_message::StopReason;
+    use clanker_message::Usage;
+    use clanker_message::streaming::ContentDelta;
     use serde_json::json;
 
     use super::*;

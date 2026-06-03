@@ -111,20 +111,18 @@ impl SessionController {
             "low" | "lo" | "l" => Some(CoreThinkingLevel::Low),
             "medium" | "med" | "m" => Some(CoreThinkingLevel::Medium),
             "high" | "hi" | "h" => Some(CoreThinkingLevel::High),
-            "xhigh" | "x-high" | "extra-high" | "max" | "maximum" | "full" | "default" => {
-                Some(CoreThinkingLevel::Max)
-            }
+            "xhigh" | "x-high" | "extra-high" | "max" | "maximum" | "full" | "default" => Some(CoreThinkingLevel::Max),
             _ => None,
         }
     }
 
-    pub(crate) fn provider_thinking_level(level: CoreThinkingLevel) -> clankers_provider::ThinkingLevel {
+    pub(crate) fn provider_thinking_level(level: CoreThinkingLevel) -> clanker_message::ThinkingLevel {
         match level {
-            CoreThinkingLevel::Off => clankers_provider::ThinkingLevel::Off,
-            CoreThinkingLevel::Low => clankers_provider::ThinkingLevel::Low,
-            CoreThinkingLevel::Medium => clankers_provider::ThinkingLevel::Medium,
-            CoreThinkingLevel::High => clankers_provider::ThinkingLevel::High,
-            CoreThinkingLevel::Max => clankers_provider::ThinkingLevel::Max,
+            CoreThinkingLevel::Off => clanker_message::ThinkingLevel::Off,
+            CoreThinkingLevel::Low => clanker_message::ThinkingLevel::Low,
+            CoreThinkingLevel::Medium => clanker_message::ThinkingLevel::Medium,
+            CoreThinkingLevel::High => clanker_message::ThinkingLevel::High,
+            CoreThinkingLevel::Max => clanker_message::ThinkingLevel::Max,
         }
     }
 

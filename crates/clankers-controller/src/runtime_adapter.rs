@@ -337,13 +337,13 @@ fn drain_ready_agent_events(
     }
 }
 
-fn provider_thinking_level(level: CoreThinkingLevel) -> clankers_provider::ThinkingLevel {
+fn provider_thinking_level(level: CoreThinkingLevel) -> clanker_message::ThinkingLevel {
     match level {
-        CoreThinkingLevel::Off => clankers_provider::ThinkingLevel::Off,
-        CoreThinkingLevel::Low => clankers_provider::ThinkingLevel::Low,
-        CoreThinkingLevel::Medium => clankers_provider::ThinkingLevel::Medium,
-        CoreThinkingLevel::High => clankers_provider::ThinkingLevel::High,
-        CoreThinkingLevel::Max => clankers_provider::ThinkingLevel::Max,
+        CoreThinkingLevel::Off => clanker_message::ThinkingLevel::Off,
+        CoreThinkingLevel::Low => clanker_message::ThinkingLevel::Low,
+        CoreThinkingLevel::Medium => clanker_message::ThinkingLevel::Medium,
+        CoreThinkingLevel::High => clanker_message::ThinkingLevel::High,
+        CoreThinkingLevel::Max => clanker_message::ThinkingLevel::Max,
     }
 }
 
@@ -391,8 +391,8 @@ mod tests {
     use clanker_message::ContentDelta;
     use clanker_message::SemanticEvent;
     use clanker_message::Usage;
-    use clankers_provider::streaming::MessageMetadata;
-    use clankers_provider::streaming::StreamEvent;
+    use clanker_message::streaming::MessageMetadata;
+    use clanker_message::streaming::StreamEvent;
     use tokio::sync::mpsc;
 
     use super::*;
@@ -461,12 +461,11 @@ mod tests {
 
     #[test]
     fn fake_runtime_adapter_records_prompts_and_controls_without_desktop_services() {
-        let mut adapter = FakeRuntimeAdapter::new(vec![RuntimePromptResult::succeeded(vec![
-            SemanticEvent::AssistantDelta {
+        let mut adapter =
+            FakeRuntimeAdapter::new(vec![RuntimePromptResult::succeeded(vec![SemanticEvent::AssistantDelta {
                 text: "ok".to_string(),
                 metadata: SemanticEventMetadata::empty().with("source", "fixture"),
-            },
-        ])]);
+            }])]);
 
         let result = adapter.submit_prompt(RuntimePromptRequest {
             session_id: "session-adapter".to_string(),
@@ -526,7 +525,7 @@ mod tests {
             adapter.set_system_prompt("updated system prompt".to_string());
             adapter.apply_runtime_control(RuntimeControlRequest::Abort);
         }
-        assert_eq!(agent.thinking_level(), clankers_provider::ThinkingLevel::High);
+        assert_eq!(agent.thinking_level(), clanker_message::ThinkingLevel::High);
         assert_eq!(agent.system_prompt(), "updated system prompt");
         assert!(agent.cancel_token().is_cancelled());
 

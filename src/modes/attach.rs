@@ -8,22 +8,22 @@
 use std::io;
 use std::time::Duration;
 
+use clankers_config::keybindings::InputMode;
+use clankers_config::settings::Settings;
 use clankers_controller::client::ClientAdapter;
 use clankers_protocol::DaemonEvent;
 use clankers_protocol::SessionCommand;
+use clankers_tui::app::App;
+use clankers_tui::event as tui_event;
+use clankers_tui::event::AppEvent;
+use clankers_tui::keymap::Keymap;
 use ratatui::Terminal;
 use ratatui::backend::CrosstermBackend;
 use tracing::info;
 use tracing::warn;
 
-use clankers_config::keybindings::InputMode;
-use clankers_config::settings::Settings;
 use crate::error::Result;
 use crate::slash_commands;
-use clankers_tui::app::App;
-use clankers_tui::event as tui_event;
-use clankers_tui::event::AppEvent;
-use clankers_tui::keymap::Keymap;
 use crate::tui_config::load_theme;
 
 mod client_loop;
@@ -217,13 +217,12 @@ fn handle_key_event(
     slash_registry: &slash_commands::SlashRegistry,
     parity_tracker: &mut AttachParityTracker,
 ) {
-    use crossterm::event::KeyCode;
-    use crossterm::event::KeyModifiers;
-
     use clankers_config::keybindings::Action;
     use clankers_config::keybindings::CoreAction;
     use clankers_config::keybindings::ExtendedAction;
     use clankers_tui::selectors;
+    use crossterm::event::KeyCode;
+    use crossterm::event::KeyModifiers;
 
     app.selection = None;
 
@@ -429,10 +428,9 @@ fn handle_slash_menu_key_attach(
     slash_registry: &slash_commands::SlashRegistry,
     parity_tracker: &mut AttachParityTracker,
 ) -> bool {
-    use crossterm::event::KeyCode;
-
     use clankers_config::keybindings::Action;
     use clankers_config::keybindings::CoreAction;
+    use crossterm::event::KeyCode;
 
     // Menu navigation keys
     match key.code {
@@ -502,13 +500,12 @@ fn handle_local_action(
 ) {
     use clanker_tui_types::AppState;
     use clanker_tui_types::BlockEntry;
-    use ratatui::layout::Direction;
-    use ratatui_hypertile::HypertileAction;
-    use ratatui_hypertile::Towards;
-
     use clankers_config::keybindings::Action;
     use clankers_config::keybindings::CoreAction;
     use clankers_config::keybindings::ExtendedAction;
+    use ratatui::layout::Direction;
+    use ratatui_hypertile::HypertileAction;
+    use ratatui_hypertile::Towards;
 
     match action {
         // ── Mode switching ──────────────────────────
@@ -743,24 +740,27 @@ fn handle_local_action(
         Action::Extended(ExtendedAction::PaneZoom) => app.zoom_toggle(),
         Action::Extended(ExtendedAction::PanelScrollUp) => {
             use clanker_tui_types::PanelId;
-            if let Some(sp) =
-                app.panels.downcast_mut::<clankers_tui::components::subagent_panel::SubagentPanel>(PanelId::Subagents)
+            if let Some(sp) = app
+                .panels
+                .downcast_mut::<clankers_tui::components::subagent_panel::SubagentPanel>(PanelId::Subagents)
             {
                 sp.scroll.scroll_up(3);
             }
         }
         Action::Extended(ExtendedAction::PanelScrollDown) => {
             use clanker_tui_types::PanelId;
-            if let Some(sp) =
-                app.panels.downcast_mut::<clankers_tui::components::subagent_panel::SubagentPanel>(PanelId::Subagents)
+            if let Some(sp) = app
+                .panels
+                .downcast_mut::<clankers_tui::components::subagent_panel::SubagentPanel>(PanelId::Subagents)
             {
                 sp.scroll.scroll_down(3);
             }
         }
         Action::Extended(ExtendedAction::PanelClearDone) => {
             use clanker_tui_types::PanelId;
-            if let Some(sp) =
-                app.panels.downcast_mut::<clankers_tui::components::subagent_panel::SubagentPanel>(PanelId::Subagents)
+            if let Some(sp) = app
+                .panels
+                .downcast_mut::<clankers_tui::components::subagent_panel::SubagentPanel>(PanelId::Subagents)
             {
                 sp.clear_done();
                 if !sp.is_visible() {
@@ -773,8 +773,9 @@ fn handle_local_action(
         }
         Action::Extended(ExtendedAction::PanelRemove) => {
             use clanker_tui_types::PanelId;
-            if let Some(sp) =
-                app.panels.downcast_mut::<clankers_tui::components::subagent_panel::SubagentPanel>(PanelId::Subagents)
+            if let Some(sp) = app
+                .panels
+                .downcast_mut::<clankers_tui::components::subagent_panel::SubagentPanel>(PanelId::Subagents)
             {
                 sp.remove_selected();
             }
@@ -944,7 +945,7 @@ mod tests {
         async fn complete(
             &self,
             _request: clankers_provider::CompletionRequest,
-            _tx: tokio::sync::mpsc::Sender<clankers_provider::streaming::StreamEvent>,
+            _tx: tokio::sync::mpsc::Sender<clanker_message::streaming::StreamEvent>,
         ) -> clankers_provider::error::Result<()> {
             Ok(())
         }

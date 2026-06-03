@@ -7,15 +7,15 @@
 
 use std::sync::Arc;
 
-use crossterm::event::KeyCode;
-use crossterm::event::KeyModifiers;
-
 use clankers_config::keybindings::Action;
 use clankers_config::keybindings::ExtendedAction;
 use clankers_config::keybindings::InputMode;
-use crate::slash_commands;
 use clankers_tui::app::App;
 use clankers_tui::keymap::Keymap;
+use crossterm::event::KeyCode;
+use crossterm::event::KeyModifiers;
+
+use crate::slash_commands;
 
 // ---------------------------------------------------------------------------
 // Action dispatcher
@@ -64,11 +64,10 @@ fn handle_panel_focused_action(
     action: &Action,
     cmd_tx: &tokio::sync::mpsc::UnboundedSender<super::interactive::AgentCommand>,
 ) -> bool {
+    use clankers_config::keybindings::CoreAction;
     use ratatui::layout::Direction;
     use ratatui_hypertile::HypertileAction;
     use ratatui_hypertile::Towards;
-
-    use clankers_config::keybindings::CoreAction;
 
     let is_global = match action {
         Action::Core(c) => {
@@ -461,8 +460,8 @@ pub(crate) fn handle_input_with_plugins(
             .images
             .into_iter()
             .filter_map(|c| match c {
-                clankers_provider::message::Content::Image {
-                    source: clankers_provider::message::ImageSource::Base64 { media_type, data },
+                clanker_message::Content::Image {
+                    source: clanker_message::ImageSource::Base64 { media_type, data },
                 } => {
                     let size = base64::Engine::decode(&base64::engine::general_purpose::STANDARD, &data)
                         .map(|b| b.len())

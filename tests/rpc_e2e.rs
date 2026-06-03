@@ -10,17 +10,17 @@ mod tests {
     use std::sync::Arc;
 
     use async_trait::async_trait;
+    use clanker_message::AgentMessage;
+    use clanker_message::Content;
+    use clanker_message::Usage;
+    use clanker_message::streaming::ContentDelta;
+    use clanker_message::streaming::MessageMetadata;
+    use clanker_message::streaming::StreamEvent;
     use clankers::modes::rpc::iroh::*;
     use clankers::modes::rpc::protocol::Request;
     use clankers_provider::CompletionRequest;
     use clankers_provider::Model;
     use clankers_provider::Provider;
-    use clankers_provider::Usage;
-    use clankers_provider::message::AgentMessage;
-    use clankers_provider::message::Content;
-    use clankers_provider::streaming::ContentDelta;
-    use clankers_provider::streaming::MessageMetadata;
-    use clankers_provider::streaming::StreamEvent;
     use serde_json::json;
     use tokio::sync::mpsc;
 
