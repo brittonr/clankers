@@ -70,6 +70,7 @@ const DIRECT_ARTIFACTS: &[&str] = &[
     "scripts/check-real-product-dogfood.rs",
     "scripts/check-provider-adapter-kit.rs",
     "scripts/check-session-resume-brick.rs",
+    "scripts/check-session-ledger-boundary.rs",
     "scripts/check-tool-catalog-manifest.rs",
     "scripts/check-capability-pack-composition.rs",
     "scripts/check-plugin-runtime-dispatch.rs",

@@ -727,6 +727,68 @@ mod tests {
     }
 
     #[test]
+    fn desktop_history_replay_parity_contract_covers_tool_compaction_branch_and_semantics() {
+        let user_events = agent_message_to_tui_events(&user_msg("timestamped"));
+        assert!(matches!(
+            &user_events[0],
+            clanker_tui_types::TuiEvent::UserInput { text, timestamp, .. }
+                if text == "timestamped" && *timestamp == fixed_timestamp()
+        ));
+
+        let tool = clanker_message::AgentMessage::ToolResult(clanker_message::ToolResultMessage {
+            id: clanker_message::MessageId::new("tool-parity"),
+            call_id: "call-parity".to_string(),
+            tool_name: "lookup".to_string(),
+            content: vec![clanker_message::Content::Text {
+                text: "tool parity output".to_string(),
+            }],
+            is_error: true,
+            details: None,
+            timestamp: fixed_timestamp(),
+        });
+        let tool_events = agent_message_to_tui_events(&tool);
+        assert!(matches!(
+            &tool_events[0],
+            clanker_tui_types::TuiEvent::ToolDone { call_id, text, is_error: true, .. }
+                if call_id == "call-parity" && text == "tool parity output"
+        ));
+
+        let compaction = clanker_message::AgentMessage::CompactionSummary(clanker_message::CompactionSummaryMessage {
+            id: clanker_message::MessageId::new("compact-parity"),
+            compacted_ids: vec![clanker_message::MessageId::new("old-1")],
+            summary: "compaction context remains metadata".to_string(),
+            tokens_saved: 42,
+            timestamp: fixed_timestamp(),
+        });
+        let compaction_events = agent_message_to_tui_events(&compaction);
+        assert!(matches!(&compaction_events[0], clanker_tui_types::TuiEvent::SessionCompaction {
+            compacted_count: 1,
+            tokens_saved: 42
+        }));
+
+        let branch = clanker_message::AgentMessage::BranchSummary(clanker_message::BranchSummaryMessage {
+            id: clanker_message::MessageId::new("branch-parity"),
+            from_id: clanker_message::MessageId::new("user-parity"),
+            summary: "branch context remains adapter-owned metadata".to_string(),
+            timestamp: fixed_timestamp(),
+        });
+        assert!(agent_message_to_tui_events(&branch).is_empty());
+
+        let semantic = SemanticEvent::ToolFinished {
+            call_id: "call-parity".to_string(),
+            status: SemanticToolStatus::Failed,
+            text: "semantic tool output".to_string(),
+            images: Vec::new(),
+            metadata: clanker_message::SemanticEventMetadata::empty().with_session_id("session-parity"),
+        };
+        assert!(matches!(
+            semantic_event_to_tui_event(&semantic),
+            Some(clanker_tui_types::TuiEvent::ToolDone { call_id, text, is_error: true, .. })
+                if call_id == "call-parity" && text == "semantic tool output"
+        ));
+    }
+
+    #[test]
     fn history_user_message_to_tui_events() {
         let message = user_msg("hello");
         let events = agent_message_to_tui_events(&message);

@@ -1,5 +1,6 @@
 {
   "schema": "clankers.embedded_session_resume.evidence.v1",
+  "boundary_rail": "scripts/check-session-ledger-boundary.rs",
   "products": [
     {
       "product": "embedded-session-store",

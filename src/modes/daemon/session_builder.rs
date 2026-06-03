@@ -474,39 +474,7 @@ pub(crate) fn load_recovery_seed_messages(entry: &SessionCatalogEntry) -> Vec<Se
 }
 
 pub(crate) fn serialize_seed_messages(messages: &[clanker_message::AgentMessage]) -> Vec<SerializedMessage> {
-    messages
-        .iter()
-        .filter_map(|message| {
-            let (role, content, model) = match message {
-                clanker_message::AgentMessage::User(user) => ("user", text_content(&user.content), None),
-                clanker_message::AgentMessage::Assistant(assistant) => {
-                    ("assistant", text_content(&assistant.content), Some(assistant.model.clone()))
-                }
-                _ => return None,
-            };
-            if content.is_empty() {
-                None
-            } else {
-                Some(SerializedMessage {
-                    role: role.to_string(),
-                    content,
-                    model,
-                    timestamp: None,
-                })
-            }
-        })
-        .collect()
-}
-
-fn text_content(content: &[clanker_message::Content]) -> String {
-    content
-        .iter()
-        .filter_map(|part| match part {
-            clanker_message::Content::Text { text } => Some(text.as_str()),
-            _ => None,
-        })
-        .collect::<Vec<_>>()
-        .join("\n")
+    crate::modes::session_ledger::desktop_messages_to_serialized_seed_messages(messages)
 }
 
 fn resolve_session_resume_in_dir(

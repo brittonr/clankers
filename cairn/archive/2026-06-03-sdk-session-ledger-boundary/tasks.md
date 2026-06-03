@@ -1,0 +1,12 @@
+## Phase 1: Session ledger boundary
+
+- [x] [serial] I1: Inventory desktop session setup, restore, merge, replay, controller persistence, and runtime ledger paths by DTO owner. r[sdk-session-ledger-boundary.inventory] [covers=sdk-session-ledger-boundary.inventory] [evidence=cairn/archive/2026-06-03-sdk-session-ledger-boundary/evidence/session-ledger-inventory.md]
+- [x] [serial] I2: Select one restore/resume path and move reusable behavior behind neutral ledger/session-store DTOs. r[sdk-session-ledger-boundary.ledger-boundary.selected-path] [covers=sdk-session-ledger-boundary.ledger-boundary.selected-path] [evidence=cairn/archive/2026-06-03-sdk-session-ledger-boundary/evidence/selected-resume-path.md]
+- [x] [parallel] I3: Keep `clankers-session`/`AgentMessage` storage handling inside desktop compatibility adapters. r[sdk-session-ledger-boundary.desktop-compat.adapter-owned] [covers=sdk-session-ledger-boundary.desktop-compat.adapter-owned] [evidence=cairn/archive/2026-06-03-sdk-session-ledger-boundary/evidence/desktop-compat-adapter-owned.md]
+- [x] [parallel] I4: Update SDK docs/examples so embedders use host-owned ledger DTOs rather than Clankers session stores. r[sdk-session-ledger-boundary.ledger-boundary.sdk-owned-store] [covers=sdk-session-ledger-boundary.ledger-boundary.sdk-owned-store] [evidence=cairn/archive/2026-06-03-sdk-session-ledger-boundary/evidence/sdk-docs-ledger-boundary.md]
+
+## Phase 2: Verification
+
+- [x] [serial] V1: Add or update session-resume brick fixtures covering restored user/tool/assistant context and missing-session fail-closed behavior. r[sdk-session-ledger-boundary.verification.resume-fixtures] [covers=sdk-session-ledger-boundary.verification.resume-fixtures] [evidence=cairn/archive/2026-06-03-sdk-session-ledger-boundary/evidence/resume-fixtures.md]
+- [x] [serial] V2: Add desktop restore/attach replay parity tests for timestamps, finalized hashes, tool results, branch/compaction context, and semantic event conversion. r[sdk-session-ledger-boundary.verification.desktop-parity] [covers=sdk-session-ledger-boundary.verification.desktop-parity] [evidence=cairn/archive/2026-06-03-sdk-session-ledger-boundary/evidence/desktop-replay-parity.md]
+- [x] [serial] V3: Run session/runtime/controller focused tests, session-resume brick checker, SDK dependency checks, Cairn gates/validate, and relevant attach replay tests. r[sdk-session-ledger-boundary.verification] [covers=sdk-session-ledger-boundary.verification] [evidence=cairn/archive/2026-06-03-sdk-session-ledger-boundary/evidence/validation-closeout.md]

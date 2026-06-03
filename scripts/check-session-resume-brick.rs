@@ -20,6 +20,7 @@ use serde_json::json;
 
 const ERROR_EXIT: u8 = 1;
 const FIXTURE: &str = "examples/embedded-session-store/session-resume-evidence.json";
+const SESSION_LEDGER_BOUNDARY: &str = "scripts/check-session-ledger-boundary.rs";
 const POLICY: &str = "policy/embedded-lego/lego-contracts.json";
 const DOCS: &str = "docs/src/tutorials/embedded-agent-sdk.md";
 const SPEC: &str = "cairn/specs/embedded-composition-kits/spec.md";
@@ -56,6 +57,7 @@ fn run() -> Result<PathBuf, String> {
     let fixture: Value =
         serde_json::from_str(&fixture_text).map_err(|error| format!("failed to parse {FIXTURE}: {error}"))?;
     require_eq(&fixture, "schema", "clankers.embedded_session_resume.evidence.v1")?;
+    require_eq(&fixture, "boundary_rail", SESSION_LEDGER_BOUNDARY)?;
     validate_policy_points_at_fixture()?;
     let products = fixture
         .get("products")
@@ -66,6 +68,7 @@ fn run() -> Result<PathBuf, String> {
     }
     let mut hashed = vec![
         hash_artifact(Path::new(FIXTURE))?,
+        hash_artifact(Path::new(SESSION_LEDGER_BOUNDARY))?,
         hash_artifact(Path::new(POLICY))?,
         hash_artifact(Path::new(DOCS))?,
         hash_artifact(Path::new(SPEC))?,
@@ -98,7 +101,8 @@ fn run() -> Result<PathBuf, String> {
             "session_runtime": RUNTIME_SESSION,
             "model_history_field": "ModelRequest.history: Vec<SessionLedgerMessage>",
             "resume_entrypoint": "Runtime::resume_session",
-            "fixture": "cargo test -p clankers-runtime --lib session_resume"
+            "fixture": "cargo test -p clankers-runtime --lib session_resume",
+            "boundary_rail": SESSION_LEDGER_BOUNDARY
         },
         "hashed_artifacts": hashed,
         "boundary": "session/message DTOs are neutral ledger entries; storage stays host-owned behind SessionStore adapters."
@@ -170,6 +174,7 @@ fn validate_docs_and_spec() -> Result<(), String> {
         "Runtime::resume_session",
         "session-resume-evidence.json",
         "scripts/check-session-resume-brick.rs",
+        "scripts/check-session-ledger-boundary.rs",
         "product-owned session/message DTOs",
     ] {
         require_contains(&docs, marker, &format!("{DOCS} missing `{marker}`"))?;

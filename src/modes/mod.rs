@@ -29,6 +29,7 @@ pub mod rpc_embed;
 pub(crate) mod schedule_prompt;
 pub(crate) mod scrollback_dump;
 pub(crate) mod session_command_policy;
+pub(crate) mod session_ledger;
 pub(crate) mod session_restore;
 pub(crate) mod session_setup;
 pub(crate) mod tool_catalog;
