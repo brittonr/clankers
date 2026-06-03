@@ -1,9 +1,9 @@
 //! Builder for Agent with automatic routing and cost tracking setup
 
+use std::path::PathBuf;
 use std::sync::Arc;
 
 use clanker_message::ThinkingConfig;
-use clankers_config::paths::ClankersPaths;
 use clankers_config::settings::Settings;
 use clankers_db::Db;
 use clankers_model_selection::cost_tracker::CostTracker;
@@ -26,7 +26,7 @@ pub struct AgentBuilder {
     system_prompt: String,
     tools: Vec<Arc<dyn Tool>>,
     db: Option<Db>,
-    paths: Option<ClankersPaths>,
+    pricing_config_dir: Option<PathBuf>,
     thinking: Option<ThinkingConfig>,
     capability_gate: Option<Arc<dyn crate::tool::CapabilityGate>>,
 }
@@ -41,7 +41,7 @@ impl AgentBuilder {
             system_prompt,
             tools: Vec::new(),
             db: None,
-            paths: None,
+            pricing_config_dir: None,
             thinking: None,
             capability_gate: None,
         }
@@ -71,12 +71,9 @@ impl AgentBuilder {
         self
     }
 
-    /// Set the ClankersPaths for resolving pricing data
-    ///
-    /// If not provided, `build()` will call `ClankersPaths::resolve()` automatically
-    /// when cost tracking is enabled.
-    pub fn with_paths(mut self, paths: ClankersPaths) -> Self {
-        self.paths = Some(paths);
+    /// Set the optional config directory for resolving pricing data.
+    pub fn with_pricing_config_dir(mut self, path: PathBuf) -> Self {
+        self.pricing_config_dir = Some(path);
         self
     }
 
@@ -102,8 +99,7 @@ impl AgentBuilder {
 
         // Wire cost tracking from settings
         if let Some(cost_config) = self.settings.cost_tracking.as_ref() {
-            let paths = self.paths.unwrap_or_else(|| ClankersPaths::get().clone());
-            let pricing = pricing_from_models(&provider_models, Some(&paths.global_config_dir));
+            let pricing = pricing_from_models(&provider_models, self.pricing_config_dir.as_deref());
             let tracker = Arc::new(CostTracker::new(pricing, cost_config.clone()));
             agent = agent.with_cost_tracker(tracker);
         }

@@ -77,7 +77,7 @@ pub(crate) fn build_agent_with_tools(
     // Build the final agent with tools, db, routing, and cost tracking
     let mut agent_builder = clankers_agent::builder::AgentBuilder::new(provider, settings.clone(), model, system_prompt)
         .with_tools(active_tools)
-        .with_paths(paths.clone());
+        .with_pricing_config_dir(paths.global_config_dir.clone());
 
     // Apply default capability restrictions from settings
     if let Some(caps) = &settings.default_capabilities {

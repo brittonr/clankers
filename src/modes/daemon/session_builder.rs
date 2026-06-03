@@ -129,12 +129,17 @@ pub(crate) fn build_session_hook_pipeline(
 
 pub(crate) fn assemble_session_runtime(request: DaemonSessionRuntimeRequest<'_>) -> DaemonSessionRuntime {
     let paths = clankers_config::ClankersPaths::get();
-    assemble_session_runtime_in_dir(request, paths.global_sessions_dir.clone())
+    assemble_session_runtime_in_dir(
+        request,
+        paths.global_sessions_dir.clone(),
+        Some(paths.global_config_dir.clone()),
+    )
 }
 
 fn assemble_session_runtime_in_dir(
     request: DaemonSessionRuntimeRequest<'_>,
     sessions_dir: PathBuf,
+    pricing_config_dir: Option<PathBuf>,
 ) -> DaemonSessionRuntime {
     let factory = request.factory;
     let session_id = request.session_id;
@@ -154,6 +159,9 @@ fn assemble_session_runtime_in_dir(
         system_prompt.clone(),
     )
     .with_tools(tools);
+    if let Some(pricing_config_dir) = pricing_config_dir {
+        builder = builder.with_pricing_config_dir(pricing_config_dir);
+    }
 
     if let Some(public_auth) = request.public_auth {
         let gate = Arc::new(crate::capability_gate::PublicUcanCapabilityGate::new(public_auth));
@@ -779,6 +787,7 @@ mod tests {
                 public_auth: None,
             },
             dir.path().join("sessions"),
+            None,
         );
 
         assert_eq!(runtime.session_id, "runtime-bundle");

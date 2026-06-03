@@ -652,6 +652,7 @@ fn process_backend_ownership_signature(tool_file: &RustFile, tool: &str) -> Resu
 
 fn agent_turn_ports_signature() -> Result<Value, String> {
     let agent_lib_file = read_rust_file(AGENT_LIB)?;
+    let builder_file = read_rust_file(AGENT_BUILDER)?;
     let turn_mod_file = read_rust_file(AGENT_TURN_MOD)?;
     let adapters_file = read_rust_file(AGENT_TURN_ADAPTERS)?;
     let ports_file = read_rust_file(AGENT_TURN_PORTS)?;
@@ -662,6 +663,7 @@ fn agent_turn_ports_signature() -> Result<Value, String> {
     let system_prompt_file = read_rust_file(AGENT_SYSTEM_PROMPT)?;
     let tool_file = read_rust_file(AGENT_TOOL)?;
     let agent_lib = &agent_lib_file.source;
+    let builder = &builder_file.source;
     let turn_mod = &turn_mod_file.source;
     let adapters = &adapters_file.source;
     let ports = &ports_file.source;
@@ -677,6 +679,16 @@ fn agent_turn_ports_signature() -> Result<Value, String> {
         &agent_lib,
         "ProviderModelPort::new(self.provider.as_ref())",
         "provider adapter construction at agent shell edge",
+    )?;
+    require_contains(
+        builder,
+        "with_pricing_config_dir",
+        "agent builder receives pricing config dir from app edge",
+    )?;
+    forbid_contains(
+        builder,
+        "ClankersPaths",
+        "agent builder must not resolve global clankers paths for pricing",
     )?;
     require_contains(&agent_lib, "AgentRuntimeServices", "agent shell runtime service bundle construction")?;
     forbid_contains(&turn_mod, "ProviderModelPort::new(ctx.provider)", "turn loop concrete provider construction")?;
