@@ -6,9 +6,9 @@ use clankers_tui::app::App;
 use tracing::warn;
 
 use crate::modes::session_command_policy;
-use crate::modes::session_command_policy::LocalSessionEffect;
 use crate::modes::session_command_policy::SessionAckPolicy;
 use crate::modes::session_command_policy::SessionCommandEffect;
+use crate::modes::session_command_policy::SessionCommandIntent;
 use crate::slash_commands;
 use crate::slash_commands::effects::SlashEffect;
 use crate::slash_commands::effects::SlashPluginEffect;
@@ -43,6 +43,7 @@ impl AttachParityTracker {
         self.expect_ack(SessionAckPolicy::ThinkingLevel);
     }
 
+    #[cfg(test)]
     pub(crate) fn expect_disabled_tools_message(&mut self) {
         self.expect_ack(SessionAckPolicy::DisabledTools);
     }
@@ -313,11 +314,11 @@ pub(super) fn bridge_attach_thinking_level_change(
     app: &mut App,
     client: &ClientAdapter,
     parity_tracker: &mut AttachParityTracker,
-    session_command: SessionCommand,
+    command: SessionCommandIntent,
     level: clankers_provider::ThinkingLevel,
 ) {
     let mut effect = session_command_policy::set_thinking_level_effect(level);
-    effect.command = Some(session_command);
+    effect.command = Some(command);
     dispatch_session_command_effect(app, client, parity_tracker, effect);
 }
 
@@ -330,7 +331,7 @@ fn dispatch_session_command_effect(
     apply_local_session_effect(app, effect.local);
     parity_tracker.expect_ack(effect.ack);
     if let Some(command) = effect.command {
-        client.send(command);
+        client.send(slash_commands::effects::session_command_intent_to_protocol(command));
     }
 }
 
@@ -338,17 +339,14 @@ fn apply_local_session_effect(app: &mut App, effect: Option<crate::modes::sessio
     slash_commands::effects::apply_local_session_effect(app, effect);
 }
 
-pub(super) fn apply_standalone_disabled_tools(
+pub(super) fn dispatch_disabled_tools_change(
     app: &mut App,
+    client: &ClientAdapter,
+    parity_tracker: &mut AttachParityTracker,
     disabled: impl IntoIterator<Item = String>,
-) -> Vec<String> {
+) {
     let effect = session_command_policy::disabled_tools_effect(disabled);
-    let tools = match effect.local.clone() {
-        Some(LocalSessionEffect::DisabledTools { tools }) => tools,
-        _ => Vec::new(),
-    };
-    apply_local_session_effect(app, effect.local);
-    tools
+    dispatch_session_command_effect(app, client, parity_tracker, effect);
 }
 
 #[cfg(test)]

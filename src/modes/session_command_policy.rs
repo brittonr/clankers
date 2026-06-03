@@ -1,12 +1,10 @@
 //! Shared session command/effect/ack policy for standalone, daemon attach, and remote attach.
 //!
 //! Transport shells deliver commands and events; this module owns the reusable
-//! policy for local parity effects, daemon commands, acknowledgement suppression,
-//! and user-visible messages.
+//! policy for local parity effects, neutral command intents, acknowledgement
+//! suppression, and user-visible messages.
 
 use clankers_protocol::DaemonEvent;
-use clankers_protocol::SessionCommand;
-
 use clankers_provider::ThinkingLevel;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -22,10 +20,18 @@ pub(crate) enum SessionAckPolicy {
     ManualCompaction,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) enum SessionCommandIntent {
+    SetThinkingLevel { level: String },
+    CycleThinkingLevel,
+    SetDisabledTools { tools: Vec<String> },
+    CompactHistory,
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) struct SessionCommandEffect {
     pub(crate) local: Option<LocalSessionEffect>,
-    pub(crate) command: Option<SessionCommand>,
+    pub(crate) command: Option<SessionCommandIntent>,
     pub(crate) ack: SessionAckPolicy,
 }
 
@@ -35,7 +41,7 @@ pub(crate) fn set_thinking_level_effect(level: ThinkingLevel) -> SessionCommandE
             level,
             message: thinking_level_message(level),
         }),
-        command: Some(SessionCommand::SetThinkingLevel {
+        command: Some(SessionCommandIntent::SetThinkingLevel {
             level: level.label().to_string(),
         }),
         ack: SessionAckPolicy::ThinkingLevel,
@@ -49,7 +55,7 @@ pub(crate) fn cycle_thinking_level_effect(current: ThinkingLevel) -> SessionComm
             level,
             message: thinking_level_message(level),
         }),
-        command: Some(SessionCommand::CycleThinkingLevel),
+        command: Some(SessionCommandIntent::CycleThinkingLevel),
         ack: SessionAckPolicy::ThinkingLevel,
     }
 }
@@ -59,7 +65,7 @@ pub(crate) fn disabled_tools_effect(disabled: impl IntoIterator<Item = String>) 
     tools.sort();
     SessionCommandEffect {
         local: Some(LocalSessionEffect::DisabledTools { tools: tools.clone() }),
-        command: Some(SessionCommand::SetDisabledTools { tools }),
+        command: Some(SessionCommandIntent::SetDisabledTools { tools }),
         ack: SessionAckPolicy::DisabledTools,
     }
 }
@@ -67,7 +73,7 @@ pub(crate) fn disabled_tools_effect(disabled: impl IntoIterator<Item = String>) 
 pub(crate) fn manual_compaction_effect() -> SessionCommandEffect {
     SessionCommandEffect {
         local: None,
-        command: Some(SessionCommand::CompactHistory),
+        command: Some(SessionCommandIntent::CompactHistory),
         ack: SessionAckPolicy::ManualCompaction,
     }
 }
@@ -115,7 +121,7 @@ mod tests {
         );
         assert_eq!(
             effect.command,
-            Some(SessionCommand::SetThinkingLevel {
+            Some(SessionCommandIntent::SetThinkingLevel {
                 level: "high".to_string(),
             })
         );
@@ -134,7 +140,7 @@ mod tests {
         );
         assert_eq!(
             effect.command,
-            Some(SessionCommand::SetDisabledTools {
+            Some(SessionCommandIntent::SetDisabledTools {
                 tools: vec!["bash".to_string(), "web".to_string()],
             })
         );

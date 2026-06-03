@@ -178,24 +178,28 @@ fn thinking_slash_bridges_explicit_and_cycle_paths_before_suppressing_daemon_ack
     assert_has(&attach_commands.call_paths, "apply_local_session_effect", "attach command local apply calls");
     assert_has(&attach_commands.method_calls, "expect_ack", "attach command ack methods");
 
-    for path in ["SessionCommand::SetThinkingLevel", "SessionCommand::CycleThinkingLevel"] {
-        assert_has(&session_policy.paths, path, "session command policy thinking paths");
+    for path in ["SessionCommandIntent::SetThinkingLevel", "SessionCommandIntent::CycleThinkingLevel"] {
+        assert_has(&session_policy.paths, path, "session command policy neutral thinking intent paths");
     }
 }
 
 #[test]
 fn disabled_tools_attach_bridge_applies_local_state_before_ack_suppression() {
-    assert_ordered_source_anchor(
-        ATTACH,
-        "apply_standalone_disabled_tools(app, app.overlays.tool_toggle.disabled_set())",
-        "parity_tracker.expect_disabled_tools_message();",
-        "attach should apply disabled-tools state before budgeting daemon ack suppression",
+    assert!(
+        ATTACH.contains("dispatch_disabled_tools_change(app, client, parity_tracker, disabled)"),
+        "attach tool-toggle edge should dispatch through the disabled-tools projection adapter"
     );
     assert_ordered_source_anchor(
-        ATTACH,
-        "parity_tracker.expect_disabled_tools_message();",
-        "client.send(SessionCommand::SetDisabledTools { tools: disabled });",
-        "attach should budget daemon disabled-tools ack suppression before forwarding",
+        ATTACH_COMMANDS,
+        "apply_local_session_effect(app, effect.local);",
+        "parity_tracker.expect_ack(effect.ack);",
+        "attach should apply local session state before budgeting daemon ack suppression",
+    );
+    assert_ordered_source_anchor(
+        ATTACH_COMMANDS,
+        "parity_tracker.expect_ack(effect.ack);",
+        "client.send(slash_commands::effects::session_command_intent_to_protocol(command));",
+        "attach should budget daemon ack suppression before projecting and forwarding protocol commands",
     );
 }
 

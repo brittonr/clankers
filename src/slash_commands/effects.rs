@@ -11,6 +11,7 @@ use crate::modes::interactive::AgentCommand;
 use crate::modes::session_command_policy;
 use crate::modes::session_command_policy::LocalSessionEffect;
 use crate::modes::session_command_policy::SessionCommandEffect;
+use crate::modes::session_command_policy::SessionCommandIntent;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum SlashUiEffect {
@@ -137,7 +138,30 @@ fn apply_standalone_session_effect(
 ) {
     apply_local_session_effect(app, effect.local);
     if let Some(command) = effect.command {
-        apply_standalone_session_command(cmd_tx, command);
+        apply_standalone_session_intent(cmd_tx, command);
+    }
+}
+
+#[cfg(test)]
+fn apply_standalone_session_intent(
+    cmd_tx: &tokio::sync::mpsc::UnboundedSender<AgentCommand>,
+    command: SessionCommandIntent,
+) {
+    match command {
+        SessionCommandIntent::SetThinkingLevel { level } => {
+            if let Some(level) = ThinkingLevel::from_str_or_budget(&level) {
+                cmd_tx.send(AgentCommand::SetThinkingLevel(level)).ok();
+            }
+        }
+        SessionCommandIntent::CycleThinkingLevel => {
+            cmd_tx.send(AgentCommand::CycleThinkingLevel).ok();
+        }
+        SessionCommandIntent::SetDisabledTools { tools } => {
+            cmd_tx.send(AgentCommand::SetDisabledTools(tools.into_iter().collect())).ok();
+        }
+        SessionCommandIntent::CompactHistory => {
+            cmd_tx.send(AgentCommand::CompressContext).ok();
+        }
     }
 }
 
@@ -147,24 +171,31 @@ fn apply_standalone_session_command(
     command: SessionCommand,
 ) {
     match command {
-        SessionCommand::SetThinkingLevel { level } => {
-            if let Some(level) = ThinkingLevel::from_str_or_budget(&level) {
-                cmd_tx.send(AgentCommand::SetThinkingLevel(level)).ok();
-            }
-        }
-        SessionCommand::CycleThinkingLevel => {
-            cmd_tx.send(AgentCommand::CycleThinkingLevel).ok();
-        }
-        SessionCommand::SetDisabledTools { tools } => {
-            cmd_tx.send(AgentCommand::SetDisabledTools(tools.into_iter().collect())).ok();
-        }
-        SessionCommand::CompactHistory => {
-            cmd_tx.send(AgentCommand::CompressContext).ok();
-        }
         SessionCommand::SetModel { model } => {
             cmd_tx.send(AgentCommand::SetModel(model)).ok();
         }
+        SessionCommand::SetThinkingLevel { level } => {
+            apply_standalone_session_intent(cmd_tx, SessionCommandIntent::SetThinkingLevel { level });
+        }
+        SessionCommand::CycleThinkingLevel => {
+            apply_standalone_session_intent(cmd_tx, SessionCommandIntent::CycleThinkingLevel);
+        }
+        SessionCommand::SetDisabledTools { tools } => {
+            apply_standalone_session_intent(cmd_tx, SessionCommandIntent::SetDisabledTools { tools });
+        }
+        SessionCommand::CompactHistory => {
+            apply_standalone_session_intent(cmd_tx, SessionCommandIntent::CompactHistory);
+        }
         _ => {}
+    }
+}
+
+pub(crate) fn session_command_intent_to_protocol(command: SessionCommandIntent) -> SessionCommand {
+    match command {
+        SessionCommandIntent::SetThinkingLevel { level } => SessionCommand::SetThinkingLevel { level },
+        SessionCommandIntent::CycleThinkingLevel => SessionCommand::CycleThinkingLevel,
+        SessionCommandIntent::SetDisabledTools { tools } => SessionCommand::SetDisabledTools { tools },
+        SessionCommandIntent::CompactHistory => SessionCommand::CompactHistory,
     }
 }
 
@@ -216,6 +247,24 @@ mod tests {
             is_error: true,
             ..
         }]));
+    }
+
+    #[test]
+    fn disabled_tools_neutral_intent_projects_to_protocol_and_standalone_command() {
+        let effect = session_command_policy::disabled_tools_effect(["web".to_string(), "bash".to_string()]);
+        let command = effect.command.clone().expect("disabled tools effect should include command intent");
+
+        assert_eq!(session_command_intent_to_protocol(command), SessionCommand::SetDisabledTools {
+            tools: vec!["bash".to_string(), "web".to_string()],
+        });
+
+        let mut app = App::new("test-model".to_string(), "/tmp".to_string(), crate::tui_config::detect_theme());
+        let (cmd_tx, mut cmd_rx) = tokio::sync::mpsc::unbounded_channel();
+        apply_standalone_slash_effect(&mut app, &cmd_tx, SlashEffect::Session(effect));
+        assert!(app.disabled_tools.contains("bash"));
+        assert!(
+            matches!(cmd_rx.try_recv(), Ok(AgentCommand::SetDisabledTools(tools)) if tools.contains("bash") && tools.contains("web"))
+        );
     }
 
     #[test]

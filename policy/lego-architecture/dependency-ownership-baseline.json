@@ -801,11 +801,19 @@
       "ack_matcher": "ack_matches",
       "ack_policy_dto": "SessionAckPolicy",
       "attach_adapter_module": "src/modes/attach/commands.rs",
+      "disabled_tools_fixture": "disabled_tools_neutral_intent_projects_to_protocol_and_standalone_command",
+      "disabled_tools_projection_adapter": "attach::commands::dispatch_disabled_tools_change",
       "effect_dto": "SessionCommandEffect",
+      "forbidden_policy_protocol_constructors": [
+        "SessionCommand::SetDisabledTools",
+        "clankers_protocol::SessionCommand"
+      ],
       "local_effect_dto": "LocalSessionEffect",
       "negative_fixture": "ack_policy_matches_only_expected_daemon_ack_shape",
+      "neutral_command_intent_dto": "SessionCommandIntent",
       "policy_module": "src/modes/session_command_policy.rs",
       "positive_fixture": "thinking_effect_projects_local_message_command_and_ack_policy",
+      "protocol_projection_adapter": "slash_commands::effects::session_command_intent_to_protocol",
       "shared_effects": [
         "set_thinking_level_effect",
         "cycle_thinking_level_effect",
@@ -814,7 +822,7 @@
       ],
       "slash_effects_module": "src/slash_commands/effects.rs",
       "standalone_agent_task_module": "src/modes/agent_task.rs",
-      "typed_rail_kind": "Rust AST enum, struct, function, and call-path checks"
+      "typed_rail_kind": "Rust AST enum, struct, function, call-path, and forbidden protocol-constructor checks"
     },
     "tool_host_service_context": {
       "forbidden_shell_imports": [

@@ -299,9 +299,8 @@ fn handle_key_event(
     if app.overlays.tool_toggle.visible {
         let (consumed, dirty) = clankers_tui::selectors::handle_tool_toggle_key(app, &key);
         if dirty {
-            let disabled = apply_standalone_disabled_tools(app, app.overlays.tool_toggle.disabled_set());
-            parity_tracker.expect_disabled_tools_message();
-            client.send(SessionCommand::SetDisabledTools { tools: disabled });
+            let disabled = app.overlays.tool_toggle.disabled_set();
+            dispatch_disabled_tools_change(app, client, parity_tracker, disabled);
         }
         if consumed {
             return;
@@ -371,12 +370,12 @@ mod commands;
 pub(crate) use commands::AttachParityTracker;
 #[cfg(test)]
 pub(crate) use commands::AttachSlashRoute;
-use commands::apply_standalone_disabled_tools;
 #[cfg(test)]
 use commands::apply_standalone_thinking_level;
 use commands::bridge_attach_thinking_level_change;
 use commands::confirm_bash_command;
 use commands::dispatch_attach_slash;
+use commands::dispatch_disabled_tools_change;
 #[cfg(test)]
 pub(crate) use commands::format_attach_thinking_message;
 #[cfg(test)]
@@ -842,7 +841,7 @@ fn handle_local_action(
                 app,
                 client,
                 parity_tracker,
-                SessionCommand::CycleThinkingLevel,
+                crate::modes::session_command_policy::SessionCommandIntent::CycleThinkingLevel,
                 next_level,
             );
         }

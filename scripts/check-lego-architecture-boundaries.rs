@@ -1621,6 +1621,7 @@ fn session_command_policy_signature() -> Result<Value, String> {
 
     require_rust_enum(&policy_file, "LocalSessionEffect", "typed local session effect DTO")?;
     require_rust_enum(&policy_file, "SessionAckPolicy", "typed session ack policy DTO")?;
+    require_rust_enum(&policy_file, "SessionCommandIntent", "neutral session command intent DTO")?;
     require_rust_struct(&policy_file, "SessionCommandEffect", "typed session command effect DTO")?;
     for function in [
         "set_thinking_level_effect",
@@ -1642,14 +1643,21 @@ fn session_command_policy_signature() -> Result<Value, String> {
         "attach ack suppression delegates to shared policy",
     )?;
     require_rust_path(
+        &attach_file,
+        "slash_commands::effects::session_command_intent_to_protocol",
+        "attach edge projects neutral command intents to daemon protocol",
+    )?;
+    require_rust_path(
         &agent_task_file,
         "session_command_policy::thinking_level_message",
         "standalone thinking message delegates to shared policy",
     )?;
 
     require_contains(&policy, "Shared session command/effect/ack policy", "session command policy module purpose")?;
+    require_contains(&policy, "neutral command intents", "neutral display/protocol command intent policy note")?;
     require_contains(&policy, "enum LocalSessionEffect", "typed local session effect DTO")?;
     require_contains(&policy, "enum SessionAckPolicy", "typed session ack policy DTO")?;
+    require_contains(&policy, "enum SessionCommandIntent", "neutral session command intent DTO")?;
     require_contains(&policy, "struct SessionCommandEffect", "typed session command effect DTO")?;
     require_contains(&policy, "set_thinking_level_effect", "shared thinking set effect")?;
     require_contains(&policy, "cycle_thinking_level_effect", "shared thinking cycle effect")?;
@@ -1662,15 +1670,40 @@ fn session_command_policy_signature() -> Result<Value, String> {
         "positive shared policy fixture",
     )?;
     require_contains(&policy, "ack_policy_matches_only_expected_daemon_ack_shape", "negative ack fixture")?;
+    forbid_contains(
+        &policy,
+        "SessionCommand::SetDisabledTools",
+        "disabled-tools reusable policy must stay protocol-neutral",
+    )?;
+    forbid_contains(
+        &policy,
+        "clankers_protocol::SessionCommand",
+        "selected reusable slash policy must not import daemon protocol commands",
+    )?;
     require_contains(
         &attach,
         "dispatch_session_command_effect",
         "attach command shell delegates through shared effect dispatcher",
     )?;
     require_contains(
+        &attach,
+        "dispatch_disabled_tools_change",
+        "attach disabled-tools projection adapter",
+    )?;
+    require_contains(
         &slash_effects,
         "session_command_policy::cycle_thinking_level_effect(current_thinking_level)",
         "slash cycle thinking delegates to shared policy before attach dispatch",
+    )?;
+    require_contains(
+        &slash_effects,
+        "session_command_intent_to_protocol",
+        "slash/attach projection adapter converts neutral command intents to daemon protocol",
+    )?;
+    require_contains(
+        &slash_effects,
+        "disabled_tools_neutral_intent_projects_to_protocol_and_standalone_command",
+        "disabled-tools neutral effect projection fixture",
     )?;
     require_contains(
         &attach,
@@ -1690,6 +1723,7 @@ fn session_command_policy_signature() -> Result<Value, String> {
         "standalone_agent_task_module": AGENT_TASK,
         "local_effect_dto": "LocalSessionEffect",
         "ack_policy_dto": "SessionAckPolicy",
+        "neutral_command_intent_dto": "SessionCommandIntent",
         "effect_dto": "SessionCommandEffect",
         "shared_effects": [
             "set_thinking_level_effect",
@@ -1698,9 +1732,13 @@ fn session_command_policy_signature() -> Result<Value, String> {
             "manual_compaction_effect"
         ],
         "ack_matcher": "ack_matches",
+        "protocol_projection_adapter": "slash_commands::effects::session_command_intent_to_protocol",
+        "disabled_tools_projection_adapter": "attach::commands::dispatch_disabled_tools_change",
         "positive_fixture": "thinking_effect_projects_local_message_command_and_ack_policy",
+        "disabled_tools_fixture": "disabled_tools_neutral_intent_projects_to_protocol_and_standalone_command",
         "negative_fixture": "ack_policy_matches_only_expected_daemon_ack_shape",
-        "typed_rail_kind": "Rust AST enum, struct, function, and call-path checks"
+        "forbidden_policy_protocol_constructors": ["SessionCommand::SetDisabledTools", "clankers_protocol::SessionCommand"],
+        "typed_rail_kind": "Rust AST enum, struct, function, call-path, and forbidden protocol-constructor checks"
     }))
 }
 
