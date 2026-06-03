@@ -10,6 +10,10 @@ use std::sync::Arc;
 use std::sync::Mutex;
 
 use async_trait::async_trait;
+use clankers_tool_host::ToolHostServiceKind;
+use clankers_tool_host::ToolInvocationContext;
+use clankers_tool_host::ToolProgressEvent;
+use clankers_tool_host::ToolProgressKind;
 use grep_regex::RegexMatcher;
 use grep_searcher::Searcher;
 use grep_searcher::sinks::UTF8;
@@ -64,6 +68,35 @@ impl GrepTool {
 
         Self { definition }
     }
+
+    fn parse_params(params: &Value) -> Result<(String, String, Option<String>, Option<bool>), ToolResult> {
+        let pattern = match params.get("pattern").and_then(|v| v.as_str()) {
+            Some(p) => p.to_string(),
+            None => return Err(ToolResult::error("Missing required parameter: pattern")),
+        };
+        let path = params.get("path").and_then(|v| v.as_str()).unwrap_or(".").to_string();
+        let glob = params.get("glob").and_then(|v| v.as_str()).map(String::from);
+        let case_sensitive = params.get("case_sensitive").and_then(|v| v.as_bool());
+        Ok((pattern, path, glob, case_sensitive))
+    }
+
+    fn result_from_output(output: String) -> ToolResult {
+        if output.is_empty() {
+            return ToolResult::text("No matches found");
+        }
+
+        const MAX_LINES: usize = 2000;
+        const MAX_BYTES: usize = 50 * 1024;
+
+        let (truncated_output, full_output_path) =
+            crate::tools::truncation::truncate_tail(&output, MAX_LINES, MAX_BYTES);
+
+        let mut result = ToolResult::text(truncated_output);
+        if let Some(path) = full_output_path {
+            result.full_output_path = Some(path.display().to_string());
+        }
+        result
+    }
 }
 
 impl Default for GrepTool {
@@ -79,16 +112,10 @@ impl Tool for GrepTool {
     }
 
     async fn execute(&self, ctx: &ToolContext, params: Value) -> ToolResult {
-        let pattern = match params.get("pattern").and_then(|v| v.as_str()) {
-            Some(p) => p.to_string(),
-            None => return ToolResult::error("Missing required parameter: pattern"),
+        let (pattern, path, glob, case_sensitive) = match Self::parse_params(&params) {
+            Ok(parsed) => parsed,
+            Err(result) => return result,
         };
-
-        let path = params.get("path").and_then(|v| v.as_str()).unwrap_or(".").to_string();
-
-        let glob = params.get("glob").and_then(|v| v.as_str()).map(String::from);
-
-        let case_sensitive = params.get("case_sensitive").and_then(|v| v.as_bool());
 
         // Run the search in a blocking task to avoid blocking the async runtime
         let cancel = ctx.signal.clone();
@@ -109,25 +136,8 @@ impl Tool for GrepTool {
 
         match result {
             Ok(Ok(output)) => {
-                if output.is_empty() {
-                    return ToolResult::text("No matches found");
-                }
-
-                // Emit the full output as a result chunk for the accumulator
                 ctx.emit_result_chunk(ResultChunk::text(&output));
-
-                // Apply truncation
-                const MAX_LINES: usize = 2000;
-                const MAX_BYTES: usize = 50 * 1024;
-
-                let (truncated_output, full_output_path) =
-                    crate::tools::truncation::truncate_tail(&output, MAX_LINES, MAX_BYTES);
-
-                let mut result = ToolResult::text(truncated_output);
-                if let Some(path) = full_output_path {
-                    result.full_output_path = Some(path.display().to_string());
-                }
-                result
+                Self::result_from_output(output)
             }
             Ok(Err(e)) => {
                 if e.contains("cancelled") {
@@ -135,6 +145,51 @@ impl Tool for GrepTool {
                 }
                 ToolResult::error(e)
             }
+            Err(e) => ToolResult::error(format!("Search task panicked: {}", e)),
+        }
+    }
+
+    fn uses_neutral_tool_context(&self) -> bool {
+        true
+    }
+
+    async fn execute_with_neutral_context(&self, context: ToolInvocationContext, params: Value) -> ToolResult {
+        if let Err(outcome) = context.ensure_allowed(&self.definition.name) {
+            return ToolResult::error(format!("grep denied by capability: {outcome:?}")).with_details(json!({
+                "tool": self.definition.name,
+                "status": "denied",
+            }));
+        }
+        if !context.services.is_available(ToolHostServiceKind::Progress) {
+            return ToolResult::error("grep requires neutral progress service").with_details(json!({
+                "tool": self.definition.name,
+                "missing_service": "progress",
+            }));
+        }
+        if context.cancellation.cancelled {
+            return ToolResult::error("Search cancelled").with_details(json!({
+                "tool": self.definition.name,
+                "status": "cancelled",
+            }));
+        }
+
+        let (pattern, path, glob, case_sensitive) = match Self::parse_params(&params) {
+            Ok(parsed) => parsed,
+            Err(result) => return result,
+        };
+        let cancel = CancellationToken::new();
+        let progress = context.progress.clone();
+        let call_id = context.call_id.clone();
+        let result = tokio::task::spawn_blocking(move || {
+            search_files(&pattern, &path, glob.as_deref(), case_sensitive, &cancel, |msg| {
+                progress.emit(ToolProgressEvent::new(call_id.clone(), ToolProgressKind::Progress, msg)).ok();
+            })
+        })
+        .await;
+
+        match result {
+            Ok(Ok(output)) => Self::result_from_output(output),
+            Ok(Err(e)) => ToolResult::error(e),
             Err(e) => ToolResult::error(format!("Search task panicked: {}", e)),
         }
     }
@@ -341,6 +396,29 @@ mod tests {
         );
     }
 
+    struct RecordingProgressSink {
+        events: Arc<Mutex<Vec<clankers_tool_host::ToolProgressEvent>>>,
+    }
+
+    impl clankers_tool_host::ToolProgressSink for RecordingProgressSink {
+        fn emit(&self, event: clankers_tool_host::ToolProgressEvent) -> Result<(), clankers_tool_host::ToolHostError> {
+            self.events.lock().unwrap_or_else(|poisoned| poisoned.into_inner()).push(event);
+            Ok(())
+        }
+    }
+
+    fn result_text(result: &ToolResult) -> String {
+        result
+            .content
+            .iter()
+            .filter_map(|content| match content {
+                super::super::ToolResultContent::Text { text } => Some(text.as_str()),
+                _ => None,
+            })
+            .collect::<Vec<_>>()
+            .join("")
+    }
+
     #[test]
     fn test_cancellation() {
         let cancel = CancellationToken::new();
@@ -348,5 +426,96 @@ mod tests {
         let result = search_files("anything", ".", None, None, &cancel, |_| {});
         assert!(result.is_err());
         assert!(result.expect_err("cancelled search should error").contains("cancelled"));
+    }
+
+    #[tokio::test]
+    async fn neutral_context_search_emits_progress_without_legacy_tool_context() {
+        let tempdir = tempfile::tempdir().expect("tempdir");
+        let file = tempdir.path().join("notes.txt");
+        std::fs::write(&file, "alpha\nbeta needle\n").expect("write search fixture");
+        let events = Arc::new(Mutex::new(Vec::new()));
+        let context = clankers_tool_host::ToolInvocationContext::new("grep-call")
+            .with_services(clankers_tool_host::ToolHostServices::empty().with_service(
+                clankers_tool_host::ToolHostServiceHandle::available(clankers_tool_host::ToolHostServiceKind::Progress),
+            ))
+            .with_progress_sink(Arc::new(RecordingProgressSink { events: events.clone() }));
+        let tool = GrepTool::new();
+
+        let result = tool
+            .execute_with_neutral_context(
+                context,
+                json!({"pattern": "needle", "path": tempdir.path().display().to_string()}),
+            )
+            .await;
+
+        assert!(!result.is_error, "neutral grep should succeed: {}", result_text(&result));
+        assert!(result_text(&result).contains("needle"));
+        assert!(
+            events
+                .lock()
+                .unwrap_or_else(|poisoned| poisoned.into_inner())
+                .iter()
+                .any(|event| { event.call_id == "grep-call" && event.message.contains("notes.txt") })
+        );
+    }
+
+    #[tokio::test]
+    async fn neutral_context_search_respects_capability_denial() {
+        let context = clankers_tool_host::ToolInvocationContext::new("grep-call")
+            .with_services(clankers_tool_host::ToolHostServices::empty().with_service(
+                clankers_tool_host::ToolHostServiceHandle::available(clankers_tool_host::ToolHostServiceKind::Progress),
+            ))
+            .with_capability(clankers_tool_host::CapabilityDecision::Denied {
+                reason: "not allowed".to_string(),
+            });
+        let tool = GrepTool::new();
+
+        let result =
+            tool.execute_with_neutral_context(context, json!({"pattern": "needle", "path": "Cargo.toml"})).await;
+
+        assert!(result.is_error);
+        assert!(result_text(&result).contains("denied by capability"));
+        assert_eq!(
+            result.details.as_ref().and_then(|details| details.get("status")).and_then(Value::as_str),
+            Some("denied")
+        );
+    }
+
+    #[tokio::test]
+    async fn neutral_context_search_respects_cancellation() {
+        let context = clankers_tool_host::ToolInvocationContext::new("grep-call")
+            .with_services(clankers_tool_host::ToolHostServices::empty().with_service(
+                clankers_tool_host::ToolHostServiceHandle::available(clankers_tool_host::ToolHostServiceKind::Progress),
+            ))
+            .with_cancellation(clankers_tool_host::ToolInvocationCancellation::cancelled("test cancelled"));
+        let tool = GrepTool::new();
+
+        let result =
+            tool.execute_with_neutral_context(context, json!({"pattern": "needle", "path": "Cargo.toml"})).await;
+
+        assert!(result.is_error);
+        assert!(result_text(&result).contains("Search cancelled"));
+        assert_eq!(
+            result.details.as_ref().and_then(|details| details.get("status")).and_then(Value::as_str),
+            Some("cancelled")
+        );
+    }
+
+    #[tokio::test]
+    async fn neutral_context_search_fails_closed_without_progress_service() {
+        let tool = GrepTool::new();
+        let result = tool
+            .execute_with_neutral_context(
+                clankers_tool_host::ToolInvocationContext::new("grep-call"),
+                json!({"pattern": "needle", "path": "Cargo.toml"}),
+            )
+            .await;
+
+        assert!(result.is_error);
+        assert!(result_text(&result).contains("requires neutral progress service"));
+        assert_eq!(
+            result.details.as_ref().and_then(|details| details.get("missing_service")).and_then(Value::as_str),
+            Some("progress")
+        );
     }
 }

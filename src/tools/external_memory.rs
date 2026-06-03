@@ -14,6 +14,9 @@ use clankers_config::ExternalMemoryProvider;
 use clankers_config::ExternalMemorySettings;
 use clankers_db::memory::MemoryEntry;
 use clankers_db::memory::MemoryScope;
+use clankers_tool_host::ToolHostServiceKind;
+use clankers_tool_host::ToolInvocationContext;
+use clankers_tool_host::ToolSearchRequest;
 use serde::Deserialize;
 use serde::Serialize;
 use serde_json::Value;
@@ -294,6 +297,88 @@ impl ExternalMemoryTool {
             "resultCount": results.len(),
         }))
     }
+
+    fn local_search_neutral(&self, context: &ToolInvocationContext, params: &Value, started: Instant) -> ToolResult {
+        let query = match params.get("query").and_then(|value| value.as_str()).map(str::trim) {
+            Some(query) if !query.is_empty() => query,
+            _ => {
+                let elapsed_ms = started.elapsed().as_millis();
+                return ToolResult::error("external_memory search requires a non-empty `query` parameter")
+                    .with_details(self.error_details(
+                        "search",
+                        elapsed_ms,
+                        "missing_query",
+                        "missing non-empty query",
+                    ));
+            }
+        };
+
+        if let Err(outcome) = context.require_service(&self.definition.name, ToolHostServiceKind::Search) {
+            let elapsed_ms = started.elapsed().as_millis();
+            return ToolResult::error(format!(
+                "external_memory local provider requires neutral search service: {outcome:?}"
+            ))
+            .with_details(self.error_details(
+                "search",
+                elapsed_ms,
+                "missing_search_service",
+                "neutral search service unavailable",
+            ));
+        }
+        let search = match context.search.as_ref() {
+            Some(search) => search,
+            None => {
+                let elapsed_ms = started.elapsed().as_millis();
+                return ToolResult::error("external_memory local provider requires neutral search service")
+                    .with_details(self.error_details(
+                        "search",
+                        elapsed_ms,
+                        "missing_search_service",
+                        "neutral search service unavailable",
+                    ));
+            }
+        };
+
+        let limit = bounded_limit(params.get("limit"), self.settings.max_results);
+        let scope = params.get("scope").and_then(|value| value.as_str()).unwrap_or("all");
+        let results = match search.search(ToolSearchRequest::new(query, limit).with_metadata("scope", scope)) {
+            Ok(result) => result.hits,
+            Err(error) => {
+                let elapsed_ms = started.elapsed().as_millis();
+                return ToolResult::error(format!(
+                    "external_memory search failed: {}",
+                    redact_error(&error.to_string())
+                ))
+                .with_details(self.error_details(
+                    "search",
+                    elapsed_ms,
+                    "provider_error",
+                    &error.to_string(),
+                ));
+            }
+        };
+
+        let elapsed_ms = started.elapsed().as_millis();
+        let mut out = format!(
+            "Found {} external memor{} for '{query}':\n",
+            results.len(),
+            if results.len() == 1 { "y" } else { "ies" }
+        );
+        for hit in &results {
+            let id = hit.metadata.get("memory_id").map(String::as_str).unwrap_or(hit.title.as_str());
+            let scope = hit.metadata.get("scope").map(String::as_str).unwrap_or("unknown");
+            writeln!(out, "- [{id}] ({scope}) {}", hit.snippet).ok();
+        }
+        ToolResult::text(out).with_details(json!({
+            "source": SOURCE,
+            "providerKind": provider_kind(self.settings.provider),
+            "providerName": self.settings.safe_provider_name(),
+            "action": "search",
+            "status": "ok",
+            "elapsedMs": elapsed_ms,
+            "resultCount": results.len(),
+        }))
+    }
 }
 
 #[async_trait]
@@ -316,6 +401,34 @@ impl Tool for ExternalMemoryTool {
             "status" => self.status(started),
             "search" => match self.settings.provider {
                 ExternalMemoryProvider::Local => self.local_search(ctx, &params, started),
+                ExternalMemoryProvider::Http => self.http_search(&params, started).await,
+            },
+            other => {
+                let elapsed_ms = started.elapsed().as_millis();
+                ToolResult::error(format!("Unknown external_memory action '{other}'. Use 'search' or 'status'."))
+                    .with_details(self.error_details(other, elapsed_ms, "unknown_action", "unknown action"))
+            }
+        }
+    }
+
+    fn uses_neutral_tool_context(&self) -> bool {
+        true
+    }
+
+    async fn execute_with_neutral_context(&self, context: ToolInvocationContext, params: Value) -> ToolResult {
+        let started = Instant::now();
+        if let Err(error) = self.settings.validate() {
+            let elapsed_ms = started.elapsed().as_millis();
+            return ToolResult::error(format!("externalMemory configuration invalid: {error}")).with_details(
+                self.error_details("validate", elapsed_ms, config_error_kind(&error), &error.to_string()),
+            );
+        }
+
+        let action = params.get("action").and_then(|value| value.as_str()).unwrap_or(DEFAULT_ACTION);
+        match action {
+            "status" => self.status(started),
+            "search" => match self.settings.provider {
+                ExternalMemoryProvider::Local => self.local_search_neutral(&context, &params, started),
                 ExternalMemoryProvider::Http => self.http_search(&params, started).await,
             },
             other => {
@@ -416,6 +529,7 @@ mod tests {
     use std::io::Read;
     use std::io::Write;
     use std::net::TcpListener;
+    use std::sync::Arc;
     use std::time::Duration;
 
     use clankers_db::Db;
@@ -472,6 +586,32 @@ mod tests {
             stream.write_all(response.as_bytes()).expect("write response");
         });
         format!("http://{addr}/memory")
+    }
+
+    struct FakeSearchService;
+
+    impl clankers_tool_host::ToolSearchService for FakeSearchService {
+        fn search(
+            &self,
+            request: clankers_tool_host::ToolSearchRequest,
+        ) -> std::result::Result<clankers_tool_host::ToolSearchResult, clankers_tool_host::ToolHostError> {
+            let scope = request.metadata.get("scope").cloned().unwrap_or_else(|| "all".to_string());
+            Ok(clankers_tool_host::ToolSearchResult {
+                hits: vec![
+                    clankers_tool_host::ToolSearchHit::new("m1", format!("{} result", request.query), 1)
+                        .with_metadata("memory_id", "m1")
+                        .with_metadata("scope", scope),
+                ],
+            })
+        }
+    }
+
+    fn neutral_search_context() -> clankers_tool_host::ToolInvocationContext {
+        clankers_tool_host::ToolInvocationContext::new("external-memory-call")
+            .with_services(clankers_tool_host::ToolHostServices::empty().with_service(
+                clankers_tool_host::ToolHostServiceHandle::available(clankers_tool_host::ToolHostServiceKind::Search),
+            ))
+            .with_search_service(Arc::new(FakeSearchService))
     }
 
     fn http_settings(endpoint: String, credential_env: &str) -> ExternalMemorySettings {
@@ -551,6 +691,43 @@ mod tests {
         assert_eq!(
             result.details.as_ref().and_then(|details| details.get("resultCount")).and_then(Value::as_u64),
             Some(1)
+        );
+    }
+
+    #[tokio::test]
+    async fn neutral_local_search_uses_injected_search_service() {
+        let tool = ExternalMemoryTool::new(enabled_settings());
+        let result = tool
+            .execute_with_neutral_context(
+                neutral_search_context(),
+                json!({"action": "search", "query": "Rust", "limit": 1, "scope": "global"}),
+            )
+            .await;
+
+        assert!(!result.is_error, "neutral local search should succeed: {}", result_text(&result));
+        assert!(result_text(&result).contains("Rust result"));
+        assert!(result_text(&result).contains("(global)"));
+        assert_eq!(
+            result.details.as_ref().and_then(|details| details.get("resultCount")).and_then(Value::as_u64),
+            Some(1)
+        );
+    }
+
+    #[tokio::test]
+    async fn neutral_local_search_fails_closed_without_search_service() {
+        let tool = ExternalMemoryTool::new(enabled_settings());
+        let result = tool
+            .execute_with_neutral_context(
+                clankers_tool_host::ToolInvocationContext::new("external-memory-call"),
+                json!({"action": "search", "query": "Rust"}),
+            )
+            .await;
+
+        assert!(result.is_error);
+        assert!(result_text(&result).contains("requires neutral search service"));
+        assert_eq!(
+            result.details.as_ref().and_then(|details| details.get("errorKind")).and_then(Value::as_str),
+            Some("missing_search_service")
         );
     }
 

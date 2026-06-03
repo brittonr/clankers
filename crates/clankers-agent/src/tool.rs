@@ -155,11 +155,13 @@ impl Default for ThrottleState {
     }
 }
 
-/// Execution context passed to every tool invocation.
+/// Legacy compatibility context passed to unmigrated tool invocations.
 ///
 /// Bundles the call identity, cancellation signal, and an optional event
-/// channel so that any tool can stream partial progress updates to the TUI
-/// without needing per-tool wiring.
+/// channel so existing tools can stream partial progress updates while they
+/// migrate to neutral `clankers-tool-host` service traits. New reusable tool
+/// behavior should prefer `ToolInvocationContext` / `ToolHostServices` instead
+/// of adding service fields here.
 #[derive(Clone)]
 pub struct ToolContext {
     /// Unique identifier for this tool call (matches `ToolCall.call_id`)

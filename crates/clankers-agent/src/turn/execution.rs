@@ -1,5 +1,6 @@
 //! Tool execution logic and turn execution flow
 
+use std::collections::BTreeMap;
 use std::collections::HashMap;
 use std::sync::Arc;
 
@@ -33,6 +34,10 @@ use clankers_tool_host::ToolHostOutcome;
 use clankers_tool_host::ToolInvocationCancellation;
 use clankers_tool_host::ToolProgressEvent;
 use clankers_tool_host::ToolProgressSink;
+use clankers_tool_host::ToolSearchHit;
+use clankers_tool_host::ToolSearchRequest;
+use clankers_tool_host::ToolSearchResult;
+use clankers_tool_host::ToolSearchService;
 use serde_json::Value;
 use tokio::sync::broadcast;
 use tokio::sync::mpsc;
@@ -211,6 +216,7 @@ impl ControllerToolServices {
                 user_tool_filter,
             }) as Arc<dyn ToolCapabilityService>
         });
+        let search = db.clone().map(|db| Arc::new(DbMemorySearchService { db }) as Arc<dyn ToolSearchService>);
         let legacy_runner = Arc::new(AgentLegacyToolRunner {
             event_tx,
             cancel,
@@ -223,7 +229,7 @@ impl ControllerToolServices {
             progress,
             cancellation,
             storage: None,
-            search: None,
+            search,
             hooks,
             capability,
             legacy_runner,
@@ -269,6 +275,41 @@ impl ToolCancellationService for TokenToolCancellationService {
             return ToolInvocationCancellation::cancelled("cancelled");
         }
         ToolInvocationCancellation::active()
+    }
+}
+
+struct DbMemorySearchService {
+    db: clankers_db::Db,
+}
+
+impl ToolSearchService for DbMemorySearchService {
+    fn search(&self, request: ToolSearchRequest) -> std::result::Result<ToolSearchResult, ToolHostError> {
+        let scope_filter = request.metadata.get("scope").map(String::as_str).unwrap_or("all");
+        let entries = self.db.memory().search(&request.query).map_err(|error| ToolHostError::HostFailed {
+            message: error.to_string(),
+        })?;
+        let hits = entries
+            .into_iter()
+            .filter(|entry| match scope_filter {
+                "global" => matches!(entry.scope, clankers_db::memory::MemoryScope::Global),
+                "project" => matches!(entry.scope, clankers_db::memory::MemoryScope::Project { .. }),
+                _ => true,
+            })
+            .take(request.limit)
+            .enumerate()
+            .map(|(index, entry)| {
+                let mut metadata = BTreeMap::new();
+                metadata.insert("memory_id".to_string(), entry.id.to_string());
+                metadata.insert("scope".to_string(), entry.scope.to_string());
+                ToolSearchHit {
+                    title: entry.id.to_string(),
+                    snippet: entry.text,
+                    rank: index + 1,
+                    metadata,
+                }
+            })
+            .collect();
+        Ok(ToolSearchResult { hits })
     }
 }
 
@@ -1399,6 +1440,40 @@ mod tests {
             }
         }
         assert!(saw_progress, "expected neutral progress event");
+    }
+
+    #[test]
+    fn concrete_controller_services_expose_db_memory_search_service() {
+        let db = clankers_db::Db::in_memory().expect("in-memory db");
+        db.memory()
+            .save(&clankers_db::memory::MemoryEntry::new(
+                "neutral service search memory",
+                clankers_db::memory::MemoryScope::Global,
+            ))
+            .expect("save memory fixture");
+        let (event_tx, _rx) = broadcast::channel(16);
+        let services = ControllerToolServices::from_concrete(
+            event_tx,
+            CancellationToken::new(),
+            None,
+            "session".to_string(),
+            Some(db),
+            None,
+            None,
+            None,
+        );
+        let context = services.invocation_context("call-search");
+
+        assert!(context.services.is_available(clankers_tool_host::ToolHostServiceKind::Search));
+        let hits = context
+            .search
+            .expect("search service")
+            .search(clankers_tool_host::ToolSearchRequest::new("neutral", 1).with_metadata("scope", "global"))
+            .expect("search should pass")
+            .hits;
+        assert_eq!(hits.len(), 1);
+        assert_eq!(hits[0].snippet, "neutral service search memory");
+        assert_eq!(hits[0].metadata.get("scope").map(String::as_str), Some("global"));
     }
 
     #[test]

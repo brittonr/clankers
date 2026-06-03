@@ -33,6 +33,9 @@ const CHANGE_TASKS_ARCHIVE: &str = "cairn/archive/2026-05-21-lego-decoupling-bou
 const CHANGE_SPEC_ARCHIVE: &str =
     "cairn/archive/2026-05-21-lego-decoupling-boundaries/specs/lego-architecture-boundaries/spec.md";
 const ACCEPTED_SPEC: &str = "cairn/specs/lego-architecture-boundaries/spec.md";
+const ROOT_TOOLS_MOD: &str = "src/tools/mod.rs";
+const GREP_TOOL: &str = "src/tools/grep.rs";
+const EXTERNAL_MEMORY_TOOL: &str = "src/tools/external_memory.rs";
 const PROCESS_TOOL: &str = "src/tools/process.rs";
 const PROCESS_TOOL_ADAPTER: &str = "src/tools/process/adapter.rs";
 const PROCESS_TOOL_DURABLE: &str = "src/tools/process/durable.rs";
@@ -1015,6 +1018,9 @@ fn agent_turn_ports_signature() -> Result<Value, String> {
 fn tool_host_service_context_signature() -> Result<Value, String> {
     let file = read_rust_file(TOOL_HOST_LIB)?;
     let source = &file.source;
+    let tools_mod = read_rust_file(ROOT_TOOLS_MOD)?;
+    let grep_tool = read_rust_file(GREP_TOOL)?;
+    let external_memory_tool = read_rust_file(EXTERNAL_MEMORY_TOOL)?;
 
     for (path, label) in [
         ("clankers_db", "concrete database service import"),
@@ -1057,6 +1063,45 @@ fn tool_host_service_context_signature() -> Result<Value, String> {
         ("ToolRuntimePolicyDecision", "neutral runtime policy decision DTO"),
     ] {
         require_contains(source, needle, label)?;
+    }
+    for (needle, label) in [
+        (
+            "SDK_TOOL_CONTEXT_BOUNDARY_INVENTORY_REQUIREMENT",
+            "sdk tool context inventory requirement marker",
+        ),
+        (
+            "SDK_TOOL_CONTEXT_BOUNDARY_COMPAT_REQUIREMENT",
+            "sdk tool context compatibility requirement marker",
+        ),
+        (
+            "SDK_TOOL_CONTEXT_BOUNDARY_NEUTRAL_REQUIREMENT",
+            "sdk tool context neutral-service requirement marker",
+        ),
+        ("TOOL_CONTEXT_MIGRATION_INVENTORY", "tool context migration inventory"),
+        ("external_memory(local)", "migrated neutral search representative"),
+        ("grep", "migrated neutral progress representative"),
+        ("CompatibilityToolContext", "legacy ToolContext compatibility owner"),
+    ] {
+        require_contains(&tools_mod.source, needle, label)?;
+    }
+    for (needle, label) in [
+        ("fn uses_neutral_tool_context(&self) -> bool", "grep neutral context opt-in"),
+        ("execute_with_neutral_context", "grep neutral execution path"),
+        ("ToolProgressEvent::new", "grep neutral progress sink"),
+        ("missing_service\": \"progress", "grep missing progress fail-closed receipt"),
+    ] {
+        require_contains(&grep_tool.source, needle, label)?;
+    }
+    for (needle, label) in [
+        (
+            "fn uses_neutral_tool_context(&self) -> bool",
+            "external_memory neutral context opt-in",
+        ),
+        ("local_search_neutral", "external_memory neutral search path"),
+        ("ToolSearchRequest::new", "external_memory neutral search request"),
+        ("missing_search_service", "external_memory missing search fail-closed receipt"),
+    ] {
+        require_contains(&external_memory_tool.source, needle, label)?;
     }
 
     Ok(json!({
