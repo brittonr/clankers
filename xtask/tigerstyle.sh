@@ -16,9 +16,14 @@ TIGERSTYLE_REPO="github:OnixResearch/octet"
 TIGERSTYLE_REV="bbf5fbb60679668ca8c42593fd617db2d0f89b43"
 TIGERSTYLE_DYLINT_REV="0e0a71eefe6f01563d11acc6e1d7af1d505934a9"
 TIGERSTYLE_CACHE_DIR="${XDG_CACHE_HOME:-$HOME/.cache}/clankers/octet-tigerstyle"
-LINT_TARGET_DIR="${CARGO_TARGET_DIR:-$HOME/.cargo-target}/dylint/octet-tigerstyle/$TIGERSTYLE_REV/$TOOLCHAIN"
+TARGET_ROOT="${CARGO_TARGET_DIR:-$HOME/.cargo-target}"
+case "$TARGET_ROOT" in
+    /*) ;;
+    *) TARGET_ROOT="$PWD/$TARGET_ROOT" ;;
+esac
+LINT_TARGET_DIR="$TARGET_ROOT/dylint/octet-tigerstyle/$TIGERSTYLE_REV/$TOOLCHAIN"
 LINT_BUILD_DIR="$LINT_TARGET_DIR/release"
-RUNNER_TARGET_DIR="${CARGO_TARGET_DIR:-$HOME/.cargo-target}/cargo-tigerstyle/$TIGERSTYLE_REV"
+RUNNER_TARGET_DIR="$TARGET_ROOT/cargo-tigerstyle/$TIGERSTYLE_REV/$TOOLCHAIN"
 RUNNER_BIN="$RUNNER_TARGET_DIR/release/cargo-tigerstyle"
 LINT_LINK="$LINT_BUILD_DIR/libtigerstyle@${TOOLCHAIN}.so"
 TIGERSTYLE_CARGO="cargo"
@@ -46,9 +51,9 @@ prefer_tigerstyle_toolchain() {
             TIGERSTYLE_CARGO="$pinned_bin/cargo"
             TIGERSTYLE_RUSTC="$pinned_bin/rustc"
             TOOLCHAIN="$toolchain_label"
-            LINT_TARGET_DIR="${CARGO_TARGET_DIR:-$HOME/.cargo-target}/dylint/octet-tigerstyle/$TIGERSTYLE_REV/$TOOLCHAIN"
+            LINT_TARGET_DIR="$TARGET_ROOT/dylint/octet-tigerstyle/$TIGERSTYLE_REV/$TOOLCHAIN"
             LINT_BUILD_DIR="$LINT_TARGET_DIR/release"
-            RUNNER_TARGET_DIR="${CARGO_TARGET_DIR:-$HOME/.cargo-target}/cargo-tigerstyle/$TIGERSTYLE_REV/$TOOLCHAIN"
+            RUNNER_TARGET_DIR="$TARGET_ROOT/cargo-tigerstyle/$TIGERSTYLE_REV/$TOOLCHAIN"
             RUNNER_BIN="$RUNNER_TARGET_DIR/release/cargo-tigerstyle"
             LINT_LINK="$LINT_BUILD_DIR/libtigerstyle@${TOOLCHAIN}.so"
             return
