@@ -21,6 +21,8 @@ struct BoundaryInventoryEntry {
 }
 
 const NEUTRAL_FORBIDDEN: &[&str] = &[
+    "clankers_runtime",
+    "clankers-runtime",
     "clankers_session",
     "clankers-session",
     "SessionManager",
@@ -30,6 +32,8 @@ const NEUTRAL_FORBIDDEN: &[&str] = &[
     "DaemonEvent",
     "TuiEvent",
     "ConversationBlock",
+    "RuntimeError",
+    "Utc::now",
 ];
 
 const SDK_EXAMPLE_FORBIDDEN: &[&str] = &[
@@ -47,19 +51,37 @@ const SDK_EXAMPLE_FORBIDDEN: &[&str] = &[
 
 const INVENTORY: &[BoundaryInventoryEntry] = &[
     BoundaryInventoryEntry {
-        id: "runtime-neutral-ledger-dtos",
-        path: "crates/clankers-runtime/src/ledger.rs",
-        owner: "clankers-runtime::ledger",
-        boundary: "neutral ledger boundary",
+        id: "green-engine-host-ledger-dtos",
+        path: "crates/clankers-engine-host/src/session_ledger.rs",
+        owner: "clankers-engine-host::session_ledger",
+        boundary: "green neutral ledger boundary",
         required_markers: &[
             "pub enum SessionLedgerEntry",
             "pub struct SessionLedgerMessage",
             "pub struct SessionLedgerRecord",
             "pub struct SessionLedgerReplay",
+            "pub enum SessionLedgerError",
             "pub fn replay_ledger_entries",
             "ledger_messages_from_engine_messages",
+            "engine_messages_from_ledger_messages",
         ],
         forbidden_markers: NEUTRAL_FORBIDDEN,
+    },
+    BoundaryInventoryEntry {
+        id: "runtime-ledger-compat-adapter",
+        path: "crates/clankers-runtime/src/ledger.rs",
+        owner: "clankers-runtime::ledger",
+        boundary: "runtime compatibility adapter to green ledger",
+        required_markers: &[
+            "pub type SessionLedgerEntry = clankers_engine_host::SessionLedgerEntry",
+            "RuntimeError::SessionUnsupported",
+            "clankers_engine_host::replay_ledger_entries",
+        ],
+        forbidden_markers: &[
+            "pub struct SessionLedgerRecord",
+            "Utc::now",
+            "pub enum SessionLedgerEntry",
+        ],
     },
     BoundaryInventoryEntry {
         id: "runtime-resume-session-path",
@@ -82,7 +104,7 @@ const INVENTORY: &[BoundaryInventoryEntry] = &[
         boundary: "host-owned SDK store",
         required_markers: &[
             "struct ProductSession",
-            "struct ProductMessage",
+            "SessionLedgerMessage",
             "struct InMemoryProductSessionStore",
             "MissingSession",
             "roles_and_text",
@@ -96,7 +118,7 @@ const INVENTORY: &[BoundaryInventoryEntry] = &[
         boundary: "host-owned product store",
         required_markers: &[
             "struct ProductSession",
-            "struct ProductMessage",
+            "SessionLedgerMessage",
             "struct ProductSessionStore",
             "missing_session_fails_closed_before_model_or_tool_execution",
         ],
@@ -328,7 +350,7 @@ fn validate_docs(errors: &mut Vec<String>) {
     let docs = fs::read_to_string(docs_path).unwrap_or_default();
     for marker in [
         "session-resume-brick evidence is fixture backed",
-        "product-owned session/message DTOs",
+        "product-owned session stores and receipt DTOs",
         "Runtime::resume_session",
         "SessionLedgerEntry",
         "scripts/check-session-ledger-boundary.rs",

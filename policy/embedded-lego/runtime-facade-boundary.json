@@ -3,7 +3,7 @@
   "crate_name": "clankers-runtime",
   "facade_classification": "yellow application-edge composition facade; not a generic green SDK crate",
   "selected_green_subsets": [
-    "session-ledger-resume green-candidate subset tracked by promote-session-ledger-green-sdk"
+    "session-ledger-resume promoted to clankers-engine-host::session_ledger with runtime compatibility reexports"
   ],
   "groups": [
     {
@@ -59,10 +59,10 @@
       ]
     },
     {
-      "id": "runtime-ledger-green-candidate",
+      "id": "runtime-ledger-compat-adapter",
       "owner": "clankers-runtime::ledger",
-      "classification": "green-candidate-inside-yellow-runtime",
-      "stability": "candidate-for-green-split",
+      "classification": "yellow-compat-reexports-for-green-ledger",
+      "stability": "compatibility-adapter",
       "source_paths": ["crates/clankers-runtime/src/ledger.rs"]
     },
     {

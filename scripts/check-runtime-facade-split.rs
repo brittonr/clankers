@@ -50,7 +50,7 @@ const CHECKS: &[SourceCheck] = &[
     },
     SourceCheck {
         id: "selected-kit-neutral-ledger",
-        path: "crates/clankers-runtime/src/ledger.rs",
+        path: "crates/clankers-engine-host/src/session_ledger.rs",
         support_label: "green SDK kit: neutral session ledger/resume DTOs",
         required: &[
             "pub enum SessionLedgerEntry",

@@ -38,6 +38,11 @@ use clankers_engine_host::EngineRunSeed;
 use clankers_engine_host::HostAdapters;
 use clankers_engine_host::ModelHost;
 use clankers_engine_host::ModelHostOutcome;
+use clankers_engine_host::SessionLedgerMessage;
+use clankers_engine_host::SessionLedgerRole;
+use clankers_engine_host::engine_messages_from_ledger_messages;
+use clankers_engine_host::ledger_message_from_engine_message;
+use clankers_engine_host::ledger_messages_from_engine_messages;
 use clankers_engine_host::run_engine_turn;
 use clankers_tool_host::ToolHostOutcome;
 
@@ -122,10 +127,11 @@ fn combined_product_workbench_preserves_context() {
 
     assert_eq!(second_turn.report.final_state.phase, EngineTurnPhase::Finished);
     assert_eq!(second_turn.model.requests.len(), 1);
+    assert_eq!(second_turn.model.requests[0].model, MODEL);
     assert_eq!(second_turn.model.requests[0].roles_and_text(), vec![
         "user: Look up the launch code name, then remember it.",
         "assistant: tool-use:lookup_project_fact",
-        "tool: tool-result:launch code name: Orchard",
+        "tool: launch code name: Orchard",
         "assistant: Stored the product fact: Orchard.",
         "user: What launch code did the tool report?",
     ]);
@@ -162,10 +168,10 @@ fn dangerous_tool_catalog_denies_before_product_tool_runs() {
     assert!(matches!(outcome, ToolHostOutcome::ToolError { .. }));
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone)]
 struct ProductSession {
     session_id: String,
-    messages: Vec<ProductMessage>,
+    messages: Vec<SessionLedgerMessage>,
     receipts: Vec<ProductTurnReceipt>,
 }
 
@@ -177,19 +183,6 @@ impl ProductSession {
             receipts: Vec::new(),
         }
     }
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-struct ProductMessage {
-    role: ProductRole,
-    content: String,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum ProductRole {
-    User,
-    Assistant,
-    Tool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -205,7 +198,6 @@ struct ProductTurnReceipt {
 #[derive(Debug, Clone, PartialEq, Eq)]
 enum ProductError {
     MissingSession { session_id: String },
-    UnsupportedContent { role: ProductRole, kind: &'static str },
 }
 
 #[derive(Debug, Default)]
@@ -229,8 +221,7 @@ impl ProductSessionStore {
     }
 
     fn replace_messages_from_report(&mut self, session_id: &str, report: &EngineRunReport) -> Result<(), ProductError> {
-        let messages =
-            report.final_state.messages.iter().map(product_message_from_engine).collect::<Result<Vec<_>, _>>()?;
+        let messages = ledger_messages_from_engine_messages(&report.final_state.messages);
         let session = self.sessions.get_mut(session_id).ok_or_else(|| ProductError::MissingSession {
             session_id: session_id.to_string(),
         })?;
@@ -263,7 +254,7 @@ fn run_product_turn(
     model_responses: impl IntoIterator<Item = ProductModelResponse>,
 ) -> Result<ProductTurnRun, ProductError> {
     let session = store.load(session_id)?;
-    let mut history = session.messages.iter().map(engine_message_from_product).collect::<Result<Vec<_>, _>>()?;
+    let mut history = engine_messages_from_ledger_messages(&session.messages);
     history.push(EngineMessage {
         role: EngineMessageRole::User,
         content: vec![Content::Text {
@@ -292,18 +283,18 @@ fn run_product_turn(
     Ok(ProductTurnRun { report, model, tools })
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone)]
 struct ProductModelRequest {
     model: String,
     session_id: String,
-    messages: Vec<ProductMessage>,
+    messages: Vec<SessionLedgerMessage>,
 }
 
 impl ProductModelRequest {
     fn roles_and_text(&self) -> Vec<String> {
         self.messages
             .iter()
-            .map(|message| format!("{}: {}", role_name(message.role), message.content))
+            .map(|message| format!("{}: {}", role_name(message.role), message.text_summary()))
             .collect()
     }
 }
@@ -338,10 +329,7 @@ impl ProductModelAdapter {
 
 impl ModelHost for ProductModelAdapter {
     async fn execute_model(&mut self, request: EngineModelRequest) -> ModelHostOutcome {
-        let messages = request.messages.iter().map(product_message_from_engine).collect::<Result<Vec<_>, _>>();
-        let Ok(messages) = messages else {
-            return terminal_model_failure("product model received unsupported content");
-        };
+        let messages = request.messages.iter().map(ledger_message_from_engine_message).collect::<Vec<_>>();
         self.requests.push(ProductModelRequest {
             model: request.model,
             session_id: request.session_id,
@@ -415,47 +403,6 @@ fn tool_call(name: &str) -> clankers_engine::EngineToolCall {
     }
 }
 
-fn engine_message_from_product(message: &ProductMessage) -> Result<EngineMessage, ProductError> {
-    Ok(EngineMessage {
-        role: match message.role {
-            ProductRole::User => EngineMessageRole::User,
-            ProductRole::Assistant => EngineMessageRole::Assistant,
-            ProductRole::Tool => EngineMessageRole::Tool,
-        },
-        content: vec![Content::Text {
-            text: message.content.clone(),
-        }],
-    })
-}
-
-fn product_message_from_engine(message: &EngineMessage) -> Result<ProductMessage, ProductError> {
-    let role = match message.role {
-        EngineMessageRole::User => ProductRole::User,
-        EngineMessageRole::Assistant => ProductRole::Assistant,
-        EngineMessageRole::Tool => ProductRole::Tool,
-    };
-    Ok(ProductMessage {
-        role,
-        content: text_summary(role, &message.content)?,
-    })
-}
-
-fn text_summary(role: ProductRole, content: &[Content]) -> Result<String, ProductError> {
-    let mut text = Vec::new();
-    for block in content {
-        match block {
-            Content::Text { text: block_text } => text.push(block_text.clone()),
-            Content::ToolUse { name, .. } => text.push(format!("tool-use:{name}")),
-            Content::ToolResult { content, .. } => text.push(tool_result_summary(content)),
-            Content::Image { .. } => return Err(ProductError::UnsupportedContent { role, kind: "image" }),
-            Content::Thinking { .. } => {
-                return Err(ProductError::UnsupportedContent { role, kind: "thinking" });
-            }
-        }
-    }
-    Ok(text.join("\n"))
-}
-
 fn tool_result_summary(content: &[Content]) -> String {
     let text = content
         .iter()
@@ -519,11 +466,11 @@ fn terminal_model_failure(message: &str) -> ModelHostOutcome {
     }
 }
 
-fn role_name(role: ProductRole) -> &'static str {
+fn role_name(role: SessionLedgerRole) -> &'static str {
     match role {
-        ProductRole::User => "user",
-        ProductRole::Assistant => "assistant",
-        ProductRole::Tool => "tool",
+        SessionLedgerRole::User => "user",
+        SessionLedgerRole::Assistant => "assistant",
+        SessionLedgerRole::Tool => "tool",
     }
 }
 

@@ -7,6 +7,7 @@
 //! supply model, tool, sleep, event, cancellation, and usage adapters.
 
 pub mod runtime;
+pub mod session_ledger;
 pub mod stream;
 
 use core::time::Duration;
@@ -27,6 +28,26 @@ use clankers_tool_host::ToolExecutor;
 use clankers_tool_host::ToolHostOutcome;
 use serde::Deserialize;
 use serde::Serialize;
+pub use session_ledger::SessionLedgerEntry;
+pub use session_ledger::SessionLedgerError;
+pub use session_ledger::SessionLedgerMessage;
+pub use session_ledger::SessionLedgerMetadata;
+pub use session_ledger::SessionLedgerPromptId;
+pub use session_ledger::SessionLedgerReceipt;
+pub use session_ledger::SessionLedgerRecord;
+pub use session_ledger::SessionLedgerReplay;
+pub use session_ledger::SessionLedgerReplayMetadata;
+pub use session_ledger::SessionLedgerRole;
+pub use session_ledger::SessionLedgerSessionId;
+pub use session_ledger::SessionLedgerSummary;
+pub use session_ledger::SessionLedgerUnsupported;
+pub use session_ledger::SessionLedgerUsage;
+pub use session_ledger::engine_message_from_ledger_message;
+pub use session_ledger::engine_messages_from_ledger_messages;
+pub use session_ledger::ledger_entries_from_engine_messages;
+pub use session_ledger::ledger_message_from_engine_message;
+pub use session_ledger::ledger_messages_from_engine_messages;
+pub use session_ledger::replay_ledger_entries;
 use stream::HostStreamEvent;
 use stream::StreamAccumulator;
 use stream::StreamAccumulatorError;

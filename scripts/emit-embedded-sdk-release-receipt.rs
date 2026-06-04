@@ -60,6 +60,7 @@ const DIRECT_ARTIFACTS: &[&str] = &[
     "docs/src/reference/embedding.md",
     "docs/src/generated/embedded-sdk-api.md",
     "docs/src/generated/runtime-facade-api.md",
+    "crates/clankers-engine-host/src/session_ledger.rs",
     "cairn/specs/embedded-composition-kits/spec.md",
     "scripts/check-embedded-agent-sdk.rs",
     "scripts/check-embedded-sdk-ci-wiring.rs",

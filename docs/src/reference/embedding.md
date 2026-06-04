@@ -1,6 +1,6 @@
 # Embedding Clankers
 
-`clankers-runtime` is the Rust-facing **yellow application-edge** embedding boundary for applications that want Clankers behavior without driving the CLI, TUI, daemon socket, ACP/MCP transport, or Matrix adapter. Generic green SDK consumers should depend on the smaller engine/message/tool/adapters crates directly; the runtime facade inventory and classification are generated in `docs/src/generated/runtime-facade-api.md`.
+`clankers-runtime` is the Rust-facing **yellow application-edge** embedding boundary for applications that want Clankers behavior without driving the CLI, TUI, daemon socket, ACP/MCP transport, or Matrix adapter. Generic green SDK consumers should depend on the smaller engine/message/tool/adapters crates directly; reusable session ledger history lives in `clankers-engine-host::session_ledger`, while the runtime facade inventory and classification are generated in `docs/src/generated/runtime-facade-api.md`.
 
 ## Runtime facade
 

@@ -30,6 +30,11 @@ use clankers_engine_host::EngineRunSeed;
 use clankers_engine_host::HostAdapters;
 use clankers_engine_host::ModelHost;
 use clankers_engine_host::ModelHostOutcome;
+use clankers_engine_host::SessionLedgerMessage;
+use clankers_engine_host::SessionLedgerRole;
+use clankers_engine_host::engine_messages_from_ledger_messages;
+use clankers_engine_host::ledger_message_from_engine_message;
+use clankers_engine_host::ledger_messages_from_engine_messages;
 use clankers_engine_host::run_engine_turn;
 
 const MODEL: &str = "product-session-model";
@@ -112,10 +117,10 @@ fn missing_session_fails_closed() {
     assert_eq!(store.session_count(), before_count);
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone)]
 struct ProductSession {
     session_id: String,
-    messages: Vec<ProductMessage>,
+    messages: Vec<SessionLedgerMessage>,
     receipts: Vec<ProductTurnReceipt>,
 }
 
@@ -130,19 +135,6 @@ impl ProductSession {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-struct ProductMessage {
-    role: ProductRole,
-    content: String,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum ProductRole {
-    User,
-    Assistant,
-    Tool,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
 struct ProductTurnReceipt {
     session_id: String,
     turn_index: usize,
@@ -154,7 +146,6 @@ struct ProductTurnReceipt {
 #[derive(Debug, Clone, PartialEq, Eq)]
 enum ProductStoreError {
     MissingSession { session_id: String },
-    UnsupportedContent { role: ProductRole, kind: &'static str },
 }
 
 #[derive(Debug, Default)]
@@ -182,8 +173,7 @@ impl InMemoryProductSessionStore {
         session_id: &str,
         report: &EngineRunReport,
     ) -> Result<(), ProductStoreError> {
-        let messages =
-            report.final_state.messages.iter().map(product_message_from_engine).collect::<Result<Vec<_>, _>>()?;
+        let messages = ledger_messages_from_engine_messages(&report.final_state.messages);
         let session = self.sessions.get_mut(session_id).ok_or_else(|| ProductStoreError::MissingSession {
             session_id: session_id.to_string(),
         })?;
@@ -213,7 +203,7 @@ fn run_product_turn(
     responses: impl IntoIterator<Item = ProductModelResponse>,
 ) -> Result<TurnRun, ProductStoreError> {
     let session = store.load(session_id)?;
-    let mut history = session.messages.iter().map(engine_message_from_product).collect::<Result<Vec<_>, _>>()?;
+    let mut history = engine_messages_from_ledger_messages(&session.messages);
     history.push(EngineMessage {
         role: EngineMessageRole::User,
         content: vec![Content::Text {
@@ -258,50 +248,6 @@ fn seed(session_id: &str, messages: Vec<EngineMessage>) -> EngineRunSeed {
     EngineRunSeed::new(initial_state, first_outcome)
 }
 
-fn engine_message_from_product(message: &ProductMessage) -> Result<EngineMessage, ProductStoreError> {
-    Ok(EngineMessage {
-        role: match message.role {
-            ProductRole::User => EngineMessageRole::User,
-            ProductRole::Assistant => EngineMessageRole::Assistant,
-            ProductRole::Tool => EngineMessageRole::Tool,
-        },
-        content: vec![Content::Text {
-            text: message.content.clone(),
-        }],
-    })
-}
-
-fn product_message_from_engine(message: &EngineMessage) -> Result<ProductMessage, ProductStoreError> {
-    let role = match message.role {
-        EngineMessageRole::User => ProductRole::User,
-        EngineMessageRole::Assistant => ProductRole::Assistant,
-        EngineMessageRole::Tool => ProductRole::Tool,
-    };
-    Ok(ProductMessage {
-        role,
-        content: text_only_content(role, &message.content)?,
-    })
-}
-
-fn text_only_content(role: ProductRole, content: &[Content]) -> Result<String, ProductStoreError> {
-    let mut text = Vec::new();
-    for block in content {
-        match block {
-            Content::Text { text: block_text } => text.push(block_text.as_str()),
-            Content::ToolUse { name, .. } => text.push(name.as_str()),
-            Content::ToolResult { .. } => {
-                return Err(ProductStoreError::UnsupportedContent {
-                    role,
-                    kind: "tool-result",
-                });
-            }
-            Content::Image { .. } => return Err(ProductStoreError::UnsupportedContent { role, kind: "image" }),
-            Content::Thinking { .. } => return Err(ProductStoreError::UnsupportedContent { role, kind: "thinking" }),
-        }
-    }
-    Ok(text.join("\n"))
-}
-
 fn receipt_from_report(session_id: &str, turn_index: usize, report: &EngineRunReport) -> ProductTurnReceipt {
     let usage = report.usage_observations.last().map(|observation| &observation.usage);
     ProductTurnReceipt {
@@ -330,18 +276,18 @@ fn content_summary(content: &Content) -> String {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone)]
 struct ProductModelRequest {
     model: String,
     session_id: String,
-    messages: Vec<ProductMessage>,
+    messages: Vec<SessionLedgerMessage>,
 }
 
 impl ProductModelRequest {
     fn roles_and_text(&self) -> Vec<String> {
         self.messages
             .iter()
-            .map(|message| format!("{}: {}", product_role_name(message.role), message.content))
+            .map(|message| format!("{}: {}", ledger_role_name(message.role), message.text_summary()))
             .collect()
     }
 }
@@ -368,16 +314,7 @@ impl RecordingProductModelHost {
 
 impl ModelHost for RecordingProductModelHost {
     async fn execute_model(&mut self, request: EngineModelRequest) -> ModelHostOutcome {
-        let product_messages = request.messages.iter().map(product_message_from_engine).collect::<Result<Vec<_>, _>>();
-        let Ok(messages) = product_messages else {
-            return ModelHostOutcome::Failed {
-                failure: EngineTerminalFailure {
-                    message: "product model received unsupported content".to_string(),
-                    status: None,
-                    retryable: false,
-                },
-            };
-        };
+        let messages = request.messages.iter().map(ledger_message_from_engine_message).collect::<Vec<_>>();
 
         self.requests.push(ProductModelRequest {
             model: request.model,
@@ -404,11 +341,11 @@ impl ModelHost for RecordingProductModelHost {
     }
 }
 
-fn product_role_name(role: ProductRole) -> &'static str {
+fn ledger_role_name(role: SessionLedgerRole) -> &'static str {
     match role {
-        ProductRole::User => "user",
-        ProductRole::Assistant => "assistant",
-        ProductRole::Tool => "tool",
+        SessionLedgerRole::User => "user",
+        SessionLedgerRole::Assistant => "assistant",
+        SessionLedgerRole::Tool => "tool",
     }
 }
 

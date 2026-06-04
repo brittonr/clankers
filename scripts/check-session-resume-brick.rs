@@ -24,7 +24,8 @@ const SESSION_LEDGER_BOUNDARY: &str = "scripts/check-session-ledger-boundary.rs"
 const POLICY: &str = "policy/embedded-lego/lego-contracts.json";
 const DOCS: &str = "docs/src/tutorials/embedded-agent-sdk.md";
 const SPEC: &str = "cairn/specs/embedded-composition-kits/spec.md";
-const RUNTIME_LEDGER: &str = "crates/clankers-runtime/src/ledger.rs";
+const GREEN_LEDGER: &str = "crates/clankers-engine-host/src/session_ledger.rs";
+const RUNTIME_LEDGER_ADAPTER: &str = "crates/clankers-runtime/src/ledger.rs";
 const RUNTIME_SESSION: &str = "crates/clankers-runtime/src/session.rs";
 const RUNTIME_PROMPT: &str = "crates/clankers-runtime/src/prompt.rs";
 const RUNTIME_RUNTIME: &str = "crates/clankers-runtime/src/runtime.rs";
@@ -72,7 +73,8 @@ fn run() -> Result<PathBuf, String> {
         hash_artifact(Path::new(POLICY))?,
         hash_artifact(Path::new(DOCS))?,
         hash_artifact(Path::new(SPEC))?,
-        hash_artifact(Path::new(RUNTIME_LEDGER))?,
+        hash_artifact(Path::new(GREEN_LEDGER))?,
+        hash_artifact(Path::new(RUNTIME_LEDGER_ADAPTER))?,
         hash_artifact(Path::new(RUNTIME_SESSION))?,
         hash_artifact(Path::new(RUNTIME_PROMPT))?,
         hash_artifact(Path::new(RUNTIME_RUNTIME))?,
@@ -97,7 +99,8 @@ fn run() -> Result<PathBuf, String> {
             "owns_storage_dto": product.get("owns_storage_dto").and_then(Value::as_bool).unwrap_or(false),
         })).collect::<Vec<_>>(),
         "reusable_api": {
-            "ledger_module": RUNTIME_LEDGER,
+            "ledger_module": GREEN_LEDGER,
+            "runtime_compat_adapter": RUNTIME_LEDGER_ADAPTER,
             "session_runtime": RUNTIME_SESSION,
             "model_history_field": "ModelRequest.history: Vec<SessionLedgerMessage>",
             "resume_entrypoint": "Runtime::resume_session",
@@ -175,7 +178,7 @@ fn validate_docs_and_spec() -> Result<(), String> {
         "session-resume-evidence.json",
         "scripts/check-session-resume-brick.rs",
         "scripts/check-session-ledger-boundary.rs",
-        "product-owned session/message DTOs",
+        "product-owned session stores and receipt DTOs",
     ] {
         require_contains(&docs, marker, &format!("{DOCS} missing `{marker}`"))?;
     }
@@ -193,19 +196,20 @@ fn validate_docs_and_spec() -> Result<(), String> {
 
 fn validate_reusable_api_sources() -> Result<(), String> {
     let ledger =
-        fs::read_to_string(RUNTIME_LEDGER).map_err(|error| format!("failed to read {RUNTIME_LEDGER}: {error}"))?;
+        fs::read_to_string(GREEN_LEDGER).map_err(|error| format!("failed to read {GREEN_LEDGER}: {error}"))?;
     for marker in [
         "pub enum SessionLedgerEntry",
         "pub struct SessionLedgerMessage",
         "pub struct SessionLedgerRecord",
         "pub struct SessionLedgerReplay",
+        "pub enum SessionLedgerError",
         "pub enum SessionLedgerRole",
         "pub struct SessionLedgerReceipt",
         "pub struct SessionLedgerUsage",
         "pub struct SessionLedgerSummary",
         "pub fn replay_ledger_entries",
     ] {
-        require_contains(&ledger, marker, &format!("{RUNTIME_LEDGER} missing `{marker}`"))?;
+        require_contains(&ledger, marker, &format!("{GREEN_LEDGER} missing `{marker}`"))?;
     }
     for token in [
         "AgentMessage",
@@ -214,9 +218,11 @@ fn validate_reusable_api_sources() -> Result<(), String> {
         "clankers_db",
         "clankers-db",
         "JsonlSessionStore",
+        "RuntimeError",
+        "Utc::now",
     ] {
         if ledger.contains(token) {
-            return Err(format!("{RUNTIME_LEDGER} contains forbidden shell token `{token}`"));
+            return Err(format!("{GREEN_LEDGER} contains forbidden shell token `{token}`"));
         }
     }
 
