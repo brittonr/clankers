@@ -526,7 +526,7 @@ fn record_provider_stream_event(stats: &mut ProviderExecutionStats, event: &clan
         clanker_message::streaming::StreamEvent::MessageDelta { stop_reason, usage } => {
             let stop_reason = parse_provider_stop_reason(stop_reason.as_deref());
             stats.usage = Some(usage.clone());
-            stats.stop_reason = stop_reason.clone();
+            stats.stop_reason.clone_from(&stop_reason);
             stats.stream_events.push(ProviderStreamEvent::Usage {
                 stop_reason,
                 usage: usage.clone(),
@@ -547,7 +547,7 @@ fn parse_provider_stop_reason(stop_reason: Option<&str>) -> Option<clanker_messa
     match stop_reason {
         Some("tool_use") => Some(clanker_message::StopReason::ToolUse),
         Some("max_tokens") => Some(clanker_message::StopReason::MaxTokens),
-        Some("stop") | Some("end_turn") => Some(clanker_message::StopReason::Stop),
+        Some("stop" | "end_turn") => Some(clanker_message::StopReason::Stop),
         Some(_) | None => None,
     }
 }

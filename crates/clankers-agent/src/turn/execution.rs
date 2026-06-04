@@ -880,7 +880,7 @@ async fn execute_single_tool(
         &effective_input,
         |event| events.emit(event),
     ) {
-        return blocked_receipt_to_tool_result(call_id, tool_name, receipt);
+        return blocked_receipt_to_tool_result(call_id, tool_name, *receipt);
     }
 
     events.emit(AgentEvent::ToolExecutionStart {

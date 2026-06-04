@@ -347,6 +347,34 @@ fn tool_result_content_to_semantic_parts(content: &[crate::tool::ToolResultConte
 }
 
 /// Convert a `ProcessEvent` from the procmon crate into an `AgentEvent`.
+pub fn process_event_to_agent(pe: clankers_procmon::ProcessEvent) -> AgentEvent {
+    match pe {
+        clankers_procmon::ProcessEvent::Spawn { pid, meta } => AgentEvent::ProcessSpawn { pid, meta },
+        clankers_procmon::ProcessEvent::Sample {
+            pid,
+            cpu_percent,
+            rss_bytes,
+            children,
+        } => AgentEvent::ProcessSample {
+            pid,
+            cpu_percent,
+            rss_bytes,
+            children,
+        },
+        clankers_procmon::ProcessEvent::Exit {
+            pid,
+            exit_code,
+            wall_time,
+            peak_rss,
+        } => AgentEvent::ProcessExit {
+            pid,
+            exit_code,
+            wall_time,
+            peak_rss,
+        },
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use clanker_message::ContentDelta;
@@ -358,7 +386,7 @@ mod tests {
 
     #[test]
     fn agent_event_projects_core_semantic_order() {
-        let events = vec![
+        let events = [
             AgentEvent::AgentStart,
             AgentEvent::MessageUpdate {
                 index: 0,
@@ -393,7 +421,7 @@ mod tests {
             .map(|event| event.to_semantic_event().expect("fixture events map to semantic"))
             .collect();
         let kinds: Vec<_> = semantic.iter().map(SemanticEvent::kind).collect();
-        assert_eq!(kinds, vec![
+        assert_eq!(kinds, [
             "agent_start",
             "thinking_delta",
             "assistant_delta",
@@ -405,33 +433,5 @@ mod tests {
             status: SemanticToolStatus::Succeeded,
             ..
         }));
-    }
-}
-
-pub fn process_event_to_agent(pe: clankers_procmon::ProcessEvent) -> AgentEvent {
-    match pe {
-        clankers_procmon::ProcessEvent::Spawn { pid, meta } => AgentEvent::ProcessSpawn { pid, meta },
-        clankers_procmon::ProcessEvent::Sample {
-            pid,
-            cpu_percent,
-            rss_bytes,
-            children,
-        } => AgentEvent::ProcessSample {
-            pid,
-            cpu_percent,
-            rss_bytes,
-            children,
-        },
-        clankers_procmon::ProcessEvent::Exit {
-            pid,
-            exit_code,
-            wall_time,
-            peak_rss,
-        } => AgentEvent::ProcessExit {
-            pid,
-            exit_code,
-            wall_time,
-            peak_rss,
-        },
     }
 }

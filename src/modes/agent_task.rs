@@ -27,7 +27,7 @@ pub(crate) fn spawn_agent_task(
         while let Some(cmd) = cmd_rx.recv().await {
             match cmd {
                 AgentCommand::Prompt(text) => {
-                    handle_prompt(&mut agent, &mut cmd_rx, &done_tx, &text, None).await;
+                    Box::pin(handle_prompt(&mut agent, &mut cmd_rx, &done_tx, &text, None)).await;
                 }
                 AgentCommand::PromptWithImages { text, images } => {
                     let img_contents: Vec<clanker_message::Content> = images
@@ -39,11 +39,11 @@ pub(crate) fn spawn_agent_task(
                             },
                         })
                         .collect();
-                    handle_prompt(&mut agent, &mut cmd_rx, &done_tx, &text, Some(img_contents)).await;
+                    Box::pin(handle_prompt(&mut agent, &mut cmd_rx, &done_tx, &text, Some(img_contents))).await;
                 }
                 AgentCommand::RewriteAndPrompt(text) => {
                     let improved = rewrite_prompt(agent.provider(), agent.model(), agent.session_id(), &text).await;
-                    handle_prompt(&mut agent, &mut cmd_rx, &done_tx, &improved, None).await;
+                    Box::pin(handle_prompt(&mut agent, &mut cmd_rx, &done_tx, &improved, None)).await;
                 }
                 AgentCommand::RewriteAndPromptWithImages { text, images } => {
                     let improved = rewrite_prompt(agent.provider(), agent.model(), agent.session_id(), &text).await;
@@ -56,7 +56,7 @@ pub(crate) fn spawn_agent_task(
                             },
                         })
                         .collect();
-                    handle_prompt(&mut agent, &mut cmd_rx, &done_tx, &improved, Some(img_contents)).await;
+                    Box::pin(handle_prompt(&mut agent, &mut cmd_rx, &done_tx, &improved, Some(img_contents))).await;
                 }
                 AgentCommand::Login {
                     code,
@@ -154,11 +154,11 @@ async fn handle_prompt(
     let result = match images {
         Some(img_contents) => {
             let prompt_fut = agent.prompt_with_images(text, img_contents);
-            run_prompt_with_abort(prompt_fut, cmd_rx, &cancel).await
+            Box::pin(run_prompt_with_abort(prompt_fut, cmd_rx, &cancel)).await
         }
         None => {
             let prompt_fut = agent.prompt(text);
-            run_prompt_with_abort(prompt_fut, cmd_rx, &cancel).await
+            Box::pin(run_prompt_with_abort(prompt_fut, cmd_rx, &cancel)).await
         }
     };
 
@@ -537,7 +537,7 @@ mod tests {
         let (_cmd_tx, mut cmd_rx) = tokio::sync::mpsc::unbounded_channel();
         let (done_tx, mut done_rx) = tokio::sync::mpsc::unbounded_channel();
 
-        super::handle_prompt(&mut agent, &mut cmd_rx, &done_tx, "hello", None).await;
+        Box::pin(super::handle_prompt(&mut agent, &mut cmd_rx, &done_tx, "hello", None)).await;
 
         assert_eq!(provider.calls.load(Ordering::SeqCst), 1);
         assert!(matches!(done_rx.try_recv(), Ok(TaskResult::PromptDone(None))));

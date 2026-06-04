@@ -194,7 +194,7 @@ impl ProcessEntry {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub(super) struct NativeProcessJobService {
     db: Option<clankers_db::Db>,
     retention_policy: ProcessJobRetentionPolicy,
@@ -213,16 +213,6 @@ impl NativeProcessJobService {
             db: Some(db),
             retention_policy,
             log_dir,
-        }
-    }
-}
-
-impl Default for NativeProcessJobService {
-    fn default() -> Self {
-        Self {
-            db: None,
-            retention_policy: ProcessJobRetentionPolicy::default(),
-            log_dir: None,
         }
     }
 }

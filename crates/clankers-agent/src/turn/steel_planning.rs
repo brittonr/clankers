@@ -279,9 +279,7 @@ pub fn steel_turn_planning_config_from_settings(
     if !settings.enabled {
         return Ok(None);
     }
-    settings
-        .validate()
-        .map_err(|error| SteelTurnPlanningActivationError::InvalidSettings(error.to_string()))?;
+    settings.validate().map_err(SteelTurnPlanningActivationError::InvalidSettings)?;
     let artifacts = load_planning_artifacts(settings, base_dir)?;
     build_config_from_artifacts(settings, artifacts).map(Some)
 }

@@ -243,9 +243,10 @@ fn steel_smoke_settings(
         max_source_bytes: 4096,
     };
     mutate(&mut steel);
-    let mut settings = clankers_config::settings::Settings::default();
-    settings.steel_turn_planning = steel;
-    settings
+    clankers_config::settings::Settings {
+        steel_turn_planning: steel,
+        ..Default::default()
+    }
 }
 
 fn steel_receipt_events(events: &[DaemonEvent]) -> Vec<String> {

@@ -1,5 +1,4 @@
 use std::path::Path;
-use std::path::PathBuf;
 use std::process::Command;
 
 use serde_json::Value;
@@ -119,7 +118,7 @@ fn git_stdout<const N: usize>(args: [&str; N]) -> String {
     String::from_utf8(output.stdout).expect("git stdout should be utf8").trim().to_string()
 }
 
-fn display_path(path: &PathBuf) -> String {
+fn display_path(path: &Path) -> String {
     path.to_string_lossy().replace('\\', "/")
 }
 

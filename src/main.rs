@@ -415,7 +415,7 @@ async fn run_agent_mode(
     );
 
     let result = if let Some(prompt) = prompt {
-        run_headless(&cli, &ctx, model, system_prompt, &prompt, &plugin_manager).await
+        Box::pin(run_headless(&cli, &ctx, model, system_prompt, &prompt, &plugin_manager)).await
     } else {
         Box::pin(run_interactive(&cli, &ctx, model, system_prompt, resources, &plugin_manager)).await
     };
@@ -580,7 +580,7 @@ async fn run_headless(
                 output_file: cli.output.clone(),
                 thinking: thinking_config,
             };
-            clankers::modes::json::run_json_with_options(
+            Box::pin(clankers::modes::json::run_json_with_options(
                 &full_prompt,
                 provider,
                 tools,
@@ -588,7 +588,7 @@ async fn run_headless(
                 model,
                 system_prompt,
                 json_opts,
-            )
+            ))
             .await?;
         }
         OutputMode::Markdown => {
@@ -599,7 +599,7 @@ async fn run_headless(
                 format: clankers::modes::print::PrintFormat::Markdown,
                 thinking: thinking_config,
             };
-            clankers::modes::print::run_print_with_options(
+            Box::pin(clankers::modes::print::run_print_with_options(
                 &full_prompt,
                 provider,
                 tools,
@@ -607,7 +607,7 @@ async fn run_headless(
                 model,
                 system_prompt,
                 print_opts,
-            )
+            ))
             .await?;
         }
         _ => {
@@ -618,7 +618,7 @@ async fn run_headless(
                 format: clankers::modes::print::PrintFormat::Text,
                 thinking: thinking_config,
             };
-            clankers::modes::print::run_print_with_options(
+            Box::pin(clankers::modes::print::run_print_with_options(
                 &full_prompt,
                 provider,
                 tools,
@@ -626,7 +626,7 @@ async fn run_headless(
                 model,
                 system_prompt,
                 print_opts,
-            )
+            ))
             .await?;
         }
     }

@@ -203,7 +203,7 @@ fn hook_status_for_result(result: &Result<()>) -> clankers_hooks::HookStatus {
         Ok(()) => clankers_hooks::HookStatus::Success,
         Err(AgentError::Cancelled) => clankers_hooks::HookStatus::Cancelled,
         Err(AgentError::Agent { message }) if message.contains("denied") => clankers_hooks::HookStatus::Denied,
-        Err(AgentError::ProviderStreaming { .. }) | Err(AgentError::Agent { .. }) => clankers_hooks::HookStatus::Error,
+        Err(AgentError::ProviderStreaming { .. } | AgentError::Agent { .. }) => clankers_hooks::HookStatus::Error,
     }
 }
 
@@ -221,10 +221,7 @@ fn hook_error_for_result(result: &Result<()>) -> Option<clankers_hooks::HookSafe
 }
 
 fn token_count_to_u64(value: usize) -> u64 {
-    match u64::try_from(value) {
-        Ok(converted) => converted,
-        Err(_) => u64::MAX,
-    }
+    u64::try_from(value).unwrap_or(u64::MAX)
 }
 
 fn turn_hook_usage_since(messages: &[AgentMessage], start_index: usize) -> Option<clankers_hooks::HookUsage> {
@@ -536,7 +533,7 @@ impl Agent {
 
         self.event_tx
             .send(AgentEvent::BeforeAgentStart {
-                prompt: text.to_string(),
+                prompt: text.clone(),
                 system_prompt: ctx.system_prompt.clone(),
             })
             .ok();
@@ -1117,7 +1114,7 @@ impl Agent {
                 self.emit_repo_steel_evolution_pack_status()?;
 
                 if !pre_turn_fired {
-                    turn_model = config.model.clone();
+                    turn_model.clone_from(&config.model);
                     pre_turn_fired = true;
                     self.fire_pre_turn_hook(prompt_id, user_text, &turn_model, turn_start_message_index).await?;
                 }

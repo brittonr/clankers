@@ -181,9 +181,11 @@ async fn run_chat_prompt(
                     }
                 }
             }
-            Ok(event @ DaemonEvent::ThinkingDelta { .. })
-            | Ok(event @ DaemonEvent::ToolCall { .. })
-            | Ok(event @ DaemonEvent::ToolDone { .. }) => {
+            Ok(
+                event @ (DaemonEvent::ThinkingDelta { .. }
+                | DaemonEvent::ToolCall { .. }
+                | DaemonEvent::ToolDone { .. }),
+            ) => {
                 if let Some(frame) = chat_stream_frame(&event) {
                     let bytes = serde_json::to_vec(&frame).unwrap_or_default();
                     write_frame(&mut send, &bytes).await.ok();

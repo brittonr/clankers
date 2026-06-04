@@ -265,7 +265,7 @@ mod tests {
         assert_eq!(agent_settings.memory.project_char_limit, 222);
         assert_eq!(agent_settings.skills.creation_nudge_interval, 3);
         assert_eq!(agent_settings.compression.keep_recent, 6);
-        assert_eq!(agent_settings.compression.tail_budget_fraction, 0.25);
+        assert!((agent_settings.compression.tail_budget_fraction - 0.25).abs() < f64::EPSILON);
         assert_eq!(agent_settings.compression.summary_model.as_deref(), Some("compact-model"));
     }
 

@@ -167,7 +167,7 @@ pub fn steel_tool_substrate_config_from_settings(
     let mut profile = SteelToolSubstrateProfile::default_enabled();
     profile.rollout_stage = settings.rollout_stage.map(rollout_stage).unwrap_or(profile.rollout_stage);
     profile.fallback_mode = settings.fallback_mode.map(fallback_mode).unwrap_or(profile.fallback_mode);
-    profile.required_session_capabilities = settings.session_capabilities.clone();
+    profile.required_session_capabilities.clone_from(&settings.session_capabilities);
     profile.required_ucan_ability = settings
         .granted_ucan_abilities
         .first()
@@ -178,7 +178,7 @@ pub fn steel_tool_substrate_config_from_settings(
     profile.runtime_profile.max_source_bytes = settings.max_source_bytes;
     for executor in &settings.disabled_executors {
         let kind = SteelToolExecutorKind::parse(executor)
-            .ok_or_else(|| SteelToolSubstrateActivationError::UnknownDisabledExecutor(executor.to_string()))?;
+            .ok_or_else(|| SteelToolSubstrateActivationError::UnknownDisabledExecutor(executor.clone()))?;
         profile.allowed_executor_kinds.remove(&kind);
     }
 
@@ -214,7 +214,7 @@ pub(crate) fn authorize_tool_invocation(
     tool_name: &str,
     input: &Value,
     emit_event: impl Fn(AgentEvent),
-) -> Result<Option<SteelToolInvocationReceipt>, SteelToolInvocationReceipt> {
+) -> Result<Option<SteelToolInvocationReceipt>, Box<SteelToolInvocationReceipt>> {
     let Some(config) = config else {
         return Ok(None);
     };
@@ -237,7 +237,7 @@ pub(crate) fn authorize_tool_invocation(
     let receipt = plan_tool_invocation_with_steel_or_fallback(&config.profile, &request);
     emit_steel_tool_substrate_receipt(emit_event, &receipt);
     if receipt.status == SteelToolSubstrateStatus::Blocked || receipt.status == SteelToolSubstrateStatus::Denied {
-        return Err(receipt);
+        return Err(Box::new(receipt));
     }
     Ok(Some(receipt))
 }

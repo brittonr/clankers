@@ -760,7 +760,7 @@ mod tests {
 
         assert_eq!(runtime.session_id, "runtime-bundle");
         assert!(runtime.cmd_tx.send(SessionCommand::GetToolList).is_ok());
-        assert!(runtime.event_tx.receiver_count() == 0);
+        assert_eq!(runtime.event_tx.receiver_count(), 0);
         assert!(runtime.automerge_path.as_ref().is_some_and(|path| path.starts_with(dir.path())));
         assert!(runtime.actor_tick_service.plugin_summaries().is_empty());
         assert!(runtime.bash_confirm_rx.is_empty());
