@@ -34,6 +34,12 @@ Daemon, MCP, and ACP integrations remain supported as **application-edge** surfa
 
 Concrete providers, tools, storage, prompts, events, cancellation sources, and runtime choices belong at the embedder/application edge.
 
+## Runtime facade classification
+
+`clankers-runtime` is now classified as a **yellow application-edge composition facade**, not a generic green SDK crate. It may reexport host-facing DTOs and service traits so applications can embed a Clankers-flavored runtime, but products must treat provider/auth/plugin/process/prompt/session behavior as explicit host injection rather than ambient Clankers desktop defaults.
+
+The durable runtime facade inventory lives in [`../generated/runtime-facade-api.md`](../generated/runtime-facade-api.md). `scripts/check-runtime-facade-boundary.rs` regenerates and verifies that inventory from the actual public Rust exports, classifies every source group as yellow/app-edge or green-candidate, checks the runtime dependency allowlist, and rejects forbidden provider/router/daemon/TUI/session/plugin/global-path source tokens. The current decision is a yellow composition facade with the `session-ledger-resume` API labeled as a green-candidate subset; the `promote-session-ledger-green-sdk` Cairn change decides whether to split that subset into a green owner.
+
 ## Minimal turn flow
 
 A host owns transcript conversion and then submits accepted work to the engine:
@@ -163,7 +169,7 @@ Current SDK crates are intended to work with their default features for the mini
 ## Product embedding crate guidance
 
 - **Green**: `clanker-message`, `clankers-engine`, `clankers-engine-host`, `clankers-tool-host`, and `clankers-adapters` are the checked product-embedding crates. `clankers-core` is green only for hosts that want prompt lifecycle reduction before an engine turn.
-- **Yellow**: app-edge crates such as daemon, MCP, ACP, runtime extension services, provider adapters, storage, or plugin boundaries may be composed by a product, but only behind a product-owned integration layer and not as transitive dependencies of generic SDK crates. Product-owned session/message DTOs and storage schemas are yellow app-edge concerns unless a later Cairn promotes a reusable storage API after multiple products converge on the same shape.
+- **Yellow**: app-edge crates such as `clankers-runtime`, daemon, MCP, ACP, runtime extension services, provider adapters, storage, or plugin boundaries may be composed by a product, but only behind a product-owned integration layer and not as transitive dependencies of generic SDK crates. Product-owned session/message DTOs and storage schemas are yellow app-edge concerns unless a later Cairn promotes a reusable storage API after multiple products converge on the same shape.
 - **Red**: `clankers-agent`, `clankers-controller`, `clankers-provider`, `clanker-router`, `clankers-db`, `clankers-protocol`, `clankers-tui`, prompt/skill bundles, Matrix, iroh/P2P, ratatui, and crossterm are not generic product SDK dependencies.
 
 The minimal embedding path must not require features that pull in daemon, TUI, provider discovery, database, prompt assembly, plugin supervision, built-in tools, Matrix, iroh, ratatui, or crossterm. Any future optional SDK feature must be documented here and validated by the feature/default-policy checker before it is advertised.
@@ -215,6 +221,12 @@ That bundle must prove:
 - default `clankers-agent::Agent` still routes through the reusable host runner and preserves streaming, tool, retry, cancellation, usage, and terminal behavior.
 
 ## Migration notes
+
+### 2026-06-04 runtime facade classification
+
+- affected entrypoint: `clankers-runtime` remains a yellow application-edge composition facade; its actual public exports, dependency allowlist, source-token denylist, and owner groups are tracked in `docs/src/generated/runtime-facade-api.md`.
+- replacement or adapter change: generic SDK consumers should keep depending on green crates directly and use runtime APIs only behind a product-owned integration layer; missing runtime services must be injected or fail closed without desktop discovery.
+- validation command: `scripts/check-runtime-facade-boundary.rs` plus `scripts/check-embedded-agent-sdk.rs`.
 
 ### 2026-06-04 experimental SDK port budget
 

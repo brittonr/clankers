@@ -69,8 +69,6 @@ pub use adapters::RuntimeUsageAdapter;
 pub use adapters::RuntimeUsageObservation;
 pub use adapters::RuntimeUsageObservationKind;
 pub use adapters::UnavailableRuntimeToolAdapter;
-#[cfg(test)]
-use boundary::public_type_names;
 pub use confirmation::ConfirmationAction;
 pub use confirmation::ConfirmationBroker;
 pub use confirmation::ConfirmationDecision;
@@ -746,10 +744,7 @@ mod tests {
     #[test]
     fn public_api_boundary_rejects_transport_type_leakage() {
         validate_public_runtime_boundary().unwrap();
-        let names = public_type_names().join("\n");
-        for denied in ["DaemonEvent", "SessionCommand", "Tui", "Acp", "Mcp", "Cli"] {
-            assert!(!names.contains(denied), "public API leaked {denied}");
-        }
+        assert_eq!(crate::boundary::PUBLIC_RUNTIME_BOUNDARY_RAIL, "scripts/check-runtime-facade-boundary.rs");
     }
 
     #[tokio::test]

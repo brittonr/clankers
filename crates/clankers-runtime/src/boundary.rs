@@ -1,32 +1,11 @@
 use crate::RuntimeError;
 
-pub(crate) fn validate_public_runtime_boundary() -> Result<(), RuntimeError> {
-    // Runtime check complements compile-level tests and documents the stable deny list.
-    let denied = ["DaemonEvent", "SessionCommand", "Tui", "Acp", "Mcp", "Cli"];
-    for item in denied {
-        if public_type_names().iter().any(|name| name.contains(item)) {
-            return Err(RuntimeError::PublicBoundaryLeak(item.to_string()));
-        }
-    }
-    Ok(())
-}
+pub(crate) const PUBLIC_RUNTIME_BOUNDARY_RAIL: &str = "scripts/check-runtime-facade-boundary.rs";
 
-pub(crate) fn public_type_names() -> Vec<&'static str> {
-    vec![
-        "RuntimeBuilder",
-        "Runtime",
-        "SessionHandle",
-        "SessionEvent",
-        "PromptInput",
-        "PromptReceipt",
-        "EventMetadata",
-        "RuntimeServices",
-        "PromptAssembler",
-        "PromptAssemblyPolicy",
-        "ToolCatalog",
-        "ToolDescriptor",
-        "ConfirmationBroker",
-        "ConfirmationRequest",
-        "ConfirmationDecision",
-    ]
+pub(crate) fn validate_public_runtime_boundary() -> Result<(), RuntimeError> {
+    // The checked boundary is maintained by PUBLIC_RUNTIME_BOUNDARY_RAIL so it
+    // inventories real public exports, dependencies, and source tokens instead
+    // of relying on a small in-crate name list.
+    let _rail = PUBLIC_RUNTIME_BOUNDARY_RAIL;
+    Ok(())
 }

@@ -123,10 +123,14 @@
       "observed_outcome": "fail_closed",
       "source_artifacts": [
         "crates/clankers-runtime/src/lib.rs",
-        "crates/clankers-runtime/src/boundary.rs"
+        "crates/clankers-runtime/src/boundary.rs",
+        "scripts/check-runtime-facade-boundary.rs",
+        "policy/embedded-lego/runtime-facade-boundary.json"
       ],
       "artifact_markers": [
         "public_api_boundary_rejects_transport_type_leakage",
+        "PUBLIC_RUNTIME_BOUNDARY_RAIL",
+        "forbidden_source_tokens",
         "DaemonEvent",
         "SessionCommand"
       ],
@@ -459,6 +463,23 @@
         "scripts/check-runtime-extension-service-matrix.rs",
         "crates/clankers-runtime/src/lib.rs",
         "src/runtime_services.rs"
+      ]
+    },
+    {
+      "script": "scripts/check-runtime-facade-boundary.rs",
+      "class": "ast_cargo_rail",
+      "owner": "embedded-sdk",
+      "requirement_ids": [
+        "remaining-coupling-drain.runtime-facade-classification",
+        "remaining-coupling-drain.runtime-public-api-rail",
+        "remaining-coupling-drain.runtime-fail-closed-defaults"
+      ],
+      "source_artifacts": [
+        "scripts/check-runtime-facade-boundary.rs",
+        "policy/embedded-lego/runtime-facade-boundary.json",
+        "docs/src/generated/runtime-facade-api.md",
+        "crates/clankers-runtime/src/lib.rs",
+        "crates/clankers-runtime/src/boundary.rs"
       ]
     },
     {

@@ -57,7 +57,9 @@ const VERIFICATION_COMMANDS: &[&str] = &[
 
 const DIRECT_ARTIFACTS: &[&str] = &[
     "docs/src/tutorials/embedded-agent-sdk.md",
+    "docs/src/reference/embedding.md",
     "docs/src/generated/embedded-sdk-api.md",
+    "docs/src/generated/runtime-facade-api.md",
     "cairn/specs/embedded-composition-kits/spec.md",
     "scripts/check-embedded-agent-sdk.rs",
     "scripts/check-embedded-sdk-ci-wiring.rs",
@@ -81,11 +83,13 @@ const DIRECT_ARTIFACTS: &[&str] = &[
     "scripts/check-engine-host-feature-matrix.rs",
     "scripts/check-tool-catalog-matrix.rs",
     "scripts/check-runtime-extension-service-matrix.rs",
+    "scripts/check-runtime-facade-boundary.rs",
     "scripts/check-shell-adapter-parity-matrix.rs",
     "policy/embedded-lego/lego-contracts.ncl",
     "policy/embedded-lego/lego-contracts.json",
     "policy/embedded-lego/brick-inventory-stability.json",
     "policy/embedded-lego/experimental-sdk-port-budget.json",
+    "policy/embedded-lego/runtime-facade-boundary.json",
     "policy/embedded-lego/behavioral-rail-inventory.json",
 ];
 

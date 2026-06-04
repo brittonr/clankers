@@ -1,0 +1,266 @@
+{
+  "schema": "clankers.runtime_facade_boundary.v1",
+  "crate_name": "clankers-runtime",
+  "facade_classification": "yellow application-edge composition facade; not a generic green SDK crate",
+  "selected_green_subsets": [
+    "session-ledger-resume green-candidate subset tracked by promote-session-ledger-green-sdk"
+  ],
+  "groups": [
+    {
+      "id": "runtime-root-facade",
+      "owner": "clankers-runtime::facade",
+      "classification": "yellow-app-edge",
+      "stability": "reviewed-runtime-facade",
+      "source_paths": ["crates/clankers-runtime/src/lib.rs"]
+    },
+    {
+      "id": "runtime-boundary-rail-seam",
+      "owner": "clankers-runtime::boundary",
+      "classification": "yellow-app-edge",
+      "stability": "internal-rail-seam",
+      "source_paths": ["crates/clankers-runtime/src/boundary.rs"]
+    },
+    {
+      "id": "runtime-host-adapters",
+      "owner": "clankers-runtime::adapters",
+      "classification": "yellow-app-edge-host-contracts",
+      "stability": "reviewed-runtime-facade",
+      "source_paths": ["crates/clankers-runtime/src/adapters.rs"]
+    },
+    {
+      "id": "runtime-confirmation",
+      "owner": "clankers-runtime::confirmation",
+      "classification": "yellow-app-edge-host-contracts",
+      "stability": "reviewed-runtime-facade",
+      "source_paths": ["crates/clankers-runtime/src/confirmation.rs"]
+    },
+    {
+      "id": "runtime-dynamic-execution",
+      "owner": "clankers-runtime::dynamic_runtime",
+      "classification": "yellow-app-edge-dynamic-runtime",
+      "stability": "explicit-host-injection-required",
+      "source_paths": ["crates/clankers-runtime/src/dynamic_runtime.rs"]
+    },
+    {
+      "id": "runtime-effects",
+      "owner": "clankers-runtime::effects",
+      "classification": "yellow-app-edge-effect-admission",
+      "stability": "explicit-host-injection-required",
+      "source_paths": ["crates/clankers-runtime/src/effects.rs"]
+    },
+    {
+      "id": "runtime-event-projection",
+      "owner": "clankers-runtime::events",
+      "classification": "yellow-app-edge-event-projection",
+      "stability": "reviewed-runtime-facade",
+      "source_paths": [
+        "crates/clankers-runtime/src/events.rs",
+        "crates/clankers-runtime/src/event_summary.rs"
+      ]
+    },
+    {
+      "id": "runtime-ledger-green-candidate",
+      "owner": "clankers-runtime::ledger",
+      "classification": "green-candidate-inside-yellow-runtime",
+      "stability": "candidate-for-green-split",
+      "source_paths": ["crates/clankers-runtime/src/ledger.rs"]
+    },
+    {
+      "id": "runtime-process-jobs",
+      "owner": "clankers-runtime::process_jobs",
+      "classification": "yellow-app-edge-process-policy",
+      "stability": "explicit-host-injection-required",
+      "source_paths": ["crates/clankers-runtime/src/process_jobs.rs"]
+    },
+    {
+      "id": "runtime-prompt-services",
+      "owner": "clankers-runtime::prompt",
+      "classification": "yellow-app-edge-prompt-skill-services",
+      "stability": "explicit-host-injection-required",
+      "source_paths": ["crates/clankers-runtime/src/prompt.rs"]
+    },
+    {
+      "id": "runtime-session-shell",
+      "owner": "clankers-runtime::session",
+      "classification": "yellow-app-edge-session-shell",
+      "stability": "explicit-host-injection-required",
+      "source_paths": [
+        "crates/clankers-runtime/src/runtime.rs",
+        "crates/clankers-runtime/src/session.rs"
+      ]
+    },
+    {
+      "id": "runtime-host-services",
+      "owner": "clankers-runtime::services",
+      "classification": "yellow-app-edge-service-contracts",
+      "stability": "explicit-host-injection-required",
+      "source_paths": ["crates/clankers-runtime/src/services.rs"]
+    },
+    {
+      "id": "runtime-steel-orchestration",
+      "owner": "clankers-runtime::steel_orchestration",
+      "classification": "yellow-app-edge-orchestration-runtime",
+      "stability": "explicit-host-injection-required",
+      "source_paths": [
+        "crates/clankers-runtime/src/steel_mutation.rs",
+        "crates/clankers-runtime/src/steel_orchestration.rs",
+        "crates/clankers-runtime/src/steel_orchestration_mutation.rs",
+        "crates/clankers-runtime/src/steel_repo_evolution.rs",
+        "crates/clankers-runtime/src/steel_runtime.rs",
+        "crates/clankers-runtime/src/steel_tool_substrate.rs"
+      ]
+    },
+    {
+      "id": "runtime-tool-catalog",
+      "owner": "clankers-runtime::tools",
+      "classification": "yellow-app-edge-tool-catalog",
+      "stability": "reviewed-runtime-facade",
+      "source_paths": ["crates/clankers-runtime/src/tools.rs"]
+    }
+  ],
+  "dependency_allowlist": [
+    {
+      "name": "async-trait",
+      "classification": "neutral-rust-helper",
+      "reason": "trait object ergonomics for explicit runtime service contracts"
+    },
+    {
+      "name": "basalt",
+      "classification": "yellow-dynamic-runtime-policy-data",
+      "reason": "policy/value representation for runtime orchestration receipts"
+    },
+    {
+      "name": "blake3",
+      "classification": "neutral-receipt-hashing",
+      "reason": "deterministic hashes for runtime receipts and evidence"
+    },
+    {
+      "name": "chrono",
+      "classification": "yellow-runtime-clock-dto",
+      "reason": "runtime/session DTO timestamps stay outside generic green SDK crates"
+    },
+    {
+      "name": "clanker-message",
+      "classification": "green-sdk-data-contract",
+      "reason": "shared content and semantic-event contracts"
+    },
+    {
+      "name": "clankers-artifacts",
+      "classification": "yellow-artifact-runtime-contract",
+      "reason": "runtime execution receipts and artifact DTOs"
+    },
+    {
+      "name": "clankers-engine",
+      "classification": "green-sdk-engine-contract",
+      "reason": "engine message/model DTOs consumed through runtime adapters"
+    },
+    {
+      "name": "clankers-engine-host",
+      "classification": "green-sdk-host-contract",
+      "reason": "host-owned engine execution seams used by runtime session shell"
+    },
+    {
+      "name": "clankers-tool-host",
+      "classification": "green-sdk-tool-contract",
+      "reason": "neutral tool execution and capability contracts"
+    },
+    {
+      "name": "serde",
+      "classification": "neutral-serialization",
+      "reason": "public DTO serialization"
+    },
+    {
+      "name": "serde_json",
+      "classification": "neutral-serialization",
+      "reason": "receipt and metadata JSON values"
+    },
+    {
+      "name": "thiserror",
+      "classification": "neutral-error-helper",
+      "reason": "typed RuntimeError display"
+    },
+    {
+      "name": "tokio",
+      "classification": "yellow-runtime-async-shell",
+      "reason": "runtime/session async channels and explicit host service execution"
+    },
+    {
+      "name": "uuid",
+      "classification": "yellow-runtime-identity-dto",
+      "reason": "runtime prompt/session identifiers stay app-edge"
+    }
+  ],
+  "forbidden_dependency_fragments": [
+    "clankers-agent",
+    "clankers-config",
+    "clankers-controller",
+    "clankers-db",
+    "clankers-plugin",
+    "clankers-protocol",
+    "clankers-provider",
+    "clankers-session",
+    "clankers-tui",
+    "clanker-router",
+    "clanker-tui-types",
+    "ratatui",
+    "crossterm"
+  ],
+  "forbidden_source_tokens": [
+    {
+      "token": "clankers_provider",
+      "reason": "provider-native code belongs behind desktop/product adapters"
+    },
+    {
+      "token": "clanker_router",
+      "reason": "router daemon/provider policy must not be imported by runtime facade"
+    },
+    {
+      "token": "clankers_config",
+      "reason": "global/project config lookup must be injected by host services"
+    },
+    {
+      "token": "clankers_session",
+      "reason": "desktop session database ownership is not a runtime default"
+    },
+    {
+      "token": "clankers_db",
+      "reason": "database handles are desktop storage concerns"
+    },
+    {
+      "token": "clankers_protocol",
+      "reason": "daemon wire DTOs must not leak into runtime public API"
+    },
+    {
+      "token": "clankers_plugin",
+      "reason": "plugin supervision remains an explicit extension service"
+    },
+    {
+      "token": "clankers_tui",
+      "reason": "TUI/display state is outside runtime facade contracts"
+    },
+    {
+      "token": "DaemonEvent",
+      "reason": "daemon events are protocol shell DTOs"
+    },
+    {
+      "token": "SessionCommand",
+      "reason": "daemon session commands are protocol shell DTOs"
+    },
+    {
+      "token": "TuiEvent",
+      "reason": "TUI event DTOs are display shell state"
+    },
+    {
+      "token": "ClankersPaths::get",
+      "reason": "runtime defaults must not probe ambient Clankers paths"
+    },
+    {
+      "token": "PluginManager",
+      "reason": "plugin runtime ownership must be injected explicitly"
+    },
+    {
+      "token": "auth.json",
+      "reason": "runtime auth access must be host supplied and fail closed"
+    }
+  ]
+}

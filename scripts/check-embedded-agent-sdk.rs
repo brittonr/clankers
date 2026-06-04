@@ -36,6 +36,7 @@ const RUST_CHECKS: &[&str] = &[
     "scripts/check-engine-host-feature-matrix.rs",
     "scripts/check-tool-catalog-matrix.rs",
     "scripts/check-runtime-extension-service-matrix.rs",
+    "scripts/check-runtime-facade-boundary.rs",
     "scripts/check-shell-adapter-parity-matrix.rs",
     "scripts/check-batch-eval-runner-kit.rs",
     "scripts/check-slash-command-routing-kit.rs",
