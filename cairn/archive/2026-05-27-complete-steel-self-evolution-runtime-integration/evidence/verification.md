@@ -68,7 +68,7 @@ test steel_orchestration_mutation::tests::denied_receipts_redact_unsafe_content 
 test steel_orchestration_mutation::tests::valid_orchestration_patch_stages_and_promotes_after_gates ... ok
 test steel_orchestration_mutation::tests::failed_gate_blocks_activation_after_isolated_stage ... ok
 test steel_orchestration_mutation::tests::rollback_requires_current_and_backup_hash_match ... ok
-test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 153 filtered out; finished in 0.14s
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 153 filtered out; finished in 0.13s
 ```
 
 Command:
@@ -83,7 +83,7 @@ Result:
 steel orchestration-pack mutation receipt written to target/steel-orchestration-pack-mutation/receipt.json
 ```
 
-The checker uses `stage_orchestration_patch_to_directory(...)`, `promote_staged_orchestration_pack_to_directory(...)`, and `rollback_orchestration_pack_to_directory(...)`. It proves typed payloads write only below an isolated staging root after preflight validation, live promotion copies staged files only after hash guards, rollback restores backup files only after current/backup hash guards, raw write attempts fail before side effects, and unsafe receipt content is redacted.
+The checker uses `stage_orchestration_patch_to_directory(...)`, `promote_staged_orchestration_pack_to_directory(...)`, and `rollback_orchestration_pack_to_directory(...)`. It proves typed payloads write only below an isolated staging root after preflight validation, live promotion copies staged files only after hash guards, rollback restores backup files only after current/backup hash guards, raw write attempts fail before side effects, and unsafe receipt content is redacted, including malformed `b3:` patch-hash payloads and unsafe selected-gate payloads.
 
 ### Docs, Cairn, diff rails
 

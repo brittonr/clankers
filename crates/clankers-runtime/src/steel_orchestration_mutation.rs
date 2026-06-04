@@ -17,8 +17,11 @@ pub const STEEL_ORCHESTRATION_PACK_ROOT: &str = ".clankers/steel";
 const ACTIVATION_EXPLICIT_RELOAD: &str = "explicit_reload";
 const ACTIVATION_NEXT_TURN: &str = "next_turn";
 const REQUIRED_GATE_PREFIX: &str = "steel-pack-";
+const BLAKE3_HASH_PREFIX: &str = "b3:";
+const BLAKE3_HEX_LENGTH: usize = 64;
 const REDACTED_INVALID_PATCH_HASH: &str = "redacted:invalid-patch-hash";
 const REDACTED_UNSAFE_TARGET_PATH: &str = "redacted:target-path";
+const REDACTED_SELECTED_GATE: &str = "redacted:selected-gate";
 const RAW_WRITE_AUTHORITY_CLASS: &str = "raw_write";
 const UNKNOWN_AUTHORITY_CLASS: &str = "authority_change";
 
@@ -166,7 +169,7 @@ pub fn validate_orchestration_patch_proposal(
             "orchestration patch expected pack hash is stale",
         );
     }
-    if !proposal.patch_hash.starts_with("b3:") {
+    if !is_prefixed_blake3_hash(&proposal.patch_hash) {
         return denied_receipt(
             state,
             proposal,
@@ -223,7 +226,7 @@ pub fn validate_orchestration_patch_proposal(
         proposed_new_pack_hash: None,
         patch_hash: Some(proposal.patch_hash.clone()),
         target_paths: sorted(proposal.target_paths.clone()),
-        selected_gates: sorted(proposal.selected_gates.clone()),
+        selected_gates: safe_selected_gates_for_receipt(&proposal.selected_gates, &state.required_gates),
         gate_result_hashes: Vec::new(),
         activation_decision: SteelOrchestrationActivationDecision::StagedOnly,
         rollback_reference: None,
@@ -496,7 +499,7 @@ fn denied_receipt(
         proposed_new_pack_hash: None,
         patch_hash: safe_patch_hash_for_receipt(&proposal.patch_hash),
         target_paths: safe_target_paths_for_receipt(&proposal.target_paths),
-        selected_gates: sorted(proposal.selected_gates.clone()),
+        selected_gates: safe_selected_gates_for_receipt(&proposal.selected_gates, &state.required_gates),
         gate_result_hashes: Vec::new(),
         activation_decision: SteelOrchestrationActivationDecision::Denied,
         rollback_reference: None,
@@ -506,11 +509,18 @@ fn denied_receipt(
 }
 
 fn safe_patch_hash_for_receipt(patch_hash: &str) -> Option<String> {
-    if patch_hash.starts_with("b3:") {
+    if is_prefixed_blake3_hash(patch_hash) {
         Some(patch_hash.to_string())
     } else {
         Some(REDACTED_INVALID_PATCH_HASH.to_string())
     }
+}
+
+fn is_prefixed_blake3_hash(value: &str) -> bool {
+    let Some(hex) = value.strip_prefix(BLAKE3_HASH_PREFIX) else {
+        return false;
+    };
+    hex.len() == BLAKE3_HEX_LENGTH && hex.bytes().all(|byte| byte.is_ascii_hexdigit())
 }
 
 fn safe_target_paths_for_receipt(target_paths: &[String]) -> Vec<String> {
@@ -519,6 +529,23 @@ fn safe_target_paths_for_receipt(target_paths: &[String]) -> Vec<String> {
     } else {
         vec![REDACTED_UNSAFE_TARGET_PATH.to_string()]
     }
+}
+
+fn safe_selected_gates_for_receipt(selected_gates: &[String], required_gates: &[String]) -> Vec<String> {
+    let required = required_gates.iter().map(String::as_str).collect::<BTreeSet<_>>();
+    let mut safe_gates = selected_gates
+        .iter()
+        .map(|gate| {
+            if required.contains(gate.as_str()) {
+                gate.clone()
+            } else {
+                REDACTED_SELECTED_GATE.to_string()
+            }
+        })
+        .collect::<Vec<_>>();
+    safe_gates.sort();
+    safe_gates.dedup();
+    safe_gates
 }
 
 fn safe_authority_changes_for_receipt(authority_changes: &[String]) -> Vec<String> {
@@ -767,7 +794,8 @@ mod tests {
     fn denied_receipts_redact_unsafe_content() {
         let mut unsafe_proposal = proposal();
         unsafe_proposal.target_paths = vec!["/home/operator/.ssh/id_rsa".to_string()];
-        unsafe_proposal.patch_hash = "sk-live-secret-token".to_string();
+        unsafe_proposal.patch_hash = "b3:sk-live-secret-token".to_string();
+        unsafe_proposal.selected_gates = vec!["steel-pack-validate".to_string(), "sk-live-secret-token".to_string()];
         unsafe_proposal.authority_changes = vec![
             "raw_write:/home/operator/.ssh/id_rsa".to_string(),
             "credential:sk-live-secret-token".to_string(),
@@ -775,8 +803,10 @@ mod tests {
         let receipt = validate_orchestration_patch_proposal(&unsafe_proposal, &state());
         let receipt_json = serde_json::to_string(&receipt).expect("receipt serializes");
         assert_eq!(receipt.status, SteelOrchestrationMutationStatus::Denied);
+        assert_eq!(receipt.reason_code, SteelOrchestrationMutationReason::MalformedPatchHash);
         assert_eq!(receipt.patch_hash.as_deref(), Some(REDACTED_INVALID_PATCH_HASH));
         assert_eq!(receipt.target_paths, vec![REDACTED_UNSAFE_TARGET_PATH.to_string()]);
+        assert_eq!(receipt.selected_gates, vec![REDACTED_SELECTED_GATE.to_string(), "steel-pack-validate".to_string()]);
         assert_eq!(receipt.authority_changes, vec!["credential".to_string(), RAW_WRITE_AUTHORITY_CLASS.to_string()]);
         assert!(!receipt_json.contains("sk-live-secret-token"));
         assert!(!receipt_json.contains("/home/operator"));

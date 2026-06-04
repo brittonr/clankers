@@ -40,7 +40,7 @@ Steel macros and DSL expansion are allowed for orchestration planning, but Rust 
 
 ## Receipts
 
-Receipts include old/new pack hashes, patch hash, safe target metadata, policy/script hashes where available, selected gates, gate result hashes, activation decision, rollback reference, issue code, and receipt hash. Denied receipts redact malformed patch hashes, unsafe target paths, and raw authority-change payloads to bounded classes. They omit raw prompts, credentials, compact UCAN tokens, provider payloads, secret paths, unbounded patch bodies, and private transcript material.
+Receipts include old/new pack hashes, patch hash, safe target metadata, policy/script hashes where available, selected gates, gate result hashes, activation decision, rollback reference, issue code, and receipt hash. Denied receipts redact malformed patch hashes (including `b3:`-prefixed non-hashes), unsafe target paths, unknown selected-gate payloads, and raw authority-change payloads to bounded classes. They omit raw prompts, credentials, compact UCAN tokens, provider payloads, secret paths, unbounded patch bodies, and private transcript material.
 
 ## Verification
 

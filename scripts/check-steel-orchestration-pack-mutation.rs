@@ -257,7 +257,8 @@ fn failed_gate_receipt() -> SteelOrchestrationMutationReceipt {
 fn unsafe_receipt_content_redacted() -> bool {
     let mut proposal = proposal();
     proposal.target_paths = vec![UNSAFE_SECRET_PATH.to_string()];
-    proposal.patch_hash = UNSAFE_SECRET_TOKEN.to_string();
+    proposal.patch_hash = format!("b3:{UNSAFE_SECRET_TOKEN}");
+    proposal.selected_gates = vec![REQUIRED_VALIDATE_GATE.to_string(), UNSAFE_SECRET_TOKEN.to_string()];
     proposal.authority_changes = vec![
         format!("raw_write:{UNSAFE_SECRET_PATH}"),
         format!("credential:{UNSAFE_SECRET_TOKEN}"),
@@ -267,8 +268,10 @@ fn unsafe_receipt_content_redacted() -> bool {
         return false;
     };
     receipt.status == SteelOrchestrationMutationStatus::Denied
+        && receipt.reason_code == SteelOrchestrationMutationReason::MalformedPatchHash
         && receipt.patch_hash.as_deref() == Some("redacted:invalid-patch-hash")
         && receipt.target_paths == vec!["redacted:target-path".to_string()]
+        && receipt.selected_gates == vec!["redacted:selected-gate".to_string(), REQUIRED_VALIDATE_GATE.to_string()]
         && !receipt_json.contains(UNSAFE_SECRET_TOKEN)
         && !receipt_json.contains(UNSAFE_SECRET_PATH)
         && !receipt_json.contains("raw_write:")
