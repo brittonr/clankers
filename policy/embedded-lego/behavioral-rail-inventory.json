@@ -168,6 +168,23 @@
       ]
     },
     {
+      "script": "scripts/check-experimental-sdk-port-budget.rs",
+      "class": "ast_cargo_rail",
+      "owner": "embedded-sdk",
+      "requirement_ids": [
+        "embedded-composition-kits.experimental-port-budget",
+        "behavioral-lego-parity-rails.inventory.classification"
+      ],
+      "source_artifacts": [
+        "scripts/check-experimental-sdk-port-budget.rs",
+        "policy/embedded-lego/experimental-sdk-port-budget.json",
+        "docs/src/generated/embedded-sdk-api.md",
+        "docs/src/tutorials/embedded-agent-sdk.md",
+        "cairn/specs/embedded-composition-kits/spec.md",
+        "cairn/specs/neutral-tool-context/spec.md"
+      ]
+    },
+    {
       "script": "scripts/check-brick-inventory-stability.rs",
       "class": "receipt_verifier",
       "owner": "embedded-sdk",

@@ -147,13 +147,15 @@ The product-facing lego policy lives under `policy/embedded-lego/`. `lego-contra
 
 Reusable app-owned glue found while extending this dogfood path should become a follow-up Cairn before entering green SDK crates; do not silently widen green dependencies from product evidence alone.
 
+`policy/embedded-lego/experimental-sdk-port-budget.json` records each remaining experimental SDK port group and its disposition. `scripts/check-experimental-sdk-port-budget.rs` fails if a new experimental row lacks an owner/action, if a make-private group becomes public again, or if promoted service/context APIs drift away from their supported inventory rows.
+
 ## Feature and default policy
 
 Current SDK crates are intended to work with their default features for the minimal embedding path:
 
 - `clankers-engine`: no optional features; depends on `clanker-message` and `serde_json`.
 - `clankers-engine-host`: no optional features; depends on `clankers-engine`, `clankers-tool-host`, `clanker-message`, `serde`, `serde_json`, and `thiserror`.
-- `clankers-tool-host`: no optional features; depends on `clankers-engine`, `clanker-message`, `serde`, `serde_json`, and `thiserror`.
+- `clankers-tool-host`: no optional features; depends on `clankers-engine`, `clanker-message`, `serde`, `serde_json`, and `thiserror`. Its supported neutral `ToolInvocationContext` service ports cover storage, search, hooks, progress, capability, cancellation, and runtime-policy injection. Hosts must provide those services explicitly; missing or unavailable services fail closed through `require_service`, cancellation/capability checks, or typed `ToolHostError`/`ToolHostOutcome` values instead of constructing desktop defaults.
 - `clankers-adapters`: no optional features; depends only on SDK crates plus `serde`, `serde_json`, and `thiserror` for DTO validation and reusable test/product bricks.
 - `clanker-message`: default features are empty for embedding; stable entrypoints are shared content/tool/usage/streaming/semantic-event contracts. The non-default `transcript-compat` feature enables `transcript` and legacy `message::*` compatibility records for Clankers session/provider/controller adapters and is not used by minimal examples.
 - `clankers-core`: optional for hosts that want prompt lifecycle/follow-up reduction before engine submission; not required by the minimal engine-host example.
@@ -213,6 +215,12 @@ That bundle must prove:
 - default `clankers-agent::Agent` still routes through the reusable host runner and preserves streaming, tool, retry, cancellation, usage, and terminal behavior.
 
 ## Migration notes
+
+### 2026-06-04 experimental SDK port budget
+
+- affected entrypoint: `clankers-tool-host` neutral service/context APIs (`ToolInvocationContext`, `ToolHostServices`, storage/search/hook/progress/capability/cancellation/runtime-policy service traits and DTOs) are now supported; unused `clankers-engine-host` observation ports (`PromptHistoryPort`, `PersistencePort`, `HookPort`, `CostAccountingPort`, and their observation records) are no longer public SDK inventory rows.
+- replacement or adapter change: embedders should inject tool services through `ToolInvocationContext` and keep desktop prompt/history/persistence/hook/cost concerns at product edges until a future fixture-backed API is introduced.
+- validation command: `scripts/check-experimental-sdk-port-budget.rs` plus `scripts/check-embedded-agent-sdk.rs`.
 
 ### 2026-05-27 engine-host baseline expansion
 

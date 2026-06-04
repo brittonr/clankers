@@ -1,0 +1,105 @@
+{
+  "schema": "clankers.embedded_lego.experimental_sdk_port_budget.v1",
+  "inventory_path": "docs/src/generated/embedded-sdk-api.md",
+  "expected_experimental_rows": 23,
+  "groups": [
+    {
+      "id": "engine-buffered-tool-results",
+      "crate": "clankers-engine",
+      "owner_module": "clankers-engine reducer state",
+      "entry_prefixes": [
+        "EngineBufferedToolResult"
+      ],
+      "disposition": "keep-experimental-with-rationale",
+      "expected_stability": "experimental",
+      "expected_rows": 4,
+      "use_site_status": "used internally by EngineState buffered tool feedback and reducer conversion; not a direct product recipe yet",
+      "validation": "cargo test -p clankers-engine --lib buffered",
+      "rationale": "the reducer needs the buffer shape public through EngineState today, but the embedder-facing resume contract should converge before stabilizing the concrete buffer record"
+    },
+    {
+      "id": "engine-host-unused-observation-ports",
+      "crate": "clankers-engine-host",
+      "owner_module": "removed pre-convergence engine-host observation ports",
+      "entry_prefixes": [
+        "EnginePromptBundle",
+        "EngineHistoryRecord",
+        "EnginePersistenceRecord",
+        "EngineHookObservation",
+        "EngineCostObservation",
+        "PromptHistoryPort",
+        "PersistencePort",
+        "HookPort",
+        "CostAccountingPort"
+      ],
+      "disposition": "make-private",
+      "expected_stability": "absent",
+      "expected_rows": 0,
+      "use_site_status": "no production adapter, fixture, or documented product recipe used these public ports",
+      "validation": "scripts/check-embedded-sdk-api.rs and cargo check -p clankers-engine-host",
+      "rationale": "unused observation ports should not remain public by accident; replacement APIs should be introduced only with product-owned fixtures"
+    },
+    {
+      "id": "tool-host-neutral-service-context",
+      "crate": "clankers-tool-host",
+      "owner_module": "clankers-tool-host neutral tool service/context APIs",
+      "entry_prefixes": [
+        "ToolHostFuture",
+        "ToolHostServiceKind",
+        "ToolHostServiceStatus",
+        "ToolHostServiceHandle",
+        "ToolHostServices",
+        "ToolInvocationCancellation",
+        "ToolInvocationContext",
+        "ToolProgressKind",
+        "ToolProgressEvent",
+        "ToolProgressSink",
+        "ToolStorageKey",
+        "ToolStorageValue",
+        "ToolStorageReadRequest",
+        "ToolStorageReadResult",
+        "ToolStorageWriteRequest",
+        "ToolStorageWriteResult",
+        "ToolStorageService",
+        "ToolSearchRequest",
+        "ToolSearchHit",
+        "ToolSearchResult",
+        "ToolSearchService",
+        "ToolHookPhase",
+        "ToolHookRequest",
+        "ToolHookDecision",
+        "ToolHookService",
+        "ToolCapabilityRequest",
+        "ToolCapabilityService",
+        "ToolCancellationService",
+        "ToolRuntimePolicyKind",
+        "ToolRuntimePolicyRequest",
+        "ToolRuntimePolicyDecision",
+        "ToolRuntimePolicyService",
+        "NeutralToolExecutor"
+      ],
+      "disposition": "promote-with-evidence",
+      "expected_stability": "supported",
+      "expected_rows": 137,
+      "use_site_status": "exercised by clankers-tool-host neutral service/context fixtures and consumed by controller tool-port service inventory",
+      "validation": "cargo test -p clankers-tool-host --lib neutral_service_contracts_cover_storage_search_hooks_capability_cancellation_and_runtime_policy neutral_context_fixtures_cover_success_progress_storage_denial_cancel_and_truncation",
+      "rationale": "storage, search, hooks, capability, cancellation, progress, and runtime policy services have positive and fail-closed fixtures through ToolInvocationContext without desktop defaults"
+    },
+    {
+      "id": "message-transcript-user-assistant-tool-records",
+      "crate": "clanker-message",
+      "owner_module": "clanker-message transcript compatibility feature",
+      "entry_prefixes": [
+        "UserMessage",
+        "AssistantMessage",
+        "ToolResultMessage"
+      ],
+      "disposition": "keep-experimental-with-rationale",
+      "expected_stability": "experimental",
+      "expected_rows": 19,
+      "use_site_status": "available only with transcript-compat for Clankers desktop/session/provider/controller compatibility",
+      "validation": "cargo test -p clanker-message --features transcript-compat",
+      "rationale": "these concrete transcript records remain readable compatibility DTOs but are not stable default SDK contracts"
+    }
+  ]
+}

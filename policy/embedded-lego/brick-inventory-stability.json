@@ -16,22 +16,24 @@
     "compatibility-alias"
   ],
   "expected_counts": {
-    "total": 615,
-    "supported": 303,
+    "total": 591,
+    "supported": 440,
     "optional-support": 67,
     "compatibility-alias": 0,
-    "experimental": 184,
+    "experimental": 23,
     "unsupported-internal": 61,
-    "stable-contract": 370
+    "stable-contract": 507
   },
-  "stable_contract_blake3": "bbf41d01f78f5a782ddd0dcda237b7b77a62975c462db7880364b35aa2046e04",
+  "stable_contract_blake3": "b53f9a9d34e037c0d883a3b143fe64856f6ca9230f36234cc10264cbf88024ef",
   "required_release_receipt_artifacts": [
     "docs/src/generated/embedded-sdk-api.md",
     "docs/src/tutorials/embedded-agent-sdk.md",
     "cairn/specs/embedded-composition-kits/spec.md",
     "scripts/check-embedded-sdk-api.rs",
     "scripts/check-message-contract-boundary.rs",
+    "scripts/check-experimental-sdk-port-budget.rs",
     "scripts/check-brick-inventory-stability.rs",
-    "policy/embedded-lego/brick-inventory-stability.json"
+    "policy/embedded-lego/brick-inventory-stability.json",
+    "policy/embedded-lego/experimental-sdk-port-budget.json"
   ]
 }
