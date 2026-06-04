@@ -882,8 +882,8 @@ mod tests {
     }
 
     fn make_user_msg(text: &str) -> clanker_message::transcript::AgentMessage {
-        use clanker_message::transcript::*;
         use clanker_message::Content;
+        use clanker_message::transcript::*;
         AgentMessage::User(UserMessage {
             id: MessageId::new("test-msg"),
             content: vec![Content::Text { text: text.into() }],
@@ -1559,10 +1559,10 @@ mod tests {
     }
 
     fn representative_router_adapter_history() -> Vec<clanker_message::transcript::AgentMessage> {
-        use clanker_message::transcript::*;
         use clanker_message::Content;
         use clanker_message::ImageSource;
         use clanker_message::StopReason;
+        use clanker_message::transcript::*;
 
         let timestamp = fixed_message_timestamp();
         vec![

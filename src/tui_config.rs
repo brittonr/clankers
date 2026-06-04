@@ -5,13 +5,12 @@
 
 use std::path::Path;
 
-use ratatui::style::Color;
-use terminal_colorsaurus::QueryOptions;
-use terminal_colorsaurus::ThemeMode;
-
 use clankers_tui::keymap::Keymap;
 use clankers_tui::keymap::KeymapPreset as TuiKeymapPreset;
 use clankers_tui::theme::Theme;
+use ratatui::style::Color;
+use terminal_colorsaurus::QueryOptions;
+use terminal_colorsaurus::ThemeMode;
 
 fn rgb(c: [u8; 3]) -> Color {
     Color::Rgb(c[0], c[1], c[2])

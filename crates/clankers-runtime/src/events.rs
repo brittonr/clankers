@@ -82,11 +82,19 @@ impl SessionEvent {
                 prompt_id: prompt_id.as_str().to_string(),
                 metadata: semantic_metadata(metadata).with_prompt_id(prompt_id.as_str()),
             },
-            Self::ThinkingDelta { prompt_id, text, metadata } => SemanticEvent::ThinkingDelta {
+            Self::ThinkingDelta {
+                prompt_id,
+                text,
+                metadata,
+            } => SemanticEvent::ThinkingDelta {
                 text: text.clone(),
                 metadata: semantic_metadata(metadata).with_prompt_id(prompt_id.as_str()),
             },
-            Self::AssistantDelta { prompt_id, text, metadata } => SemanticEvent::AssistantDelta {
+            Self::AssistantDelta {
+                prompt_id,
+                text,
+                metadata,
+            } => SemanticEvent::AssistantDelta {
                 text: text.clone(),
                 metadata: semantic_metadata(metadata).with_prompt_id(prompt_id.as_str()),
             },

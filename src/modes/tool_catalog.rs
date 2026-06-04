@@ -8,11 +8,11 @@ use std::collections::HashSet;
 use std::sync::Arc;
 use std::sync::Mutex;
 
+use clankers_plugin::PluginManager;
 use tracing::info;
 
 use super::common::ToolEnv;
 use super::common::ToolTier;
-use clankers_plugin::PluginManager;
 use crate::tools::Tool;
 use crate::tools::ToolDefinition;
 use crate::tools::plugin_tool::PluginTool;

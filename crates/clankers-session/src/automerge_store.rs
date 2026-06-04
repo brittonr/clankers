@@ -515,8 +515,8 @@ pub enum MigrateResult {
 #[cfg(test)]
 mod tests {
     use chrono::Utc;
-    use clanker_message::transcript::AgentMessage;
     use clanker_message::Content;
+    use clanker_message::transcript::AgentMessage;
     use clanker_message::transcript::UserMessage;
 
     use super::*;

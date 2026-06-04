@@ -5,10 +5,12 @@
 
 use std::time::Duration;
 
+use clankers_config::settings::Settings;
 use clankers_controller::client::ClientAdapter;
 use clankers_protocol::DaemonEvent;
 use clankers_protocol::control::ControlCommand;
 use clankers_protocol::control::ControlResponse;
+use clankers_tui::app::App;
 use tracing::info;
 use tracing::warn;
 
@@ -17,9 +19,7 @@ use super::attach::build_client_slash_registry;
 use super::attach::connect_session_socket;
 use super::attach::run_attach_with_reconnect;
 use super::attach::send_control;
-use clankers_config::settings::Settings;
 use crate::error::Result;
-use clankers_tui::app::App;
 use crate::tui_config::load_theme;
 
 // ── Options ─────────────────────────────────────────────────────────────────

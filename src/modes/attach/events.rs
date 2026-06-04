@@ -2,11 +2,11 @@ use clankers_controller::client::ClientAdapter;
 use clankers_controller::convert::daemon_event_to_tui_event;
 use clankers_protocol::DaemonEvent;
 use clankers_protocol::SessionCommand;
+use clankers_tui::app::App;
+use clankers_tui::app::AppState;
 use tracing::debug;
 
 use super::commands::AttachParityTracker;
-use clankers_tui::app::App;
-use clankers_tui::app::AppState;
 
 pub(crate) const MAX_DAEMON_EVENTS_PER_DRAIN: usize = 64;
 
@@ -148,7 +148,11 @@ pub(crate) fn process_daemon_event(
                     &mut app.layout.tiling,
                 );
                 app.layout.pane_registry.register(pane_id, clankers_tui::panes::PaneKind::Subagent(id.clone()));
-                clankers_tui::panes::auto_split_for_subagent(&mut app.layout.tiling, &app.layout.pane_registry, pane_id);
+                clankers_tui::panes::auto_split_for_subagent(
+                    &mut app.layout.tiling,
+                    &app.layout.pane_registry,
+                    pane_id,
+                );
             }
         }
         DaemonEvent::SubagentOutput { id, line } => {

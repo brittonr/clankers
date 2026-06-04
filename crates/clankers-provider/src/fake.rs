@@ -6,11 +6,12 @@
 use std::sync::OnceLock;
 
 use async_trait::async_trait;
-use clanker_message::transcript::AgentMessage;
 use clanker_message::Content;
+use clanker_message::Usage;
 use clanker_message::streaming::ContentDelta;
 use clanker_message::streaming::MessageMetadata;
 use clanker_message::streaming::StreamEvent;
+use clanker_message::transcript::AgentMessage;
 use serde_json::Value;
 use serde_json::json;
 use tokio::sync::mpsc;
@@ -18,7 +19,6 @@ use tokio::sync::mpsc;
 use crate::CompletionRequest;
 use crate::Model;
 use crate::Provider;
-use clanker_message::Usage;
 use crate::error::Result;
 
 pub const ENV_FAKE_PROVIDER: &str = "CLANKERS_FAKE_PROVIDER";

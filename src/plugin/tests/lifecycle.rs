@@ -1,7 +1,8 @@
 use std::path::PathBuf;
 
-use super::*;
 use clankers_plugin::PluginState;
+
+use super::*;
 
 fn plugins_dir() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("plugins")

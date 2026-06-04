@@ -3,8 +3,8 @@
 use std::collections::BTreeMap;
 use std::path::Path;
 
-use clanker_tui_types::MenuPlacement;
 use clanker_message::ThinkingLevel;
+use clanker_tui_types::MenuPlacement;
 use clankers_agent_defs::definition::AgentScope;
 use serde::Deserialize;
 use serde::Serialize;

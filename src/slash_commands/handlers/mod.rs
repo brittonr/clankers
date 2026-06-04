@@ -34,10 +34,10 @@ use std::sync::Arc;
 use std::sync::Mutex;
 
 use clanker_tui_types::SubagentEvent;
-
-use crate::modes::interactive::AgentCommand;
 use clankers_plugin::PluginManager;
 use clankers_tui::app::App;
+
+use crate::modes::interactive::AgentCommand;
 
 /// Context passed to every slash command handler.
 #[allow(private_interfaces)] // AgentCommand is pub(crate) by design

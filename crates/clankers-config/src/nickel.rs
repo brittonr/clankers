@@ -153,7 +153,8 @@ mod tests {
 
     #[test]
     fn eval_simple_record() {
-        let result = eval_ncl_source(r#"{ model = "openai-codex/gpt-5.5", maxTokens = 32768 }"#, "test".into()).unwrap();
+        let result =
+            eval_ncl_source(r#"{ model = "openai-codex/gpt-5.5", maxTokens = 32768 }"#, "test".into()).unwrap();
         assert_eq!(result["model"], "openai-codex/gpt-5.5");
         assert_eq!(result["maxTokens"], 32768);
     }

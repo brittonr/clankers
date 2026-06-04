@@ -1075,13 +1075,13 @@ fn check_tool_paths(input: &Value) -> Option<String> {
 mod tests {
     use async_trait::async_trait;
     use chrono::Utc;
+    use clanker_message::StopReason;
     use clanker_message::transcript::AssistantMessage;
     use clanker_message::transcript::BashExecutionMessage;
     use clanker_message::transcript::BranchSummaryMessage;
     use clanker_message::transcript::CompactionSummaryMessage;
     use clanker_message::transcript::CustomMessage;
     use clanker_message::transcript::MessageId;
-    use clanker_message::StopReason;
     use clanker_message::transcript::ToolResultMessage;
     use clanker_message::transcript::UserMessage;
     use clankers_engine::EngineCorrelationId;

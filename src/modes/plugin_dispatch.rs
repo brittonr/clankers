@@ -2,9 +2,8 @@
 
 use std::sync::Arc;
 
-use clankers_protocol::DaemonEvent;
-
 use clankers_agent::events::AgentEvent;
+use clankers_protocol::DaemonEvent;
 
 /// Convert a `PluginUiAction` into its corresponding `DaemonEvent`.
 pub(crate) fn ui_action_to_daemon_event(action: clankers_plugin::ui::PluginUiAction) -> DaemonEvent {
@@ -13,7 +12,9 @@ pub(crate) fn ui_action_to_daemon_event(action: clankers_plugin::ui::PluginUiAct
             plugin,
             widget: Some(serde_json::to_value(widget).unwrap_or_default()),
         },
-        clankers_plugin::ui::PluginUiAction::ClearWidget { plugin } => DaemonEvent::PluginWidget { plugin, widget: None },
+        clankers_plugin::ui::PluginUiAction::ClearWidget { plugin } => {
+            DaemonEvent::PluginWidget { plugin, widget: None }
+        }
         clankers_plugin::ui::PluginUiAction::SetStatus { plugin, text, color } => DaemonEvent::PluginStatus {
             plugin,
             text: Some(text),
@@ -384,7 +385,6 @@ mod tests {
     #[test]
     fn set_widget_maps_to_plugin_widget() {
         use clanker_tui_types::Widget;
-
         use clankers_plugin::ui::PluginUiAction;
         let action = PluginUiAction::SetWidget {
             plugin: "test".into(),

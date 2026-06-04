@@ -6,11 +6,15 @@
 use std::io;
 use std::time::Duration;
 
+use clankers_config::settings::Settings;
 use clankers_controller::client::ClientAdapter;
 use clankers_controller::transport_convert::client_handshake;
 use clankers_protocol::DaemonEvent;
 use clankers_protocol::SessionCommand;
 use clankers_protocol::frame;
+use clankers_tui::app::App;
+use clankers_tui::keymap::Keymap;
+use clankers_tui::render;
 use ratatui::Terminal;
 use ratatui::backend::CrosstermBackend;
 use tracing::info;
@@ -20,12 +24,8 @@ use super::attach::AttachParityTracker;
 use super::attach::build_client_slash_registry;
 use super::attach::drain_daemon_events;
 use super::attach::handle_terminal_events;
-use clankers_config::settings::Settings;
 use crate::error::Result;
 use crate::slash_commands;
-use clankers_tui::app::App;
-use clankers_tui::keymap::Keymap;
-use clankers_tui::render;
 use crate::tui_config::load_theme;
 
 // ── QUIC stream adapter ─────────────────────────────────────────────────────

@@ -3,10 +3,9 @@
 //! Allows RPC clients (like IDE extensions) to send/receive
 //! UI widget updates.
 
+use clankers_plugin::ui::Widget;
 use serde::Deserialize;
 use serde::Serialize;
-
-use clankers_plugin::ui::Widget;
 
 /// UI update from host to client
 #[derive(Debug, Clone, Serialize, Deserialize)]

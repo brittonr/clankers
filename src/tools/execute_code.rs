@@ -7,6 +7,7 @@
 use std::path::PathBuf;
 
 use async_trait::async_trait;
+use clankers_util::ansi::strip_ansi;
 use serde_json::Value;
 use serde_json::json;
 use tokio::io::AsyncBufReadExt;
@@ -20,7 +21,6 @@ use super::ToolDefinition;
 use super::ToolResult;
 use super::progress::ResultChunk;
 use super::progress::ToolProgress;
-use clankers_util::ansi::strip_ansi;
 
 const DEFAULT_TIMEOUT_SECS: u64 = 300;
 const MAX_LINES: usize = 2000;

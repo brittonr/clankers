@@ -1,10 +1,10 @@
 //! Embedded RPC server started alongside the TUI for swarm presence.
 
+use clankers_config::Settings;
+use clankers_tui::app::App;
 use tokio_util::sync::CancellationToken;
 
-use clankers_config::Settings;
 use crate::error::Result;
-use clankers_tui::app::App;
 
 /// Configuration for the embedded RPC server that runs inside the TUI process.
 pub struct EmbeddedRpcConfig {
@@ -119,7 +119,10 @@ pub async fn start_embedded_rpc(
 /// Makes this instance discoverable on the LAN via mDNS. Skipped in test
 /// environments or when `CLANKERS_NO_RPC` is set. Returns a cancellation
 /// token if the server started successfully.
-pub(super) async fn maybe_start_rpc(app: &mut App, paths: &clankers_config::ClankersPaths) -> Option<CancellationToken> {
+pub(super) async fn maybe_start_rpc(
+    app: &mut App,
+    paths: &clankers_config::ClankersPaths,
+) -> Option<CancellationToken> {
     if cfg!(test) || std::env::var("CLANKERS_NO_RPC").is_ok() {
         return None;
     }

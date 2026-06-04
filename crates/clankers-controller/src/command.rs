@@ -2,13 +2,13 @@
 //!
 //! Contains the main command dispatch and prompt processing logic.
 
-use clanker_message::transcript::AgentMessage;
-use clanker_message::transcript::AssistantMessage;
 use clanker_message::Content;
-use clanker_message::transcript::MessageId;
 #[cfg(test)]
 use clanker_message::SemanticErrorClass;
 use clanker_message::StopReason;
+use clanker_message::transcript::AgentMessage;
+use clanker_message::transcript::AssistantMessage;
+use clanker_message::transcript::MessageId;
 use clanker_message::transcript::UserMessage;
 use clankers_agent::AgentError;
 use clankers_core::CompletionStatus;

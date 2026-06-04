@@ -9,9 +9,9 @@ use std::time::Duration;
 use clanker_scheduler::Schedule;
 use clanker_scheduler::ScheduleEngine;
 use clanker_scheduler::ScheduleStatus;
+use clankers::tools::schedule::ScheduleTool;
 use clankers_agent::tool::Tool;
 use clankers_agent::tool::ToolContext;
-use clankers::tools::schedule::ScheduleTool;
 use serde_json::json;
 use tokio_util::sync::CancellationToken;
 

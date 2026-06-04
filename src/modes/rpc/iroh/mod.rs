@@ -34,11 +34,11 @@ use std::path::Path;
 use std::path::PathBuf;
 use std::sync::Arc;
 
+use clankers_provider::Provider;
 use iroh::Endpoint;
 use iroh::PublicKey;
 use iroh::SecretKey;
 
-use clankers_provider::Provider;
 use crate::tools::Tool;
 
 pub mod client;

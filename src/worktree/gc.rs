@@ -25,12 +25,12 @@ use std::path::PathBuf;
 use std::time::Duration;
 use std::time::Instant;
 
+use clankers_db::Db;
 use tracing::debug;
 use tracing::info;
 use tracing::warn;
 
 use super::DbWorktreeExt;
-use clankers_db::Db;
 use crate::tools::git_ops;
 
 /// Summary of what GC did.

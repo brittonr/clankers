@@ -17,6 +17,7 @@ use allowlist::is_user_allowed;
 use allowlist::resolve_matrix_allowlist;
 use bot_commands::handle_bot_command;
 use clanker_actor::ProcessRegistry;
+use clankers_config::ClankersPaths;
 use clankers_controller::transport::DaemonState;
 use clankers_protocol::SessionKey;
 use proactive::ensure_trigger_pipe;
@@ -35,7 +36,6 @@ use tracing::warn;
 use super::daemon::ProactiveConfig;
 use super::daemon::session_store::AuthLayer;
 use super::daemon::socket_bridge::SessionFactory;
-use clankers_config::ClankersPaths;
 use crate::error::Result;
 
 #[cfg_attr(

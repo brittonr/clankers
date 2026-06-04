@@ -1,13 +1,13 @@
 //! Swarm slash command handlers.
 
 use clanker_tui_types::PanelId;
+// Helper functions for safe panel access
+use clankers_tui::components::peers_panel::PeersPanel;
+use clankers_tui::components::subagent_panel::SubagentPanel;
 use tokio_util::sync::CancellationToken;
 
 use super::SlashContext;
 use super::SlashHandler;
-// Helper functions for safe panel access
-use clankers_tui::components::peers_panel::PeersPanel;
-use clankers_tui::components::subagent_panel::SubagentPanel;
 
 /// Get a mutable reference to the peers panel, panicking if not found.
 /// Centralizes the expect call to make it easier to audit and replace.

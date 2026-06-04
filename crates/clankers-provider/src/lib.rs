@@ -136,9 +136,7 @@ pub struct CompletionRequest {
 }
 
 /// Extension: convert ThinkingLevel to provider-specific ThinkingConfig.
-pub fn thinking_level_to_config(
-    level: clanker_message::ThinkingLevel,
-) -> Option<clanker_message::ThinkingConfig> {
+pub fn thinking_level_to_config(level: clanker_message::ThinkingLevel) -> Option<clanker_message::ThinkingConfig> {
     if level.is_enabled() {
         Some(clanker_message::ThinkingConfig {
             enabled: true,
@@ -156,20 +154,20 @@ mod tests {
     use std::collections::HashMap;
     use std::path::PathBuf;
 
-    use clanker_message::transcript::AgentMessage;
     use clanker_message::Content;
-    use clanker_message::transcript::MessageId;
-    use clanker_message::transcript::UserMessage;
+    use clanker_message::ThinkingConfig;
+    use clanker_message::ToolDefinition;
+    use clanker_message::Usage;
     use clanker_message::streaming::ContentDelta;
     use clanker_message::streaming::MessageMetadata;
     use clanker_message::streaming::StreamDelta;
+    use clanker_message::transcript::AgentMessage;
+    use clanker_message::transcript::MessageId;
+    use clanker_message::transcript::UserMessage;
     use serde_json::Value;
     use serde_json::json;
 
     use super::CompletionRequest;
-    use clanker_message::ThinkingConfig;
-    use clanker_message::ToolDefinition;
-    use clanker_message::Usage;
 
     const TEST_MAX_TOKENS: usize = 256;
     const TEST_TEMPERATURE: f64 = 0.1;

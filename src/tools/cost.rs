@@ -7,6 +7,8 @@
 use std::sync::Arc;
 
 use async_trait::async_trait;
+use clankers_model_selection::cost_tracker::BudgetStatus;
+use clankers_model_selection::cost_tracker::CostTracker;
 use serde_json::Value;
 use serde_json::json;
 
@@ -14,8 +16,6 @@ use super::Tool;
 use super::ToolContext;
 use super::ToolDefinition;
 use super::ToolResult;
-use clankers_model_selection::cost_tracker::BudgetStatus;
-use clankers_model_selection::cost_tracker::CostTracker;
 
 pub struct CostTool {
     tracker: Arc<CostTracker>,
@@ -156,11 +156,11 @@ fn format_budget_detail(status: &BudgetStatus, total: f64) -> String {
 mod tests {
     use std::collections::HashMap;
 
+    use clankers_model_selection::cost_tracker::CostTrackerConfig;
+    use clankers_model_selection::cost_tracker::ModelPricing;
     use tokio_util::sync::CancellationToken;
 
     use super::*;
-    use clankers_model_selection::cost_tracker::CostTrackerConfig;
-    use clankers_model_selection::cost_tracker::ModelPricing;
 
     fn test_pricing() -> HashMap<String, ModelPricing> {
         [

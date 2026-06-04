@@ -4,10 +4,11 @@ use std::collections::BTreeSet;
 use std::fmt::Write;
 use std::io::Read;
 
+use clankers_provider::auth::AuthStoreExt;
+
 use crate::cli::AuthAction;
 use crate::commands::CommandContext;
 use crate::error::Result;
-use clankers_provider::auth::AuthStoreExt;
 
 /// Parse OAuth callback input in various formats
 ///
@@ -295,7 +296,8 @@ async fn handle_login(
         code_input
     } else {
         let (url, verifier_val) = oauth_flow.build_auth_url()?;
-        let pending = clankers_provider::auth::PendingOAuthLogin::new(provider_name, account_name.clone(), verifier_val);
+        let pending =
+            clankers_provider::auth::PendingOAuthLogin::new(provider_name, account_name.clone(), verifier_val);
         pending.save(&pending_path).map_err(|e| crate::error::Error::ProviderAuth {
             message: format!("Failed to persist pending login: {e}"),
         })?;

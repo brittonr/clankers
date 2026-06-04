@@ -126,15 +126,23 @@ impl AgentSteelTurnPlanningSettings {
             return Ok(());
         }
         match self.profile_path.as_deref() {
-            Some(path) if path.trim().is_empty() => return Err("Steel turn planning `profilePath` cannot be blank".to_string()),
+            Some(path) if path.trim().is_empty() => {
+                return Err("Steel turn planning `profilePath` cannot be blank".to_string());
+            }
             Some(_) => {}
-            None if self.script_path.is_some() => return Err("enabled Steel turn planning requires `profilePath`".to_string()),
+            None if self.script_path.is_some() => {
+                return Err("enabled Steel turn planning requires `profilePath`".to_string());
+            }
             None => {}
         }
         match self.script_path.as_deref() {
-            Some(path) if path.trim().is_empty() => return Err("Steel turn planning `scriptPath` cannot be blank".to_string()),
+            Some(path) if path.trim().is_empty() => {
+                return Err("Steel turn planning `scriptPath` cannot be blank".to_string());
+            }
             Some(_) => {}
-            None if self.profile_path.is_some() => return Err("enabled Steel turn planning requires `scriptPath`".to_string()),
+            None if self.profile_path.is_some() => {
+                return Err("enabled Steel turn planning requires `scriptPath`".to_string());
+            }
             None => {}
         }
         if self.script_blake3.as_deref().is_some_and(|hash| hash.trim().is_empty())
@@ -720,7 +728,7 @@ struct TurnPlanningHashMaterial<'a> {
 )]
 mod tests {
     use clankers_artifacts::ArtifactHash;
-                    use clankers_runtime::OrchestrationFallbackMode;
+    use clankers_runtime::OrchestrationFallbackMode;
     use clankers_runtime::OrchestrationPlanStatus;
     use clankers_runtime::OrchestrationRolloutStage;
     use clankers_runtime::SteelOrchestrationProfile;

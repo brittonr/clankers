@@ -4,14 +4,14 @@
 //! Lives inside the global clankers database so there is a single source
 //! of truth that doesn't depend on per-repo `.git/` files surviving.
 
+use clankers_db::Db;
+use clankers_db::db_err;
 use redb::ReadableTable;
 use redb::ReadableTableMetadata;
 use redb::TableDefinition;
 
 use super::WorktreeInfo;
 use super::WorktreeStatus;
-use clankers_db::Db;
-use clankers_db::db_err;
 use crate::error::Result;
 
 /// Table: branch_name (string) → serialized WorktreeInfo (bytes).

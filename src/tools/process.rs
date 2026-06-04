@@ -85,17 +85,17 @@ use adapter::ProcessToolJsonAdapter;
 use durable::append_log_degradation;
 use durable::apply_process_job_retention;
 use durable::durable_degraded_log_message;
-use durable::durable_record;
 use durable::durable_reconciliation_note;
+use durable::durable_record;
 use durable::evaluate_process_entry_notification;
 use durable::format_log_refs;
 use durable::native_pid_is_alive;
 use durable::persist_entry;
 use durable::process_job_retention_policy;
+pub(crate) use durable::reconcile_durable_native_process_jobs;
 use durable::retention_log_dir;
 use durable::stored_record_summary;
 use durable::stored_status_label;
-pub(crate) use durable::reconcile_durable_native_process_jobs;
 use native::NativeProcessJobBackendAdapter;
 use native::NativeProcessJobService;
 #[cfg(test)]
@@ -213,7 +213,6 @@ fn unsupported_gc_receipt(
     receipt.refresh_summary();
     receipt
 }
-
 
 pub struct ProcessTool {
     definition: ToolDefinition,

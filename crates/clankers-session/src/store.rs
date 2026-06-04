@@ -6,8 +6,8 @@ use std::io::Write;
 use std::path::Path;
 use std::path::PathBuf;
 
-use clanker_message::transcript::AgentMessage;
 use clanker_message::Content;
+use clanker_message::transcript::AgentMessage;
 
 use super::entry::SessionEntry;
 use crate::error::Result;

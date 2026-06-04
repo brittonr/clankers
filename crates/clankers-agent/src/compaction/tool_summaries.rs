@@ -1,5 +1,5 @@
-use clanker_message::transcript::AgentMessage;
 use clanker_message::Content;
+use clanker_message::transcript::AgentMessage;
 use clanker_message::transcript::ToolResultMessage;
 use serde_json::Value;
 
@@ -304,11 +304,11 @@ fn pluralized(count: usize, singular: &str, plural: &str) -> String {
 #[cfg(test)]
 mod tests {
     use chrono::Utc;
-    use clanker_message::transcript::AssistantMessage;
     use clanker_message::ImageSource;
-    use clanker_message::transcript::MessageId;
     use clanker_message::StopReason;
     use clanker_message::Usage;
+    use clanker_message::transcript::AssistantMessage;
+    use clanker_message::transcript::MessageId;
     use serde_json::json;
 
     use super::*;

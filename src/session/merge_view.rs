@@ -3,9 +3,8 @@
 //! Lives in the main crate because it bridges `clankers-session` types
 //! and `clanker-tui-types` — neither should depend on the other.
 
-use clanker_message::transcript::AgentMessage;
 use clanker_message::Content;
-
+use clanker_message::transcript::AgentMessage;
 use clankers_session::entry::MessageEntry;
 
 /// Convert a `MessageEntry` into a `MergeMessageView` for the TUI merge overlay.

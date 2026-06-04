@@ -9,6 +9,8 @@ use std::path::Path;
 use std::path::PathBuf;
 use std::sync::Arc;
 
+use clankers_db::Db;
+use clankers_provider::Provider;
 use tracing::info;
 use tracing::warn;
 
@@ -16,9 +18,7 @@ use super::DbWorktreeExt;
 use super::SessionType;
 use super::WorktreeManager;
 use super::WorktreeStatus;
-use clankers_db::Db;
 use crate::error::Result;
-use clankers_provider::Provider;
 
 /// Result of setting up a worktree for a session.
 #[derive(Debug, Clone)]

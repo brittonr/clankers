@@ -352,20 +352,17 @@ mod tests {
         ];
 
         let kinds: Vec<&str> = events.iter().map(SemanticEvent::kind).collect();
-        assert_eq!(
-            kinds,
-            vec![
-                "prompt_accepted",
-                "assistant_delta",
-                "thinking_delta",
-                "tool_started",
-                "tool_finished",
-                "confirmation_requested",
-                "usage_updated",
-                "error",
-                "completed"
-            ]
-        );
+        assert_eq!(kinds, vec![
+            "prompt_accepted",
+            "assistant_delta",
+            "thinking_delta",
+            "tool_started",
+            "tool_finished",
+            "confirmation_requested",
+            "usage_updated",
+            "error",
+            "completed"
+        ]);
     }
 
     #[test]

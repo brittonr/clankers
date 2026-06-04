@@ -5,11 +5,11 @@
 
 use std::collections::HashMap;
 
+use clankers_util::ansi::strip_ansi;
 use serde::Deserialize;
 use serde_json::Value;
 
 use super::super::ToolContext;
-use clankers_util::ansi::strip_ansi;
 
 // ── Nix internal-json protocol types ────────────────────────────────────────
 

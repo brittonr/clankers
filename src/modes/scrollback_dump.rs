@@ -7,6 +7,7 @@ use clanker_tui_types::BlockEntry;
 use clanker_tui_types::ConversationBlock;
 use clanker_tui_types::DisplayMessage;
 use clanker_tui_types::MessageRole;
+use clankers_config::settings::Settings;
 use rat_inline::InlineMarkdown;
 use rat_inline::InlineRenderer;
 use rat_inline::InlineText;
@@ -18,7 +19,6 @@ use ratatui::style::Modifier;
 use ratatui::style::Style;
 use tracing::warn;
 
-use clankers_config::settings::Settings;
 use crate::error::Error;
 use crate::error::Result;
 

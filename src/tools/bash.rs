@@ -1,6 +1,7 @@
 //! Shell command execution with live streaming
 
 use async_trait::async_trait;
+use clankers_util::ansi::strip_ansi;
 use regex::Regex;
 use serde_json::Value;
 use serde_json::json;
@@ -15,7 +16,6 @@ use super::ToolDefinition;
 use super::ToolResult;
 use super::progress::ResultChunk;
 use super::progress::ToolProgress;
-use clankers_util::ansi::strip_ansi;
 
 /// A structured request sent on the confirmation channel.
 pub struct ConfirmRequest {
@@ -429,12 +429,13 @@ async fn drain_reader(
 
 #[cfg(test)]
 mod tests {
+    use clankers_util::ansi::strip_ansi;
+
     use super::BashTool;
     use super::check_dangerous;
     use super::confirm_channel;
     use crate::tools::ToolResult;
     use crate::tools::ToolResultContent;
-    use clankers_util::ansi::strip_ansi;
 
     fn result_text(result: &ToolResult) -> String {
         result

@@ -291,11 +291,11 @@ pub(crate) async fn rewrite_prompt(
     session_id: &str,
     original: &str,
 ) -> String {
-    use clanker_message::transcript::AgentMessage;
     use clanker_message::Content;
+    use clanker_message::streaming::StreamEvent;
+    use clanker_message::transcript::AgentMessage;
     use clanker_message::transcript::MessageId;
     use clanker_message::transcript::UserMessage;
-    use clanker_message::streaming::StreamEvent;
     use clankers_provider::CompletionRequest;
 
     let system = "You are a prompt engineer. Your job is to rewrite the user's prompt \

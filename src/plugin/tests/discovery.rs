@@ -1,5 +1,6 @@
-use super::*;
 use clankers_plugin::manifest;
+
+use super::*;
 
 fn write_plugin_manifest(dir: &std::path::Path, name: &str, manifest: serde_json::Value) {
     let plugin_dir = dir.join(name);

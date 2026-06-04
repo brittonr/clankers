@@ -5,6 +5,7 @@ use std::path::Path;
 use async_trait::async_trait;
 use base64::Engine as _;
 use base64::engine::general_purpose;
+use clankers_util::fs::is_binary_file;
 use serde_json::Value;
 use serde_json::json;
 use tokio::fs;
@@ -14,7 +15,6 @@ use super::ToolContext;
 use super::ToolDefinition;
 use super::ToolResult;
 use super::ToolResultContent;
-use clankers_util::fs::is_binary_file;
 
 /// File type classification for reading.
 enum FileType {

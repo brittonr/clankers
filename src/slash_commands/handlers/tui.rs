@@ -118,10 +118,9 @@ fn parse_panel_name(name: &str) -> Option<clankers_tui::panel::PanelId> {
 
 /// Toggle a panel on/off in the current layout.
 fn handle_toggle(panel_name: &str, ctx: &mut SlashContext<'_>) {
-    use ratatui::layout::Direction;
-
     use clankers_tui::panes::PaneKind;
     use clankers_tui::panes::{self};
+    use ratatui::layout::Direction;
 
     // Toggling panels modifies the tree, so exit zoom first.
     ctx.app.zoom_restore();
@@ -189,7 +188,6 @@ fn handle_toggle(panel_name: &str, ctx: &mut SlashContext<'_>) {
 /// Return the well-known `PaneId` for a panel type (reuses pane_ids module when possible).
 fn pane_id_for_panel(panel_id: clankers_tui::panel::PanelId) -> ratatui_hypertile::PaneId {
     use clanker_tui_types::PanelId;
-
     use clankers_tui::panes::pane_ids;
     match panel_id {
         PanelId::Todo => pane_ids::todo(),

@@ -8,12 +8,13 @@
 use std::collections::HashMap;
 
 use chrono::Utc;
-use clanker_message::transcript::AgentMessage;
-use clanker_message::transcript::AssistantMessage;
 use clanker_message::Content;
 use clanker_message::ImageSource;
-use clanker_message::transcript::MessageId;
 use clanker_message::StopReason;
+use clanker_message::Usage;
+use clanker_message::transcript::AgentMessage;
+use clanker_message::transcript::AssistantMessage;
+use clanker_message::transcript::MessageId;
 use clanker_message::transcript::ToolResultMessage;
 use clanker_message::transcript::UserMessage;
 use serde::Deserialize;
@@ -22,7 +23,6 @@ use serde_json::Value;
 use serde_json::json;
 
 use crate::CompletionRequest;
-use clanker_message::Usage;
 
 const BRANCH_SUMMARY_MESSAGE_PREFIX: &str = "Branch summary";
 const COMPACTION_SUMMARY_MESSAGE_PREFIX: &str = "Compaction summary";
@@ -245,11 +245,11 @@ mod tests {
     use std::collections::HashMap;
 
     use chrono::Utc;
+    use clanker_message::StopReason;
     use clanker_message::transcript::AssistantMessage;
     use clanker_message::transcript::BranchSummaryMessage;
     use clanker_message::transcript::CompactionSummaryMessage;
     use clanker_message::transcript::MessageId;
-    use clanker_message::StopReason;
     use clanker_message::transcript::ToolResultMessage;
     use clanker_message::transcript::UserMessage;
     use serde_json::json;

@@ -7,6 +7,9 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use std::sync::Mutex;
 
+use clankers_agent::events::AgentEvent;
+use clankers_plugin::PluginManager;
+use clankers_plugin::PluginState;
 use crossterm::event::DisableBracketedPaste;
 use crossterm::event::DisableFocusChange;
 use crossterm::event::DisableMouseCapture;
@@ -23,10 +26,7 @@ use tokio::sync::broadcast;
 use tracing::info;
 use tracing::warn;
 
-use clankers_agent::events::AgentEvent;
 use crate::error::Result;
-use clankers_plugin::PluginManager;
-use clankers_plugin::PluginState;
 use crate::tools::Tool;
 
 // ── Thinking setup ──────────────────────────────────────────────────────────
@@ -41,7 +41,10 @@ pub(crate) fn core_thinking_level(level: clanker_message::ThinkingLevel) -> clan
     }
 }
 
-pub(crate) fn apply_thinking_settings(app: &mut clankers_tui::app::App, settings: &clankers_config::settings::Settings) {
+pub(crate) fn apply_thinking_settings(
+    app: &mut clankers_tui::app::App,
+    settings: &clankers_config::settings::Settings,
+) {
     let level = settings.parsed_thinking_level();
     app.thinking_enabled = level.is_enabled();
     app.thinking_level = level;

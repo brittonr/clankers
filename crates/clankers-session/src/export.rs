@@ -3,8 +3,8 @@
 use std::fmt::Write;
 use std::path::Path;
 
-use clanker_message::transcript::AgentMessage;
 use clanker_message::Content;
+use clanker_message::transcript::AgentMessage;
 
 use super::entry::SessionEntry;
 use crate::error::Result;

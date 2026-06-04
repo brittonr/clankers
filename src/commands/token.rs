@@ -1,12 +1,12 @@
 //! Public UCAN credential command handlers.
 
 use base64::Engine as _;
+use clankers_util::parsing::parse_duration;
 use redb::ReadableTable;
 
 use crate::cli::TokenAction;
 use crate::commands::CommandContext;
 use crate::error::Result;
-use clankers_util::parsing::parse_duration;
 
 /// Bundled capability scope for token creation (avoids excessive bool params).
 struct TokenScope {

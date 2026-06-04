@@ -4,8 +4,8 @@
 //! policy for local parity effects, neutral command intents, acknowledgement
 //! suppression, and user-visible messages.
 
-use clankers_protocol::DaemonEvent;
 use clanker_message::ThinkingLevel;
+use clankers_protocol::DaemonEvent;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum LocalSessionEffect {

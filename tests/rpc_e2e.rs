@@ -10,12 +10,12 @@ mod tests {
     use std::sync::Arc;
 
     use async_trait::async_trait;
-    use clanker_message::transcript::AgentMessage;
     use clanker_message::Content;
     use clanker_message::Usage;
     use clanker_message::streaming::ContentDelta;
     use clanker_message::streaming::MessageMetadata;
     use clanker_message::streaming::StreamEvent;
+    use clanker_message::transcript::AgentMessage;
     use clankers::modes::rpc::iroh::*;
     use clankers::modes::rpc::protocol::Request;
     use clankers_provider::CompletionRequest;

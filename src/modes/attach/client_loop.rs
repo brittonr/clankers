@@ -1,6 +1,9 @@
 use std::io;
 
 use clankers_controller::client::ClientAdapter;
+use clankers_tui::app::App;
+use clankers_tui::keymap::Keymap;
+use clankers_tui::render;
 use ratatui::Terminal;
 use ratatui::backend::CrosstermBackend;
 use tracing::info;
@@ -14,9 +17,6 @@ use super::session::try_reconnect;
 use super::session::try_recover_daemon;
 use crate::error::Result;
 use crate::slash_commands;
-use clankers_tui::app::App;
-use clankers_tui::keymap::Keymap;
-use clankers_tui::render;
 
 /// Run the attach event loop with automatic reconnection on disconnect.
 #[cfg_attr(

@@ -9,9 +9,9 @@ use std::sync::Arc;
 
 use async_trait::async_trait;
 use clanker_tui_types::SubagentEvent;
+use clankers_plugin::PluginManager;
 use serde_json::Value;
 
-use clankers_plugin::PluginManager;
 use crate::tools::Tool;
 use crate::tools::ToolContext;
 use crate::tools::ToolDefinition;

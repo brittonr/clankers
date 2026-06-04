@@ -8,11 +8,11 @@
 
 use std::sync::Arc;
 
-use clanker_message::transcript::AgentMessage;
 use clanker_message::Content;
 use clanker_message::SemanticEvent;
 use clanker_message::SemanticEventMetadata;
 use clanker_message::SemanticStopReason;
+use clanker_message::transcript::AgentMessage;
 use clankers_agent::Agent;
 use clankers_agent::AgentError;
 use clankers_agent::Tool;

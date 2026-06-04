@@ -11,16 +11,16 @@
 //! - `clankers/chat/1` — conversational channel with persistent sessions
 use std::sync::Arc;
 
+use clankers_config::ClankersPaths;
+use clankers_provider::Provider;
 use tokio_util::sync::CancellationToken;
 #[cfg(feature = "matrix-bridge")]
 use tracing::error;
 use tracing::info;
 use tracing::warn;
 
-use clankers_config::ClankersPaths;
 use crate::error::Result;
 use crate::modes::rpc::iroh;
-use clankers_provider::Provider;
 use crate::tools::Tool;
 
 pub mod agent_process;

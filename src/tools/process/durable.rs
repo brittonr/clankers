@@ -408,7 +408,11 @@ fn log_reference_degradation_detail(record: &StoredProcessJobRecord, log_dir: Op
     (!unavailable.is_empty()).then(|| unavailable.join("; "))
 }
 
-pub(super) fn append_log_degradation(summary: &mut ProcessJobSummary, record: &StoredProcessJobRecord, log_dir: Option<&PathBuf>) {
+pub(super) fn append_log_degradation(
+    summary: &mut ProcessJobSummary,
+    record: &StoredProcessJobRecord,
+    log_dir: Option<&PathBuf>,
+) {
     if let Some(detail) = log_reference_degradation_detail(record, log_dir) {
         summary.command_preview = format!("{} [{detail}]", summary.command_preview);
     }
@@ -634,10 +638,7 @@ mod tests {
             .find(|record| record.id == "proc_durable_policy_running")
             .expect("running record reconciled");
         assert_eq!(reconciled_running.status, StoredProcessJobStatus::Running);
-        assert_eq!(
-            reconciled_running.safe_metadata.get("reconciliation").map(String::as_str),
-            Some("reattached")
-        );
+        assert_eq!(reconciled_running.safe_metadata.get("reconciliation").map(String::as_str), Some("reattached"));
 
         let mut degraded = StoredProcessJobRecord::new_native(
             "proc_durable_policy_degraded",
@@ -675,27 +676,21 @@ mod tests {
             },
             None,
         );
-        evaluate_process_entry_notification(
-            &entry,
-            ProcessJobNotificationObservation {
-                status: ProcessJobStatus::Running,
-                line: Some("READY token=raw-token".to_string()),
-                tick: 0,
-            },
-        )
+        evaluate_process_entry_notification(&entry, ProcessJobNotificationObservation {
+            status: ProcessJobStatus::Running,
+            line: Some("READY token=raw-token".to_string()),
+            tick: 0,
+        })
         .await;
         entry.set_status(ProcessStatus::Exited {
             code: Some(0),
             elapsed: Duration::from_secs(0),
         });
-        evaluate_process_entry_notification(
-            &entry,
-            ProcessJobNotificationObservation {
-                status: entry.job_status(),
-                line: Some("done token=raw-token".to_string()),
-                tick: 20,
-            },
-        )
+        evaluate_process_entry_notification(&entry, ProcessJobNotificationObservation {
+            status: entry.job_status(),
+            line: Some("done token=raw-token".to_string()),
+            tick: 20,
+        })
         .await;
         let events = entry.drain_new_notifications();
         assert_eq!(events.len(), 2, "{events:?}");

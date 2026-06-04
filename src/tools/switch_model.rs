@@ -7,6 +7,8 @@
 use std::sync::Arc;
 
 use async_trait::async_trait;
+use clankers_config::model_roles::ModelRoles;
+use clankers_model_selection::cost_tracker::CostTracker;
 use parking_lot::Mutex;
 use serde_json::Value;
 use serde_json::json;
@@ -15,8 +17,6 @@ use super::Tool;
 use super::ToolContext;
 use super::ToolDefinition;
 use super::ToolResult;
-use clankers_config::model_roles::ModelRoles;
-use clankers_model_selection::cost_tracker::CostTracker;
 
 /// Shared slot the turn loop reads after each tool execution round.
 /// When `Some(model_id)`, the loop switches to that model for the next
@@ -159,8 +159,9 @@ impl Tool for SwitchModelTool {
 mod tests {
     use std::collections::HashMap;
 
-    use super::*;
     use clankers_model_selection::cost_tracker::ModelPricing;
+
+    use super::*;
 
     fn test_pricing() -> HashMap<String, ModelPricing> {
         [
@@ -180,7 +181,10 @@ mod tests {
     }
 
     fn test_tracker() -> Arc<CostTracker> {
-        Arc::new(CostTracker::new(test_pricing(), clankers_model_selection::cost_tracker::CostTrackerConfig::default()))
+        Arc::new(CostTracker::new(
+            test_pricing(),
+            clankers_model_selection::cost_tracker::CostTrackerConfig::default(),
+        ))
     }
 
     fn setup() -> (SwitchModelTool, ModelSwitchSlot) {

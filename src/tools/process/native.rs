@@ -703,23 +703,11 @@ impl NativeProcessJobBackendAdapter {
     }
 
     pub(super) async fn start(&self, request: StartProcessJobRequest) -> Result<ProcessJobReceipt, RuntimeError> {
-        start_native_process_job(
-            request,
-            self.db.clone(),
-            self.process_monitor.as_ref(),
-            self.call_id.as_deref(),
-        )
-        .await
+        start_native_process_job(request, self.db.clone(), self.process_monitor.as_ref(), self.call_id.as_deref()).await
     }
 
     pub(super) async fn restart(&self, id: ProcessJobId) -> Result<ProcessJobReceipt, RuntimeError> {
-        restart_native_process_job(
-            id,
-            self.db.clone(),
-            self.process_monitor.as_ref(),
-            self.call_id.as_deref(),
-        )
-        .await
+        restart_native_process_job(id, self.db.clone(), self.process_monitor.as_ref(), self.call_id.as_deref()).await
     }
 }
 
@@ -745,14 +733,12 @@ pub(super) async fn start_native_process_job(
     let (display_command, mut child) = spawn_from_start_request(&request)?;
     let pid = child.id();
     let stdin = child.stdin.take();
-    let stdout = child
-        .stdout
-        .take()
-        .ok_or_else(|| RuntimeError::InvalidTool("failed to capture stdout from native background process".to_string()))?;
-    let stderr = child
-        .stderr
-        .take()
-        .ok_or_else(|| RuntimeError::InvalidTool("failed to capture stderr from native background process".to_string()))?;
+    let stdout = child.stdout.take().ok_or_else(|| {
+        RuntimeError::InvalidTool("failed to capture stdout from native background process".to_string())
+    })?;
+    let stderr = child.stderr.take().ok_or_else(|| {
+        RuntimeError::InvalidTool("failed to capture stderr from native background process".to_string())
+    })?;
     let (kill_tx, kill_rx) = oneshot::channel();
     let id = next_native_job_id(&request);
     let entry = Arc::new(ProcessEntry::new(

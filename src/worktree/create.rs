@@ -1,6 +1,7 @@
 //! Create worktree + branch for new session
 
 use chrono::Utc;
+use clankers_util::id::generate_id;
 
 use super::SessionType;
 use super::WorktreeInfo;
@@ -8,7 +9,6 @@ use super::WorktreeManager;
 use super::WorktreeStatus;
 use crate::error::Result;
 use crate::tools::git_ops;
-use clankers_util::id::generate_id;
 
 impl WorktreeManager {
     /// Create a new worktree for a session

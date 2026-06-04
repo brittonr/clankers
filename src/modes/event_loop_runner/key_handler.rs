@@ -599,8 +599,8 @@ mod tests {
     use std::time::Duration;
 
     use async_trait::async_trait;
-    use clanker_message::transcript::AgentMessage;
     use clanker_message::Content;
+    use clanker_message::transcript::AgentMessage;
     use clanker_message::transcript::MessageId;
     use clanker_message::transcript::UserMessage;
     use clankers_agent::Agent;

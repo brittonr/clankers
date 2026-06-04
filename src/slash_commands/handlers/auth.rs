@@ -1,9 +1,10 @@
 //! Auth slash command handlers.
 
+use clankers_provider::auth::AuthStoreExt;
+
 use super::SlashContext;
 use super::SlashHandler;
 use crate::modes::interactive::AgentCommand;
-use clankers_provider::auth::AuthStoreExt;
 
 pub struct LoginHandler;
 
@@ -91,8 +92,11 @@ fn handle_login_start(ctx: &mut SlashContext<'_>, provider_name: &str, account_n
         .insert((pending.provider.clone(), pending.account.clone()), pending.verifier.clone());
 
     let paths = clankers_config::ClankersPaths::get();
-    let verifier_path =
-        clankers_provider::auth::pending_oauth_login_path(&paths.global_config_dir, &pending.provider, &pending.account);
+    let verifier_path = clankers_provider::auth::pending_oauth_login_path(
+        &paths.global_config_dir,
+        &pending.provider,
+        &pending.account,
+    );
     if let Err(e) = pending.save(&verifier_path) {
         ctx.app.push_system(format!("Failed to persist login verifier: {e}"), true);
         return;
@@ -471,9 +475,10 @@ fn handle_account_status(ctx: &mut SlashContext<'_>, store: &clankers_provider::
 
 #[cfg(test)]
 mod tests {
+    use clankers_provider::auth::AuthStoreExt;
+
     use super::*;
     use crate::modes::interactive::AgentCommand;
-    use clankers_provider::auth::AuthStoreExt;
 
     fn test_paths(root: &std::path::Path) -> clankers_config::ClankersPaths {
         clankers_config::ClankersPaths {
@@ -554,8 +559,11 @@ mod tests {
 
     #[test]
     fn login_complete_dispatches_provider_scoped_agent_command() {
-        let mut app =
-            clankers_tui::app::App::new("test-model".to_string(), "/tmp".to_string(), clankers_tui::theme::Theme::dark());
+        let mut app = clankers_tui::app::App::new(
+            "test-model".to_string(),
+            "/tmp".to_string(),
+            clankers_tui::theme::Theme::dark(),
+        );
         let (cmd_tx, mut cmd_rx) = tokio::sync::mpsc::unbounded_channel();
         let (panel_tx, _panel_rx) = tokio::sync::mpsc::unbounded_channel();
         let db = None;
@@ -597,8 +605,11 @@ mod tests {
         store.switch_provider_account("openai-codex", "work");
         store.save(&paths.global_auth).expect("auth store should save");
 
-        let mut app =
-            clankers_tui::app::App::new("test-model".to_string(), "/tmp".to_string(), clankers_tui::theme::Theme::dark());
+        let mut app = clankers_tui::app::App::new(
+            "test-model".to_string(),
+            "/tmp".to_string(),
+            clankers_tui::theme::Theme::dark(),
+        );
         let (cmd_tx, mut cmd_rx) = tokio::sync::mpsc::unbounded_channel();
         let (panel_tx, _panel_rx) = tokio::sync::mpsc::unbounded_channel();
         let db = None;

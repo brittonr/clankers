@@ -466,8 +466,8 @@ mod tests {
     }
 
     fn test_request() -> CompletionRequest {
-        use clanker_message::transcript::*;
         use clanker_message::Content;
+        use clanker_message::transcript::*;
         CompletionRequest {
             model: "claude-test".into(),
             messages: vec![AgentMessage::User(UserMessage {

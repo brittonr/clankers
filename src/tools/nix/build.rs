@@ -1,5 +1,6 @@
 //! Nix command execution and output streaming
 
+use clankers_util::ansi::strip_ansi;
 use tokio::io::AsyncBufReadExt;
 use tokio::io::BufReader;
 use tokio::process::Command;
@@ -10,7 +11,6 @@ use super::super::ToolResult;
 use super::parser::NixOutputState;
 use super::parser::format_nix_result;
 use super::parser::process_nix_line;
-use clankers_util::ansi::strip_ansi;
 
 // ── nom (nix-output-monitor) detection ──────────────────────────────────────
 

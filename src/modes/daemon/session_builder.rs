@@ -473,7 +473,9 @@ pub(crate) fn load_recovery_seed_messages(entry: &SessionCatalogEntry) -> Vec<Se
     }
 }
 
-pub(crate) fn serialize_seed_messages(messages: &[clanker_message::transcript::AgentMessage]) -> Vec<SerializedMessage> {
+pub(crate) fn serialize_seed_messages(
+    messages: &[clanker_message::transcript::AgentMessage],
+) -> Vec<SerializedMessage> {
     crate::modes::session_ledger::desktop_messages_to_serialized_seed_messages(messages)
 }
 
@@ -518,11 +520,11 @@ mod tests {
     use std::sync::Arc;
 
     use chrono::Utc;
-    use clanker_message::transcript::AssistantMessage;
     use clanker_message::Content;
-    use clanker_message::transcript::MessageId;
     use clanker_message::StopReason;
     use clanker_message::Usage;
+    use clanker_message::transcript::AssistantMessage;
+    use clanker_message::transcript::MessageId;
     use clanker_message::transcript::UserMessage;
     use clankers_ucan::Capability;
     use tempfile::tempdir;

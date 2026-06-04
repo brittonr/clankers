@@ -4,7 +4,6 @@
 
 use clanker_tui_types::AppState;
 use clanker_tui_types::BlockEntry;
-
 use clankers_config::keybindings::ExtendedAction;
 use clankers_config::keybindings::InputMode;
 use clankers_tui::app::App;
@@ -237,7 +236,6 @@ fn handle_directional_focus(app: &mut App, towards: ratatui_hypertile::Towards) 
 
 fn handle_panel_scroll(app: &mut App, up: bool) {
     use clanker_tui_types::PanelId;
-
     use clankers_tui::components::subagent_panel::SubagentPanel;
     if let Some(sp) = app.panels.downcast_mut::<SubagentPanel>(PanelId::Subagents) {
         if up {
@@ -250,7 +248,6 @@ fn handle_panel_scroll(app: &mut App, up: bool) {
 
 fn handle_panel_clear_done(app: &mut App) {
     use clanker_tui_types::PanelId;
-
     use clankers_tui::components::subagent_panel::SubagentPanel;
     if let Some(subagent_panel) = app.panels.downcast_mut::<SubagentPanel>(PanelId::Subagents) {
         subagent_panel.clear_done();
@@ -265,7 +262,6 @@ fn handle_panel_kill(
     panel_tx: &tokio::sync::mpsc::UnboundedSender<clankers_tui::components::subagent_event::SubagentEvent>,
 ) {
     use clanker_tui_types::PanelId;
-
     use clankers_tui::components::subagent_panel::SubagentPanel;
     if let Some(sp) = app.panels.downcast_ref::<SubagentPanel>(PanelId::Subagents)
         && let Some(id) = sp.selected_id()
@@ -276,7 +272,6 @@ fn handle_panel_kill(
 
 fn handle_panel_remove(app: &mut App) {
     use clanker_tui_types::PanelId;
-
     use clankers_tui::components::subagent_panel::SubagentPanel;
     if let Some(sp) = app.panels.downcast_mut::<SubagentPanel>(PanelId::Subagents) {
         sp.remove_selected();
@@ -296,7 +291,6 @@ fn handle_toggle_session_popup(app: &mut App) {
 
 fn handle_toggle_branch_panel(app: &mut App) {
     use clanker_tui_types::PanelId;
-
     use clankers_tui::components::branch_panel::BranchPanel;
 
     if app.layout.focused_panel == Some(PanelId::Branches) {

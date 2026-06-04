@@ -10,6 +10,8 @@
 use std::path::PathBuf;
 use std::sync::Arc;
 
+use clankers_db::Db;
+use clankers_provider::Provider;
 use tracing::info;
 use tracing::warn;
 
@@ -19,9 +21,7 @@ use super::WorktreeStatus;
 use super::conflict_graph::BranchChangeset;
 use super::conflict_graph::compute_merge_plan;
 use super::merge_strategy;
-use clankers_db::Db;
 use crate::error::Result;
-use clankers_provider::Provider;
 
 /// Merge daemon state
 pub struct MergeDaemon {

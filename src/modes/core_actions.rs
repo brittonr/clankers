@@ -5,7 +5,6 @@
 use std::sync::Arc;
 
 use clanker_tui_types::AppState;
-
 use clankers_config::keybindings::CoreAction;
 use clankers_config::keybindings::InputMode;
 use clankers_tui::app::App;

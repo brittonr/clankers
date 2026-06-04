@@ -3,8 +3,8 @@
 //! Handlers can still parse rich command input, but transport/UI loops should
 //! interpret these effects instead of re-implementing command-specific policy.
 
-use clankers_protocol::SessionCommand;
 use clanker_message::ThinkingLevel;
+use clankers_protocol::SessionCommand;
 use clankers_tui::app::App;
 
 use crate::modes::interactive::AgentCommand;

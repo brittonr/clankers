@@ -14,12 +14,12 @@ mod tool_summaries;
 
 use std::time::Duration;
 
-use clanker_message::transcript::AgentMessage;
 use clanker_message::Content;
-use clanker_message::transcript::MessageId;
-use clanker_message::transcript::UserMessage;
 use clanker_message::streaming::ContentDelta;
 use clanker_message::streaming::StreamEvent;
+use clanker_message::transcript::AgentMessage;
+use clanker_message::transcript::MessageId;
+use clanker_message::transcript::UserMessage;
 use clankers_provider::Provider;
 use clankers_util::token::estimate_tokens;
 use tokio::sync::mpsc;
