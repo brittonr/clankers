@@ -51,22 +51,12 @@ pub struct NeutralKeymapConfig {
 }
 
 /// Prompt-source policy selected by the host or desktop adapter.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PromptServiceConfig {
     pub allow_filesystem_context: bool,
     pub allow_context_references: bool,
     pub skill_service_required: bool,
-}
-
-impl Default for PromptServiceConfig {
-    fn default() -> Self {
-        Self {
-            allow_filesystem_context: false,
-            allow_context_references: false,
-            skill_service_required: false,
-        }
-    }
 }
 
 /// Skill resolver policy before desktop root discovery is attached.
