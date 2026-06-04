@@ -382,12 +382,12 @@ impl ReceiptContext {
     }
 
     fn with_replay_status(mut self, status: &str) -> Self {
-        self.replay_status = status.to_owned();
+        status.clone_into(&mut self.replay_status);
         self
     }
 
     fn with_revocation_status(mut self, status: &str) -> Self {
-        self.revocation_status = status.to_owned();
+        status.clone_into(&mut self.revocation_status);
         self
     }
 }

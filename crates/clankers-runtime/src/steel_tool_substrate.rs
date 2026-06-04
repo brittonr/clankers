@@ -232,6 +232,7 @@ pub fn plan_tool_invocation_with_steel_or_fallback(
     let (steel_runtime_receipt_hash, plan) = match evaluate_tool_invocation_plan(profile, input) {
         Ok(result) => result,
         Err(error) => {
+            let error = *error;
             return fallback_or_block(profile, input, error.issue, error.steel_runtime_receipt_hash, error.plan);
         }
     };
@@ -285,7 +286,7 @@ struct SteelPlanEvaluationError {
 fn evaluate_tool_invocation_plan(
     profile: &SteelToolSubstrateProfile,
     input: &SteelToolInvocationInput,
-) -> Result<(ArtifactHash, SteelToolInvocationPlan), SteelPlanEvaluationError> {
+) -> Result<(ArtifactHash, SteelToolInvocationPlan), Box<SteelPlanEvaluationError>> {
     let steel_request = SteelRuntimeRequest {
         profile: profile.runtime_profile.clone(),
         source: input.steel_source.clone(),
@@ -303,32 +304,32 @@ fn evaluate_tool_invocation_plan(
     if steel_receipt.status != SteelRuntimeStatusCode::Succeeded
         || steel_receipt.reason_code != SteelRuntimeReasonCode::Ok
     {
-        return Err(SteelPlanEvaluationError {
+        return Err(Box::new(SteelPlanEvaluationError {
             issue: SteelToolSubstrateIssue::RuntimeFailed,
             steel_runtime_receipt_hash: Some(steel_runtime_receipt_hash),
             plan: None,
-        });
+        }));
     }
     let Some(output) = steel_receipt.output.as_deref() else {
-        return Err(SteelPlanEvaluationError {
+        return Err(Box::new(SteelPlanEvaluationError {
             issue: SteelToolSubstrateIssue::MalformedPlan,
             steel_runtime_receipt_hash: Some(steel_runtime_receipt_hash),
             plan: None,
-        });
+        }));
     };
     let Some(plan) = parse_plan(output) else {
-        return Err(SteelPlanEvaluationError {
+        return Err(Box::new(SteelPlanEvaluationError {
             issue: SteelToolSubstrateIssue::MalformedPlan,
             steel_runtime_receipt_hash: Some(steel_runtime_receipt_hash),
             plan: None,
-        });
+        }));
     };
     if !plan_matches_input(&plan, input) {
-        return Err(SteelPlanEvaluationError {
+        return Err(Box::new(SteelPlanEvaluationError {
             issue: SteelToolSubstrateIssue::MalformedPlan,
             steel_runtime_receipt_hash: Some(steel_runtime_receipt_hash),
             plan: Some(plan),
-        });
+        }));
     }
     Ok((steel_runtime_receipt_hash, plan))
 }

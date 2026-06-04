@@ -186,7 +186,7 @@ impl ucan::ReplayAdmission for RedbPublicCredentialStore {
         ability: &str,
     ) -> std::result::Result<(), ucan::ReplayAdmissionError> {
         match self.insert_replay_key(format!("invocation:{token_reference}:{resource}:{ability}")) {
-            Ok(ReplayAdmissionStatus::Accepted) | Ok(ReplayAdmissionStatus::NotPresent) => Ok(()),
+            Ok(ReplayAdmissionStatus::Accepted | ReplayAdmissionStatus::NotPresent) => Ok(()),
             Ok(ReplayAdmissionStatus::Duplicate) => Err(ucan::ReplayAdmissionError::Duplicate {
                 reference: token_reference.clone(),
             }),
