@@ -150,9 +150,9 @@ fn run() -> Result<(), Vec<String>> {
     if errors.is_empty() { Ok(()) } else { Err(errors) }
 }
 
-fn parse_inventory(path: &str) -> Result<BTreeMap<String, InventoryRow>, String> {
+fn parse_inventory(path: &str) -> Result<BTreeMap<String, Vec<InventoryRow>>, String> {
     let text = read(path)?;
-    let mut rows = BTreeMap::new();
+    let mut rows: BTreeMap<String, Vec<InventoryRow>> = BTreeMap::new();
     for line in text.lines() {
         let trimmed = line.trim();
         if !trimmed.starts_with("| `") {
@@ -167,7 +167,7 @@ fn parse_inventory(path: &str) -> Result<BTreeMap<String, InventoryRow>, String>
         if crate_name != "clanker-message" {
             continue;
         }
-        rows.insert(entry, InventoryRow {
+        rows.entry(entry).or_default().push(InventoryRow {
             kind: cells[2].clone(),
             stability: cells[3].clone(),
             source: strip_code(&cells[4]),
@@ -176,16 +176,18 @@ fn parse_inventory(path: &str) -> Result<BTreeMap<String, InventoryRow>, String>
     Ok(rows)
 }
 
-fn validate_inventory_rows(inventory: &BTreeMap<String, InventoryRow>, errors: &mut Vec<String>) {
+fn validate_inventory_rows(inventory: &BTreeMap<String, Vec<InventoryRow>>, errors: &mut Vec<String>) {
     for expected in REQUIRED_ROWS {
         match inventory.get(expected.entry) {
-            Some(row)
-                if row.kind == expected.kind
-                    && row.stability == expected.stability
-                    && row.source == expected.source => {}
-            Some(row) => errors.push(format!(
-                "inventory row `{}` drifted: expected kind/stability/source {}/{}/{}, got {}/{}/{}",
-                expected.entry, expected.kind, expected.stability, expected.source, row.kind, row.stability, row.source,
+            Some(rows)
+                if rows.iter().any(|row| {
+                    row.kind == expected.kind
+                        && row.stability == expected.stability
+                        && row.source == expected.source
+                }) => {}
+            Some(rows) => errors.push(format!(
+                "inventory row `{}` drifted: expected kind/stability/source {}/{}/{}, found {:?}",
+                expected.entry, expected.kind, expected.stability, expected.source, rows,
             )),
             None => errors.push(format!("inventory missing clanker-message row `{}`", expected.entry)),
         }
