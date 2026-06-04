@@ -63,8 +63,10 @@ fn run() -> Result<PathBuf, String> {
         ),
         (
             "invalid-nickel-contract",
-            validate_repo_evolution_pack_from_sources(&valid_pack, "let profile = {} in profile", |_| {
-                Some(SCRIPT_SOURCE.to_vec())
+            validate_repo_evolution_pack_from_sources(SteelRepoEvolutionPackSources {
+                profile_text: &valid_pack,
+                nickel_text: "let profile = {} in profile",
+                script_loader: |_path: &str| Some(SCRIPT_SOURCE.to_vec()),
             })
             .reason_code
                 == SteelRepoEvolutionActivationReason::InvalidNickelContract,

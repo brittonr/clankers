@@ -39,6 +39,13 @@ pub struct ProcessJobNativeAdmissionDecision {
     pub limit: usize,
 }
 
+/// Named input for native-process admission checks.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ProcessJobNativeAdmissionInput {
+    pub active: usize,
+    pub limit: usize,
+}
+
 impl ProcessJobNativeAdmissionDecision {
     #[must_use]
     pub fn summary(&self) -> String {
@@ -47,11 +54,13 @@ impl ProcessJobNativeAdmissionDecision {
 }
 
 #[must_use]
-pub fn native_process_job_admission_decision(active: usize, limit: usize) -> ProcessJobNativeAdmissionDecision {
+pub fn native_process_job_admission_decision(
+    input: ProcessJobNativeAdmissionInput,
+) -> ProcessJobNativeAdmissionDecision {
     ProcessJobNativeAdmissionDecision {
-        accepted: active < limit,
-        active,
-        limit,
+        accepted: input.active < input.limit,
+        active: input.active,
+        limit: input.limit,
     }
 }
 
@@ -4433,8 +4442,8 @@ mod tests {
 
     #[test]
     fn native_admission_decision_is_owned_by_process_job_contracts() {
-        let accepted = native_process_job_admission_decision(31, 32);
-        let rejected = native_process_job_admission_decision(32, 32);
+        let accepted = native_process_job_admission_decision(ProcessJobNativeAdmissionInput { active: 31, limit: 32 });
+        let rejected = native_process_job_admission_decision(ProcessJobNativeAdmissionInput { active: 32, limit: 32 });
 
         assert!(accepted.accepted);
         assert_eq!(accepted.active, 31);

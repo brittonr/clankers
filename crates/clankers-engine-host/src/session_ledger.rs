@@ -217,11 +217,12 @@ impl SessionLedgerError {
 pub fn replay_ledger_entries<PromptId, Metadata>(
     entries: &[SessionLedgerEntry<PromptId, Metadata>],
 ) -> Result<SessionLedgerReplay, SessionLedgerError> {
-    let mut messages = Vec::new();
+    let mut messages = Vec::with_capacity(entries.len());
     let mut metadata = SessionLedgerReplayMetadata {
         entry_count: entries.len(),
         ..SessionLedgerReplayMetadata::default()
     };
+    debug_assert_eq!(metadata.entry_count, entries.len());
 
     for entry in entries {
         match entry {
@@ -246,6 +247,7 @@ pub fn replay_ledger_entries<PromptId, Metadata>(
         }
     }
 
+    debug_assert!(messages.len() <= entries.len());
     Ok(SessionLedgerReplay { messages, metadata })
 }
 

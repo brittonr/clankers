@@ -42,6 +42,7 @@ use clankers_runtime::process_jobs::ProcessJobLogCursor;
 use clankers_runtime::process_jobs::ProcessJobLogRange;
 use clankers_runtime::process_jobs::ProcessJobLogRef;
 use clankers_runtime::process_jobs::ProcessJobNativeAdmissionDecision as NativeAdmissionDecision;
+use clankers_runtime::process_jobs::ProcessJobNativeAdmissionInput;
 use clankers_runtime::process_jobs::ProcessJobNotificationEvent;
 use clankers_runtime::process_jobs::ProcessJobNotificationKind;
 use clankers_runtime::process_jobs::ProcessJobNotificationObservation;
@@ -1520,10 +1521,16 @@ mod tests {
 
     #[test]
     fn native_admission_limit_rejects_at_capacity_with_typed_receipt() {
-        let accepted = native_admission_decision(MAX_NATIVE_ACTIVE_PROCESS_JOBS - 1, MAX_NATIVE_ACTIVE_PROCESS_JOBS);
+        let accepted = native_admission_decision(ProcessJobNativeAdmissionInput {
+            active: MAX_NATIVE_ACTIVE_PROCESS_JOBS - 1,
+            limit: MAX_NATIVE_ACTIVE_PROCESS_JOBS,
+        });
         assert!(accepted.accepted);
 
-        let rejected = native_admission_decision(MAX_NATIVE_ACTIVE_PROCESS_JOBS, MAX_NATIVE_ACTIVE_PROCESS_JOBS);
+        let rejected = native_admission_decision(ProcessJobNativeAdmissionInput {
+            active: MAX_NATIVE_ACTIVE_PROCESS_JOBS,
+            limit: MAX_NATIVE_ACTIVE_PROCESS_JOBS,
+        });
         assert!(!rejected.accepted);
         let receipt = native::admission_denied_receipt(rejected);
         assert_eq!(receipt.operation, ProcessJobOperation::Start);

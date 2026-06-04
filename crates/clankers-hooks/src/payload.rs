@@ -45,7 +45,7 @@ fn default_hook_status() -> HookStatus {
     HookStatus::Pending
 }
 
-fn default_zero_usize() -> usize {
+fn default_zero_u64() -> u64 {
     0
 }
 
@@ -212,10 +212,10 @@ pub enum HookData {
         prompt_preview: String,
         #[serde(default = "default_prompt_digest")]
         prompt_digest: String,
-        #[serde(default = "default_zero_usize")]
-        message_count: usize,
-        #[serde(default = "default_zero_usize")]
-        tool_call_count: usize,
+        #[serde(default = "default_zero_u64")]
+        message_count: u64,
+        #[serde(default = "default_zero_u64")]
+        tool_call_count: u64,
         #[serde(default = "default_hook_status")]
         status: HookStatus,
         #[serde(default = "default_none_hook_error", skip_serializing_if = "Option::is_none")]
@@ -327,8 +327,8 @@ impl HookPayload {
         prompt_id: &str,
         model: &str,
         prompt_text: &str,
-        message_count: usize,
-        tool_call_count: usize,
+        message_count: u64,
+        tool_call_count: u64,
         status: HookStatus,
         error: Option<HookSafeError>,
         usage: Option<HookUsage>,

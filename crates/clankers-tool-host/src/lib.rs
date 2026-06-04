@@ -189,13 +189,13 @@ pub trait ToolStorageService: Send + Sync {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ToolSearchRequest {
     pub query: String,
-    pub limit: usize,
+    pub limit: u32,
     pub metadata: BTreeMap<String, String>,
 }
 
 impl ToolSearchRequest {
     #[must_use]
-    pub fn new(query: impl Into<String>, limit: usize) -> Self {
+    pub fn new(query: impl Into<String>, limit: u32) -> Self {
         Self {
             query: safe_metadata(query.into()),
             limit,
@@ -214,13 +214,13 @@ impl ToolSearchRequest {
 pub struct ToolSearchHit {
     pub title: String,
     pub snippet: String,
-    pub rank: usize,
+    pub rank: u32,
     pub metadata: BTreeMap<String, String>,
 }
 
 impl ToolSearchHit {
     #[must_use]
-    pub fn new(title: impl Into<String>, snippet: impl Into<String>, rank: usize) -> Self {
+    pub fn new(title: impl Into<String>, snippet: impl Into<String>, rank: u32) -> Self {
         Self {
             title: safe_metadata(title.into()),
             snippet: safe_metadata(snippet.into()),

@@ -21,13 +21,39 @@ LINT_BUILD_DIR="$LINT_TARGET_DIR/release"
 RUNNER_TARGET_DIR="${CARGO_TARGET_DIR:-$HOME/.cargo-target}/cargo-tigerstyle/$TIGERSTYLE_REV"
 RUNNER_BIN="$RUNNER_TARGET_DIR/release/cargo-tigerstyle"
 LINT_LINK="$LINT_BUILD_DIR/libtigerstyle@${TOOLCHAIN}.so"
+TIGERSTYLE_CARGO="cargo"
+TIGERSTYLE_RUSTC="rustc"
 
 prefer_tigerstyle_toolchain() {
-    local pinned_bin
-    pinned_bin="$(find /nix/store -maxdepth 1 -type d -name '*rust-default-1.97.0-nightly-2026-04-16' -print -quit 2>/dev/null)/bin"
-    if [[ -x "$pinned_bin/rustc" && -x "$pinned_bin/cargo" ]]; then
-        export PATH="$pinned_bin:$PATH"
-    fi
+    local pattern pinned_dir pinned_bin toolchain_label
+    for pattern in \
+        '*rust-default-1.97.0-nightly-2026-04-16' \
+        '*rust-default-1.96.0-nightly-2026-03-21'
+    do
+        pinned_dir="$(find /nix/store -maxdepth 1 -type d -name "$pattern" -print -quit 2>/dev/null)"
+        if [[ -n "$pinned_dir" ]]; then
+            pinned_bin="$pinned_dir/bin"
+        else
+            pinned_bin=""
+        fi
+        if [[ -x "$pinned_bin/rustc" && -x "$pinned_bin/cargo" ]]; then
+            case "$pattern" in
+                *2026-04-16*) toolchain_label="nightly-2026-04-16-x86_64-unknown-linux-gnu" ;;
+                *2026-03-21*) toolchain_label="nightly-2026-03-21-x86_64-unknown-linux-gnu" ;;
+                *) toolchain_label="$TOOLCHAIN" ;;
+            esac
+            export PATH="$pinned_bin:$PATH"
+            TIGERSTYLE_CARGO="$pinned_bin/cargo"
+            TIGERSTYLE_RUSTC="$pinned_bin/rustc"
+            TOOLCHAIN="$toolchain_label"
+            LINT_TARGET_DIR="${CARGO_TARGET_DIR:-$HOME/.cargo-target}/dylint/octet-tigerstyle/$TIGERSTYLE_REV/$TOOLCHAIN"
+            LINT_BUILD_DIR="$LINT_TARGET_DIR/release"
+            RUNNER_TARGET_DIR="${CARGO_TARGET_DIR:-$HOME/.cargo-target}/cargo-tigerstyle/$TIGERSTYLE_REV/$TOOLCHAIN"
+            RUNNER_BIN="$RUNNER_TARGET_DIR/release/cargo-tigerstyle"
+            LINT_LINK="$LINT_BUILD_DIR/libtigerstyle@${TOOLCHAIN}.so"
+            return
+        fi
+    done
 }
 
 tigerstyle_git_url() {
@@ -70,7 +96,7 @@ build_tigerstyle() {
     mkdir -p "$LINT_BUILD_DIR"
     (
         cd "$TIGERSTYLE_CACHE_DIR"
-        cargo build --release --target-dir "$LINT_TARGET_DIR" -p tigerstyle --lib
+        RUSTC="$TIGERSTYLE_RUSTC" "$TIGERSTYLE_CARGO" build --release --target-dir "$LINT_TARGET_DIR" -p tigerstyle --lib
     )
     ln -sf "$LINT_BUILD_DIR/libtigerstyle.so" "$LINT_LINK"
 }
@@ -82,7 +108,7 @@ build_runner() {
 
     echo "Building cargo-tigerstyle $TIGERSTYLE_REV..."
     mkdir -p "$(dirname "$RUNNER_BIN")"
-    cargo build \
+    RUSTC="$TIGERSTYLE_RUSTC" "$TIGERSTYLE_CARGO" build \
         --manifest-path "$TIGERSTYLE_CACHE_DIR/cargo-tigerstyle/Cargo.toml" \
         --release \
         --target-dir "$RUNNER_TARGET_DIR"
@@ -112,10 +138,18 @@ case "${1:-} ${2:-}" in
         echo "${RUSTUP_TOOLCHAIN:-nightly-x86_64-unknown-linux-gnu} (xtask shim)"
         ;;
     "which rustc")
-        command -v rustc
+        if [[ -n "${TIGERSTYLE_RUSTC:-}" ]]; then
+            echo "$TIGERSTYLE_RUSTC"
+        else
+            command -v rustc
+        fi
         ;;
     "which cargo")
-        command -v cargo
+        if [[ -n "${TIGERSTYLE_CARGO:-}" ]]; then
+            echo "$TIGERSTYLE_CARGO"
+        else
+            command -v cargo
+        fi
         ;;
     "run "*)
         shift
@@ -153,6 +187,7 @@ if [[ -n "$nix_runner" && -x "$nix_runner/bin/cargo-tigerstyle" ]]; then
 fi
 
 prefer_tigerstyle_toolchain
+echo "Using tigerstyle rustc: $TIGERSTYLE_RUSTC ($TOOLCHAIN)"
 sync_tigerstyle
 build_tigerstyle
 build_runner
@@ -161,6 +196,7 @@ install_rustup_shim
 export TIGERSTYLE_TOOLCHAIN="$TOOLCHAIN"
 export TIGERSTYLE_DYLINT_REV="$TIGERSTYLE_DYLINT_REV"
 export TIGERSTYLE_LINT_LIB="$LINT_LINK"
-export RUSTC="$(command -v rustc)"
+export RUSTUP_TOOLCHAIN="$TOOLCHAIN"
+export RUSTC="$TIGERSTYLE_RUSTC"
 
 exec "$RUNNER_BIN" check "$@"

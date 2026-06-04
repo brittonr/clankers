@@ -128,6 +128,7 @@ pub use steel_planning::AgentSteelTurnPlanningFallbackMode;
 pub use steel_planning::AgentSteelTurnPlanningRolloutStage;
 pub use steel_planning::AgentSteelTurnPlanningSettings;
 use steel_planning::AgentTurnExecutionPlanner;
+use steel_planning::AgentTurnPlanningOutcome;
 use steel_planning::AgentTurnPlanningRequest;
 pub use steel_planning::AgentTurnSteelPlanningConfig;
 use steel_planning::emit_agent_turn_planning_receipt;
@@ -176,6 +177,32 @@ pub(crate) struct TurnLoopContext<'a> {
     pub(crate) session_id: &'a str,
 }
 
+fn resolve_turn_planning(
+    config: &TurnConfig,
+    ctx: &TurnLoopContext<'_>,
+    messages: &[AgentMessage],
+    services: &AgentRuntimeServices<'_>,
+) -> Result<Option<AgentTurnPlanningOutcome>> {
+    let Some(steel_turn_planning) = config.steel_turn_planning.as_ref() else {
+        return Ok(None);
+    };
+    let planning = plan_agent_turn(AgentTurnPlanningRequest {
+        config: steel_turn_planning,
+        session_id: ctx.session_id,
+        model: &config.model,
+        system_prompt: &config.system_prompt,
+        messages,
+        tool_names: services.tools.sorted_tool_names(),
+    });
+    emit_agent_turn_planning_receipt(services.events, &planning);
+    if planning.execution_planner == AgentTurnExecutionPlanner::Blocked {
+        return Err(AgentError::Agent {
+            message: "steel.host.plan_turn blocked agent turn before provider request".to_string(),
+        });
+    }
+    Ok(Some(planning))
+}
+
 pub(crate) async fn run_turn_loop(
     config: &TurnConfig,
     ctx: TurnLoopContext<'_>,
@@ -188,25 +215,7 @@ pub(crate) async fn run_turn_loop(
     debug_assert!(services.has_service_kind(AgentRuntimeServiceKind::Cancellation));
 
     let tool_defs = services.tools.tool_definitions();
-    let planning_outcome = if let Some(steel_turn_planning) = config.steel_turn_planning.as_ref() {
-        let planning = plan_agent_turn(AgentTurnPlanningRequest {
-            config: steel_turn_planning,
-            session_id: ctx.session_id,
-            model: &config.model,
-            system_prompt: &config.system_prompt,
-            messages,
-            tool_names: services.tools.sorted_tool_names(),
-        });
-        emit_agent_turn_planning_receipt(services.events, &planning);
-        if planning.execution_planner == AgentTurnExecutionPlanner::Blocked {
-            return Err(AgentError::Agent {
-                message: "steel.host.plan_turn blocked agent turn before provider request".to_string(),
-            });
-        }
-        Some(planning)
-    } else {
-        None
-    };
+    let planning_outcome = resolve_turn_planning(config, &ctx, messages, services)?;
     let execution_planner = planning_outcome
         .as_ref()
         .map_or(AgentTurnExecutionPlanner::RustNative, |planning| planning.execution_planner);

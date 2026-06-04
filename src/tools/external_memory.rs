@@ -341,7 +341,8 @@ impl ExternalMemoryTool {
 
         let limit = bounded_limit(params.get("limit"), self.settings.max_results);
         let scope = params.get("scope").and_then(|value| value.as_str()).unwrap_or("all");
-        let results = match search.search(ToolSearchRequest::new(query, limit).with_metadata("scope", scope)) {
+        let request_limit = u32::try_from(limit).unwrap_or(u32::MAX);
+        let results = match search.search(ToolSearchRequest::new(query, request_limit).with_metadata("scope", scope)) {
             Ok(result) => result.hits,
             Err(error) => {
                 let elapsed_ms = started.elapsed().as_millis();

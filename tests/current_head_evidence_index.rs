@@ -51,9 +51,17 @@ fn evidence_index_does_not_verify_legacy_dirty_or_mismatched_payload_receipts() 
 }
 
 fn run_index(receipt_dir: &Path, out_dir: &Path) -> Value {
-    let output = Command::new("./scripts/check-current-head-release-evidence.rs")
+    let output = Command::new("cargo")
         .current_dir(repo_root())
-        .args(["--allow-dirty", "--result-dir"])
+        .env("CARGO_TARGET_DIR", repo_root().join("target/current-head-evidence-index-script-test"))
+        .env("RUSTC_WRAPPER", "")
+        .args([
+            "-q",
+            "-Zscript",
+            "scripts/check-current-head-release-evidence.rs",
+            "--allow-dirty",
+            "--result-dir",
+        ])
         .arg(receipt_dir)
         .arg("--out-dir")
         .arg(out_dir)

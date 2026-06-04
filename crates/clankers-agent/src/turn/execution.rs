@@ -301,7 +301,7 @@ impl ToolSearchService for DbMemorySearchService {
                 "project" => matches!(entry.scope, clankers_db::memory::MemoryScope::Project { .. }),
                 _ => true,
             })
-            .take(request.limit)
+            .take(usize::try_from(request.limit).unwrap_or(usize::MAX))
             .enumerate()
             .map(|(index, entry)| {
                 let mut metadata = BTreeMap::new();
@@ -310,7 +310,7 @@ impl ToolSearchService for DbMemorySearchService {
                 ToolSearchHit {
                     title: entry.id.to_string(),
                     snippet: entry.text,
-                    rank: index + 1,
+                    rank: u32::try_from(index + 1).unwrap_or(u32::MAX),
                     metadata,
                 }
             })

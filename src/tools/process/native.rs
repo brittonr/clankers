@@ -566,7 +566,10 @@ impl ProcessRegistry {
     }
 
     pub(super) fn admission_decision(&self, limit: usize) -> NativeAdmissionDecision {
-        native_admission_decision(self.active_or_reserved_count(), limit)
+        native_admission_decision(ProcessJobNativeAdmissionInput {
+            active: self.active_or_reserved_count(),
+            limit,
+        })
     }
 
     pub(super) fn reserve_start(

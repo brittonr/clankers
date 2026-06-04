@@ -263,7 +263,11 @@ pub fn load_repo_evolution_pack(
         }
     };
     let script_loader = |relative_path: &str| -> Option<Vec<u8>> { fs::read(repo_root.join(relative_path)).ok() };
-    Ok(validate_repo_evolution_pack_from_sources(&profile_text, &nickel_text, script_loader))
+    Ok(validate_repo_evolution_pack_from_sources(SteelRepoEvolutionPackSources {
+        profile_text: &profile_text,
+        nickel_text: &nickel_text,
+        script_loader,
+    }))
 }
 
 #[must_use]
@@ -271,15 +275,30 @@ pub fn validate_repo_evolution_pack_from_export(
     profile_text: &str,
     script_loader: impl FnMut(&str) -> Option<Vec<u8>>,
 ) -> SteelRepoEvolutionActivationReceipt {
-    validate_repo_evolution_pack_from_sources(profile_text, valid_nickel_contract_fixture(), script_loader)
+    validate_repo_evolution_pack_from_sources(SteelRepoEvolutionPackSources {
+        profile_text,
+        nickel_text: valid_nickel_contract_fixture(),
+        script_loader,
+    })
+}
+
+/// Named inputs for validating a repo-local Steel evolution pack.
+pub struct SteelRepoEvolutionPackSources<'a, ScriptLoader> {
+    pub profile_text: &'a str,
+    pub nickel_text: &'a str,
+    pub script_loader: ScriptLoader,
 }
 
 #[must_use]
-pub fn validate_repo_evolution_pack_from_sources(
-    profile_text: &str,
-    nickel_text: &str,
-    mut script_loader: impl FnMut(&str) -> Option<Vec<u8>>,
-) -> SteelRepoEvolutionActivationReceipt {
+pub fn validate_repo_evolution_pack_from_sources<ScriptLoader>(
+    sources: SteelRepoEvolutionPackSources<'_, ScriptLoader>,
+) -> SteelRepoEvolutionActivationReceipt
+where ScriptLoader: for<'path> FnMut(&'path str) -> Option<Vec<u8>> {
+    let SteelRepoEvolutionPackSources {
+        profile_text,
+        nickel_text,
+        mut script_loader,
+    } = sources;
     let profile_hash = ArtifactHash::digest(profile_text.as_bytes());
     if !nickel_contract_valid(nickel_text) {
         return denied_activation(
@@ -698,10 +717,12 @@ mod tests {
     #[test]
     fn invalid_nickel_and_missing_contracts_fail_closed() {
         let pack = valid_pack();
-        let invalid_nickel =
-            validate_repo_evolution_pack_from_sources(&pack_json(&pack), "let profile = {} in profile", |_| {
-                Some(SCRIPT_SOURCE.to_vec())
-            });
+        let pack_text = pack_json(&pack);
+        let invalid_nickel = validate_repo_evolution_pack_from_sources(SteelRepoEvolutionPackSources {
+            profile_text: &pack_text,
+            nickel_text: "let profile = {} in profile",
+            script_loader: |_path: &str| Some(SCRIPT_SOURCE.to_vec()),
+        });
         assert_eq!(invalid_nickel.status, SteelRepoEvolutionActivationStatus::Denied);
         assert_eq!(invalid_nickel.reason_code, SteelRepoEvolutionActivationReason::InvalidNickelContract);
 
