@@ -14,10 +14,10 @@ mod tool_summaries;
 
 use std::time::Duration;
 
-use clanker_message::AgentMessage;
+use clanker_message::transcript::AgentMessage;
 use clanker_message::Content;
-use clanker_message::MessageId;
-use clanker_message::UserMessage;
+use clanker_message::transcript::MessageId;
+use clanker_message::transcript::UserMessage;
 use clanker_message::streaming::ContentDelta;
 use clanker_message::streaming::StreamEvent;
 use clankers_provider::Provider;
@@ -530,7 +530,7 @@ mod tests {
     use std::sync::Mutex;
 
     use chrono::Utc;
-    use clanker_message::*;
+    use clanker_message::transcript::*;
     use tokio::sync::mpsc;
 
     use super::*;

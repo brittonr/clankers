@@ -6,7 +6,7 @@ license.workspace = true
 description = "LLM provider abstraction layer for clankers"
 
 [dependencies]
-clanker-message = { workspace = true }
+clanker-message = { workspace = true, features = ["transcript-compat"] }
 clanker-router = { workspace = true, features = ["rpc"] }
 async-trait = "0.1"
 futures = "0.3"

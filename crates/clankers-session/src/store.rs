@@ -6,7 +6,7 @@ use std::io::Write;
 use std::path::Path;
 use std::path::PathBuf;
 
-use clanker_message::AgentMessage;
+use clanker_message::transcript::AgentMessage;
 use clanker_message::Content;
 
 use super::entry::SessionEntry;
@@ -386,8 +386,8 @@ pub fn find_session_by_id(sessions_dir: &Path, cwd: &str, partial_id: &str) -> O
 #[cfg(test)]
 mod tests {
     use chrono::Utc;
-    use clanker_message::MessageId;
-    use clanker_message::UserMessage;
+    use clanker_message::transcript::MessageId;
+    use clanker_message::transcript::UserMessage;
     use clankers_artifacts::ArtifactHash;
     use tempfile::TempDir;
 

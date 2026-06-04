@@ -738,7 +738,7 @@ mod tests {
             .ok();
             tx.send(StreamEvent::ContentBlockStart {
                 index: 0,
-                content_block: clanker_message::message::Content::Text { text: String::new() },
+                content_block: clanker_message::Content::Text { text: String::new() },
             })
             .await
             .ok();
@@ -820,7 +820,7 @@ mod tests {
             .ok();
             tx.send(StreamEvent::ContentBlockStart {
                 index: 0,
-                content_block: clanker_message::message::Content::Thinking {
+                content_block: clanker_message::Content::Thinking {
                     thinking: String::new(),
                     signature: String::new(),
                 },
@@ -881,8 +881,9 @@ mod tests {
         )
     }
 
-    fn make_user_msg(text: &str) -> clanker_message::message::AgentMessage {
-        use clanker_message::message::*;
+    fn make_user_msg(text: &str) -> clanker_message::transcript::AgentMessage {
+        use clanker_message::transcript::*;
+        use clanker_message::Content;
         AgentMessage::User(UserMessage {
             id: MessageId::new("test-msg"),
             content: vec![Content::Text { text: text.into() }],
@@ -1557,8 +1558,11 @@ mod tests {
             .with_timezone(&chrono::Utc)
     }
 
-    fn representative_router_adapter_history() -> Vec<clanker_message::message::AgentMessage> {
-        use clanker_message::message::*;
+    fn representative_router_adapter_history() -> Vec<clanker_message::transcript::AgentMessage> {
+        use clanker_message::transcript::*;
+        use clanker_message::Content;
+        use clanker_message::ImageSource;
+        use clanker_message::StopReason;
 
         let timestamp = fixed_message_timestamp();
         vec![

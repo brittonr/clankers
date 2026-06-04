@@ -367,23 +367,23 @@ fn normalize_request(request: &CompletionRequest) -> Value {
     })
 }
 
-fn message_role(message: &clanker_message::AgentMessage) -> &'static str {
+fn message_role(message: &clanker_message::transcript::AgentMessage) -> &'static str {
     match message {
-        clanker_message::AgentMessage::User(_) => "user",
-        clanker_message::AgentMessage::Assistant(_) => "assistant",
-        clanker_message::AgentMessage::ToolResult(_) => "tool",
-        clanker_message::AgentMessage::BashExecution(_) => "bash",
-        clanker_message::AgentMessage::Custom(_) => "custom",
-        clanker_message::AgentMessage::BranchSummary(_) => "branch_summary",
-        clanker_message::AgentMessage::CompactionSummary(_) => "compaction_summary",
+        clanker_message::transcript::AgentMessage::User(_) => "user",
+        clanker_message::transcript::AgentMessage::Assistant(_) => "assistant",
+        clanker_message::transcript::AgentMessage::ToolResult(_) => "tool",
+        clanker_message::transcript::AgentMessage::BashExecution(_) => "bash",
+        clanker_message::transcript::AgentMessage::Custom(_) => "custom",
+        clanker_message::transcript::AgentMessage::BranchSummary(_) => "branch_summary",
+        clanker_message::transcript::AgentMessage::CompactionSummary(_) => "compaction_summary",
     }
 }
 
-fn normalize_message_content(message: &clanker_message::AgentMessage) -> Value {
+fn normalize_message_content(message: &clanker_message::transcript::AgentMessage) -> Value {
     match message {
-        clanker_message::AgentMessage::User(user) => json!(user.content),
-        clanker_message::AgentMessage::Assistant(assistant) => json!(assistant.content),
-        clanker_message::AgentMessage::ToolResult(tool) => json!({
+        clanker_message::transcript::AgentMessage::User(user) => json!(user.content),
+        clanker_message::transcript::AgentMessage::Assistant(assistant) => json!(assistant.content),
+        clanker_message::transcript::AgentMessage::ToolResult(tool) => json!({
             "call_id": tool.call_id,
             "tool_name": tool.tool_name,
             "content": tool.content,

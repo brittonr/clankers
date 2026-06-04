@@ -1,6 +1,6 @@
 use clanker_message::Content;
-use clanker_message::MessageId;
-use clanker_message::ToolResultMessage;
+use clanker_message::transcript::MessageId;
+use clanker_message::transcript::ToolResultMessage;
 use clankers_artifacts::ArtifactHash;
 use clankers_runtime::DEFAULT_TOOL_SUBSTRATE_CALL_SEAM;
 use clankers_runtime::SteelToolExecutorKind;

@@ -12,7 +12,7 @@ clankers-engine-host = { version = "0.1.0", path = "../clankers-engine-host" }
 clankers-tool-host = { version = "0.1.0", path = "../clankers-tool-host" }
 clankers-hooks = { version = "0.1.0", path = "../clankers-hooks" }
 clanker-loop = { workspace = true }
-clanker-message = { workspace = true }
+clanker-message = { workspace = true, features = ["transcript-compat"] }
 clankers-model-selection = { version = "0.1.0", path = "../clankers-model-selection" }
 clankers-procmon = { version = "0.1.0", path = "../clankers-procmon" }
 clankers-prompts = { version = "0.1.0", path = "../clankers-prompts" }

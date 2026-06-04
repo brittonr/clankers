@@ -105,7 +105,7 @@ pub struct CompletionRequest {
     pub model: String,
 
     /// Conversation messages (user, assistant, tool results, etc.)
-    pub messages: Vec<clanker_message::message::AgentMessage>,
+    pub messages: Vec<clanker_message::transcript::AgentMessage>,
 
     /// System prompt (provider-dependent placement)
     pub system_prompt: Option<String>,
@@ -156,10 +156,10 @@ mod tests {
     use std::collections::HashMap;
     use std::path::PathBuf;
 
-    use clanker_message::message::AgentMessage;
-    use clanker_message::message::Content;
-    use clanker_message::message::MessageId;
-    use clanker_message::message::UserMessage;
+    use clanker_message::transcript::AgentMessage;
+    use clanker_message::Content;
+    use clanker_message::transcript::MessageId;
+    use clanker_message::transcript::UserMessage;
     use clanker_message::streaming::ContentDelta;
     use clanker_message::streaming::MessageMetadata;
     use clanker_message::streaming::StreamDelta;

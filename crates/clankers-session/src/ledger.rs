@@ -13,7 +13,7 @@ use std::path::Path;
 
 use chrono::DateTime;
 use chrono::Utc;
-use clanker_message::MessageId;
+use clanker_message::transcript::MessageId;
 use clankers_artifacts::ArtifactHash;
 use clankers_artifacts::RedactionClass;
 use serde::Deserialize;

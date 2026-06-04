@@ -2,7 +2,7 @@ use std::collections::BTreeSet;
 use std::path::Path;
 use std::path::PathBuf;
 
-use clanker_message::AgentMessage;
+use clanker_message::transcript::AgentMessage;
 use clankers_artifacts::ArtifactHash;
 use clankers_runtime::DEFAULT_TURN_EXECUTION_SEAM;
 use clankers_runtime::DEFAULT_TURN_PLANNING_SEAM;

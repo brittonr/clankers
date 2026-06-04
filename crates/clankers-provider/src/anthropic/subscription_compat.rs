@@ -13,7 +13,7 @@
 
 use std::collections::BTreeMap;
 
-use clanker_message::message::Content;
+use clanker_message::Content;
 use clanker_message::streaming::ContentDelta;
 use clanker_message::streaming::StreamEvent;
 use serde_json::Value;

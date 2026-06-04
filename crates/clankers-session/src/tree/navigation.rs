@@ -7,7 +7,7 @@
 //! introduced by a bad merge). The hard limit matches the maximum
 //! conversation depth a session can realistically reach.
 
-use clanker_message::MessageId;
+use clanker_message::transcript::MessageId;
 
 use super::SessionTree;
 use crate::entry::MessageEntry;

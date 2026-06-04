@@ -17,8 +17,8 @@ use std::time::Duration;
 
 use base64::Engine;
 use base64::engine::general_purpose::STANDARD as BASE64;
-use clanker_message::message::Content;
-use clanker_message::message::ImageSource;
+use clanker_message::Content;
+use clanker_message::ImageSource;
 use serde::Deserialize;
 use serde::Serialize;
 

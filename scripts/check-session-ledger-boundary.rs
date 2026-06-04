@@ -221,7 +221,7 @@ const INVENTORY: &[BoundaryInventoryEntry] = &[
         required_markers: &[
             "use clankers_session::SessionManager",
             "fn persist_messages",
-            "messages: &[clanker_message::AgentMessage]",
+            "messages: &[clanker_message::transcript::AgentMessage]",
             "index_messages_for_search",
             "persist_compaction_summary_tool_result",
         ],
@@ -249,7 +249,7 @@ const INVENTORY: &[BoundaryInventoryEntry] = &[
         boundary: "daemon attach display replay",
         required_markers: &[
             "DaemonEvent::HistoryBlock",
-            "serde_json::from_value::<clanker_message::AgentMessage>",
+            "serde_json::from_value::<clanker_message::transcript::AgentMessage>",
             "agent_message_to_tui_events(&msg)",
             "DaemonEvent::HistoryEnd",
             "finalize_active_block",

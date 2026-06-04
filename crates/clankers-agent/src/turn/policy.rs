@@ -1,7 +1,7 @@
 #[cfg(test)]
 use clanker_message::StopReason;
 #[cfg(test)]
-use clanker_message::ToolResultMessage;
+use clanker_message::transcript::ToolResultMessage;
 #[cfg(test)]
 use clankers_engine::EngineCorrelationId;
 #[cfg(test)]

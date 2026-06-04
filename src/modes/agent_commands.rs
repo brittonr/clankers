@@ -21,7 +21,7 @@ pub(crate) enum AgentCommand {
     TruncateMessages(usize),
     SetThinkingLevel(clanker_message::ThinkingLevel),
     CycleThinkingLevel,
-    SeedMessages(Vec<clanker_message::AgentMessage>),
+    SeedMessages(Vec<clanker_message::transcript::AgentMessage>),
     SetSessionId(String),
     SetCompactionSummary(Option<String>),
     Quit,

@@ -10,7 +10,7 @@ mod tests {
     use std::sync::Arc;
 
     use async_trait::async_trait;
-    use clanker_message::AgentMessage;
+    use clanker_message::transcript::AgentMessage;
     use clanker_message::Content;
     use clanker_message::Usage;
     use clanker_message::streaming::ContentDelta;

@@ -2,7 +2,7 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 use async_trait::async_trait;
-use clanker_message::ToolResultMessage;
+use clanker_message::transcript::ToolResultMessage;
 use clanker_message::Usage;
 use clankers_model_selection::cost_tracker::CostTracker;
 use clankers_provider::CompletionRequest;

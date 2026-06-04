@@ -1,6 +1,6 @@
-use clanker_message::AgentMessage;
+use clanker_message::transcript::AgentMessage;
 use clanker_message::Content;
-use clanker_message::ToolResultMessage;
+use clanker_message::transcript::ToolResultMessage;
 use serde_json::Value;
 
 const SUMMARY_MARKER_KEY: &str = "_compaction_summary";
@@ -304,9 +304,9 @@ fn pluralized(count: usize, singular: &str, plural: &str) -> String {
 #[cfg(test)]
 mod tests {
     use chrono::Utc;
-    use clanker_message::AssistantMessage;
+    use clanker_message::transcript::AssistantMessage;
     use clanker_message::ImageSource;
-    use clanker_message::MessageId;
+    use clanker_message::transcript::MessageId;
     use clanker_message::StopReason;
     use clanker_message::Usage;
     use serde_json::json;

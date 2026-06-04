@@ -128,10 +128,10 @@ impl Provider for RpcProvider {
 mod tests {
     use std::collections::HashMap;
 
-    use clanker_message::message::AgentMessage;
-    use clanker_message::message::Content;
-    use clanker_message::message::MessageId;
-    use clanker_message::message::UserMessage;
+    use clanker_message::transcript::AgentMessage;
+    use clanker_message::Content;
+    use clanker_message::transcript::MessageId;
+    use clanker_message::transcript::UserMessage;
     use serde_json::json;
 
     use crate::CompletionRequest;

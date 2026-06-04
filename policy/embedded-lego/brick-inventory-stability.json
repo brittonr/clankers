@@ -16,12 +16,12 @@
     "compatibility-alias"
   ],
   "expected_counts": {
-    "total": 625,
+    "total": 615,
     "supported": 303,
     "optional-support": 67,
     "compatibility-alias": 0,
-    "experimental": 187,
-    "unsupported-internal": 68,
+    "experimental": 184,
+    "unsupported-internal": 61,
     "stable-contract": 370
   },
   "stable_contract_blake3": "bbf41d01f78f5a782ddd0dcda237b7b77a62975c462db7880364b35aa2046e04",

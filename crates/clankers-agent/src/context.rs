@@ -1,6 +1,6 @@
 //! Context building, token estimation, window management
 
-use clanker_message::message::*;
+use clanker_message::transcript::*;
 
 /// Agent-owned prompt-affix settings used by context assembly.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
@@ -164,6 +164,8 @@ pub fn build_context(
 #[cfg(test)]
 mod tests {
     use chrono::Utc;
+    use clanker_message::Content;
+    use clanker_message::ImageSource;
 
     use super::*;
 

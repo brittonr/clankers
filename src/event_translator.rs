@@ -172,9 +172,9 @@ fn extract_tool_content(content: &[ToolResultContent]) -> (String, Vec<DisplayIm
 #[cfg(test)]
 mod tests {
     use chrono::Utc;
-    use clanker_message::AssistantMessage;
+    use clanker_message::transcript::AssistantMessage;
     use clanker_message::Content;
-    use clanker_message::MessageId;
+    use clanker_message::transcript::MessageId;
     use clanker_message::StopReason;
     use clanker_message::Usage;
     use clanker_message::streaming::ContentDelta;

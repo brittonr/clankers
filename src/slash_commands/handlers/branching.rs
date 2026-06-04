@@ -1,6 +1,6 @@
 //! Branching slash command handlers.
 
-use clanker_message::MessageId;
+use clanker_message::transcript::MessageId;
 
 use super::SlashContext;
 use super::SlashHandler;

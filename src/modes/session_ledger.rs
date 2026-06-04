@@ -4,7 +4,7 @@
 //! app-edge seam that projects persisted `AgentMessage` values into the neutral
 //! ledger DTOs used by SDK/runtime resume paths.
 
-use clanker_message::AgentMessage;
+use clanker_message::transcript::AgentMessage;
 use clanker_message::Content;
 use clankers_protocol::SerializedMessage;
 use clankers_runtime::SessionLedgerEntry;
@@ -109,13 +109,13 @@ fn text_content(content: &[Content]) -> String {
 #[cfg(test)]
 mod tests {
     use chrono::Utc;
-    use clanker_message::AssistantMessage;
-    use clanker_message::BranchSummaryMessage;
-    use clanker_message::MessageId;
+    use clanker_message::transcript::AssistantMessage;
+    use clanker_message::transcript::BranchSummaryMessage;
+    use clanker_message::transcript::MessageId;
     use clanker_message::StopReason;
-    use clanker_message::ToolResultMessage;
+    use clanker_message::transcript::ToolResultMessage;
     use clanker_message::Usage;
-    use clanker_message::UserMessage;
+    use clanker_message::transcript::UserMessage;
 
     use super::*;
 

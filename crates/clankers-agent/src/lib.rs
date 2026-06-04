@@ -35,9 +35,12 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 use chrono::Utc;
+use clanker_message::Content;
+#[cfg(test)]
+use clanker_message::StopReason;
 use clanker_message::ThinkingConfig;
 use clanker_message::ThinkingLevel;
-use clanker_message::*;
+use clanker_message::transcript::*;
 use clankers_db::Db;
 use clankers_model_selection::cost_tracker::CostTracker;
 use clankers_model_selection::orchestration;

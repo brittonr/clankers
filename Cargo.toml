@@ -104,7 +104,7 @@ clankers-db = { version = "0.1.0", path = "crates/clankers-db" }
 clankers-hooks = { version = "0.1.0", path = "crates/clankers-hooks" }
 clanker-loop = { workspace = true }
 graggle = { workspace = true }
-clanker-message = { workspace = true }
+clanker-message = { workspace = true, features = ["transcript-compat"] }
 clankers-model-selection = { version = "0.1.0", path = "crates/clankers-model-selection" }
 clankers-session = { version = "0.1.0", path = "crates/clankers-session" }
 clankers-tool-host = { version = "0.1.0", path = "crates/clankers-tool-host" }

@@ -1211,17 +1211,17 @@ mod tests {
         }
     }
 
-    fn replay_messages() -> Vec<clanker_message::AgentMessage> {
+    fn replay_messages() -> Vec<clanker_message::transcript::AgentMessage> {
         vec![
-            clanker_message::AgentMessage::User(clanker_message::UserMessage {
-                id: clanker_message::MessageId::new("u1"),
+            clanker_message::transcript::AgentMessage::User(clanker_message::transcript::UserMessage {
+                id: clanker_message::transcript::MessageId::new("u1"),
                 content: vec![clanker_message::Content::Text {
                     text: "hello".to_string(),
                 }],
                 timestamp: parse_test_timestamp("2026-04-22T12:34:56Z"),
             }),
-            clanker_message::AgentMessage::Assistant(clanker_message::AssistantMessage {
-                id: clanker_message::MessageId::new("a1"),
+            clanker_message::transcript::AgentMessage::Assistant(clanker_message::transcript::AssistantMessage {
+                id: clanker_message::transcript::MessageId::new("a1"),
                 content: vec![
                     clanker_message::Content::ToolUse {
                         id: "call-1".to_string(),
@@ -1237,8 +1237,8 @@ mod tests {
                 stop_reason: clanker_message::StopReason::Stop,
                 timestamp: parse_test_timestamp("2026-04-22T12:35:10Z"),
             }),
-            clanker_message::AgentMessage::ToolResult(clanker_message::ToolResultMessage {
-                id: clanker_message::MessageId::new("t1"),
+            clanker_message::transcript::AgentMessage::ToolResult(clanker_message::transcript::ToolResultMessage {
+                id: clanker_message::transcript::MessageId::new("t1"),
                 call_id: "call-1".to_string(),
                 tool_name: "bash".to_string(),
                 content: vec![clanker_message::Content::Text {

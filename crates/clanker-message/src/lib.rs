@@ -10,11 +10,13 @@
 
 pub mod content;
 pub mod contracts;
+#[cfg(feature = "transcript-compat")]
 pub mod message;
 pub mod result_streaming;
 pub mod semantic_event;
 pub mod streaming;
 pub mod tool_result;
+#[cfg(feature = "transcript-compat")]
 pub mod transcript;
 
 // Re-export core types at crate root for convenience
@@ -43,14 +45,3 @@ pub use streaming::StreamEvent;
 // Re-export tool result types at crate root
 pub use tool_result::ToolResult;
 pub use tool_result::ToolResultContent;
-// Re-export Clankers transcript compatibility types at crate root
-pub use transcript::AgentMessage;
-pub use transcript::AssistantMessage;
-pub use transcript::BashExecutionMessage;
-pub use transcript::BranchSummaryMessage;
-pub use transcript::CompactionSummaryMessage;
-pub use transcript::CustomMessage;
-pub use transcript::MessageId;
-pub use transcript::ToolResultMessage;
-pub use transcript::UserMessage;
-pub use transcript::generate_id;

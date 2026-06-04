@@ -15,6 +15,7 @@ const ERROR_EXIT: u8 = 1;
 const INVENTORY_PATH: &str = "docs/src/generated/embedded-sdk-api.md";
 const GUIDE_PATH: &str = "docs/src/tutorials/embedded-agent-sdk.md";
 const MESSAGE_COMPAT_SOURCE: &str = "crates/clanker-message/src/message.rs";
+const MESSAGE_MANIFEST: &str = "crates/clanker-message/Cargo.toml";
 const TRANSCRIPT_SOURCE: &str = "crates/clanker-message/src/transcript.rs";
 
 const REQUIRED_ROWS: &[ExpectedRow] = &[
@@ -92,6 +93,36 @@ const EMBEDDED_EXAMPLE_ROOTS: &[&str] = &[
     "examples/embedded-product-workbench",
 ];
 
+const TRANSCRIPT_CALLER_ROOTS: &[&str] = &["crates", "src", "tests"];
+
+const ROOT_TRANSCRIPT_IMPORT_TOKENS: &[&str] = &[
+    "clanker_message::AgentMessage",
+    "clanker_message::AssistantMessage",
+    "clanker_message::BashExecutionMessage",
+    "clanker_message::BranchSummaryMessage",
+    "clanker_message::CompactionSummaryMessage",
+    "clanker_message::CustomMessage",
+    "clanker_message::MessageId",
+    "clanker_message::ToolResultMessage",
+    "clanker_message::UserMessage",
+    "clanker_message::generate_id",
+    "clanker_message::message::",
+    "use clanker_message::*;",
+];
+
+const ROOT_TRANSCRIPT_REEXPORT_TOKENS: &[&str] = &[
+    "pub use transcript::AgentMessage;",
+    "pub use transcript::AssistantMessage;",
+    "pub use transcript::BashExecutionMessage;",
+    "pub use transcript::BranchSummaryMessage;",
+    "pub use transcript::CompactionSummaryMessage;",
+    "pub use transcript::CustomMessage;",
+    "pub use transcript::MessageId;",
+    "pub use transcript::ToolResultMessage;",
+    "pub use transcript::UserMessage;",
+    "pub use transcript::generate_id;",
+];
+
 #[derive(Debug, Clone, Copy)]
 struct ExpectedRow {
     entry: &'static str,
@@ -144,6 +175,8 @@ fn run() -> Result<(), Vec<String>> {
     };
     validate_inventory_rows(&inventory, &mut errors);
     validate_message_sources(&mut errors);
+    validate_message_manifest(&mut errors);
+    validate_transcript_callers_opt_in(&mut errors);
     validate_guide(&mut errors);
     validate_examples_avoid_transcripts(&mut errors);
     validate_green_public_apis_avoid_transcripts(&mut errors);
@@ -196,9 +229,18 @@ fn validate_inventory_rows(inventory: &BTreeMap<String, Vec<InventoryRow>>, erro
 
 fn validate_message_sources(errors: &mut Vec<String>) {
     let lib = read("crates/clanker-message/src/lib.rs").unwrap_or_default();
-    for marker in ["pub mod content;", "pub mod transcript;", "pub mod message;"] {
+    for marker in [
+        "pub mod content;",
+        "#[cfg(feature = \"transcript-compat\")]\npub mod transcript;",
+        "#[cfg(feature = \"transcript-compat\")]\npub mod message;",
+    ] {
         if !lib.contains(marker) {
             errors.push(format!("clanker-message lib.rs missing marker `{marker}`"));
+        }
+    }
+    for token in ROOT_TRANSCRIPT_REEXPORT_TOKENS {
+        if lib.contains(token) {
+            errors.push(format!("clanker-message crate root reexports transcript compatibility token `{token}`"));
         }
     }
 
@@ -226,11 +268,46 @@ fn validate_message_sources(errors: &mut Vec<String>) {
     }
 }
 
+fn validate_message_manifest(errors: &mut Vec<String>) {
+    let manifest = read(MESSAGE_MANIFEST).unwrap_or_default();
+    for marker in [
+        "default = []",
+        "transcript-compat = [\"dep:chrono\", \"dep:hex\", \"dep:rand\"]",
+        "chrono = { version = \"0.4\", features = [\"serde\"], optional = true }",
+        "hex = { version = \"0.4\", optional = true }",
+        "rand = { version = \"0.9\", optional = true }",
+    ] {
+        if !manifest.contains(marker) {
+            errors.push(format!("{MESSAGE_MANIFEST} missing transcript feature marker `{marker}`"));
+        }
+    }
+}
+
+fn validate_transcript_callers_opt_in(errors: &mut Vec<String>) {
+    for root in TRANSCRIPT_CALLER_ROOTS {
+        for path in rust_files_under(Path::new(root), errors) {
+            if path == Path::new(MESSAGE_COMPAT_SOURCE) {
+                continue;
+            }
+            let text = read_path(&path).unwrap_or_default();
+            for token in ROOT_TRANSCRIPT_IMPORT_TOKENS {
+                if text.contains(token) {
+                    errors.push(format!(
+                        "{} uses default transcript import token `{token}`; use `clanker_message::transcript::...` or stable root DTOs instead",
+                        path.display(),
+                    ));
+                }
+            }
+        }
+    }
+}
+
 fn validate_guide(errors: &mut Vec<String>) {
     let guide = read(GUIDE_PATH).unwrap_or_default();
     for marker in [
         "splits stable SDK contracts from Clankers transcript compatibility records",
         "legacy `clanker_message::message::*` module remains only as a compatibility import path",
+        "non-default `transcript-compat` feature enables `transcript` and legacy `message::*` compatibility records",
         "Validation command: `scripts/check-message-contract-boundary.rs`",
     ] {
         if !guide.contains(marker) {

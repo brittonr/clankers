@@ -3,7 +3,7 @@
 //! Lives in the main crate because it bridges `clankers-session` types
 //! and `clanker-tui-types` — neither should depend on the other.
 
-use clanker_message::AgentMessage;
+use clanker_message::transcript::AgentMessage;
 use clanker_message::Content;
 
 use clankers_session::entry::MessageEntry;

@@ -6,8 +6,8 @@
 use std::sync::OnceLock;
 
 use async_trait::async_trait;
-use clanker_message::message::AgentMessage;
-use clanker_message::message::Content;
+use clanker_message::transcript::AgentMessage;
+use clanker_message::Content;
 use clanker_message::streaming::ContentDelta;
 use clanker_message::streaming::MessageMetadata;
 use clanker_message::streaming::StreamEvent;
@@ -298,8 +298,8 @@ async fn send_tool_response(tx: &mpsc::Sender<StreamEvent>, model: &str, call_id
 
 #[cfg(test)]
 mod tests {
-    use clanker_message::message::MessageId;
-    use clanker_message::message::UserMessage;
+    use clanker_message::transcript::MessageId;
+    use clanker_message::transcript::UserMessage;
 
     use super::*;
 
@@ -327,7 +327,7 @@ mod tests {
     }
 
     fn tool_result(tool_name: &str) -> AgentMessage {
-        AgentMessage::ToolResult(clanker_message::message::ToolResultMessage {
+        AgentMessage::ToolResult(clanker_message::transcript::ToolResultMessage {
             id: MessageId::new(format!("result-{tool_name}")),
             call_id: format!("call-{tool_name}"),
             tool_name: tool_name.to_string(),

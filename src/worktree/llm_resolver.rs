@@ -10,10 +10,10 @@ use std::path::Path;
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use clanker_message::AgentMessage;
+use clanker_message::transcript::AgentMessage;
 use clanker_message::Content;
-use clanker_message::MessageId;
-use clanker_message::UserMessage;
+use clanker_message::transcript::MessageId;
+use clanker_message::transcript::UserMessage;
 use clanker_message::streaming::StreamEvent;
 use clankers_provider::CompletionRequest;
 use clankers_provider::Provider;

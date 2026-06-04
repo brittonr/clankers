@@ -1,8 +1,8 @@
 use std::sync::Arc;
 
-use clanker_message::AgentMessage;
-use clanker_message::AssistantMessage;
-use clanker_message::ToolResultMessage;
+use clanker_message::transcript::AgentMessage;
+use clanker_message::transcript::AssistantMessage;
+use clanker_message::transcript::ToolResultMessage;
 use clanker_message::Usage;
 use parking_lot::Mutex;
 use tokio::sync::broadcast;

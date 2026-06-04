@@ -291,7 +291,7 @@ impl SessionBuilder {
         capabilities: Option<Vec<clankers_ucan::Capability>>,
         public_auth: Option<crate::capability_gate::PublicUcanToolAuthorization>,
     ) -> SessionBuildPlan {
-        let session_id = clanker_message::generate_id();
+        let session_id = clanker_message::transcript::generate_id();
         let socket_path = session_socket_path(&session_id);
         let spawn = AgentSpawnPlan {
             session_id: session_id.clone(),
@@ -473,7 +473,7 @@ pub(crate) fn load_recovery_seed_messages(entry: &SessionCatalogEntry) -> Vec<Se
     }
 }
 
-pub(crate) fn serialize_seed_messages(messages: &[clanker_message::AgentMessage]) -> Vec<SerializedMessage> {
+pub(crate) fn serialize_seed_messages(messages: &[clanker_message::transcript::AgentMessage]) -> Vec<SerializedMessage> {
     crate::modes::session_ledger::desktop_messages_to_serialized_seed_messages(messages)
 }
 
@@ -509,7 +509,7 @@ fn resolve_session_resume_in_dir(
         }
     }
 
-    (clanker_message::generate_id(), Vec::new())
+    (clanker_message::transcript::generate_id(), Vec::new())
 }
 
 #[cfg(test)]
@@ -518,12 +518,12 @@ mod tests {
     use std::sync::Arc;
 
     use chrono::Utc;
-    use clanker_message::AssistantMessage;
+    use clanker_message::transcript::AssistantMessage;
     use clanker_message::Content;
-    use clanker_message::MessageId;
+    use clanker_message::transcript::MessageId;
     use clanker_message::StopReason;
     use clanker_message::Usage;
-    use clanker_message::UserMessage;
+    use clanker_message::transcript::UserMessage;
     use clankers_ucan::Capability;
     use tempfile::tempdir;
 
@@ -568,7 +568,7 @@ mod tests {
         let user_id = MessageId::new("user-1");
         session
             .append_message(
-                clanker_message::AgentMessage::User(UserMessage {
+                clanker_message::transcript::AgentMessage::User(UserMessage {
                     id: user_id.clone(),
                     content: vec![Content::Text {
                         text: "hello from resume".to_string(),
@@ -580,7 +580,7 @@ mod tests {
             .unwrap();
         session
             .append_message(
-                clanker_message::AgentMessage::Assistant(AssistantMessage {
+                clanker_message::transcript::AgentMessage::Assistant(AssistantMessage {
                     id: MessageId::new("assistant-1"),
                     content: vec![Content::Text {
                         text: "hello back".to_string(),

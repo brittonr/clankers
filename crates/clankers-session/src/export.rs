@@ -3,7 +3,7 @@
 use std::fmt::Write;
 use std::path::Path;
 
-use clanker_message::AgentMessage;
+use clanker_message::transcript::AgentMessage;
 use clanker_message::Content;
 
 use super::entry::SessionEntry;
@@ -177,8 +177,8 @@ pub fn export_json(path: &Path) -> Result<String> {
 
 #[cfg(test)]
 mod tests {
-    use clanker_message::MessageId;
-    use clanker_message::UserMessage;
+    use clanker_message::transcript::MessageId;
+    use clanker_message::transcript::UserMessage;
     use tempfile::TempDir;
 
     use super::*;

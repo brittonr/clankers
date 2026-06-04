@@ -228,9 +228,9 @@ mod tests {
 
     use super::*;
 
-    fn test_assistant_message() -> clanker_message::AssistantMessage {
-        clanker_message::AssistantMessage {
-            id: clanker_message::MessageId::new("a1"),
+    fn test_assistant_message() -> clanker_message::transcript::AssistantMessage {
+        clanker_message::transcript::AssistantMessage {
+            id: clanker_message::transcript::MessageId::new("a1"),
             content: vec![],
             model: "test".to_string(),
             usage: clanker_message::Usage::default(),

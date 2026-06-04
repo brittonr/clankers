@@ -2,14 +2,14 @@
 //!
 //! Contains the main command dispatch and prompt processing logic.
 
-use clanker_message::AgentMessage;
-use clanker_message::AssistantMessage;
+use clanker_message::transcript::AgentMessage;
+use clanker_message::transcript::AssistantMessage;
 use clanker_message::Content;
-use clanker_message::MessageId;
+use clanker_message::transcript::MessageId;
 #[cfg(test)]
 use clanker_message::SemanticErrorClass;
 use clanker_message::StopReason;
-use clanker_message::UserMessage;
+use clanker_message::transcript::UserMessage;
 use clankers_agent::AgentError;
 use clankers_core::CompletionStatus;
 use clankers_core::CoreFailure;
@@ -1162,9 +1162,9 @@ mod tests {
         ctrl.agent = Some(agent);
     }
 
-    fn extract_last_user_prompt_text(messages: &[clanker_message::AgentMessage]) -> Option<String> {
+    fn extract_last_user_prompt_text(messages: &[clanker_message::transcript::AgentMessage]) -> Option<String> {
         messages.iter().rev().find_map(|message| match message {
-            clanker_message::AgentMessage::User(user_message) => {
+            clanker_message::transcript::AgentMessage::User(user_message) => {
                 user_message.content.iter().find_map(|content| match content {
                     clanker_message::Content::Text { text } => Some(text.clone()),
                     _ => None,

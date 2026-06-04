@@ -563,7 +563,7 @@ impl<'a> EventLoopRunner<'a> {
     }
 
     pub(super) fn handle_merge_confirmed(&mut self) {
-        use clanker_message::MessageId;
+        use clanker_message::transcript::MessageId;
         let selected: Vec<MessageId> =
             self.app.branching.merge_interactive.selected_ids().into_iter().map(MessageId::from).collect();
         let source: Option<MessageId> =
@@ -599,10 +599,10 @@ mod tests {
     use std::time::Duration;
 
     use async_trait::async_trait;
-    use clanker_message::AgentMessage;
+    use clanker_message::transcript::AgentMessage;
     use clanker_message::Content;
-    use clanker_message::MessageId;
-    use clanker_message::UserMessage;
+    use clanker_message::transcript::MessageId;
+    use clanker_message::transcript::UserMessage;
     use clankers_agent::Agent;
     use clankers_provider::Model;
     use clankers_provider::Provider;

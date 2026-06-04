@@ -26,7 +26,19 @@ use chrono::Utc;
 use clanker_message::ThinkingConfig;
 #[cfg(test)]
 use clanker_message::Usage;
-use clanker_message::*;
+use clanker_message::transcript::*;
+#[cfg(test)]
+use clanker_message::Content;
+#[cfg(test)]
+use clanker_message::ContentDelta;
+#[cfg(test)]
+use clanker_message::ImageSource;
+#[cfg(test)]
+use clanker_message::MessageMetadata;
+#[cfg(test)]
+use clanker_message::StopReason;
+#[cfg(test)]
+use clanker_message::StreamEvent;
 use clankers_engine::EmbeddableEngine;
 #[cfg(test)]
 use clankers_engine::EngineCorrelationId;

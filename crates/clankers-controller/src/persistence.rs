@@ -39,7 +39,7 @@ impl SessionController {
 }
 
 /// Persist a batch of agent messages to the session manager.
-fn persist_messages(sm: &mut SessionManager, messages: &[clanker_message::AgentMessage]) {
+fn persist_messages(sm: &mut SessionManager, messages: &[clanker_message::transcript::AgentMessage]) {
     for msg in messages {
         let parent = sm.active_leaf_id().cloned();
         if let Err(e) = sm.append_message(msg.clone(), parent) {
@@ -52,7 +52,7 @@ fn persist_messages(sm: &mut SessionManager, messages: &[clanker_message::AgentM
 pub(crate) fn index_messages_for_search(
     search_index: &clankers_db::search_index::SearchIndex,
     session_id: &str,
-    messages: &[clanker_message::AgentMessage],
+    messages: &[clanker_message::transcript::AgentMessage],
 ) {
     let mut batch: Vec<(&str, String, &str, String, i64)> = Vec::new();
 
@@ -62,10 +62,10 @@ pub(crate) fn index_messages_for_search(
         let timestamp = msg.timestamp().timestamp();
 
         let text = match msg {
-            clanker_message::AgentMessage::User(m) => extract_text(&m.content),
-            clanker_message::AgentMessage::Assistant(m) => extract_text(&m.content),
-            clanker_message::AgentMessage::ToolResult(m) => extract_text(&m.content),
-            clanker_message::AgentMessage::BashExecution(m) => {
+            clanker_message::transcript::AgentMessage::User(m) => extract_text(&m.content),
+            clanker_message::transcript::AgentMessage::Assistant(m) => extract_text(&m.content),
+            clanker_message::transcript::AgentMessage::ToolResult(m) => extract_text(&m.content),
+            clanker_message::transcript::AgentMessage::BashExecution(m) => {
                 format!("{} {} {}", m.command, m.stdout, m.stderr)
             }
             _ => continue,

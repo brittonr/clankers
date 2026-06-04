@@ -1,6 +1,6 @@
 //! SSE stream parsing for Anthropic Messages API
 
-use clanker_message::message::Content;
+use clanker_message::Content;
 use clanker_message::streaming::*;
 use serde::Deserialize;
 use serde_json::Value;

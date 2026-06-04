@@ -180,7 +180,7 @@ pub(crate) fn process_daemon_event(
         // ── History replay ──────────────────────────
         DaemonEvent::HistoryBlock { block } => {
             if *is_replaying_history {
-                match serde_json::from_value::<clanker_message::AgentMessage>(block.clone()) {
+                match serde_json::from_value::<clanker_message::transcript::AgentMessage>(block.clone()) {
                     Ok(msg) => {
                         let events = clankers_controller::convert::agent_message_to_tui_events(&msg);
                         for tui_event in &events {

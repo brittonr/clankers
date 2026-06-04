@@ -355,7 +355,7 @@ pub async fn run_ephemeral_agent(
     sub_id: &str,
     signal: CancellationToken,
 ) -> Result<String, String> {
-    let session_id = clanker_message::generate_id();
+    let session_id = clanker_message::transcript::generate_id();
 
     // Resolve agent definition to model + system prompt overrides
     let (model, system_prompt) = resolve_agent_def(agent_def, factory);

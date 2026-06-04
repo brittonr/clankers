@@ -4,8 +4,8 @@ use clankers_tui::app::App;
 
 /// Rebuild the display blocks from restored session messages so the user
 /// can see the prior conversation in the TUI.
-pub(crate) fn restore_display_blocks(app: &mut App, messages: &[clanker_message::AgentMessage]) {
-    use clanker_message::AgentMessage;
+pub(crate) fn restore_display_blocks(app: &mut App, messages: &[clanker_message::transcript::AgentMessage]) {
+    use clanker_message::transcript::AgentMessage;
 
     for (i, msg) in messages.iter().enumerate() {
         match msg {
@@ -28,7 +28,7 @@ pub(crate) fn restore_display_blocks(app: &mut App, messages: &[clanker_message:
 }
 
 /// Restore a user message by extracting text content and starting a new block.
-fn restore_user_message(app: &mut App, user_msg: &clanker_message::UserMessage, index: usize) {
+fn restore_user_message(app: &mut App, user_msg: &clanker_message::transcript::UserMessage, index: usize) {
     use clanker_message::Content;
 
     let text = user_msg
@@ -47,7 +47,7 @@ fn restore_user_message(app: &mut App, user_msg: &clanker_message::UserMessage, 
 }
 
 /// Restore an assistant message by processing its content (text, tool use, thinking).
-fn restore_assistant_message(app: &mut App, asst_msg: &clanker_message::AssistantMessage) {
+fn restore_assistant_message(app: &mut App, asst_msg: &clanker_message::transcript::AssistantMessage) {
     use clanker_message::Content;
 
     for content in &asst_msg.content {
@@ -118,7 +118,7 @@ fn add_thinking_response(app: &mut App, thinking: &str) {
 }
 
 /// Restore a tool result by extracting text and images.
-fn restore_tool_result(app: &mut App, tool_result: &clanker_message::ToolResultMessage) {
+fn restore_tool_result(app: &mut App, tool_result: &clanker_message::transcript::ToolResultMessage) {
     use clanker_message::Content;
     use clanker_tui_types::DisplayImage;
     use clanker_tui_types::DisplayMessage;
@@ -175,20 +175,20 @@ mod tests {
         }
     }
 
-    fn make_messages() -> Vec<clanker_message::AgentMessage> {
+    fn make_messages() -> Vec<clanker_message::transcript::AgentMessage> {
         let user_timestamp = parse_test_timestamp("2026-04-22T12:34:56Z");
         let assistant_timestamp = parse_test_timestamp("2026-04-22T12:35:10Z");
         let tool_timestamp = parse_test_timestamp("2026-04-22T12:35:20Z");
         vec![
-            clanker_message::AgentMessage::User(clanker_message::UserMessage {
-                id: clanker_message::MessageId::new("u1"),
+            clanker_message::transcript::AgentMessage::User(clanker_message::transcript::UserMessage {
+                id: clanker_message::transcript::MessageId::new("u1"),
                 content: vec![clanker_message::Content::Text {
                     text: "hello".to_string(),
                 }],
                 timestamp: user_timestamp,
             }),
-            clanker_message::AgentMessage::Assistant(clanker_message::AssistantMessage {
-                id: clanker_message::MessageId::new("a1"),
+            clanker_message::transcript::AgentMessage::Assistant(clanker_message::transcript::AssistantMessage {
+                id: clanker_message::transcript::MessageId::new("a1"),
                 content: vec![
                     clanker_message::Content::Thinking {
                         thinking: "pondering".to_string(),
@@ -208,8 +208,8 @@ mod tests {
                 stop_reason: clanker_message::StopReason::Stop,
                 timestamp: assistant_timestamp,
             }),
-            clanker_message::AgentMessage::ToolResult(clanker_message::ToolResultMessage {
-                id: clanker_message::MessageId::new("t1"),
+            clanker_message::transcript::AgentMessage::ToolResult(clanker_message::transcript::ToolResultMessage {
+                id: clanker_message::transcript::MessageId::new("t1"),
                 call_id: "call-1".to_string(),
                 tool_name: "bash".to_string(),
                 content: vec![clanker_message::Content::Text {

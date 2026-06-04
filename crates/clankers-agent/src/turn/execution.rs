@@ -6,8 +6,14 @@ use std::sync::Arc;
 
 use async_trait::async_trait;
 use chrono::Utc;
+use clanker_message::Content;
+use clanker_message::ContentDelta;
+#[cfg(test)]
+use clanker_message::MessageMetadata;
+use clanker_message::StopReason;
+use clanker_message::StreamEvent;
 use clanker_message::Usage;
-use clanker_message::*;
+use clanker_message::transcript::*;
 use clankers_engine::EngineCorrelationId;
 use clankers_engine::EngineMessage;
 use clankers_engine::EngineMessageRole;
@@ -1069,15 +1075,15 @@ fn check_tool_paths(input: &Value) -> Option<String> {
 mod tests {
     use async_trait::async_trait;
     use chrono::Utc;
-    use clanker_message::AssistantMessage;
-    use clanker_message::BashExecutionMessage;
-    use clanker_message::BranchSummaryMessage;
-    use clanker_message::CompactionSummaryMessage;
-    use clanker_message::CustomMessage;
-    use clanker_message::MessageId;
+    use clanker_message::transcript::AssistantMessage;
+    use clanker_message::transcript::BashExecutionMessage;
+    use clanker_message::transcript::BranchSummaryMessage;
+    use clanker_message::transcript::CompactionSummaryMessage;
+    use clanker_message::transcript::CustomMessage;
+    use clanker_message::transcript::MessageId;
     use clanker_message::StopReason;
-    use clanker_message::ToolResultMessage;
-    use clanker_message::UserMessage;
+    use clanker_message::transcript::ToolResultMessage;
+    use clanker_message::transcript::UserMessage;
     use clankers_engine::EngineCorrelationId;
     use serde_json::json;
 

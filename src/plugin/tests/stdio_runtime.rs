@@ -1926,7 +1926,7 @@ async fn capability_gate_blocks_stdio_tool_calls_in_turn_loop() {
     use std::sync::atomic::AtomicUsize;
     use std::sync::atomic::Ordering;
 
-    use clanker_message::AgentMessage;
+    use clanker_message::transcript::AgentMessage;
     use clanker_message::Content;
     use clanker_message::Usage;
     use clanker_message::streaming::MessageMetadata;
@@ -2082,7 +2082,7 @@ async fn capability_gate_allows_stdio_tool_calls_in_turn_loop() {
     use std::sync::atomic::AtomicUsize;
     use std::sync::atomic::Ordering;
 
-    use clanker_message::AgentMessage;
+    use clanker_message::transcript::AgentMessage;
     use clanker_message::Content;
     use clanker_message::Usage;
     use clanker_message::streaming::MessageMetadata;
