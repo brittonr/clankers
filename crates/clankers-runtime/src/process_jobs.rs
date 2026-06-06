@@ -54,7 +54,9 @@ pub use clankers_tool_host::process_jobs::ProcessJobLogRef;
 pub use clankers_tool_host::process_jobs::ProcessJobLogWriteDisposition;
 pub use clankers_tool_host::process_jobs::ProcessJobNativeAdmissionDecision;
 pub use clankers_tool_host::process_jobs::ProcessJobNativeAdmissionInput;
+pub use clankers_tool_host::process_jobs::ProcessJobNotificationDecision;
 pub use clankers_tool_host::process_jobs::ProcessJobNotificationKind;
+pub use clankers_tool_host::process_jobs::ProcessJobNotificationObservation;
 pub use clankers_tool_host::process_jobs::ProcessJobNotificationPolicy;
 pub use clankers_tool_host::process_jobs::ProcessJobOperation;
 pub use clankers_tool_host::process_jobs::ProcessJobOwnerScope;
@@ -778,20 +780,6 @@ pub struct ProcessJobLogChunk {
     pub next_cursor: Option<ProcessJobLogCursor>,
     pub text: String,
     pub truncated: bool,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct ProcessJobNotificationDecision {
-    pub kind: ProcessJobNotificationKind,
-    pub summary: String,
-    pub log_excerpt: Option<String>,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct ProcessJobNotificationObservation {
-    pub status: ProcessJobStatus,
-    pub line: Option<String>,
-    pub tick: u64,
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]

@@ -538,6 +538,8 @@ Inventory kinds additionally include `field`, `method`, and `reexport` rows so e
 | `ProcessJobLogRef` | `clankers-tool-host` | struct | supported | `crates/clankers-tool-host/src/process_jobs.rs` |
 | `ProcessJobNativeAdmissionDecision` | `clankers-tool-host` | struct | supported | `crates/clankers-tool-host/src/process_jobs.rs` |
 | `ProcessJobNativeAdmissionInput` | `clankers-tool-host` | struct | supported | `crates/clankers-tool-host/src/process_jobs.rs` |
+| `ProcessJobNotificationDecision` | `clankers-tool-host` | struct | supported | `crates/clankers-tool-host/src/process_jobs.rs` |
+| `ProcessJobNotificationObservation` | `clankers-tool-host` | struct | supported | `crates/clankers-tool-host/src/process_jobs.rs` |
 | `ProcessJobNotificationPolicy` | `clankers-tool-host` | struct | supported | `crates/clankers-tool-host/src/process_jobs.rs` |
 | `ProcessJobProfileReceiptMetadata` | `clankers-tool-host` | struct | supported | `crates/clankers-tool-host/src/process_jobs.rs` |
 | `ProcessJobResourcePolicy` | `clankers-tool-host` | struct | supported | `crates/clankers-tool-host/src/process_jobs.rs` |
@@ -605,6 +607,12 @@ Inventory kinds additionally include `field`, `method`, and `reexport` rows so e
 | `ProcessJobNativeAdmissionDecision::limit` | `clankers-tool-host` | field | supported | `crates/clankers-tool-host/src/process_jobs.rs` |
 | `ProcessJobNativeAdmissionInput::active` | `clankers-tool-host` | field | supported | `crates/clankers-tool-host/src/process_jobs.rs` |
 | `ProcessJobNativeAdmissionInput::limit` | `clankers-tool-host` | field | supported | `crates/clankers-tool-host/src/process_jobs.rs` |
+| `ProcessJobNotificationDecision::kind` | `clankers-tool-host` | field | supported | `crates/clankers-tool-host/src/process_jobs.rs` |
+| `ProcessJobNotificationDecision::log_excerpt` | `clankers-tool-host` | field | supported | `crates/clankers-tool-host/src/process_jobs.rs` |
+| `ProcessJobNotificationDecision::summary` | `clankers-tool-host` | field | supported | `crates/clankers-tool-host/src/process_jobs.rs` |
+| `ProcessJobNotificationObservation::line` | `clankers-tool-host` | field | supported | `crates/clankers-tool-host/src/process_jobs.rs` |
+| `ProcessJobNotificationObservation::status` | `clankers-tool-host` | field | supported | `crates/clankers-tool-host/src/process_jobs.rs` |
+| `ProcessJobNotificationObservation::tick` | `clankers-tool-host` | field | supported | `crates/clankers-tool-host/src/process_jobs.rs` |
 | `ProcessJobNotificationPolicy::notify_on_complete` | `clankers-tool-host` | field | supported | `crates/clankers-tool-host/src/process_jobs.rs` |
 | `ProcessJobNotificationPolicy::watch_patterns` | `clankers-tool-host` | field | supported | `crates/clankers-tool-host/src/process_jobs.rs` |
 | `ProcessJobProfileReceiptMetadata::manifest_schema_version` | `clankers-tool-host` | field | supported | `crates/clankers-tool-host/src/process_jobs.rs` |

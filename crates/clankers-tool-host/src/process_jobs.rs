@@ -532,6 +532,20 @@ pub enum ProcessJobNotificationKind {
     WatchPattern { pattern_index: usize, pattern: String },
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ProcessJobNotificationDecision {
+    pub kind: ProcessJobNotificationKind,
+    pub summary: String,
+    pub log_excerpt: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ProcessJobNotificationObservation {
+    pub status: ProcessJobStatus,
+    pub line: Option<String>,
+    pub tick: u64,
+}
+
 /// Safe, backend-neutral profile metadata copied into process/job receipts.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ProcessJobProfileReceiptMetadata {
@@ -817,6 +831,26 @@ mod tests {
         assert_eq!(range.stream, ProcessJobStream::Stderr);
         assert_eq!(range.offset, Some(64));
         assert_eq!(range.limit_bytes, 1024);
+    }
+
+    #[test]
+    fn notification_decision_and_observation_are_backend_neutral_data() {
+        let decision = ProcessJobNotificationDecision {
+            kind: ProcessJobNotificationKind::Completion,
+            summary: "complete".to_string(),
+            log_excerpt: Some("done".to_string()),
+        };
+        assert!(matches!(decision.kind, ProcessJobNotificationKind::Completion));
+        assert_eq!(decision.summary, "complete");
+
+        let observation = ProcessJobNotificationObservation {
+            status: ProcessJobStatus::Running,
+            line: Some("ready".to_string()),
+            tick: 4,
+        };
+        assert!(!observation.status.is_terminal());
+        assert_eq!(observation.line.as_deref(), Some("ready"));
+        assert_eq!(observation.tick, 4);
     }
 
     #[test]
