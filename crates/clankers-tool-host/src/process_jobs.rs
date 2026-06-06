@@ -760,9 +760,9 @@ impl ProcessJobRetentionPolicy {
         let retained_until = self.max_age.and_then(|age| add_timestamp_duration(retention_base, age));
         ProcessJobRetentionMetadata {
             class,
-            metadata_retained_until: retained_until.clone(),
-            log_retained_until: retained_until.clone(),
-            event_retained_until: retained_until.clone(),
+            metadata_retained_until: retained_until,
+            log_retained_until: retained_until,
+            event_retained_until: retained_until,
             tombstone_retained_until: retained_until,
             policy_ref,
         }
@@ -1704,9 +1704,9 @@ mod tests {
             status: ProcessJobStatus::Succeeded { exit_code: Some(0) },
             command_preview: "done".to_string(),
             cwd: ProcessJobCwd::Inherited,
-            started_at: Some(now.clone()),
-            updated_at: now.clone(),
-            completed_at: Some(now.clone()),
+            started_at: Some(now),
+            updated_at: now,
+            completed_at: Some(now),
             log_refs: vec![log_ref.clone()],
             profile: None,
         };
@@ -1716,7 +1716,7 @@ mod tests {
             max_log_bytes: Some(1024),
         };
 
-        let kept = retention.eligibility_for_summary(&summary, now.clone(), Some("policy".to_string()));
+        let kept = retention.eligibility_for_summary(&summary, now, Some("policy".to_string()));
         assert!(matches!(kept, ProcessJobRetentionEligibility::KeepUntil { .. }));
         let eligible = retention.eligibility_for_summary(
             &summary,
