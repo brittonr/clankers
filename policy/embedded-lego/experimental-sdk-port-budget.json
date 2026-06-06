@@ -1,7 +1,7 @@
 {
   "schema": "clankers.embedded_lego.experimental_sdk_port_budget.v1",
   "inventory_path": "docs/src/generated/embedded-sdk-api.md",
-  "expected_experimental_rows": 23,
+  "expected_experimental_rows": 19,
   "groups": [
     {
       "id": "engine-buffered-tool-results",
@@ -10,12 +10,12 @@
       "entry_prefixes": [
         "EngineBufferedToolResult"
       ],
-      "disposition": "keep-experimental-with-rationale",
-      "expected_stability": "experimental",
+      "disposition": "promote-with-evidence",
+      "expected_stability": "supported",
       "expected_rows": 4,
-      "use_site_status": "used internally by EngineState buffered tool feedback and reducer conversion; not a direct product recipe yet",
-      "validation": "cargo test -p clankers-engine --lib buffered",
-      "rationale": "the reducer needs the buffer shape public through EngineState today, but the embedder-facing resume contract should converge before stabilizing the concrete buffer record"
+      "use_site_status": "public through supported EngineState buffered tool feedback and covered by reducer duplicate/ordering/clearing tests",
+      "validation": "cargo test -p clankers-engine --lib tool_feedback && scripts/check-experimental-sdk-port-budget.rs",
+      "rationale": "EngineState already exposes buffered tool feedback as supported engine state; stabilizing the element DTO keeps the public state contract internally consistent"
     },
     {
       "id": "engine-host-unused-observation-ports",

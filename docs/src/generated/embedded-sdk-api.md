@@ -35,7 +35,7 @@ Inventory kinds additionally include `field`, `method`, and `reexport` rows so e
 | `ENGINE_SECOND_RETRY_DELAY_SECONDS` | `clankers-engine` | constant | unsupported-internal | `crates/clankers-engine/src/lib.rs` |
 | `ENGINE_SUBMIT_PROMPT_NOTICE` | `clankers-engine` | constant | unsupported-internal | `crates/clankers-engine/src/lib.rs` |
 | `EmbeddableEngine` | `clankers-engine` | struct | supported | `crates/clankers-engine/src/lib.rs` |
-| `EngineBufferedToolResult` | `clankers-engine` | struct | experimental | `crates/clankers-engine/src/lib.rs` |
+| `EngineBufferedToolResult` | `clankers-engine` | struct | supported | `crates/clankers-engine/src/lib.rs` |
 | `EngineCorrelationId` | `clankers-engine` | struct | supported | `crates/clankers-engine/src/lib.rs` |
 | `EngineMessage` | `clankers-engine` | struct | supported | `crates/clankers-engine/src/lib.rs` |
 | `EngineModelRequest` | `clankers-engine` | struct | supported | `crates/clankers-engine/src/lib.rs` |
@@ -57,9 +57,9 @@ Inventory kinds additionally include `field`, `method`, and `reexport` rows so e
 | `EngineRejection` | `clankers-engine` | enum | supported | `crates/clankers-engine/src/lib.rs` |
 | `EngineTurnPhase` | `clankers-engine` | enum | supported | `crates/clankers-engine/src/lib.rs` |
 | `reduce` | `clankers-engine` | function | supported | `crates/clankers-engine/src/lib.rs` |
-| `EngineBufferedToolResult::call_id` | `clankers-engine` | field | experimental | `crates/clankers-engine/src/lib.rs` |
-| `EngineBufferedToolResult::content` | `clankers-engine` | field | experimental | `crates/clankers-engine/src/lib.rs` |
-| `EngineBufferedToolResult::is_error` | `clankers-engine` | field | experimental | `crates/clankers-engine/src/lib.rs` |
+| `EngineBufferedToolResult::call_id` | `clankers-engine` | field | supported | `crates/clankers-engine/src/lib.rs` |
+| `EngineBufferedToolResult::content` | `clankers-engine` | field | supported | `crates/clankers-engine/src/lib.rs` |
+| `EngineBufferedToolResult::is_error` | `clankers-engine` | field | supported | `crates/clankers-engine/src/lib.rs` |
 | `EngineCorrelationId::0` | `clankers-engine` | field | supported | `crates/clankers-engine/src/lib.rs` |
 | `EngineMessage::content` | `clankers-engine` | field | supported | `crates/clankers-engine/src/lib.rs` |
 | `EngineMessage::role` | `clankers-engine` | field | supported | `crates/clankers-engine/src/lib.rs` |
