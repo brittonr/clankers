@@ -26,19 +26,19 @@ pub struct ProcessJobId(pub String);
 pub const PROCESS_JOB_ID_PREFIX: &str = "proc_b3_";
 pub const PROCESS_JOB_IDENTITY_DOMAIN: &str = "clankers.process-job.identity";
 pub const PROCESS_JOB_IDENTITY_VERSION: u8 = 1;
-pub const PROCESS_JOB_REDACTED: &str = "[REDACTED]";
-pub const PROCESS_JOB_MAX_SAFE_PREVIEW_CHARS: usize = 160;
-pub const PROCESS_JOB_MAX_SAFE_EXCERPT_CHARS: usize = 512;
-pub const PROCESS_JOB_MAX_SAFE_METADATA_VALUE_CHARS: usize = 128;
 
 pub use clankers_tool_host::process_jobs::BackendCapabilities;
 pub use clankers_tool_host::process_jobs::BackendRef;
 pub use clankers_tool_host::process_jobs::MAX_PROCESS_JOB_WATCH_PATTERN_LEN;
 pub use clankers_tool_host::process_jobs::MAX_PROCESS_JOB_WATCH_PATTERNS;
+pub use clankers_tool_host::process_jobs::PROCESS_JOB_MAX_SAFE_EXCERPT_CHARS;
+pub use clankers_tool_host::process_jobs::PROCESS_JOB_MAX_SAFE_METADATA_VALUE_CHARS;
+pub use clankers_tool_host::process_jobs::PROCESS_JOB_MAX_SAFE_PREVIEW_CHARS;
 pub use clankers_tool_host::process_jobs::PROCESS_JOB_PROFILE_METADATA_NAME;
 pub use clankers_tool_host::process_jobs::PROCESS_JOB_PROFILE_METADATA_POLICY;
 pub use clankers_tool_host::process_jobs::PROCESS_JOB_PROFILE_METADATA_SCHEMA_VERSION;
 pub use clankers_tool_host::process_jobs::PROCESS_JOB_PROFILE_METADATA_SOURCE;
+pub use clankers_tool_host::process_jobs::PROCESS_JOB_REDACTED;
 pub use clankers_tool_host::process_jobs::PROCESS_JOB_WATCH_RATE_LIMIT_TICKS;
 pub use clankers_tool_host::process_jobs::PROCESS_JOB_WATCH_SUPPRESSION_LIMIT;
 pub use clankers_tool_host::process_jobs::ProcessJobBackendCapabilities;
@@ -58,9 +58,11 @@ pub use clankers_tool_host::process_jobs::ProcessJobNotificationDecision;
 pub use clankers_tool_host::process_jobs::ProcessJobNotificationKind;
 pub use clankers_tool_host::process_jobs::ProcessJobNotificationObservation;
 pub use clankers_tool_host::process_jobs::ProcessJobNotificationPolicy;
+pub use clankers_tool_host::process_jobs::ProcessJobNotificationRedactionTarget;
 pub use clankers_tool_host::process_jobs::ProcessJobOperation;
 pub use clankers_tool_host::process_jobs::ProcessJobOwnerScope;
 pub use clankers_tool_host::process_jobs::ProcessJobProfileReceiptMetadata;
+pub use clankers_tool_host::process_jobs::ProcessJobRedactionPolicy;
 pub use clankers_tool_host::process_jobs::ProcessJobResourcePolicy;
 pub use clankers_tool_host::process_jobs::ProcessJobRetentionClass;
 pub use clankers_tool_host::process_jobs::ProcessJobSafeCapabilityHints;
@@ -163,107 +165,9 @@ impl ProcessJobId {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct ProcessJobRedactionPolicy {
-    pub max_preview_chars: usize,
-    pub max_excerpt_chars: usize,
-    pub max_metadata_value_chars: usize,
-}
-
-impl Default for ProcessJobRedactionPolicy {
-    fn default() -> Self {
-        Self {
-            max_preview_chars: PROCESS_JOB_MAX_SAFE_PREVIEW_CHARS,
-            max_excerpt_chars: PROCESS_JOB_MAX_SAFE_EXCERPT_CHARS,
-            max_metadata_value_chars: PROCESS_JOB_MAX_SAFE_METADATA_VALUE_CHARS,
-        }
-    }
-}
-
-impl ProcessJobRedactionPolicy {
-    #[must_use]
-    pub fn safe_command_preview(&self, raw: &str) -> String {
-        self.safe_text(raw, self.max_preview_chars)
-    }
-
-    #[must_use]
-    pub fn safe_log_excerpt(&self, raw: &str) -> String {
-        self.safe_text(raw, self.max_excerpt_chars)
-    }
-
-    #[must_use]
-    pub fn safe_metadata_value(&self, key: &str, value: &str) -> String {
-        if is_sensitive_process_job_key(key) || contains_sensitive_process_job_marker(value) {
-            PROCESS_JOB_REDACTED.to_string()
-        } else {
-            bound_chars(value, self.max_metadata_value_chars)
-        }
-    }
-
-    #[must_use]
-    pub fn safe_identity_metadata(&self, metadata: &BTreeMap<String, String>) -> BTreeMap<String, String> {
-        metadata
-            .iter()
-            .filter(|(key, _)| key.starts_with("identity.") || key.as_str() == "profile")
-            .map(|(key, value)| (key.clone(), self.safe_metadata_value(key, value)))
-            .collect()
-    }
-
-    #[must_use]
-    pub fn safe_notification_decision(
-        &self,
-        mut decision: ProcessJobNotificationDecision,
-    ) -> ProcessJobNotificationDecision {
-        decision.summary = self.safe_log_excerpt(&decision.summary);
-        decision.log_excerpt = decision.log_excerpt.as_deref().map(|excerpt| self.safe_log_excerpt(excerpt));
-        if let ProcessJobNotificationKind::WatchPattern { pattern, .. } = &mut decision.kind {
-            *pattern = self.safe_command_preview(pattern);
-        }
-        decision
-    }
-
-    #[must_use]
-    pub fn safe_notification_event(&self, mut event: ProcessJobNotificationEvent) -> ProcessJobNotificationEvent {
-        event.summary = self.safe_log_excerpt(&event.summary);
-        event.log_excerpt = event.log_excerpt.as_deref().map(|excerpt| self.safe_log_excerpt(excerpt));
-        if let ProcessJobNotificationKind::WatchPattern { pattern, .. } = &mut event.kind {
-            *pattern = self.safe_command_preview(pattern);
-        }
-        event
-    }
-
-    fn safe_text(&self, raw: &str, max_chars: usize) -> String {
-        let trimmed = raw.trim();
-        if trimmed.is_empty() {
-            return String::new();
-        }
-        if contains_sensitive_process_job_marker(trimmed) {
-            return PROCESS_JOB_REDACTED.to_string();
-        }
-        bound_chars(trimmed, max_chars)
-    }
-}
-
 fn is_sensitive_process_job_key(key: &str) -> bool {
     let lowered = key.to_ascii_lowercase();
     PROCESS_JOB_SENSITIVE_MARKERS.iter().any(|marker| lowered.contains(marker))
-}
-
-fn contains_sensitive_process_job_marker(text: &str) -> bool {
-    let lowered = text.to_ascii_lowercase();
-    PROCESS_JOB_SENSITIVE_MARKERS.iter().any(|marker| lowered.contains(marker))
-}
-
-fn bound_chars(value: &str, max_chars: usize) -> String {
-    let mut bounded = String::new();
-    for (index, ch) in value.chars().enumerate() {
-        if index >= max_chars {
-            bounded.push('…');
-            return bounded;
-        }
-        bounded.push(ch);
-    }
-    bounded
 }
 
 const PROCESS_JOB_SENSITIVE_MARKERS: &[&str] = &[
@@ -1932,6 +1836,17 @@ pub struct ProcessJobNotificationEvent {
     pub summary: String,
     pub log_excerpt: Option<String>,
     pub log_refs: Vec<ProcessJobLogRef>,
+}
+
+impl ProcessJobNotificationRedactionTarget for ProcessJobNotificationEvent {
+    fn redact_with(mut self, policy: &ProcessJobRedactionPolicy) -> Self {
+        self.summary = policy.safe_log_excerpt(&self.summary);
+        self.log_excerpt = self.log_excerpt.as_deref().map(|excerpt| policy.safe_log_excerpt(excerpt));
+        if let ProcessJobNotificationKind::WatchPattern { pattern, .. } = &mut self.kind {
+            *pattern = policy.safe_command_preview(pattern);
+        }
+        self
+    }
 }
 
 /// Tool-facing service boundary. Implementations own policy orchestration and storage wiring.

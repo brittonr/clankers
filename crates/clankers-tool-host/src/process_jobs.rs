@@ -23,6 +23,11 @@ pub const MAX_PROCESS_JOB_WATCH_PATTERN_LEN: usize = 128;
 pub const PROCESS_JOB_WATCH_RATE_LIMIT_TICKS: u64 = 15;
 pub const PROCESS_JOB_WATCH_SUPPRESSION_LIMIT: u32 = 3;
 
+pub const PROCESS_JOB_REDACTED: &str = "[REDACTED]";
+pub const PROCESS_JOB_MAX_SAFE_PREVIEW_CHARS: usize = 160;
+pub const PROCESS_JOB_MAX_SAFE_EXCERPT_CHARS: usize = 512;
+pub const PROCESS_JOB_MAX_SAFE_METADATA_VALUE_CHARS: usize = 128;
+
 /// Backend-owned reference, such as a PID/process-group, pueue task id, or systemd unit name.
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 #[serde(transparent)]
@@ -546,6 +551,124 @@ pub struct ProcessJobNotificationObservation {
     pub tick: u64,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ProcessJobRedactionPolicy {
+    pub max_preview_chars: usize,
+    pub max_excerpt_chars: usize,
+    pub max_metadata_value_chars: usize,
+}
+
+impl Default for ProcessJobRedactionPolicy {
+    fn default() -> Self {
+        Self {
+            max_preview_chars: PROCESS_JOB_MAX_SAFE_PREVIEW_CHARS,
+            max_excerpt_chars: PROCESS_JOB_MAX_SAFE_EXCERPT_CHARS,
+            max_metadata_value_chars: PROCESS_JOB_MAX_SAFE_METADATA_VALUE_CHARS,
+        }
+    }
+}
+
+impl ProcessJobRedactionPolicy {
+    #[must_use]
+    pub fn safe_command_preview(&self, raw: &str) -> String {
+        self.safe_text(raw, self.max_preview_chars)
+    }
+
+    #[must_use]
+    pub fn safe_log_excerpt(&self, raw: &str) -> String {
+        self.safe_text(raw, self.max_excerpt_chars)
+    }
+
+    #[must_use]
+    pub fn safe_metadata_value(&self, key: &str, value: &str) -> String {
+        if is_sensitive_process_job_key(key) || contains_sensitive_process_job_marker(value) {
+            PROCESS_JOB_REDACTED.to_string()
+        } else {
+            bound_chars(value, self.max_metadata_value_chars)
+        }
+    }
+
+    #[must_use]
+    pub fn safe_identity_metadata(&self, metadata: &BTreeMap<String, String>) -> BTreeMap<String, String> {
+        metadata
+            .iter()
+            .filter(|(key, _)| key.starts_with("identity.") || key.as_str() == "profile")
+            .map(|(key, value)| (key.clone(), self.safe_metadata_value(key, value)))
+            .collect()
+    }
+
+    #[must_use]
+    pub fn safe_notification_decision(
+        &self,
+        mut decision: ProcessJobNotificationDecision,
+    ) -> ProcessJobNotificationDecision {
+        decision.summary = self.safe_log_excerpt(&decision.summary);
+        decision.log_excerpt = decision.log_excerpt.as_deref().map(|excerpt| self.safe_log_excerpt(excerpt));
+        if let ProcessJobNotificationKind::WatchPattern { pattern, .. } = &mut decision.kind {
+            *pattern = self.safe_command_preview(pattern);
+        }
+        decision
+    }
+
+    #[must_use]
+    pub fn safe_notification_event<Event>(&self, event: Event) -> Event
+    where Event: ProcessJobNotificationRedactionTarget {
+        event.redact_with(self)
+    }
+
+    fn safe_text(&self, raw: &str, max_chars: usize) -> String {
+        let trimmed = raw.trim();
+        if trimmed.is_empty() {
+            return String::new();
+        }
+        if contains_sensitive_process_job_marker(trimmed) {
+            return PROCESS_JOB_REDACTED.to_string();
+        }
+        bound_chars(trimmed, max_chars)
+    }
+}
+
+pub trait ProcessJobNotificationRedactionTarget: Sized {
+    #[must_use]
+    fn redact_with(self, policy: &ProcessJobRedactionPolicy) -> Self;
+}
+
+fn is_sensitive_process_job_key(key: &str) -> bool {
+    let lowered = key.to_ascii_lowercase();
+    PROCESS_JOB_SENSITIVE_MARKERS.iter().any(|marker| lowered.contains(marker))
+}
+
+fn contains_sensitive_process_job_marker(text: &str) -> bool {
+    let lowered = text.to_ascii_lowercase();
+    PROCESS_JOB_SENSITIVE_MARKERS.iter().any(|marker| lowered.contains(marker))
+}
+
+fn bound_chars(value: &str, max_chars: usize) -> String {
+    let mut bounded = String::new();
+    for (index, ch) in value.chars().enumerate() {
+        if index >= max_chars {
+            bounded.push('…');
+            return bounded;
+        }
+        bounded.push(ch);
+    }
+    bounded
+}
+
+const PROCESS_JOB_SENSITIVE_MARKERS: &[&str] = &[
+    "authorization",
+    "bearer ",
+    "cookie",
+    "password",
+    "passwd",
+    "secret",
+    "token",
+    "api_key",
+    "apikey",
+    "access_key",
+    "credential",
+];
+
 /// Safe, backend-neutral profile metadata copied into process/job receipts.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ProcessJobProfileReceiptMetadata {
@@ -831,6 +954,29 @@ mod tests {
         assert_eq!(range.stream, ProcessJobStream::Stderr);
         assert_eq!(range.offset, Some(64));
         assert_eq!(range.limit_bytes, 1024);
+    }
+
+    #[test]
+    fn redaction_policy_bounds_and_redacts_sensitive_contract_fields() {
+        let redaction = ProcessJobRedactionPolicy {
+            max_preview_chars: 12,
+            max_excerpt_chars: 16,
+            max_metadata_value_chars: 8,
+        };
+        let mut metadata = BTreeMap::new();
+        metadata.insert("profile".to_string(), "verification".to_string());
+        metadata.insert("identity.team".to_string(), "runtime".to_string());
+        metadata.insert("identity.token".to_string(), "raw-token".to_string());
+        metadata.insert("headers.Authorization".to_string(), "Bearer raw".to_string());
+        let projected = redaction.safe_identity_metadata(&metadata);
+
+        assert_eq!(redaction.safe_command_preview("cargo nextest run"), "cargo nextes…");
+        assert_eq!(redaction.safe_command_preview("Authorization: Bearer raw-token"), PROCESS_JOB_REDACTED);
+        assert_eq!(redaction.safe_log_excerpt("ready with password=hunter2"), PROCESS_JOB_REDACTED);
+        assert_eq!(projected.get("profile").map(String::as_str), Some("verifica…"));
+        assert_eq!(projected.get("identity.team").map(String::as_str), Some("runtime"));
+        assert_eq!(projected.get("identity.token").map(String::as_str), Some(PROCESS_JOB_REDACTED));
+        assert!(!projected.contains_key("headers.Authorization"));
     }
 
     #[test]
