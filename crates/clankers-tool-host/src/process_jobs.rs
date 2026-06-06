@@ -83,6 +83,60 @@ impl ProcessJobOperation {
     }
 }
 
+/// Shared status vocabulary for native processes and durable queue/supervisor jobs.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case", tag = "state")]
+pub enum ProcessJobStatus {
+    Pending,
+    Running,
+    Waiting,
+    Succeeded { exit_code: Option<i32> },
+    Failed { exit_code: Option<i32>, reason: String },
+    Killed,
+    Cancelled,
+    LostAfterRestart,
+    ReattachedLogIncomplete,
+    BackendUnavailable { reason: String },
+    Unknown { raw: String },
+}
+
+impl ProcessJobStatus {
+    #[must_use]
+    pub fn is_terminal(&self) -> bool {
+        matches!(
+            self,
+            Self::Succeeded { .. }
+                | Self::Failed { .. }
+                | Self::Killed
+                | Self::Cancelled
+                | Self::LostAfterRestart
+                | Self::BackendUnavailable { .. }
+        )
+    }
+
+    #[must_use]
+    pub fn label(&self) -> String {
+        match self {
+            Self::Pending => "pending".to_string(),
+            Self::Running => "running".to_string(),
+            Self::Waiting => "waiting".to_string(),
+            Self::Succeeded { exit_code } => {
+                format!("succeeded({})", exit_code.map(|code| code.to_string()).unwrap_or_else(|| "ok".to_string()))
+            }
+            Self::Failed { exit_code, reason } => format!(
+                "failed({}:{reason})",
+                exit_code.map(|code| code.to_string()).unwrap_or_else(|| "unknown".to_string())
+            ),
+            Self::Killed => "killed".to_string(),
+            Self::Cancelled => "cancelled".to_string(),
+            Self::LostAfterRestart => "lost-after-restart".to_string(),
+            Self::ReattachedLogIncomplete => "reattached-log-incomplete".to_string(),
+            Self::BackendUnavailable { reason } => format!("backend-unavailable({reason})"),
+            Self::Unknown { raw } => format!("unknown({raw})"),
+        }
+    }
+}
+
 /// Safe, backend-neutral profile metadata copied into process/job receipts.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ProcessJobProfileReceiptMetadata {
@@ -178,6 +232,20 @@ mod tests {
         assert_eq!(ProcessJobBackendKind::Unknown.label(), "unknown");
         assert_eq!(ProcessJobOperation::Start.action_name(), "start");
         assert_eq!(ProcessJobOperation::GarbageCollect.action_name(), "garbage_collect");
+    }
+
+    #[test]
+    fn process_job_status_terminal_and_labels_are_stable() {
+        assert!(!ProcessJobStatus::Running.is_terminal());
+        assert!(ProcessJobStatus::Succeeded { exit_code: Some(0) }.is_terminal());
+        assert_eq!(ProcessJobStatus::Waiting.label(), "waiting");
+        assert_eq!(
+            ProcessJobStatus::BackendUnavailable {
+                reason: "missing".to_string(),
+            }
+            .label(),
+            "backend-unavailable(missing)"
+        );
     }
 
     #[test]

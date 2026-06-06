@@ -43,6 +43,7 @@ pub use clankers_tool_host::process_jobs::ProcessJobNativeAdmissionInput;
 pub use clankers_tool_host::process_jobs::ProcessJobOperation;
 pub use clankers_tool_host::process_jobs::ProcessJobProfileReceiptMetadata;
 pub use clankers_tool_host::process_jobs::ProcessJobResourcePolicy;
+pub use clankers_tool_host::process_jobs::ProcessJobStatus;
 pub use clankers_tool_host::process_jobs::native_process_job_admission_decision;
 
 /// Canonical, versioned input envelope for BLAKE3-native public process/job ids.
@@ -286,38 +287,6 @@ fn cwd_path(cwd: &ProcessJobCwd) -> Option<String> {
     match cwd {
         ProcessJobCwd::Inherited => None,
         ProcessJobCwd::Explicit(path) => Some(path.to_string_lossy().into_owned()),
-    }
-}
-
-/// Shared status vocabulary for native processes and durable queue/supervisor jobs.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case", tag = "state")]
-pub enum ProcessJobStatus {
-    Pending,
-    Running,
-    Waiting,
-    Succeeded { exit_code: Option<i32> },
-    Failed { exit_code: Option<i32>, reason: String },
-    Killed,
-    Cancelled,
-    LostAfterRestart,
-    ReattachedLogIncomplete,
-    BackendUnavailable { reason: String },
-    Unknown { raw: String },
-}
-
-impl ProcessJobStatus {
-    #[must_use]
-    pub fn is_terminal(&self) -> bool {
-        matches!(
-            self,
-            Self::Succeeded { .. }
-                | Self::Failed { .. }
-                | Self::Killed
-                | Self::Cancelled
-                | Self::LostAfterRestart
-                | Self::BackendUnavailable { .. }
-        )
     }
 }
 
@@ -1745,30 +1714,6 @@ pub struct ProcessJobSummary {
     pub log_refs: Vec<ProcessJobLogRef>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub profile: Option<ProcessJobProfileReceiptMetadata>,
-}
-
-impl ProcessJobStatus {
-    #[must_use]
-    pub fn label(&self) -> String {
-        match self {
-            Self::Pending => "pending".to_string(),
-            Self::Running => "running".to_string(),
-            Self::Waiting => "waiting".to_string(),
-            Self::Succeeded { exit_code } => {
-                format!("succeeded({})", exit_code.map(|code| code.to_string()).unwrap_or_else(|| "ok".to_string()))
-            }
-            Self::Failed { exit_code, reason } => format!(
-                "failed({}:{reason})",
-                exit_code.map(|code| code.to_string()).unwrap_or_else(|| "unknown".to_string())
-            ),
-            Self::Killed => "killed".to_string(),
-            Self::Cancelled => "cancelled".to_string(),
-            Self::LostAfterRestart => "lost-after-restart".to_string(),
-            Self::ReattachedLogIncomplete => "reattached-log-incomplete".to_string(),
-            Self::BackendUnavailable { reason } => format!("backend-unavailable({reason})"),
-            Self::Unknown { raw } => format!("unknown({raw})"),
-        }
-    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
