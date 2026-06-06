@@ -16,15 +16,15 @@
     "compatibility-alias"
   ],
   "expected_counts": {
-    "total": 684,
-    "supported": 537,
+    "total": 689,
+    "supported": 542,
     "optional-support": 86,
     "compatibility-alias": 0,
     "experimental": 0,
     "unsupported-internal": 61,
-    "stable-contract": 623
+    "stable-contract": 628
   },
-  "stable_contract_blake3": "e755d16ca4dce277776c20fa44fc4a237bbe1d5144da62011261a292cb813e3e",
+  "stable_contract_blake3": "e3617a870ad85d1981ffa1b8f33e1dc0dcc475120f6a8dddf3dc6205e02a119e",
   "required_release_receipt_artifacts": [
     "docs/src/generated/embedded-sdk-api.md",
     "docs/src/tutorials/embedded-agent-sdk.md",

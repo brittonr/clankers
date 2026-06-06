@@ -525,6 +525,7 @@ Inventory kinds additionally include `field`, `method`, and `reexport` rows so e
 | `ProcessJobNativeAdmissionDecision` | `clankers-tool-host` | struct | supported | `crates/clankers-tool-host/src/process_jobs.rs` |
 | `ProcessJobNativeAdmissionInput` | `clankers-tool-host` | struct | supported | `crates/clankers-tool-host/src/process_jobs.rs` |
 | `ProcessJobProfileReceiptMetadata` | `clankers-tool-host` | struct | supported | `crates/clankers-tool-host/src/process_jobs.rs` |
+| `ProcessJobResourcePolicy` | `clankers-tool-host` | struct | supported | `crates/clankers-tool-host/src/process_jobs.rs` |
 | `native_process_job_admission_decision` | `clankers-tool-host` | function | supported | `crates/clankers-tool-host/src/process_jobs.rs` |
 | `ProcessJobNativeAdmissionDecision::accepted` | `clankers-tool-host` | field | supported | `crates/clankers-tool-host/src/process_jobs.rs` |
 | `ProcessJobNativeAdmissionDecision::active` | `clankers-tool-host` | field | supported | `crates/clankers-tool-host/src/process_jobs.rs` |
@@ -535,6 +536,10 @@ Inventory kinds additionally include `field`, `method`, and `reexport` rows so e
 | `ProcessJobProfileReceiptMetadata::policy_source` | `clankers-tool-host` | field | supported | `crates/clankers-tool-host/src/process_jobs.rs` |
 | `ProcessJobProfileReceiptMetadata::profile_name` | `clankers-tool-host` | field | supported | `crates/clankers-tool-host/src/process_jobs.rs` |
 | `ProcessJobProfileReceiptMetadata::profile_source` | `clankers-tool-host` | field | supported | `crates/clankers-tool-host/src/process_jobs.rs` |
+| `ProcessJobResourcePolicy::cpu_quota_percent` | `clankers-tool-host` | field | supported | `crates/clankers-tool-host/src/process_jobs.rs` |
+| `ProcessJobResourcePolicy::max_log_bytes` | `clankers-tool-host` | field | supported | `crates/clankers-tool-host/src/process_jobs.rs` |
+| `ProcessJobResourcePolicy::memory_max_bytes` | `clankers-tool-host` | field | supported | `crates/clankers-tool-host/src/process_jobs.rs` |
+| `ProcessJobResourcePolicy::timeout` | `clankers-tool-host` | field | supported | `crates/clankers-tool-host/src/process_jobs.rs` |
 | `ProcessJobNativeAdmissionDecision::summary` | `clankers-tool-host` | method | supported | `crates/clankers-tool-host/src/process_jobs.rs` |
 | `ProcessJobProfileReceiptMetadata::from_metadata` | `clankers-tool-host` | method | supported | `crates/clankers-tool-host/src/process_jobs.rs` |
 | `Content` | `clanker-message` | enum | supported | `crates/clanker-message/src/content.rs` |

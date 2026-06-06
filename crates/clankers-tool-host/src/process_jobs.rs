@@ -5,6 +5,7 @@
 //! filesystem storage, or backend command execution.
 
 use std::collections::BTreeMap;
+use std::time::Duration;
 
 use serde::Deserialize;
 use serde::Serialize;
@@ -37,6 +38,15 @@ impl ProcessJobProfileReceiptMetadata {
             policy_source,
         })
     }
+}
+
+/// Resource limits accepted by policy before backend dispatch.
+#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
+pub struct ProcessJobResourcePolicy {
+    pub timeout: Option<Duration>,
+    pub memory_max_bytes: Option<u64>,
+    pub cpu_quota_percent: Option<u32>,
+    pub max_log_bytes: Option<u64>,
 }
 
 /// Backend-neutral native-process admission decision.
@@ -90,6 +100,21 @@ mod tests {
         let denied = native_process_job_admission_decision(ProcessJobNativeAdmissionInput { active: 2, limit: 2 });
         assert!(!denied.accepted);
         assert_eq!(denied.summary(), "native process admission denied: active process limit reached (2/2)");
+    }
+
+    #[test]
+    fn resource_policy_is_plain_backend_neutral_data() {
+        let policy = ProcessJobResourcePolicy {
+            timeout: Some(Duration::from_secs(30)),
+            memory_max_bytes: Some(1024),
+            cpu_quota_percent: Some(50),
+            max_log_bytes: Some(4096),
+        };
+
+        assert_eq!(policy.timeout, Some(Duration::from_secs(30)));
+        assert_eq!(policy.memory_max_bytes, Some(1024));
+        assert_eq!(policy.cpu_quota_percent, Some(50));
+        assert_eq!(policy.max_log_bytes, Some(4096));
     }
 
     #[test]

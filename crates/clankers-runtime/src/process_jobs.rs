@@ -38,6 +38,7 @@ pub use clankers_tool_host::process_jobs::PROCESS_JOB_PROFILE_METADATA_SOURCE;
 pub use clankers_tool_host::process_jobs::ProcessJobNativeAdmissionDecision;
 pub use clankers_tool_host::process_jobs::ProcessJobNativeAdmissionInput;
 pub use clankers_tool_host::process_jobs::ProcessJobProfileReceiptMetadata;
+pub use clankers_tool_host::process_jobs::ProcessJobResourcePolicy;
 pub use clankers_tool_host::process_jobs::native_process_job_admission_decision;
 
 /// Canonical, versioned input envelope for BLAKE3-native public process/job ids.
@@ -1202,15 +1203,6 @@ impl ProcessJobNotificationPolicyEngine for DefaultProcessJobNotificationPolicyE
         }
         decisions
     }
-}
-
-/// Resource limits accepted by policy before backend dispatch.
-#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
-pub struct ProcessJobResourcePolicy {
-    pub timeout: Option<Duration>,
-    pub memory_max_bytes: Option<u64>,
-    pub cpu_quota_percent: Option<u32>,
-    pub max_log_bytes: Option<u64>,
 }
 
 /// A backend-neutral process job specification.
