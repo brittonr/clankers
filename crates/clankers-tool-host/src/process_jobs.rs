@@ -18,6 +18,11 @@ pub const PROCESS_JOB_PROFILE_METADATA_SCHEMA_VERSION: &str = "identity.profile.
 pub const PROCESS_JOB_PROFILE_METADATA_SOURCE: &str = "identity.profile.source";
 pub const PROCESS_JOB_PROFILE_METADATA_POLICY: &str = "identity.profile.policy";
 
+pub const MAX_PROCESS_JOB_WATCH_PATTERNS: usize = 8;
+pub const MAX_PROCESS_JOB_WATCH_PATTERN_LEN: usize = 128;
+pub const PROCESS_JOB_WATCH_RATE_LIMIT_TICKS: u64 = 15;
+pub const PROCESS_JOB_WATCH_SUPPRESSION_LIMIT: u32 = 3;
+
 /// Backend-owned reference, such as a PID/process-group, pueue task id, or systemd unit name.
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 #[serde(transparent)]
@@ -496,6 +501,37 @@ pub struct ProcessJobLogRange {
     pub limit_bytes: u64,
 }
 
+/// Accepted notification policy. Continuous output stays in logs.
+#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
+pub struct ProcessJobNotificationPolicy {
+    #[serde(default)]
+    pub notify_on_complete: bool,
+    #[serde(default)]
+    pub watch_patterns: Vec<String>,
+}
+
+impl ProcessJobNotificationPolicy {
+    #[must_use]
+    pub fn bounded_watch_patterns(&self) -> Vec<String> {
+        self.watch_patterns
+            .iter()
+            .filter_map(|pattern| {
+                let trimmed = pattern.trim();
+                (!trimmed.is_empty())
+                    .then(|| trimmed.chars().take(MAX_PROCESS_JOB_WATCH_PATTERN_LEN).collect::<String>())
+            })
+            .take(MAX_PROCESS_JOB_WATCH_PATTERNS)
+            .collect()
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case", tag = "kind")]
+pub enum ProcessJobNotificationKind {
+    Completion,
+    WatchPattern { pattern_index: usize, pattern: String },
+}
+
 /// Safe, backend-neutral profile metadata copied into process/job receipts.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ProcessJobProfileReceiptMetadata {
@@ -781,6 +817,23 @@ mod tests {
         assert_eq!(range.stream, ProcessJobStream::Stderr);
         assert_eq!(range.offset, Some(64));
         assert_eq!(range.limit_bytes, 1024);
+    }
+
+    #[test]
+    fn notification_policy_bounds_watch_patterns_without_dispatch() {
+        let policy = ProcessJobNotificationPolicy {
+            notify_on_complete: true,
+            watch_patterns: vec![
+                "".to_string(),
+                " ready ".to_string(),
+                "x".repeat(MAX_PROCESS_JOB_WATCH_PATTERN_LEN + 4),
+            ],
+        };
+        let bounded = policy.bounded_watch_patterns();
+        assert_eq!(bounded.len(), 2);
+        assert_eq!(bounded[0], "ready");
+        assert_eq!(bounded[1].chars().count(), MAX_PROCESS_JOB_WATCH_PATTERN_LEN);
+        assert!(matches!(ProcessJobNotificationKind::Completion, ProcessJobNotificationKind::Completion));
     }
 
     #[test]

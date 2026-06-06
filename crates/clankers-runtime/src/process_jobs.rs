@@ -33,10 +33,14 @@ pub const PROCESS_JOB_MAX_SAFE_METADATA_VALUE_CHARS: usize = 128;
 
 pub use clankers_tool_host::process_jobs::BackendCapabilities;
 pub use clankers_tool_host::process_jobs::BackendRef;
+pub use clankers_tool_host::process_jobs::MAX_PROCESS_JOB_WATCH_PATTERN_LEN;
+pub use clankers_tool_host::process_jobs::MAX_PROCESS_JOB_WATCH_PATTERNS;
 pub use clankers_tool_host::process_jobs::PROCESS_JOB_PROFILE_METADATA_NAME;
 pub use clankers_tool_host::process_jobs::PROCESS_JOB_PROFILE_METADATA_POLICY;
 pub use clankers_tool_host::process_jobs::PROCESS_JOB_PROFILE_METADATA_SCHEMA_VERSION;
 pub use clankers_tool_host::process_jobs::PROCESS_JOB_PROFILE_METADATA_SOURCE;
+pub use clankers_tool_host::process_jobs::PROCESS_JOB_WATCH_RATE_LIMIT_TICKS;
+pub use clankers_tool_host::process_jobs::PROCESS_JOB_WATCH_SUPPRESSION_LIMIT;
 pub use clankers_tool_host::process_jobs::ProcessJobBackendCapabilities;
 pub use clankers_tool_host::process_jobs::ProcessJobBackendKind;
 pub use clankers_tool_host::process_jobs::ProcessJobCallerScope;
@@ -50,6 +54,8 @@ pub use clankers_tool_host::process_jobs::ProcessJobLogRef;
 pub use clankers_tool_host::process_jobs::ProcessJobLogWriteDisposition;
 pub use clankers_tool_host::process_jobs::ProcessJobNativeAdmissionDecision;
 pub use clankers_tool_host::process_jobs::ProcessJobNativeAdmissionInput;
+pub use clankers_tool_host::process_jobs::ProcessJobNotificationKind;
+pub use clankers_tool_host::process_jobs::ProcessJobNotificationPolicy;
 pub use clankers_tool_host::process_jobs::ProcessJobOperation;
 pub use clankers_tool_host::process_jobs::ProcessJobOwnerScope;
 pub use clankers_tool_host::process_jobs::ProcessJobProfileReceiptMetadata;
@@ -772,42 +778,6 @@ pub struct ProcessJobLogChunk {
     pub next_cursor: Option<ProcessJobLogCursor>,
     pub text: String,
     pub truncated: bool,
-}
-
-pub const MAX_PROCESS_JOB_WATCH_PATTERNS: usize = 8;
-pub const MAX_PROCESS_JOB_WATCH_PATTERN_LEN: usize = 128;
-pub const PROCESS_JOB_WATCH_RATE_LIMIT_TICKS: u64 = 15;
-pub const PROCESS_JOB_WATCH_SUPPRESSION_LIMIT: u32 = 3;
-
-/// Accepted notification policy. Continuous output stays in logs.
-#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
-pub struct ProcessJobNotificationPolicy {
-    #[serde(default)]
-    pub notify_on_complete: bool,
-    #[serde(default)]
-    pub watch_patterns: Vec<String>,
-}
-
-impl ProcessJobNotificationPolicy {
-    #[must_use]
-    pub fn bounded_watch_patterns(&self) -> Vec<String> {
-        self.watch_patterns
-            .iter()
-            .filter_map(|pattern| {
-                let trimmed = pattern.trim();
-                (!trimmed.is_empty())
-                    .then(|| trimmed.chars().take(MAX_PROCESS_JOB_WATCH_PATTERN_LEN).collect::<String>())
-            })
-            .take(MAX_PROCESS_JOB_WATCH_PATTERNS)
-            .collect()
-    }
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case", tag = "kind")]
-pub enum ProcessJobNotificationKind {
-    Completion,
-    WatchPattern { pattern_index: usize, pattern: String },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

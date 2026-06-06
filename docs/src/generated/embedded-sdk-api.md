@@ -518,10 +518,14 @@ Inventory kinds additionally include `field`, `method`, and `reexport` rows so e
 | `ToolStorageValue::new` | `clankers-tool-host` | method | supported | `crates/clankers-tool-host/src/lib.rs` |
 | `ToolStorageValue::with_content_type` | `clankers-tool-host` | method | supported | `crates/clankers-tool-host/src/lib.rs` |
 | `ToolStorageValue::with_metadata` | `clankers-tool-host` | method | supported | `crates/clankers-tool-host/src/lib.rs` |
+| `MAX_PROCESS_JOB_WATCH_PATTERNS` | `clankers-tool-host` | constant | supported | `crates/clankers-tool-host/src/process_jobs.rs` |
+| `MAX_PROCESS_JOB_WATCH_PATTERN_LEN` | `clankers-tool-host` | constant | supported | `crates/clankers-tool-host/src/process_jobs.rs` |
 | `PROCESS_JOB_PROFILE_METADATA_NAME` | `clankers-tool-host` | constant | supported | `crates/clankers-tool-host/src/process_jobs.rs` |
 | `PROCESS_JOB_PROFILE_METADATA_POLICY` | `clankers-tool-host` | constant | supported | `crates/clankers-tool-host/src/process_jobs.rs` |
 | `PROCESS_JOB_PROFILE_METADATA_SCHEMA_VERSION` | `clankers-tool-host` | constant | supported | `crates/clankers-tool-host/src/process_jobs.rs` |
 | `PROCESS_JOB_PROFILE_METADATA_SOURCE` | `clankers-tool-host` | constant | supported | `crates/clankers-tool-host/src/process_jobs.rs` |
+| `PROCESS_JOB_WATCH_RATE_LIMIT_TICKS` | `clankers-tool-host` | constant | supported | `crates/clankers-tool-host/src/process_jobs.rs` |
+| `PROCESS_JOB_WATCH_SUPPRESSION_LIMIT` | `clankers-tool-host` | constant | supported | `crates/clankers-tool-host/src/process_jobs.rs` |
 | `BackendCapabilities` | `clankers-tool-host` | type | supported | `crates/clankers-tool-host/src/process_jobs.rs` |
 | `BackendRef` | `clankers-tool-host` | struct | supported | `crates/clankers-tool-host/src/process_jobs.rs` |
 | `ProcessJobBackendCapabilities` | `clankers-tool-host` | struct | supported | `crates/clankers-tool-host/src/process_jobs.rs` |
@@ -534,12 +538,14 @@ Inventory kinds additionally include `field`, `method`, and `reexport` rows so e
 | `ProcessJobLogRef` | `clankers-tool-host` | struct | supported | `crates/clankers-tool-host/src/process_jobs.rs` |
 | `ProcessJobNativeAdmissionDecision` | `clankers-tool-host` | struct | supported | `crates/clankers-tool-host/src/process_jobs.rs` |
 | `ProcessJobNativeAdmissionInput` | `clankers-tool-host` | struct | supported | `crates/clankers-tool-host/src/process_jobs.rs` |
+| `ProcessJobNotificationPolicy` | `clankers-tool-host` | struct | supported | `crates/clankers-tool-host/src/process_jobs.rs` |
 | `ProcessJobProfileReceiptMetadata` | `clankers-tool-host` | struct | supported | `crates/clankers-tool-host/src/process_jobs.rs` |
 | `ProcessJobResourcePolicy` | `clankers-tool-host` | struct | supported | `crates/clankers-tool-host/src/process_jobs.rs` |
 | `ProcessJobSafeCapabilityHints` | `clankers-tool-host` | struct | supported | `crates/clankers-tool-host/src/process_jobs.rs` |
 | `ProcessJobBackendKind` | `clankers-tool-host` | enum | supported | `crates/clankers-tool-host/src/process_jobs.rs` |
 | `ProcessJobCwd` | `clankers-tool-host` | enum | supported | `crates/clankers-tool-host/src/process_jobs.rs` |
 | `ProcessJobLogWriteDisposition` | `clankers-tool-host` | enum | supported | `crates/clankers-tool-host/src/process_jobs.rs` |
+| `ProcessJobNotificationKind` | `clankers-tool-host` | enum | supported | `crates/clankers-tool-host/src/process_jobs.rs` |
 | `ProcessJobOperation` | `clankers-tool-host` | enum | supported | `crates/clankers-tool-host/src/process_jobs.rs` |
 | `ProcessJobOwnerScope` | `clankers-tool-host` | enum | supported | `crates/clankers-tool-host/src/process_jobs.rs` |
 | `ProcessJobRetentionClass` | `clankers-tool-host` | enum | supported | `crates/clankers-tool-host/src/process_jobs.rs` |
@@ -599,6 +605,8 @@ Inventory kinds additionally include `field`, `method`, and `reexport` rows so e
 | `ProcessJobNativeAdmissionDecision::limit` | `clankers-tool-host` | field | supported | `crates/clankers-tool-host/src/process_jobs.rs` |
 | `ProcessJobNativeAdmissionInput::active` | `clankers-tool-host` | field | supported | `crates/clankers-tool-host/src/process_jobs.rs` |
 | `ProcessJobNativeAdmissionInput::limit` | `clankers-tool-host` | field | supported | `crates/clankers-tool-host/src/process_jobs.rs` |
+| `ProcessJobNotificationPolicy::notify_on_complete` | `clankers-tool-host` | field | supported | `crates/clankers-tool-host/src/process_jobs.rs` |
+| `ProcessJobNotificationPolicy::watch_patterns` | `clankers-tool-host` | field | supported | `crates/clankers-tool-host/src/process_jobs.rs` |
 | `ProcessJobProfileReceiptMetadata::manifest_schema_version` | `clankers-tool-host` | field | supported | `crates/clankers-tool-host/src/process_jobs.rs` |
 | `ProcessJobProfileReceiptMetadata::policy_source` | `clankers-tool-host` | field | supported | `crates/clankers-tool-host/src/process_jobs.rs` |
 | `ProcessJobProfileReceiptMetadata::profile_name` | `clankers-tool-host` | field | supported | `crates/clankers-tool-host/src/process_jobs.rs` |
@@ -630,6 +638,7 @@ Inventory kinds additionally include `field`, `method`, and `reexport` rows so e
 | `ProcessJobCapabilitySet::raw_log_reader` | `clankers-tool-host` | method | supported | `crates/clankers-tool-host/src/process_jobs.rs` |
 | `ProcessJobLogOverflowPolicy::classify_write` | `clankers-tool-host` | method | supported | `crates/clankers-tool-host/src/process_jobs.rs` |
 | `ProcessJobNativeAdmissionDecision::summary` | `clankers-tool-host` | method | supported | `crates/clankers-tool-host/src/process_jobs.rs` |
+| `ProcessJobNotificationPolicy::bounded_watch_patterns` | `clankers-tool-host` | method | supported | `crates/clankers-tool-host/src/process_jobs.rs` |
 | `ProcessJobOperation::action_name` | `clankers-tool-host` | method | supported | `crates/clankers-tool-host/src/process_jobs.rs` |
 | `ProcessJobProfileReceiptMetadata::from_metadata` | `clankers-tool-host` | method | supported | `crates/clankers-tool-host/src/process_jobs.rs` |
 | `ProcessJobRetentionClass::protects_active_state` | `clankers-tool-host` | method | supported | `crates/clankers-tool-host/src/process_jobs.rs` |
