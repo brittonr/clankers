@@ -15,6 +15,8 @@ use serde::Serialize;
 use serde_json::Value;
 use thiserror::Error;
 
+pub mod process_jobs;
+
 pub const DEFAULT_TOOL_MAX_BYTES: usize = 200_000;
 pub const DEFAULT_TOOL_MAX_LINES: usize = 10_000;
 

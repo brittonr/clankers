@@ -31,38 +31,9 @@ pub const PROCESS_JOB_MAX_SAFE_PREVIEW_CHARS: usize = 160;
 pub const PROCESS_JOB_MAX_SAFE_EXCERPT_CHARS: usize = 512;
 pub const PROCESS_JOB_MAX_SAFE_METADATA_VALUE_CHARS: usize = 128;
 
-/// Backend-neutral native-process admission decision.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct ProcessJobNativeAdmissionDecision {
-    pub accepted: bool,
-    pub active: usize,
-    pub limit: usize,
-}
-
-/// Named input for native-process admission checks.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct ProcessJobNativeAdmissionInput {
-    pub active: usize,
-    pub limit: usize,
-}
-
-impl ProcessJobNativeAdmissionDecision {
-    #[must_use]
-    pub fn summary(&self) -> String {
-        format!("native process admission denied: active process limit reached ({}/{})", self.active, self.limit)
-    }
-}
-
-#[must_use]
-pub fn native_process_job_admission_decision(
-    input: ProcessJobNativeAdmissionInput,
-) -> ProcessJobNativeAdmissionDecision {
-    ProcessJobNativeAdmissionDecision {
-        accepted: input.active < input.limit,
-        active: input.active,
-        limit: input.limit,
-    }
-}
+pub use clankers_tool_host::process_jobs::ProcessJobNativeAdmissionDecision;
+pub use clankers_tool_host::process_jobs::ProcessJobNativeAdmissionInput;
+pub use clankers_tool_host::process_jobs::native_process_job_admission_decision;
 
 /// Canonical, versioned input envelope for BLAKE3-native public process/job ids.
 ///

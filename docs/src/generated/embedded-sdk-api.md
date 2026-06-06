@@ -350,6 +350,7 @@ Inventory kinds additionally include `field`, `method`, and `reexport` rows so e
 | `StreamAccumulator::push` | `clankers-engine-host` | method | optional-support | `crates/clankers-engine-host/src/stream.rs` |
 | `DEFAULT_TOOL_MAX_BYTES` | `clankers-tool-host` | constant | supported | `crates/clankers-tool-host/src/lib.rs` |
 | `DEFAULT_TOOL_MAX_LINES` | `clankers-tool-host` | constant | supported | `crates/clankers-tool-host/src/lib.rs` |
+| `process_jobs` | `clankers-tool-host` | module | supported | `crates/clankers-tool-host/src/lib.rs` |
 | `ToolHostFuture` | `clankers-tool-host` | type | supported | `crates/clankers-tool-host/src/lib.rs` |
 | `NullToolProgressSink` | `clankers-tool-host` | struct | supported | `crates/clankers-tool-host/src/lib.rs` |
 | `ToolCapabilityRequest` | `clankers-tool-host` | struct | supported | `crates/clankers-tool-host/src/lib.rs` |
@@ -517,6 +518,15 @@ Inventory kinds additionally include `field`, `method`, and `reexport` rows so e
 | `ToolStorageValue::new` | `clankers-tool-host` | method | supported | `crates/clankers-tool-host/src/lib.rs` |
 | `ToolStorageValue::with_content_type` | `clankers-tool-host` | method | supported | `crates/clankers-tool-host/src/lib.rs` |
 | `ToolStorageValue::with_metadata` | `clankers-tool-host` | method | supported | `crates/clankers-tool-host/src/lib.rs` |
+| `ProcessJobNativeAdmissionDecision` | `clankers-tool-host` | struct | supported | `crates/clankers-tool-host/src/process_jobs.rs` |
+| `ProcessJobNativeAdmissionInput` | `clankers-tool-host` | struct | supported | `crates/clankers-tool-host/src/process_jobs.rs` |
+| `native_process_job_admission_decision` | `clankers-tool-host` | function | supported | `crates/clankers-tool-host/src/process_jobs.rs` |
+| `ProcessJobNativeAdmissionDecision::accepted` | `clankers-tool-host` | field | supported | `crates/clankers-tool-host/src/process_jobs.rs` |
+| `ProcessJobNativeAdmissionDecision::active` | `clankers-tool-host` | field | supported | `crates/clankers-tool-host/src/process_jobs.rs` |
+| `ProcessJobNativeAdmissionDecision::limit` | `clankers-tool-host` | field | supported | `crates/clankers-tool-host/src/process_jobs.rs` |
+| `ProcessJobNativeAdmissionInput::active` | `clankers-tool-host` | field | supported | `crates/clankers-tool-host/src/process_jobs.rs` |
+| `ProcessJobNativeAdmissionInput::limit` | `clankers-tool-host` | field | supported | `crates/clankers-tool-host/src/process_jobs.rs` |
+| `ProcessJobNativeAdmissionDecision::summary` | `clankers-tool-host` | method | supported | `crates/clankers-tool-host/src/process_jobs.rs` |
 | `Content` | `clanker-message` | enum | supported | `crates/clanker-message/src/content.rs` |
 | `ImageSource` | `clanker-message` | enum | supported | `crates/clanker-message/src/content.rs` |
 | `StopReason` | `clanker-message` | enum | supported | `crates/clanker-message/src/content.rs` |
