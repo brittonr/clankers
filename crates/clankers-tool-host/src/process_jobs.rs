@@ -495,6 +495,71 @@ pub struct ProcessJobResourcePolicy {
     pub max_log_bytes: Option<u64>,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ProcessJobRetentionClass {
+    Active,
+    RecentCompleted,
+    Failed,
+    Adopted,
+    Notification,
+    Tombstone,
+}
+
+impl ProcessJobRetentionClass {
+    #[must_use]
+    pub fn protects_active_state(self) -> bool {
+        matches!(self, Self::Active | Self::Adopted)
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ProcessJobLogOverflowPolicy {
+    pub max_line_bytes: u64,
+    pub max_chunk_bytes: u64,
+    pub max_file_bytes: u64,
+    pub max_total_bytes: u64,
+}
+
+impl Default for ProcessJobLogOverflowPolicy {
+    fn default() -> Self {
+        Self {
+            max_line_bytes: 64 * 1024,
+            max_chunk_bytes: 1024 * 1024,
+            max_file_bytes: 64 * 1024 * 1024,
+            max_total_bytes: 1024 * 1024 * 1024,
+        }
+    }
+}
+
+impl ProcessJobLogOverflowPolicy {
+    #[must_use]
+    pub fn classify_write(&self, line_bytes: u64, chunk_bytes: u64, total_bytes: u64) -> ProcessJobLogWriteDisposition {
+        if line_bytes > self.max_line_bytes {
+            ProcessJobLogWriteDisposition::TruncateLine {
+                dropped_bytes: line_bytes - self.max_line_bytes,
+            }
+        } else if chunk_bytes > self.max_chunk_bytes {
+            ProcessJobLogWriteDisposition::TruncateChunk {
+                dropped_bytes: chunk_bytes - self.max_chunk_bytes,
+            }
+        } else if total_bytes > self.max_total_bytes || total_bytes > self.max_file_bytes {
+            ProcessJobLogWriteDisposition::DegradeDiskFull
+        } else {
+            ProcessJobLogWriteDisposition::Accept
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case", tag = "kind")]
+pub enum ProcessJobLogWriteDisposition {
+    Accept,
+    TruncateLine { dropped_bytes: u64 },
+    TruncateChunk { dropped_bytes: u64 },
+    DegradeDiskFull,
+}
+
 /// Backend-neutral native-process admission decision.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ProcessJobNativeAdmissionDecision {
@@ -626,6 +691,34 @@ mod tests {
             ProcessJobCwd::Explicit(PathBuf::from("/repo")),
             ProcessJobCwd::Explicit(ref path) if path == &PathBuf::from("/repo")
         ));
+    }
+
+    #[test]
+    fn retention_class_identifies_active_state() {
+        assert!(ProcessJobRetentionClass::Active.protects_active_state());
+        assert!(ProcessJobRetentionClass::Adopted.protects_active_state());
+        assert!(!ProcessJobRetentionClass::RecentCompleted.protects_active_state());
+        assert!(!ProcessJobRetentionClass::Failed.protects_active_state());
+    }
+
+    #[test]
+    fn log_overflow_policy_classifies_truncation_and_disk_pressure() {
+        let overflow = ProcessJobLogOverflowPolicy {
+            max_line_bytes: 10,
+            max_chunk_bytes: 20,
+            max_file_bytes: 30,
+            max_total_bytes: 40,
+        };
+
+        assert_eq!(overflow.classify_write(8, 20, 30), ProcessJobLogWriteDisposition::Accept);
+        assert_eq!(overflow.classify_write(12, 20, 30), ProcessJobLogWriteDisposition::TruncateLine {
+            dropped_bytes: 2
+        });
+        assert_eq!(overflow.classify_write(8, 25, 29), ProcessJobLogWriteDisposition::TruncateChunk {
+            dropped_bytes: 5
+        });
+        assert_eq!(overflow.classify_write(8, 19, 31), ProcessJobLogWriteDisposition::DegradeDiskFull);
+        assert_eq!(overflow.classify_write(8, 19, 41), ProcessJobLogWriteDisposition::DegradeDiskFull);
     }
 
     #[test]

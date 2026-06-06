@@ -43,12 +43,15 @@ pub use clankers_tool_host::process_jobs::ProcessJobCallerScope;
 pub use clankers_tool_host::process_jobs::ProcessJobCapabilitySet;
 pub use clankers_tool_host::process_jobs::ProcessJobCwd;
 pub use clankers_tool_host::process_jobs::ProcessJobEventId;
+pub use clankers_tool_host::process_jobs::ProcessJobLogOverflowPolicy;
+pub use clankers_tool_host::process_jobs::ProcessJobLogWriteDisposition;
 pub use clankers_tool_host::process_jobs::ProcessJobNativeAdmissionDecision;
 pub use clankers_tool_host::process_jobs::ProcessJobNativeAdmissionInput;
 pub use clankers_tool_host::process_jobs::ProcessJobOperation;
 pub use clankers_tool_host::process_jobs::ProcessJobOwnerScope;
 pub use clankers_tool_host::process_jobs::ProcessJobProfileReceiptMetadata;
 pub use clankers_tool_host::process_jobs::ProcessJobResourcePolicy;
+pub use clankers_tool_host::process_jobs::ProcessJobRetentionClass;
 pub use clankers_tool_host::process_jobs::ProcessJobSafeCapabilityHints;
 pub use clankers_tool_host::process_jobs::ProcessJobStatus;
 pub use clankers_tool_host::process_jobs::native_process_job_admission_decision;
@@ -599,24 +602,6 @@ impl Default for ProcessJobRetentionPolicy {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum ProcessJobRetentionClass {
-    Active,
-    RecentCompleted,
-    Failed,
-    Adopted,
-    Notification,
-    Tombstone,
-}
-
-impl ProcessJobRetentionClass {
-    #[must_use]
-    pub fn protects_active_state(self) -> bool {
-        matches!(self, Self::Active | Self::Adopted)
-    }
-}
-
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ProcessJobRetentionMetadata {
     pub class: ProcessJobRetentionClass,
@@ -625,53 +610,6 @@ pub struct ProcessJobRetentionMetadata {
     pub event_retained_until: Option<DateTime<Utc>>,
     pub tombstone_retained_until: Option<DateTime<Utc>>,
     pub policy_ref: Option<String>,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct ProcessJobLogOverflowPolicy {
-    pub max_line_bytes: u64,
-    pub max_chunk_bytes: u64,
-    pub max_file_bytes: u64,
-    pub max_total_bytes: u64,
-}
-
-impl Default for ProcessJobLogOverflowPolicy {
-    fn default() -> Self {
-        Self {
-            max_line_bytes: 64 * 1024,
-            max_chunk_bytes: 1024 * 1024,
-            max_file_bytes: 64 * 1024 * 1024,
-            max_total_bytes: 1024 * 1024 * 1024,
-        }
-    }
-}
-
-impl ProcessJobLogOverflowPolicy {
-    #[must_use]
-    pub fn classify_write(&self, line_bytes: u64, chunk_bytes: u64, total_bytes: u64) -> ProcessJobLogWriteDisposition {
-        if line_bytes > self.max_line_bytes {
-            ProcessJobLogWriteDisposition::TruncateLine {
-                dropped_bytes: line_bytes - self.max_line_bytes,
-            }
-        } else if chunk_bytes > self.max_chunk_bytes {
-            ProcessJobLogWriteDisposition::TruncateChunk {
-                dropped_bytes: chunk_bytes - self.max_chunk_bytes,
-            }
-        } else if total_bytes > self.max_total_bytes || total_bytes > self.max_file_bytes {
-            ProcessJobLogWriteDisposition::DegradeDiskFull
-        } else {
-            ProcessJobLogWriteDisposition::Accept
-        }
-    }
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case", tag = "kind")]
-pub enum ProcessJobLogWriteDisposition {
-    Accept,
-    TruncateLine { dropped_bytes: u64 },
-    TruncateChunk { dropped_bytes: u64 },
-    DegradeDiskFull,
 }
 
 impl ProcessJobRetentionPolicy {
