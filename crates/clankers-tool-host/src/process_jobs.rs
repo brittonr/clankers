@@ -8,8 +8,6 @@ use std::collections::BTreeMap;
 use std::path::PathBuf;
 use std::time::Duration;
 
-use chrono::DateTime;
-use chrono::Utc;
 use serde::Deserialize;
 use serde::Serialize;
 
@@ -27,6 +25,61 @@ pub const PROCESS_JOB_REDACTED: &str = "[REDACTED]";
 pub const PROCESS_JOB_MAX_SAFE_PREVIEW_CHARS: usize = 160;
 pub const PROCESS_JOB_MAX_SAFE_EXCERPT_CHARS: usize = 512;
 pub const PROCESS_JOB_MAX_SAFE_METADATA_VALUE_CHARS: usize = 128;
+
+pub const PROCESS_JOB_ID_PREFIX: &str = "proc_b3_";
+pub const PROCESS_JOB_IDENTITY_DOMAIN: &str = "clankers.process-job.identity";
+pub const PROCESS_JOB_IDENTITY_VERSION: u8 = 1;
+
+/// Unix timestamp used by backend-neutral process/job contracts.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct ProcessJobTimestamp(pub i64);
+
+impl ProcessJobTimestamp {
+    #[must_use]
+    pub fn from_unix_seconds(seconds: i64) -> Self {
+        Self(seconds)
+    }
+
+    #[must_use]
+    pub fn unix_seconds(self) -> i64 {
+        self.0
+    }
+
+    #[must_use]
+    pub fn saturating_add_seconds(self, seconds: i64) -> Self {
+        Self(self.0.saturating_add(seconds))
+    }
+}
+
+fn add_timestamp_duration(timestamp: ProcessJobTimestamp, duration: Duration) -> Option<ProcessJobTimestamp> {
+    let seconds = i64::try_from(duration.as_secs()).ok()?;
+    Some(timestamp.saturating_add_seconds(seconds))
+}
+
+/// Stable Clankers-owned process/job identifier.
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct ProcessJobId(pub String);
+
+impl ProcessJobId {
+    #[must_use]
+    pub fn from_identity_envelope(envelope: &ProcessJobIdentityEnvelope) -> Self {
+        envelope.derive_id()
+    }
+
+    #[must_use]
+    pub fn is_blake3_native(&self) -> bool {
+        self.0
+            .strip_prefix(PROCESS_JOB_ID_PREFIX)
+            .is_some_and(|digest| digest.len() == 64 && digest.chars().all(|ch| ch.is_ascii_hexdigit()))
+    }
+
+    #[must_use]
+    pub fn legacy(raw: impl Into<String>) -> Self {
+        Self(raw.into())
+    }
+}
 
 /// Backend-owned reference, such as a PID/process-group, pueue task id, or systemd unit name.
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
@@ -487,7 +540,7 @@ pub enum ProcessJobStream {
 pub struct ProcessJobLogRef {
     pub stream: ProcessJobStream,
     pub reference: String,
-    pub retained_until: Option<DateTime<Utc>>,
+    pub retained_until: Option<ProcessJobTimestamp>,
     pub max_bytes: Option<u64>,
 }
 
@@ -504,6 +557,761 @@ pub struct ProcessJobLogRange {
     pub stream: ProcessJobStream,
     pub offset: Option<u64>,
     pub limit_bytes: u64,
+}
+
+/// A backend-neutral process job specification.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct StartProcessJobRequest {
+    pub backend: ProcessJobBackendKind,
+    pub command_preview: String,
+    pub program: Option<String>,
+    pub args: Vec<String>,
+    pub shell_command: Option<String>,
+    pub cwd: ProcessJobCwd,
+    pub owner: ProcessJobOwnerScope,
+    pub resource_policy: ProcessJobResourcePolicy,
+    pub notification_policy: ProcessJobNotificationPolicy,
+    pub metadata: BTreeMap<String, String>,
+}
+
+/// Query filter for process/job list operations.
+#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
+pub struct ProcessJobFilter {
+    pub owner: Option<ProcessJobOwnerScope>,
+    pub backend: Option<ProcessJobBackendKind>,
+    pub include_terminal: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ListProcessJobsRequest {
+    pub filter: ProcessJobFilter,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PollProcessJobRequest {
+    pub id: ProcessJobId,
+    pub cursor: Option<ProcessJobLogCursor>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ReadProcessJobLogRequest {
+    pub id: ProcessJobId,
+    pub range: ProcessJobLogRange,
+    #[serde(default)]
+    pub raw: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct WaitProcessJobRequest {
+    pub id: ProcessJobId,
+    pub timeout: Option<Duration>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct MutateProcessJobRequest {
+    pub id: ProcessJobId,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct WriteProcessJobStdinRequest {
+    pub id: ProcessJobId,
+    pub data: Vec<u8>,
+    pub newline: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct StartProcessJobProfileRequest {
+    pub profile: String,
+    pub owner: ProcessJobOwnerScope,
+    pub metadata: BTreeMap<String, String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct GarbageCollectProcessJobsRequest {
+    pub filter: ProcessJobFilter,
+}
+
+/// Import/adoption request for externally-created process jobs.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct AdoptProcessJobRequest {
+    pub backend: ProcessJobBackendKind,
+    pub backend_ref: BackendRef,
+    pub owner: ProcessJobOwnerScope,
+    pub caller: ProcessJobCallerScope,
+}
+
+impl AdoptProcessJobRequest {
+    #[must_use]
+    pub fn is_authorized(&self) -> bool {
+        self.caller.can_access(&self.owner, ProcessJobOperation::Adopt, self.backend)
+            && (self.backend == ProcessJobBackendKind::Native || self.caller.capabilities.select_backend)
+    }
+}
+
+/// Backend-neutral public request vocabulary for process/job tool actions.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case", tag = "action", content = "request")]
+pub enum ProcessJobToolRequest {
+    Start(StartProcessJobRequest),
+    List(ListProcessJobsRequest),
+    Poll(PollProcessJobRequest),
+    Log(ReadProcessJobLogRequest),
+    Wait(WaitProcessJobRequest),
+    Kill(MutateProcessJobRequest),
+    Restart(MutateProcessJobRequest),
+    WriteStdin(WriteProcessJobStdinRequest),
+    CloseStdin(MutateProcessJobRequest),
+    StartProfile(StartProcessJobProfileRequest),
+    Adopt(AdoptProcessJobRequest),
+    GarbageCollect(GarbageCollectProcessJobsRequest),
+}
+
+impl ProcessJobToolRequest {
+    #[must_use]
+    pub fn operation(&self) -> ProcessJobOperation {
+        match self {
+            Self::Start(_) | Self::StartProfile(_) => ProcessJobOperation::Start,
+            Self::List(_) => ProcessJobOperation::List,
+            Self::Poll(_) => ProcessJobOperation::Poll,
+            Self::Log(_) => ProcessJobOperation::Log,
+            Self::Wait(_) => ProcessJobOperation::Wait,
+            Self::Kill(_) => ProcessJobOperation::Kill,
+            Self::Restart(_) => ProcessJobOperation::Restart,
+            Self::WriteStdin(_) => ProcessJobOperation::WriteStdin,
+            Self::CloseStdin(_) => ProcessJobOperation::CloseStdin,
+            Self::Adopt(_) => ProcessJobOperation::Adopt,
+            Self::GarbageCollect(_) => ProcessJobOperation::GarbageCollect,
+        }
+    }
+}
+
+/// Alias used by config/profile parsing code that resolves named jobs before dispatch.
+pub type ProcessJobSpec = StartProcessJobRequest;
+
+/// Service-level process/job summary safe for list/status surfaces.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ProcessJobSummary {
+    pub id: ProcessJobId,
+    pub backend: ProcessJobBackendKind,
+    pub backend_ref: Option<BackendRef>,
+    pub owner: ProcessJobOwnerScope,
+    pub status: ProcessJobStatus,
+    pub command_preview: String,
+    pub cwd: ProcessJobCwd,
+    pub started_at: Option<ProcessJobTimestamp>,
+    pub updated_at: ProcessJobTimestamp,
+    pub completed_at: Option<ProcessJobTimestamp>,
+    pub log_refs: Vec<ProcessJobLogRef>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub profile: Option<ProcessJobProfileReceiptMetadata>,
+}
+
+/// Completed-job retention policy shared by daemon automation and explicit GC requests.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ProcessJobRetentionPolicy {
+    pub max_age: Option<Duration>,
+    pub max_records: Option<usize>,
+    pub max_log_bytes: Option<u64>,
+}
+
+impl Default for ProcessJobRetentionPolicy {
+    fn default() -> Self {
+        Self {
+            max_age: Some(Duration::from_secs(14 * 24 * 60 * 60)),
+            max_records: Some(1000),
+            max_log_bytes: Some(1024 * 1024 * 1024),
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ProcessJobRetentionMetadata {
+    pub class: ProcessJobRetentionClass,
+    pub metadata_retained_until: Option<ProcessJobTimestamp>,
+    pub log_retained_until: Option<ProcessJobTimestamp>,
+    pub event_retained_until: Option<ProcessJobTimestamp>,
+    pub tombstone_retained_until: Option<ProcessJobTimestamp>,
+    pub policy_ref: Option<String>,
+}
+
+impl ProcessJobRetentionPolicy {
+    #[must_use]
+    pub fn classify_summary(
+        &self,
+        summary: &ProcessJobSummary,
+        _now: ProcessJobTimestamp,
+        policy_ref: Option<String>,
+    ) -> ProcessJobRetentionMetadata {
+        let class = match &summary.status {
+            ProcessJobStatus::Running | ProcessJobStatus::Pending | ProcessJobStatus::Waiting => {
+                ProcessJobRetentionClass::Active
+            }
+            ProcessJobStatus::ReattachedLogIncomplete | ProcessJobStatus::BackendUnavailable { .. } => {
+                ProcessJobRetentionClass::Adopted
+            }
+            ProcessJobStatus::Failed { .. }
+            | ProcessJobStatus::Killed
+            | ProcessJobStatus::Cancelled
+            | ProcessJobStatus::LostAfterRestart => ProcessJobRetentionClass::Failed,
+            ProcessJobStatus::Succeeded { .. } => ProcessJobRetentionClass::RecentCompleted,
+            ProcessJobStatus::Unknown { .. } => ProcessJobRetentionClass::Tombstone,
+        };
+        let retention_base = summary.completed_at.unwrap_or(summary.updated_at);
+        let retained_until = self.max_age.and_then(|age| add_timestamp_duration(retention_base, age));
+        ProcessJobRetentionMetadata {
+            class,
+            metadata_retained_until: retained_until.clone(),
+            log_retained_until: retained_until.clone(),
+            event_retained_until: retained_until.clone(),
+            tombstone_retained_until: retained_until,
+            policy_ref,
+        }
+    }
+
+    #[must_use]
+    pub fn eligibility_for_summary(
+        &self,
+        summary: &ProcessJobSummary,
+        now: ProcessJobTimestamp,
+        policy_ref: Option<String>,
+    ) -> ProcessJobRetentionEligibility {
+        let metadata = self.classify_summary(summary, now, policy_ref);
+        if metadata.class.protects_active_state() || !summary.status.is_terminal() {
+            return ProcessJobRetentionEligibility::ProtectActive {
+                id: summary.id.clone(),
+                class: metadata.class,
+            };
+        }
+        if let Some(retained_until) = metadata.metadata_retained_until
+            && now < retained_until
+        {
+            return ProcessJobRetentionEligibility::KeepUntil {
+                id: summary.id.clone(),
+                retained_until,
+            };
+        }
+        ProcessJobRetentionEligibility::Eligible {
+            id: summary.id.clone(),
+            class: metadata.class,
+            log_refs: summary.log_refs.clone(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case", tag = "decision")]
+pub enum ProcessJobRetentionEligibility {
+    ProtectActive {
+        id: ProcessJobId,
+        class: ProcessJobRetentionClass,
+    },
+    KeepUntil {
+        id: ProcessJobId,
+        retained_until: ProcessJobTimestamp,
+    },
+    Eligible {
+        id: ProcessJobId,
+        class: ProcessJobRetentionClass,
+        log_refs: Vec<ProcessJobLogRef>,
+    },
+}
+
+/// Backend/log reference that retention released without owning concrete backend cleanup.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ProcessJobReleasedLogRef {
+    pub id: ProcessJobId,
+    pub backend: ProcessJobBackendKind,
+    pub reference: String,
+    pub bytes: u64,
+}
+
+/// Retention failure reported without aborting the whole GC request.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ProcessJobGarbageCollectionFailure {
+    pub id: Option<ProcessJobId>,
+    pub reference: Option<String>,
+    pub message: String,
+}
+
+/// Typed GC receipt for explicit and automatic completed-job retention.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ProcessJobGarbageCollectionReceipt {
+    pub operation: ProcessJobOperation,
+    pub removed_metadata_count: usize,
+    pub removed_records: Vec<ProcessJobId>,
+    pub tombstoned_records: Vec<ProcessJobId>,
+    pub deleted_native_log_files: usize,
+    pub removed_log_bytes: u64,
+    pub skipped_active_jobs: Vec<ProcessJobId>,
+    pub released_log_refs: Vec<ProcessJobReleasedLogRef>,
+    pub failures: Vec<ProcessJobGarbageCollectionFailure>,
+    pub summary: String,
+}
+
+impl ProcessJobGarbageCollectionReceipt {
+    #[must_use]
+    pub fn empty() -> Self {
+        Self {
+            operation: ProcessJobOperation::GarbageCollect,
+            removed_metadata_count: 0,
+            removed_records: Vec::new(),
+            tombstoned_records: Vec::new(),
+            deleted_native_log_files: 0,
+            removed_log_bytes: 0,
+            skipped_active_jobs: Vec::new(),
+            released_log_refs: Vec::new(),
+            failures: Vec::new(),
+            summary:
+                "process job GC removed 0 metadata records, tombstoned 0 records, deleted 0 native log files, released 0 backend log refs, skipped 0 active jobs, 0 failures"
+                    .to_string(),
+        }
+    }
+
+    pub fn refresh_summary(&mut self) {
+        self.removed_metadata_count = self.removed_records.len();
+        self.summary = format!(
+            "process job GC removed {} metadata records, tombstoned {} records, deleted {} native log files, released {} backend log refs, reclaimed {} log bytes, skipped {} active jobs, {} failures",
+            self.removed_metadata_count,
+            self.tombstoned_records.len(),
+            self.deleted_native_log_files,
+            self.released_log_refs.len(),
+            self.removed_log_bytes,
+            self.skipped_active_jobs.len(),
+            self.failures.len()
+        );
+    }
+}
+
+/// Bounded log chunk returned by service/backend APIs.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ProcessJobLogChunk {
+    pub id: ProcessJobId,
+    pub backend: ProcessJobBackendKind,
+    pub stream: ProcessJobStream,
+    pub cursor: ProcessJobLogCursor,
+    pub next_cursor: Option<ProcessJobLogCursor>,
+    pub text: String,
+    pub truncated: bool,
+}
+
+/// Persisted notification event payload.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ProcessJobNotificationEvent {
+    pub event_id: ProcessJobEventId,
+    pub id: ProcessJobId,
+    pub backend: ProcessJobBackendKind,
+    pub owner: ProcessJobOwnerScope,
+    pub kind: ProcessJobNotificationKind,
+    pub status: ProcessJobStatus,
+    pub created_at: ProcessJobTimestamp,
+    pub summary: String,
+    pub log_excerpt: Option<String>,
+    pub log_refs: Vec<ProcessJobLogRef>,
+}
+
+impl ProcessJobNotificationRedactionTarget for ProcessJobNotificationEvent {
+    fn redact_with(mut self, policy: &ProcessJobRedactionPolicy) -> Self {
+        self.summary = policy.safe_log_excerpt(&self.summary);
+        self.log_excerpt = self.log_excerpt.as_deref().map(|excerpt| policy.safe_log_excerpt(excerpt));
+        if let ProcessJobNotificationKind::WatchPattern { pattern, .. } = &mut self.kind {
+            *pattern = policy.safe_command_preview(pattern);
+        }
+        self
+    }
+}
+
+/// Typed error code for receipts and projection surfaces.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ProcessJobErrorCode {
+    NotFound,
+    PermissionDenied,
+    BackendUnavailable,
+    UnsupportedActionForBackend,
+    InvalidRequest,
+    AdmissionDenied,
+    ConcurrencyLimitExceeded,
+    StorageUnavailable,
+    LogUnavailable,
+    BackendFailed,
+}
+
+/// Safe machine-readable error detail.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ProcessJobError {
+    pub code: ProcessJobErrorCode,
+    pub operation: ProcessJobOperation,
+    pub id: Option<ProcessJobId>,
+    pub backend: Option<ProcessJobBackendKind>,
+    pub action: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub capability_detail: Option<String>,
+    pub message: String,
+}
+
+/// Fields every process/job receipt surface carries, independent of operation payload.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ProcessJobReceiptCommon {
+    pub operation: ProcessJobOperation,
+    pub id: Option<ProcessJobId>,
+    pub backend: Option<ProcessJobBackendKind>,
+    pub status: Option<ProcessJobStatus>,
+    pub backend_ref: Option<BackendRef>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub profile: Option<ProcessJobProfileReceiptMetadata>,
+    pub summary: String,
+    pub error: Option<ProcessJobError>,
+}
+
+/// Operation-specific receipt payloads layered behind a stable common envelope.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case", tag = "kind", content = "data")]
+pub enum ProcessJobReceiptPayload {
+    None,
+    State {
+        log_refs: Vec<ProcessJobLogRef>,
+    },
+    List {
+        jobs: Vec<ProcessJobSummary>,
+    },
+    Log {
+        chunk: ProcessJobLogChunk,
+    },
+    GarbageCollect {
+        receipt: ProcessJobGarbageCollectionReceipt,
+    },
+}
+
+/// Stable receipt envelope for all process/job operations.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ProcessJobToolReceipt {
+    pub common: ProcessJobReceiptCommon,
+    pub payload: ProcessJobReceiptPayload,
+}
+
+/// Shared receipt for mutations and state transitions.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ProcessJobReceipt {
+    pub operation: ProcessJobOperation,
+    pub id: Option<ProcessJobId>,
+    pub backend: Option<ProcessJobBackendKind>,
+    pub status: Option<ProcessJobStatus>,
+    pub backend_ref: Option<BackendRef>,
+    pub log_refs: Vec<ProcessJobLogRef>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub profile: Option<ProcessJobProfileReceiptMetadata>,
+    pub summary: String,
+    pub error: Option<ProcessJobError>,
+}
+
+impl ProcessJobReceipt {
+    #[must_use]
+    pub fn common(&self) -> ProcessJobReceiptCommon {
+        ProcessJobReceiptCommon {
+            operation: self.operation,
+            id: self.id.clone(),
+            backend: self.backend,
+            status: self.status.clone(),
+            backend_ref: self.backend_ref.clone(),
+            profile: self.profile.clone(),
+            summary: self.summary.clone(),
+            error: self.error.clone(),
+        }
+    }
+
+    #[must_use]
+    pub fn state_payload(&self) -> ProcessJobReceiptPayload {
+        ProcessJobReceiptPayload::State {
+            log_refs: self.log_refs.clone(),
+        }
+    }
+
+    #[must_use]
+    pub fn into_tool_receipt(self) -> ProcessJobToolReceipt {
+        ProcessJobToolReceipt {
+            common: self.common(),
+            payload: self.state_payload(),
+        }
+    }
+
+    #[must_use]
+    pub fn permission_denied(
+        operation: ProcessJobOperation,
+        backend: ProcessJobBackendKind,
+        action: impl Into<String>,
+        message: impl Into<String>,
+    ) -> Self {
+        let message = message.into();
+        Self {
+            operation,
+            id: None,
+            backend: Some(backend),
+            status: None,
+            backend_ref: None,
+            log_refs: Vec::new(),
+            profile: None,
+            summary: message.clone(),
+            error: Some(ProcessJobError {
+                code: ProcessJobErrorCode::PermissionDenied,
+                operation,
+                id: None,
+                backend: Some(backend),
+                action: Some(action.into()),
+                capability_detail: None,
+                message,
+            }),
+        }
+    }
+
+    #[must_use]
+    pub fn backend_unavailable(
+        operation: ProcessJobOperation,
+        backend: ProcessJobBackendKind,
+        reason: impl Into<String>,
+    ) -> Self {
+        let reason = reason.into();
+        Self {
+            operation,
+            id: None,
+            backend: Some(backend),
+            status: Some(ProcessJobStatus::BackendUnavailable { reason: reason.clone() }),
+            backend_ref: None,
+            log_refs: Vec::new(),
+            profile: None,
+            summary: reason.clone(),
+            error: Some(ProcessJobError {
+                code: ProcessJobErrorCode::BackendUnavailable,
+                operation,
+                id: None,
+                backend: Some(backend),
+                action: Some(operation.action_name().to_string()),
+                capability_detail: None,
+                message: reason,
+            }),
+        }
+    }
+
+    #[must_use]
+    pub fn unsupported(
+        operation: ProcessJobOperation,
+        id: Option<ProcessJobId>,
+        backend: ProcessJobBackendKind,
+        action: impl Into<String>,
+        message: impl Into<String>,
+    ) -> Self {
+        Self::unsupported_with_detail(operation, id, backend, action, None::<String>, message)
+    }
+
+    #[must_use]
+    pub fn unsupported_with_detail(
+        operation: ProcessJobOperation,
+        id: Option<ProcessJobId>,
+        backend: ProcessJobBackendKind,
+        action: impl Into<String>,
+        capability_detail: impl Into<Option<String>>,
+        message: impl Into<String>,
+    ) -> Self {
+        let message = message.into();
+        Self {
+            operation,
+            id: id.clone(),
+            backend: Some(backend),
+            status: None,
+            backend_ref: None,
+            log_refs: Vec::new(),
+            profile: None,
+            summary: message.clone(),
+            error: Some(ProcessJobError {
+                code: ProcessJobErrorCode::UnsupportedActionForBackend,
+                operation,
+                id,
+                backend: Some(backend),
+                action: Some(action.into()),
+                capability_detail: capability_detail.into(),
+                message,
+            }),
+        }
+    }
+}
+
+/// Typed tool result surface for every durable process/job operation.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case", tag = "operation", content = "result")]
+pub enum ProcessJobToolResult {
+    Start(ProcessJobReceipt),
+    List(Vec<ProcessJobSummary>),
+    Poll(ProcessJobReceipt),
+    Log(ProcessJobLogChunk),
+    Wait(ProcessJobReceipt),
+    Kill(ProcessJobReceipt),
+    Restart(ProcessJobReceipt),
+    WriteStdin(ProcessJobReceipt),
+    CloseStdin(ProcessJobReceipt),
+    Adopt(ProcessJobReceipt),
+    GarbageCollect(ProcessJobGarbageCollectionReceipt),
+}
+
+impl ProcessJobToolResult {
+    #[must_use]
+    pub fn into_receipt(self) -> ProcessJobToolReceipt {
+        match self {
+            Self::Start(receipt)
+            | Self::Poll(receipt)
+            | Self::Wait(receipt)
+            | Self::Kill(receipt)
+            | Self::Restart(receipt)
+            | Self::WriteStdin(receipt)
+            | Self::CloseStdin(receipt)
+            | Self::Adopt(receipt) => receipt.into_tool_receipt(),
+            Self::List(jobs) => ProcessJobToolReceipt {
+                common: ProcessJobReceiptCommon {
+                    operation: ProcessJobOperation::List,
+                    id: None,
+                    backend: None,
+                    status: None,
+                    backend_ref: None,
+                    profile: None,
+                    summary: format!("Listed {} process jobs", jobs.len()),
+                    error: None,
+                },
+                payload: ProcessJobReceiptPayload::List { jobs },
+            },
+            Self::Log(chunk) => ProcessJobToolReceipt {
+                common: ProcessJobReceiptCommon {
+                    operation: ProcessJobOperation::Log,
+                    id: Some(chunk.id.clone()),
+                    backend: None,
+                    status: None,
+                    backend_ref: None,
+                    profile: None,
+                    summary: format!("Read {} bytes of process job log", chunk.text.len()),
+                    error: None,
+                },
+                payload: ProcessJobReceiptPayload::Log { chunk },
+            },
+            Self::GarbageCollect(receipt) => ProcessJobToolReceipt {
+                common: ProcessJobReceiptCommon {
+                    operation: ProcessJobOperation::GarbageCollect,
+                    id: None,
+                    backend: None,
+                    status: None,
+                    backend_ref: None,
+                    profile: None,
+                    summary: receipt.summary.clone(),
+                    error: None,
+                },
+                payload: ProcessJobReceiptPayload::GarbageCollect { receipt },
+            },
+        }
+    }
+}
+
+/// Canonical, versioned input envelope for BLAKE3-native public process/job ids.
+///
+/// Backend-owned locators such as PIDs, pueue task ids, and systemd unit names do
+/// not belong in this envelope. They are carried separately by [`BackendRef`].
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ProcessJobIdentityEnvelope {
+    pub version: u8,
+    pub domain: String,
+    pub backend: ProcessJobBackendKind,
+    pub owner: ProcessJobOwnerScope,
+    pub command_preview: String,
+    pub cwd: ProcessJobCwd,
+    pub profile: Option<String>,
+    pub request_nonce: String,
+    #[serde(default)]
+    pub metadata: BTreeMap<String, String>,
+}
+
+impl ProcessJobIdentityEnvelope {
+    #[must_use]
+    pub fn for_start_request(request: &StartProcessJobRequest, request_nonce: impl Into<String>) -> Self {
+        let redaction = ProcessJobRedactionPolicy::default();
+        Self {
+            version: PROCESS_JOB_IDENTITY_VERSION,
+            domain: PROCESS_JOB_IDENTITY_DOMAIN.to_string(),
+            backend: request.backend,
+            owner: request.owner.clone(),
+            command_preview: redaction.safe_command_preview(&request.command_preview),
+            cwd: request.cwd.clone(),
+            profile: request.metadata.get("profile").cloned(),
+            request_nonce: request_nonce.into(),
+            metadata: redaction.safe_identity_metadata(&request.metadata),
+        }
+    }
+
+    #[must_use]
+    pub fn canonical_bytes(&self) -> Vec<u8> {
+        let mut fields = vec![
+            ("version".to_string(), self.version.to_string()),
+            ("domain".to_string(), self.domain.clone()),
+            ("backend".to_string(), self.backend.label().to_string()),
+            ("owner.kind".to_string(), owner_kind(&self.owner).to_string()),
+            ("owner.value".to_string(), owner_value(&self.owner).unwrap_or_default()),
+            ("command_preview".to_string(), self.command_preview.clone()),
+            ("cwd.kind".to_string(), cwd_kind(&self.cwd).to_string()),
+            ("cwd.path".to_string(), cwd_path(&self.cwd).unwrap_or_default()),
+            ("profile".to_string(), self.profile.clone().unwrap_or_default()),
+            ("request_nonce".to_string(), self.request_nonce.clone()),
+        ];
+        for (key, value) in &self.metadata {
+            fields.push((format!("metadata.{key}"), value.clone()));
+        }
+        fields.sort_by(|left, right| left.0.cmp(&right.0));
+
+        let mut canonical = Vec::new();
+        canonical.extend_from_slice(b"clankers-process-job-identity-v1\n");
+        for (key, value) in fields {
+            canonical.extend_from_slice(key.len().to_string().as_bytes());
+            canonical.push(b':');
+            canonical.extend_from_slice(key.as_bytes());
+            canonical.push(b'=');
+            canonical.extend_from_slice(value.len().to_string().as_bytes());
+            canonical.push(b':');
+            canonical.extend_from_slice(value.as_bytes());
+            canonical.push(b'\n');
+        }
+        canonical
+    }
+
+    #[must_use]
+    pub fn derive_id(&self) -> ProcessJobId {
+        let hash = blake3::hash(&self.canonical_bytes());
+        ProcessJobId(format!("{PROCESS_JOB_ID_PREFIX}{}", hash.to_hex()))
+    }
+}
+
+fn owner_kind(owner: &ProcessJobOwnerScope) -> &'static str {
+    match owner {
+        ProcessJobOwnerScope::Session(_) => "session",
+        ProcessJobOwnerScope::Workspace(_) => "workspace",
+        ProcessJobOwnerScope::User(_) => "user",
+        ProcessJobOwnerScope::DaemonGlobal => "daemon_global",
+    }
+}
+
+fn owner_value(owner: &ProcessJobOwnerScope) -> Option<String> {
+    match owner {
+        ProcessJobOwnerScope::Session(value)
+        | ProcessJobOwnerScope::Workspace(value)
+        | ProcessJobOwnerScope::User(value) => Some(value.clone()),
+        ProcessJobOwnerScope::DaemonGlobal => None,
+    }
+}
+
+fn cwd_kind(cwd: &ProcessJobCwd) -> &'static str {
+    match cwd {
+        ProcessJobCwd::Inherited => "inherited",
+        ProcessJobCwd::Explicit(_) => "explicit",
+    }
+}
+
+fn cwd_path(cwd: &ProcessJobCwd) -> Option<String> {
+    match cwd {
+        ProcessJobCwd::Inherited => None,
+        ProcessJobCwd::Explicit(path) => Some(path.to_string_lossy().into_owned()),
+    }
 }
 
 /// Accepted notification policy. Continuous output stays in logs.
@@ -808,6 +1616,154 @@ pub fn native_process_job_admission_decision(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn process_job_identity_and_id_helpers_are_stable() {
+        let request = StartProcessJobRequest {
+            backend: ProcessJobBackendKind::Native,
+            command_preview: "run --token raw-token".to_string(),
+            program: Some("run".to_string()),
+            args: vec!["--token".to_string(), "raw-token".to_string()],
+            shell_command: None,
+            cwd: ProcessJobCwd::Inherited,
+            owner: ProcessJobOwnerScope::Session("sess".to_string()),
+            resource_policy: ProcessJobResourcePolicy::default(),
+            notification_policy: ProcessJobNotificationPolicy::default(),
+            metadata: BTreeMap::from([("identity.token".to_string(), "raw-token".to_string())]),
+        };
+        let envelope = ProcessJobIdentityEnvelope::for_start_request(&request, "nonce");
+        let id = ProcessJobId::from_identity_envelope(&envelope);
+        let canonical = String::from_utf8(envelope.canonical_bytes()).expect("canonical identity is utf8");
+
+        assert!(id.is_blake3_native());
+        assert!(!ProcessJobId::legacy("native_pid_42").is_blake3_native());
+        assert!(canonical.contains(PROCESS_JOB_REDACTED));
+        assert!(!canonical.contains("raw-token"));
+    }
+
+    #[test]
+    fn tool_request_maps_to_operation_vocabulary() {
+        let request = ProcessJobToolRequest::WriteStdin(WriteProcessJobStdinRequest {
+            id: ProcessJobId::legacy("proc_1"),
+            data: b"hello".to_vec(),
+            newline: true,
+        });
+        assert_eq!(request.operation(), ProcessJobOperation::WriteStdin);
+
+        let gc = ProcessJobToolRequest::GarbageCollect(GarbageCollectProcessJobsRequest {
+            filter: ProcessJobFilter {
+                owner: Some(ProcessJobOwnerScope::DaemonGlobal),
+                backend: Some(ProcessJobBackendKind::Pueue),
+                include_terminal: true,
+            },
+        });
+        assert_eq!(gc.operation(), ProcessJobOperation::GarbageCollect);
+    }
+
+    #[test]
+    fn receipt_errors_and_tool_result_envelopes_are_backend_neutral() {
+        let id = ProcessJobId::legacy("proc_1");
+        let receipt = ProcessJobReceipt::unsupported_with_detail(
+            ProcessJobOperation::WriteStdin,
+            Some(id.clone()),
+            ProcessJobBackendKind::Pueue,
+            "write_stdin",
+            Some("stdin requires stdin support".to_string()),
+            "cannot write stdin",
+        );
+        let tool_receipt = receipt.clone().into_tool_receipt();
+
+        assert_eq!(
+            receipt.error.as_ref().expect("unsupported receipt has error").code,
+            ProcessJobErrorCode::UnsupportedActionForBackend
+        );
+        assert_eq!(tool_receipt.common.id, Some(id));
+        assert_eq!(tool_receipt.common.summary, "cannot write stdin");
+        assert_eq!(tool_receipt.payload, receipt.state_payload());
+
+        let list_receipt = ProcessJobToolResult::List(Vec::new()).into_receipt();
+        assert_eq!(list_receipt.common.operation, ProcessJobOperation::List);
+        assert_eq!(list_receipt.common.summary, "Listed 0 process jobs");
+    }
+
+    #[test]
+    fn retention_receipts_and_notification_events_are_backend_neutral() {
+        let now = ProcessJobTimestamp::from_unix_seconds(1_000);
+        let id = ProcessJobId::legacy("proc_retained");
+        let log_ref = ProcessJobLogRef {
+            stream: ProcessJobStream::Combined,
+            reference: "native:proc_retained/combined.log".to_string(),
+            retained_until: None,
+            max_bytes: Some(1024),
+        };
+        let summary = ProcessJobSummary {
+            id: id.clone(),
+            backend: ProcessJobBackendKind::Native,
+            backend_ref: None,
+            owner: ProcessJobOwnerScope::DaemonGlobal,
+            status: ProcessJobStatus::Succeeded { exit_code: Some(0) },
+            command_preview: "done".to_string(),
+            cwd: ProcessJobCwd::Inherited,
+            started_at: Some(now.clone()),
+            updated_at: now.clone(),
+            completed_at: Some(now.clone()),
+            log_refs: vec![log_ref.clone()],
+            profile: None,
+        };
+        let retention = ProcessJobRetentionPolicy {
+            max_age: Some(Duration::from_secs(1)),
+            max_records: Some(1),
+            max_log_bytes: Some(1024),
+        };
+
+        let kept = retention.eligibility_for_summary(&summary, now.clone(), Some("policy".to_string()));
+        assert!(matches!(kept, ProcessJobRetentionEligibility::KeepUntil { .. }));
+        let eligible = retention.eligibility_for_summary(
+            &summary,
+            ProcessJobTimestamp::from_unix_seconds(1_002),
+            Some("policy".to_string()),
+        );
+        assert_eq!(eligible, ProcessJobRetentionEligibility::Eligible {
+            id: id.clone(),
+            class: ProcessJobRetentionClass::RecentCompleted,
+            log_refs: vec![log_ref.clone()],
+        });
+
+        let mut gc = ProcessJobGarbageCollectionReceipt::empty();
+        gc.removed_records.push(id.clone());
+        gc.released_log_refs.push(ProcessJobReleasedLogRef {
+            id: id.clone(),
+            backend: ProcessJobBackendKind::Native,
+            reference: log_ref.reference,
+            bytes: 7,
+        });
+        gc.removed_log_bytes = 7;
+        gc.refresh_summary();
+        assert!(gc.summary.contains("removed 1 metadata records"));
+        assert!(gc.summary.contains("reclaimed 7 log bytes"));
+
+        let event = ProcessJobNotificationEvent {
+            event_id: ProcessJobEventId("evt".to_string()),
+            id,
+            backend: ProcessJobBackendKind::Native,
+            owner: ProcessJobOwnerScope::DaemonGlobal,
+            kind: ProcessJobNotificationKind::WatchPattern {
+                pattern_index: 0,
+                pattern: "token=secret".to_string(),
+            },
+            status: ProcessJobStatus::Running,
+            created_at: now,
+            summary: "token=secret".to_string(),
+            log_excerpt: Some("bearer secret".to_string()),
+            log_refs: Vec::new(),
+        };
+        let redacted = ProcessJobRedactionPolicy::default().safe_notification_event(event);
+        assert_eq!(redacted.summary, PROCESS_JOB_REDACTED);
+        assert_eq!(redacted.log_excerpt.as_deref(), Some(PROCESS_JOB_REDACTED));
+        assert!(
+            matches!(redacted.kind, ProcessJobNotificationKind::WatchPattern { ref pattern, .. } if pattern == PROCESS_JOB_REDACTED)
+        );
+    }
 
     #[test]
     fn native_admission_accepts_below_limit_and_denies_at_limit() {

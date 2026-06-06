@@ -32,7 +32,7 @@ fn record_process_notification(entry: &ProcessEntry, decision: ProcessJobNotific
         owner: ProcessJobOwnerScope::DaemonGlobal,
         kind: decision.kind,
         status: entry.job_status(),
-        created_at: Utc::now(),
+        created_at: process_job_timestamp(Utc::now()),
         summary: decision.summary,
         log_excerpt: decision.log_excerpt,
         log_refs: Vec::new(),
@@ -192,7 +192,7 @@ fn stored_log_ref_to_job_log_ref(log_ref: &StoredProcessJobLogRef) -> ProcessJob
             StoredProcessJobStream::Combined => ProcessJobStream::Combined,
         },
         reference: log_ref.reference.clone(),
-        retained_until: log_ref.retained_until,
+        retained_until: log_ref.retained_until.map(process_job_timestamp),
         max_bytes: log_ref.max_bytes,
     }
 }
@@ -206,9 +206,9 @@ pub(super) fn stored_record_summary(record: &StoredProcessJobRecord) -> ProcessJ
         status: stored_status_to_job_status(&record.status),
         command_preview: record.command_preview.clone(),
         cwd: stored_cwd_to_job_cwd(&record.cwd),
-        started_at: Some(record.started_at),
-        updated_at: record.updated_at,
-        completed_at: record.completed_at,
+        started_at: Some(process_job_timestamp(record.started_at)),
+        updated_at: process_job_timestamp(record.updated_at),
+        completed_at: record.completed_at.map(process_job_timestamp),
         log_refs: record.log_refs.iter().map(stored_log_ref_to_job_log_ref).collect(),
         profile: None,
     }

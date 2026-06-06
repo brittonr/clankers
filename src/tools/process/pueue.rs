@@ -345,9 +345,9 @@ impl PueueTaskProjection {
             status: self.status.clone(),
             command_preview: metadata.chars().take(MAX_COMMAND_PREVIEW_LEN).collect(),
             cwd: ProcessJobCwd::Inherited,
-            started_at: self.started_at,
-            updated_at: self.updated_at,
-            completed_at: self.completed_at,
+            started_at: self.started_at.map(process_job_timestamp),
+            updated_at: process_job_timestamp(self.updated_at),
+            completed_at: self.completed_at.map(process_job_timestamp),
             log_refs: pueue_log_refs(&id),
             profile: None,
         }

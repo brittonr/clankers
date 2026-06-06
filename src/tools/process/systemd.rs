@@ -360,8 +360,8 @@ impl SystemdUnitProjection {
             command_preview: self.description.chars().take(MAX_COMMAND_PREVIEW_LEN).collect(),
             cwd: ProcessJobCwd::Inherited,
             started_at: None,
-            updated_at: self.updated_at,
-            completed_at: self.status.is_terminal().then_some(self.updated_at),
+            updated_at: process_job_timestamp(self.updated_at),
+            completed_at: self.status.is_terminal().then(|| process_job_timestamp(self.updated_at)),
             log_refs: systemd_log_refs(&self.unit),
             profile: None,
         }

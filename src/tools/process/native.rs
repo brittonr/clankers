@@ -185,9 +185,9 @@ impl ProcessEntry {
             status: status_to_job_status(&self.status()),
             command_preview: ProcessJobRedactionPolicy::default().safe_command_preview(&self.command),
             cwd: clankers_runtime::process_jobs::ProcessJobCwd::Inherited,
-            started_at: Some(self.started_at_wall),
-            updated_at: Utc::now(),
-            completed_at: self.status().is_done().then(Utc::now),
+            started_at: Some(process_job_timestamp(self.started_at_wall)),
+            updated_at: process_job_timestamp(Utc::now()),
+            completed_at: self.status().is_done().then(|| process_job_timestamp(Utc::now())),
             log_refs: Vec::new(),
             profile: self.profile.clone(),
         }
