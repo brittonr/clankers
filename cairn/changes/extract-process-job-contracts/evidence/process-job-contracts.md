@@ -16,21 +16,22 @@ Status: PARTIAL-PASS
 - Moved backend references, notification event ids, backend kind labels, and operation vocabulary out of `clankers-runtime::process_jobs` into `clankers-tool-host::process_jobs`.
 - Moved backend-neutral process status vocabulary and labels out of `clankers-runtime::process_jobs` into `clankers-tool-host::process_jobs`.
 - Moved caller/cwd authorization DTOs and backend capability/hint descriptors out of `clankers-runtime::process_jobs` into `clankers-tool-host::process_jobs`.
-- Moved backend-neutral log overflow disposition and retention class DTOs out of `clankers-runtime::process_jobs` into `clankers-tool-host::process_jobs`.
+- Moved backend-neutral log stream/reference/cursor/range, log overflow disposition, and retention class DTOs out of `clankers-runtime::process_jobs` into `clankers-tool-host::process_jobs`.
 - Kept compatibility reexports from `clankers-runtime::process_jobs` so root/backend code can continue importing the old path while later slices migrate callers.
 - Kept runtime receipt projection as a compatibility extension over the moved backend capability DTOs because `ProcessJobReceipt` remains runtime-owned in this partial slice.
-- Refreshed generated runtime facade and embedded SDK inventories; migrated admission/profile/resource/id-operation/status/capability/log-overflow contracts now appear as supported `clankers-tool-host` API instead of yellow runtime-owned structs.
+- Refreshed generated runtime facade and embedded SDK inventories; migrated admission/profile/resource/id-operation/status/capability/log contracts now appear as supported `clankers-tool-host` API instead of yellow runtime-owned structs.
 
 ## Relevant output
 
 ```text
 cargo test -p clankers-tool-host --lib process_jobs
-running 11 tests
+running 12 tests
 process_jobs::tests::backend_capabilities_advertise_supported_operations ... ok
 process_jobs::tests::backend_kind_and_operation_labels_are_stable ... ok
 process_jobs::tests::caller_scope_and_capabilities_authorize_by_owner_and_operation ... ok
 process_jobs::tests::cwd_policy_is_plain_backend_neutral_data ... ok
 process_jobs::tests::log_overflow_policy_classifies_truncation_and_disk_pressure ... ok
+process_jobs::tests::log_reference_cursor_and_range_are_plain_backend_neutral_data ... ok
 process_jobs::tests::native_admission_accepts_below_limit_and_denies_at_limit ... ok
 process_jobs::tests::process_job_status_terminal_and_labels_are_stable ... ok
 process_jobs::tests::profile_receipt_metadata_projects_from_safe_metadata ... ok
@@ -45,8 +46,8 @@ process_jobs::tests::native_admission_decision_is_owned_by_process_job_contracts
 exit=0
 
 cargo test -p clankers-tool-host --lib
-running 25 tests
-25 passed; 0 failed
+running 26 tests
+26 passed; 0 failed
 exit=0
 
 cargo test -p clankers-runtime --lib log_overflow_policy
@@ -74,7 +75,7 @@ Finished `dev` profile [optimized + debuginfo]
 exit=0
 
 scripts/check-embedded-sdk-api.rs
-ok: embedded SDK API inventory covers 766 public items (771 rows)
+ok: embedded SDK API inventory covers 779 public items (784 rows)
 exit=0
 
 scripts/check-experimental-sdk-port-budget.rs

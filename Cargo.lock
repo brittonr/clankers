@@ -1926,6 +1926,7 @@ dependencies = [
 name = "clankers-tool-host"
 version = "0.1.0"
 dependencies = [
+ "chrono",
  "clanker-message",
  "clankers-engine",
  "serde",

@@ -43,7 +43,10 @@ pub use clankers_tool_host::process_jobs::ProcessJobCallerScope;
 pub use clankers_tool_host::process_jobs::ProcessJobCapabilitySet;
 pub use clankers_tool_host::process_jobs::ProcessJobCwd;
 pub use clankers_tool_host::process_jobs::ProcessJobEventId;
+pub use clankers_tool_host::process_jobs::ProcessJobLogCursor;
 pub use clankers_tool_host::process_jobs::ProcessJobLogOverflowPolicy;
+pub use clankers_tool_host::process_jobs::ProcessJobLogRange;
+pub use clankers_tool_host::process_jobs::ProcessJobLogRef;
 pub use clankers_tool_host::process_jobs::ProcessJobLogWriteDisposition;
 pub use clankers_tool_host::process_jobs::ProcessJobNativeAdmissionDecision;
 pub use clankers_tool_host::process_jobs::ProcessJobNativeAdmissionInput;
@@ -54,6 +57,7 @@ pub use clankers_tool_host::process_jobs::ProcessJobResourcePolicy;
 pub use clankers_tool_host::process_jobs::ProcessJobRetentionClass;
 pub use clankers_tool_host::process_jobs::ProcessJobSafeCapabilityHints;
 pub use clankers_tool_host::process_jobs::ProcessJobStatus;
+pub use clankers_tool_host::process_jobs::ProcessJobStream;
 pub use clankers_tool_host::process_jobs::native_process_job_admission_decision;
 
 /// Canonical, versioned input envelope for BLAKE3-native public process/job ids.
@@ -510,24 +514,6 @@ impl ProcessJobReconciliationOutcome {
     }
 }
 
-/// Log stream selector for append-only files or backend logs.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum ProcessJobStream {
-    Stdout,
-    Stderr,
-    Combined,
-}
-
-/// Opaque safe reference to native log files or backend log cursors.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct ProcessJobLogRef {
-    pub stream: ProcessJobStream,
-    pub reference: String,
-    pub retained_until: Option<DateTime<Utc>>,
-    pub max_bytes: Option<u64>,
-}
-
 /// Native append-only log file naming/layout policy.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct NativeProcessJobLogLayout {
@@ -774,21 +760,6 @@ fn sanitize_log_path_component(input: &str) -> String {
             }
         })
         .collect()
-}
-
-/// Cursor for incremental log reads.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct ProcessJobLogCursor {
-    pub stream: ProcessJobStream,
-    pub offset: u64,
-}
-
-/// Bounded range for log reads.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct ProcessJobLogRange {
-    pub stream: ProcessJobStream,
-    pub offset: Option<u64>,
-    pub limit_bytes: u64,
 }
 
 /// Bounded log chunk returned by service/backend APIs.

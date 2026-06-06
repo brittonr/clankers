@@ -8,6 +8,8 @@ use std::collections::BTreeMap;
 use std::path::PathBuf;
 use std::time::Duration;
 
+use chrono::DateTime;
+use chrono::Utc;
 use serde::Deserialize;
 use serde::Serialize;
 
@@ -461,6 +463,39 @@ pub enum ProcessJobCwd {
     Explicit(PathBuf),
 }
 
+/// Log stream selector for append-only files or backend logs.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ProcessJobStream {
+    Stdout,
+    Stderr,
+    Combined,
+}
+
+/// Opaque safe reference to native log files or backend log cursors.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ProcessJobLogRef {
+    pub stream: ProcessJobStream,
+    pub reference: String,
+    pub retained_until: Option<DateTime<Utc>>,
+    pub max_bytes: Option<u64>,
+}
+
+/// Cursor for incremental log reads.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ProcessJobLogCursor {
+    pub stream: ProcessJobStream,
+    pub offset: u64,
+}
+
+/// Bounded range for log reads.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ProcessJobLogRange {
+    pub stream: ProcessJobStream,
+    pub offset: Option<u64>,
+    pub limit_bytes: u64,
+}
+
 /// Safe, backend-neutral profile metadata copied into process/job receipts.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ProcessJobProfileReceiptMetadata {
@@ -719,6 +754,33 @@ mod tests {
         });
         assert_eq!(overflow.classify_write(8, 19, 31), ProcessJobLogWriteDisposition::DegradeDiskFull);
         assert_eq!(overflow.classify_write(8, 19, 41), ProcessJobLogWriteDisposition::DegradeDiskFull);
+    }
+
+    #[test]
+    fn log_reference_cursor_and_range_are_plain_backend_neutral_data() {
+        let reference = ProcessJobLogRef {
+            stream: ProcessJobStream::Combined,
+            reference: "native:proc/stdout.log".to_string(),
+            retained_until: None,
+            max_bytes: Some(4096),
+        };
+        assert_eq!(reference.stream, ProcessJobStream::Combined);
+        assert_eq!(reference.max_bytes, Some(4096));
+
+        let cursor = ProcessJobLogCursor {
+            stream: ProcessJobStream::Stdout,
+            offset: 128,
+        };
+        assert_eq!(cursor.offset, 128);
+
+        let range = ProcessJobLogRange {
+            stream: ProcessJobStream::Stderr,
+            offset: Some(64),
+            limit_bytes: 1024,
+        };
+        assert_eq!(range.stream, ProcessJobStream::Stderr);
+        assert_eq!(range.offset, Some(64));
+        assert_eq!(range.limit_bytes, 1024);
     }
 
     #[test]
