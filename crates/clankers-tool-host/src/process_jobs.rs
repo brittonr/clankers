@@ -5,6 +5,7 @@
 //! filesystem storage, or backend command execution.
 
 use std::collections::BTreeMap;
+use std::path::PathBuf;
 use std::time::Duration;
 
 use serde::Deserialize;
@@ -137,6 +138,132 @@ impl ProcessJobStatus {
     }
 }
 
+/// Scope used to authorize cross-session observation and mutation.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case", tag = "kind", content = "value")]
+pub enum ProcessJobOwnerScope {
+    Session(String),
+    Workspace(String),
+    User(String),
+    DaemonGlobal,
+}
+
+/// Caller identity used by capability policy checks.
+#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
+pub struct ProcessJobCallerScope {
+    pub session_id: Option<String>,
+    pub workspace_id: Option<String>,
+    pub user_id: Option<String>,
+    pub daemon_global: bool,
+    pub capabilities: ProcessJobCapabilitySet,
+}
+
+/// Capability classes for read-only observation, log access, execution, mutation, and backend use.
+#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
+pub struct ProcessJobCapabilitySet {
+    pub observe: bool,
+    pub read_logs: bool,
+    pub read_raw_logs: bool,
+    pub start: bool,
+    pub mutate: bool,
+    pub stdin: bool,
+    pub select_backend: bool,
+}
+
+impl ProcessJobCapabilitySet {
+    #[must_use]
+    pub fn observe_only() -> Self {
+        Self {
+            observe: true,
+            ..Self::default()
+        }
+    }
+
+    #[must_use]
+    pub fn bounded_log_reader() -> Self {
+        Self {
+            observe: true,
+            read_logs: true,
+            ..Self::default()
+        }
+    }
+
+    #[must_use]
+    pub fn raw_log_reader() -> Self {
+        Self {
+            observe: true,
+            read_logs: true,
+            read_raw_logs: true,
+            ..Self::default()
+        }
+    }
+
+    #[must_use]
+    pub fn full_control() -> Self {
+        Self {
+            observe: true,
+            read_logs: true,
+            read_raw_logs: true,
+            start: true,
+            mutate: true,
+            stdin: true,
+            select_backend: true,
+        }
+    }
+
+    #[must_use]
+    pub fn allows_log_access(&self, raw: bool) -> bool {
+        self.observe && self.read_logs && (!raw || self.read_raw_logs)
+    }
+
+    #[must_use]
+    pub fn allows_operation(&self, operation: ProcessJobOperation, backend: ProcessJobBackendKind) -> bool {
+        match operation {
+            ProcessJobOperation::List | ProcessJobOperation::Poll => self.observe,
+            ProcessJobOperation::Log => self.allows_log_access(false),
+            ProcessJobOperation::Start => {
+                self.start && (backend == ProcessJobBackendKind::Native || self.select_backend)
+            }
+            ProcessJobOperation::Kill
+            | ProcessJobOperation::Restart
+            | ProcessJobOperation::Adopt
+            | ProcessJobOperation::GarbageCollect => self.mutate,
+            ProcessJobOperation::WriteStdin | ProcessJobOperation::CloseStdin => self.mutate && self.stdin,
+            ProcessJobOperation::Wait => self.observe,
+        }
+    }
+}
+
+impl ProcessJobCallerScope {
+    #[must_use]
+    pub fn matches_owner(&self, owner: &ProcessJobOwnerScope) -> bool {
+        match owner {
+            ProcessJobOwnerScope::Session(session) => self.session_id.as_deref() == Some(session.as_str()),
+            ProcessJobOwnerScope::Workspace(workspace) => self.workspace_id.as_deref() == Some(workspace.as_str()),
+            ProcessJobOwnerScope::User(user) => self.user_id.as_deref() == Some(user.as_str()),
+            ProcessJobOwnerScope::DaemonGlobal => self.daemon_global,
+        }
+    }
+
+    #[must_use]
+    pub fn can_access(
+        &self,
+        owner: &ProcessJobOwnerScope,
+        operation: ProcessJobOperation,
+        backend: ProcessJobBackendKind,
+    ) -> bool {
+        self.matches_owner(owner) && self.capabilities.allows_operation(operation, backend)
+    }
+}
+
+/// Command working-directory policy recorded safely in metadata.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case", tag = "kind", content = "path")]
+pub enum ProcessJobCwd {
+    Inherited,
+    Explicit(PathBuf),
+}
+
 /// Safe, backend-neutral profile metadata copied into process/job receipts.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ProcessJobProfileReceiptMetadata {
@@ -246,6 +373,36 @@ mod tests {
             .label(),
             "backend-unavailable(missing)"
         );
+    }
+
+    #[test]
+    fn caller_scope_and_capabilities_authorize_by_owner_and_operation() {
+        let caller = ProcessJobCallerScope {
+            session_id: Some("sess".to_string()),
+            capabilities: ProcessJobCapabilitySet::full_control(),
+            ..ProcessJobCallerScope::default()
+        };
+        let owner = ProcessJobOwnerScope::Session("sess".to_string());
+        assert!(caller.matches_owner(&owner));
+        assert!(caller.can_access(&owner, ProcessJobOperation::Start, ProcessJobBackendKind::Native));
+        assert!(!caller.can_access(
+            &ProcessJobOwnerScope::Session("other".to_string()),
+            ProcessJobOperation::Start,
+            ProcessJobBackendKind::Native,
+        ));
+
+        let observer = ProcessJobCapabilitySet::observe_only();
+        assert!(observer.allows_operation(ProcessJobOperation::List, ProcessJobBackendKind::Native));
+        assert!(!observer.allows_operation(ProcessJobOperation::Kill, ProcessJobBackendKind::Native));
+    }
+
+    #[test]
+    fn cwd_policy_is_plain_backend_neutral_data() {
+        assert!(matches!(ProcessJobCwd::Inherited, ProcessJobCwd::Inherited));
+        assert!(matches!(
+            ProcessJobCwd::Explicit(PathBuf::from("/repo")),
+            ProcessJobCwd::Explicit(ref path) if path == &PathBuf::from("/repo")
+        ));
     }
 
     #[test]
