@@ -522,11 +522,17 @@ Inventory kinds additionally include `field`, `method`, and `reexport` rows so e
 | `PROCESS_JOB_PROFILE_METADATA_POLICY` | `clankers-tool-host` | constant | supported | `crates/clankers-tool-host/src/process_jobs.rs` |
 | `PROCESS_JOB_PROFILE_METADATA_SCHEMA_VERSION` | `clankers-tool-host` | constant | supported | `crates/clankers-tool-host/src/process_jobs.rs` |
 | `PROCESS_JOB_PROFILE_METADATA_SOURCE` | `clankers-tool-host` | constant | supported | `crates/clankers-tool-host/src/process_jobs.rs` |
+| `BackendRef` | `clankers-tool-host` | struct | supported | `crates/clankers-tool-host/src/process_jobs.rs` |
+| `ProcessJobEventId` | `clankers-tool-host` | struct | supported | `crates/clankers-tool-host/src/process_jobs.rs` |
 | `ProcessJobNativeAdmissionDecision` | `clankers-tool-host` | struct | supported | `crates/clankers-tool-host/src/process_jobs.rs` |
 | `ProcessJobNativeAdmissionInput` | `clankers-tool-host` | struct | supported | `crates/clankers-tool-host/src/process_jobs.rs` |
 | `ProcessJobProfileReceiptMetadata` | `clankers-tool-host` | struct | supported | `crates/clankers-tool-host/src/process_jobs.rs` |
 | `ProcessJobResourcePolicy` | `clankers-tool-host` | struct | supported | `crates/clankers-tool-host/src/process_jobs.rs` |
+| `ProcessJobBackendKind` | `clankers-tool-host` | enum | supported | `crates/clankers-tool-host/src/process_jobs.rs` |
+| `ProcessJobOperation` | `clankers-tool-host` | enum | supported | `crates/clankers-tool-host/src/process_jobs.rs` |
 | `native_process_job_admission_decision` | `clankers-tool-host` | function | supported | `crates/clankers-tool-host/src/process_jobs.rs` |
+| `BackendRef::0` | `clankers-tool-host` | field | supported | `crates/clankers-tool-host/src/process_jobs.rs` |
+| `ProcessJobEventId::0` | `clankers-tool-host` | field | supported | `crates/clankers-tool-host/src/process_jobs.rs` |
 | `ProcessJobNativeAdmissionDecision::accepted` | `clankers-tool-host` | field | supported | `crates/clankers-tool-host/src/process_jobs.rs` |
 | `ProcessJobNativeAdmissionDecision::active` | `clankers-tool-host` | field | supported | `crates/clankers-tool-host/src/process_jobs.rs` |
 | `ProcessJobNativeAdmissionDecision::limit` | `clankers-tool-host` | field | supported | `crates/clankers-tool-host/src/process_jobs.rs` |
@@ -540,7 +546,9 @@ Inventory kinds additionally include `field`, `method`, and `reexport` rows so e
 | `ProcessJobResourcePolicy::max_log_bytes` | `clankers-tool-host` | field | supported | `crates/clankers-tool-host/src/process_jobs.rs` |
 | `ProcessJobResourcePolicy::memory_max_bytes` | `clankers-tool-host` | field | supported | `crates/clankers-tool-host/src/process_jobs.rs` |
 | `ProcessJobResourcePolicy::timeout` | `clankers-tool-host` | field | supported | `crates/clankers-tool-host/src/process_jobs.rs` |
+| `ProcessJobBackendKind::label` | `clankers-tool-host` | method | supported | `crates/clankers-tool-host/src/process_jobs.rs` |
 | `ProcessJobNativeAdmissionDecision::summary` | `clankers-tool-host` | method | supported | `crates/clankers-tool-host/src/process_jobs.rs` |
+| `ProcessJobOperation::action_name` | `clankers-tool-host` | method | supported | `crates/clankers-tool-host/src/process_jobs.rs` |
 | `ProcessJobProfileReceiptMetadata::from_metadata` | `clankers-tool-host` | method | supported | `crates/clankers-tool-host/src/process_jobs.rs` |
 | `Content` | `clanker-message` | enum | supported | `crates/clanker-message/src/content.rs` |
 | `ImageSource` | `clanker-message` | enum | supported | `crates/clanker-message/src/content.rs` |

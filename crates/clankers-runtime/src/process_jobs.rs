@@ -35,8 +35,12 @@ pub use clankers_tool_host::process_jobs::PROCESS_JOB_PROFILE_METADATA_NAME;
 pub use clankers_tool_host::process_jobs::PROCESS_JOB_PROFILE_METADATA_POLICY;
 pub use clankers_tool_host::process_jobs::PROCESS_JOB_PROFILE_METADATA_SCHEMA_VERSION;
 pub use clankers_tool_host::process_jobs::PROCESS_JOB_PROFILE_METADATA_SOURCE;
+pub use clankers_tool_host::process_jobs::BackendRef;
+pub use clankers_tool_host::process_jobs::ProcessJobBackendKind;
+pub use clankers_tool_host::process_jobs::ProcessJobEventId;
 pub use clankers_tool_host::process_jobs::ProcessJobNativeAdmissionDecision;
 pub use clankers_tool_host::process_jobs::ProcessJobNativeAdmissionInput;
+pub use clankers_tool_host::process_jobs::ProcessJobOperation;
 pub use clankers_tool_host::process_jobs::ProcessJobProfileReceiptMetadata;
 pub use clankers_tool_host::process_jobs::ProcessJobResourcePolicy;
 pub use clankers_tool_host::process_jobs::native_process_job_admission_decision;
@@ -282,62 +286,6 @@ fn cwd_path(cwd: &ProcessJobCwd) -> Option<String> {
     match cwd {
         ProcessJobCwd::Inherited => None,
         ProcessJobCwd::Explicit(path) => Some(path.to_string_lossy().into_owned()),
-    }
-}
-
-/// Backend-owned reference, such as a PID/process-group, pueue task id, or systemd unit name.
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
-#[serde(transparent)]
-pub struct BackendRef(pub String);
-
-/// Durable notification event id for completion/readiness delivery and deduplication.
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
-#[serde(transparent)]
-pub struct ProcessJobEventId(pub String);
-
-/// Supported backend families. Unknown is retained for forward-compatible stored records.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum ProcessJobBackendKind {
-    Native,
-    Pueue,
-    Systemd,
-    Unknown,
-}
-
-/// Backend-neutral operation vocabulary used for capability checks and receipts.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum ProcessJobOperation {
-    Start,
-    List,
-    Poll,
-    Log,
-    Wait,
-    Kill,
-    Restart,
-    WriteStdin,
-    CloseStdin,
-    Adopt,
-    GarbageCollect,
-}
-
-impl ProcessJobOperation {
-    #[must_use]
-    pub const fn action_name(self) -> &'static str {
-        match self {
-            Self::Start => "start",
-            Self::List => "list",
-            Self::Poll => "poll",
-            Self::Log => "log",
-            Self::Wait => "wait",
-            Self::Kill => "kill",
-            Self::Restart => "restart",
-            Self::WriteStdin => "write_stdin",
-            Self::CloseStdin => "close_stdin",
-            Self::Adopt => "adopt",
-            Self::GarbageCollect => "garbage_collect",
-        }
     }
 }
 
@@ -1797,18 +1745,6 @@ pub struct ProcessJobSummary {
     pub log_refs: Vec<ProcessJobLogRef>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub profile: Option<ProcessJobProfileReceiptMetadata>,
-}
-
-impl ProcessJobBackendKind {
-    #[must_use]
-    pub fn label(self) -> &'static str {
-        match self {
-            Self::Native => "native",
-            Self::Pueue => "pueue",
-            Self::Systemd => "systemd",
-            Self::Unknown => "unknown",
-        }
-    }
 }
 
 impl ProcessJobStatus {

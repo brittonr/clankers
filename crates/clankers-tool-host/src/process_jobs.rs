@@ -15,6 +15,74 @@ pub const PROCESS_JOB_PROFILE_METADATA_SCHEMA_VERSION: &str = "identity.profile.
 pub const PROCESS_JOB_PROFILE_METADATA_SOURCE: &str = "identity.profile.source";
 pub const PROCESS_JOB_PROFILE_METADATA_POLICY: &str = "identity.profile.policy";
 
+/// Backend-owned reference, such as a PID/process-group, pueue task id, or systemd unit name.
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct BackendRef(pub String);
+
+/// Durable notification event id for completion/readiness delivery and deduplication.
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct ProcessJobEventId(pub String);
+
+/// Supported backend families. Unknown is retained for forward-compatible stored records.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ProcessJobBackendKind {
+    Native,
+    Pueue,
+    Systemd,
+    Unknown,
+}
+
+impl ProcessJobBackendKind {
+    #[must_use]
+    pub const fn label(self) -> &'static str {
+        match self {
+            Self::Native => "native",
+            Self::Pueue => "pueue",
+            Self::Systemd => "systemd",
+            Self::Unknown => "unknown",
+        }
+    }
+}
+
+/// Backend-neutral operation vocabulary used for capability checks and receipts.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ProcessJobOperation {
+    Start,
+    List,
+    Poll,
+    Log,
+    Wait,
+    Kill,
+    Restart,
+    WriteStdin,
+    CloseStdin,
+    Adopt,
+    GarbageCollect,
+}
+
+impl ProcessJobOperation {
+    #[must_use]
+    pub const fn action_name(self) -> &'static str {
+        match self {
+            Self::Start => "start",
+            Self::List => "list",
+            Self::Poll => "poll",
+            Self::Log => "log",
+            Self::Wait => "wait",
+            Self::Kill => "kill",
+            Self::Restart => "restart",
+            Self::WriteStdin => "write_stdin",
+            Self::CloseStdin => "close_stdin",
+            Self::Adopt => "adopt",
+            Self::GarbageCollect => "garbage_collect",
+        }
+    }
+}
+
 /// Safe, backend-neutral profile metadata copied into process/job receipts.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ProcessJobProfileReceiptMetadata {
@@ -100,6 +168,16 @@ mod tests {
         let denied = native_process_job_admission_decision(ProcessJobNativeAdmissionInput { active: 2, limit: 2 });
         assert!(!denied.accepted);
         assert_eq!(denied.summary(), "native process admission denied: active process limit reached (2/2)");
+    }
+
+    #[test]
+    fn backend_kind_and_operation_labels_are_stable() {
+        assert_eq!(ProcessJobBackendKind::Native.label(), "native");
+        assert_eq!(ProcessJobBackendKind::Pueue.label(), "pueue");
+        assert_eq!(ProcessJobBackendKind::Systemd.label(), "systemd");
+        assert_eq!(ProcessJobBackendKind::Unknown.label(), "unknown");
+        assert_eq!(ProcessJobOperation::Start.action_name(), "start");
+        assert_eq!(ProcessJobOperation::GarbageCollect.action_name(), "garbage_collect");
     }
 
     #[test]
