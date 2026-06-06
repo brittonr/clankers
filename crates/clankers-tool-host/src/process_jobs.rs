@@ -4,6 +4,41 @@
 //! on the Clankers runtime facade, daemon actors, TUI state, procmon handles,
 //! filesystem storage, or backend command execution.
 
+use std::collections::BTreeMap;
+
+use serde::Deserialize;
+use serde::Serialize;
+
+pub const PROCESS_JOB_PROFILE_METADATA_NAME: &str = "profile";
+pub const PROCESS_JOB_PROFILE_METADATA_SCHEMA_VERSION: &str = "identity.profile.schema_version";
+pub const PROCESS_JOB_PROFILE_METADATA_SOURCE: &str = "identity.profile.source";
+pub const PROCESS_JOB_PROFILE_METADATA_POLICY: &str = "identity.profile.policy";
+
+/// Safe, backend-neutral profile metadata copied into process/job receipts.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ProcessJobProfileReceiptMetadata {
+    pub profile_name: String,
+    pub manifest_schema_version: u32,
+    pub profile_source: String,
+    pub policy_source: String,
+}
+
+impl ProcessJobProfileReceiptMetadata {
+    #[must_use]
+    pub fn from_metadata(metadata: &BTreeMap<String, String>) -> Option<Self> {
+        let profile_name = metadata.get(PROCESS_JOB_PROFILE_METADATA_NAME)?.clone();
+        let manifest_schema_version = metadata.get(PROCESS_JOB_PROFILE_METADATA_SCHEMA_VERSION)?.parse().ok()?;
+        let profile_source = metadata.get(PROCESS_JOB_PROFILE_METADATA_SOURCE)?.clone();
+        let policy_source = metadata.get(PROCESS_JOB_PROFILE_METADATA_POLICY)?.clone();
+        Some(Self {
+            profile_name,
+            manifest_schema_version,
+            profile_source,
+            policy_source,
+        })
+    }
+}
+
 /// Backend-neutral native-process admission decision.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ProcessJobNativeAdmissionDecision {
@@ -55,5 +90,21 @@ mod tests {
         let denied = native_process_job_admission_decision(ProcessJobNativeAdmissionInput { active: 2, limit: 2 });
         assert!(!denied.accepted);
         assert_eq!(denied.summary(), "native process admission denied: active process limit reached (2/2)");
+    }
+
+    #[test]
+    fn profile_receipt_metadata_projects_from_safe_metadata() {
+        let mut metadata = BTreeMap::new();
+        metadata.insert(PROCESS_JOB_PROFILE_METADATA_NAME.to_string(), "quick-check".to_string());
+        metadata.insert(PROCESS_JOB_PROFILE_METADATA_SCHEMA_VERSION.to_string(), "1".to_string());
+        metadata.insert(PROCESS_JOB_PROFILE_METADATA_SOURCE.to_string(), "inline".to_string());
+        metadata.insert(PROCESS_JOB_PROFILE_METADATA_POLICY.to_string(), "test-policy".to_string());
+
+        let receipt = ProcessJobProfileReceiptMetadata::from_metadata(&metadata)
+            .expect("safe profile receipt metadata should project from metadata");
+        assert_eq!(receipt.profile_name, "quick-check");
+        assert_eq!(receipt.manifest_schema_version, 1);
+        assert_eq!(receipt.profile_source, "inline");
+        assert_eq!(receipt.policy_source, "test-policy");
     }
 }

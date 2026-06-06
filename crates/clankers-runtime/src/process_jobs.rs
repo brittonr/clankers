@@ -31,8 +31,13 @@ pub const PROCESS_JOB_MAX_SAFE_PREVIEW_CHARS: usize = 160;
 pub const PROCESS_JOB_MAX_SAFE_EXCERPT_CHARS: usize = 512;
 pub const PROCESS_JOB_MAX_SAFE_METADATA_VALUE_CHARS: usize = 128;
 
+pub use clankers_tool_host::process_jobs::PROCESS_JOB_PROFILE_METADATA_NAME;
+pub use clankers_tool_host::process_jobs::PROCESS_JOB_PROFILE_METADATA_POLICY;
+pub use clankers_tool_host::process_jobs::PROCESS_JOB_PROFILE_METADATA_SCHEMA_VERSION;
+pub use clankers_tool_host::process_jobs::PROCESS_JOB_PROFILE_METADATA_SOURCE;
 pub use clankers_tool_host::process_jobs::ProcessJobNativeAdmissionDecision;
 pub use clankers_tool_host::process_jobs::ProcessJobNativeAdmissionInput;
+pub use clankers_tool_host::process_jobs::ProcessJobProfileReceiptMetadata;
 pub use clankers_tool_host::process_jobs::native_process_job_admission_decision;
 
 /// Canonical, versioned input envelope for BLAKE3-native public process/job ids.
@@ -1313,10 +1318,6 @@ impl ProcessJobToolRequest {
 pub type ProcessJobSpec = StartProcessJobRequest;
 
 pub const PROCESS_JOB_PROFILE_SCHEMA_VERSION: u32 = 1;
-pub const PROCESS_JOB_PROFILE_METADATA_NAME: &str = "profile";
-pub const PROCESS_JOB_PROFILE_METADATA_SCHEMA_VERSION: &str = "identity.profile.schema_version";
-pub const PROCESS_JOB_PROFILE_METADATA_SOURCE: &str = "identity.profile.source";
-pub const PROCESS_JOB_PROFILE_METADATA_POLICY: &str = "identity.profile.policy";
 
 fn default_process_job_profile_schema_version() -> u32 {
     PROCESS_JOB_PROFILE_SCHEMA_VERSION
@@ -1406,30 +1407,6 @@ pub struct ProjectProcessJobProfileResolutionEvidence {
     pub manifest_schema_version: u32,
     pub profile_source: String,
     pub policy_source: String,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct ProcessJobProfileReceiptMetadata {
-    pub profile_name: String,
-    pub manifest_schema_version: u32,
-    pub profile_source: String,
-    pub policy_source: String,
-}
-
-impl ProcessJobProfileReceiptMetadata {
-    #[must_use]
-    pub fn from_metadata(metadata: &BTreeMap<String, String>) -> Option<Self> {
-        let profile_name = metadata.get(PROCESS_JOB_PROFILE_METADATA_NAME)?.clone();
-        let manifest_schema_version = metadata.get(PROCESS_JOB_PROFILE_METADATA_SCHEMA_VERSION)?.parse().ok()?;
-        let profile_source = metadata.get(PROCESS_JOB_PROFILE_METADATA_SOURCE)?.clone();
-        let policy_source = metadata.get(PROCESS_JOB_PROFILE_METADATA_POLICY)?.clone();
-        Some(Self {
-            profile_name,
-            manifest_schema_version,
-            profile_source,
-            policy_source,
-        })
-    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]

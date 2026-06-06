@@ -2,7 +2,7 @@
 
 Evidence-ID: extract-process-job-contracts.process-job-contracts
 Artifact-Type: command-output-summary
-Task-ID: I1,I2,I4
+Task-ID: I1,I2,I3,I5
 Covers: remaining-coupling-drain.process-job-policy.neutral-contract-owner
 Date: 2026-06-05
 Status: PARTIAL-PASS
@@ -11,15 +11,17 @@ Status: PARTIAL-PASS
 
 - Chose `clankers-tool-host::process_jobs` as the first green neutral owner for process-job tool contracts, avoiding a new workspace crate while keeping the contract below `clankers-runtime` and root shell modules.
 - Moved the native-process admission DTOs and pure admission decision function out of `clankers-runtime::process_jobs` into `clankers-tool-host::process_jobs`.
+- Moved safe profile receipt metadata constants/DTOs out of `clankers-runtime::process_jobs` into `clankers-tool-host::process_jobs`.
 - Kept compatibility reexports from `clankers-runtime::process_jobs` so root/backend code can continue importing the old path while later slices migrate callers.
-- Refreshed generated runtime facade and embedded SDK inventories; the migrated admission contract now appears as supported `clankers-tool-host` API instead of yellow runtime-owned structs.
+- Refreshed generated runtime facade and embedded SDK inventories; migrated admission/profile receipt contracts now appear as supported `clankers-tool-host` API instead of yellow runtime-owned structs.
 
 ## Relevant output
 
 ```text
 cargo test -p clankers-tool-host --lib process_jobs
-running 1 test
+running 2 tests
 process_jobs::tests::native_admission_accepts_below_limit_and_denies_at_limit ... ok
+process_jobs::tests::profile_receipt_metadata_projects_from_safe_metadata ... ok
 exit=0
 
 cargo test -p clankers-runtime --lib native_admission_decision
@@ -36,8 +38,13 @@ scripts/check-process-job-profile-kit.rs
 process-job-profile-kit checker passed
 exit=0
 
+cargo test -p clankers-runtime --lib process_job_profile_kit_validates_manifest_policy_identity_and_redaction
+running 1 test
+process_jobs::tests::process_job_profile_kit_validates_manifest_policy_identity_and_redaction ... ok
+exit=0
+
 scripts/check-embedded-sdk-api.rs
-ok: embedded SDK API inventory covers 669 public items (674 rows)
+ok: embedded SDK API inventory covers 679 public items (684 rows)
 exit=0
 
 scripts/check-experimental-sdk-port-budget.rs
@@ -55,4 +62,4 @@ exit=0
 
 ## Remaining work
 
-This is the first extraction step only. Profile, receipt, redaction, retention, notification, and backend capability contracts still need follow-on migration before the process-job contract drain can close.
+This is still a partial extraction. Common receipt envelopes, redaction, retention, notification, and backend capability contracts still need follow-on migration before the process-job contract drain can close.
