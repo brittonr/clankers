@@ -56,9 +56,9 @@ const REQUIRED_ROWS: &[ExpectedRow] = &[
         "crates/clanker-message/src/transcript.rs",
     ),
     ExpectedRow::new("CustomMessage", "struct", "unsupported-internal", "crates/clanker-message/src/transcript.rs"),
-    ExpectedRow::new("UserMessage", "struct", "experimental", "crates/clanker-message/src/transcript.rs"),
-    ExpectedRow::new("AssistantMessage", "struct", "experimental", "crates/clanker-message/src/transcript.rs"),
-    ExpectedRow::new("ToolResultMessage", "struct", "experimental", "crates/clanker-message/src/transcript.rs"),
+    ExpectedRow::new("UserMessage", "struct", "optional-support", "crates/clanker-message/src/transcript.rs"),
+    ExpectedRow::new("AssistantMessage", "struct", "optional-support", "crates/clanker-message/src/transcript.rs"),
+    ExpectedRow::new("ToolResultMessage", "struct", "optional-support", "crates/clanker-message/src/transcript.rs"),
 ];
 
 const GREEN_PUBLIC_API_ROOTS: &[&str] = &[

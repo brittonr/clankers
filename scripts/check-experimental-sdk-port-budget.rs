@@ -217,7 +217,10 @@ fn validate_groups(groups: &[BudgetGroup], errors: &mut Vec<String>) {
         ) {
             errors.push(format!("group `{}` has invalid disposition `{}`", group.id, group.disposition));
         }
-        if !matches!(group.expected_stability.as_str(), "supported" | "experimental" | "absent") {
+        if !matches!(
+            group.expected_stability.as_str(),
+            "supported" | "optional-support" | "compatibility-alias" | "experimental" | "absent"
+        ) {
             errors.push(format!(
                 "group `{}` has invalid expected_stability `{}`",
                 group.id, group.expected_stability
@@ -282,8 +285,9 @@ fn validate_rows(rows: &[InventoryRow], groups: &[BudgetGroup], policy: &Value, 
             ));
         }
         match group.expected_stability.as_str() {
-            "supported" => require_stability(group, &rows, "supported", errors),
-            "experimental" => require_stability(group, &rows, "experimental", errors),
+            "supported" | "optional-support" | "compatibility-alias" | "experimental" => {
+                require_stability(group, &rows, &group.expected_stability, errors);
+            }
             "absent" => {
                 if !rows.is_empty() {
                     errors.push(format!("group `{}` expected no public rows", group.id));

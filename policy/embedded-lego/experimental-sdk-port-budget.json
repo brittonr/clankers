@@ -1,7 +1,7 @@
 {
   "schema": "clankers.embedded_lego.experimental_sdk_port_budget.v1",
   "inventory_path": "docs/src/generated/embedded-sdk-api.md",
-  "expected_experimental_rows": 19,
+  "expected_experimental_rows": 0,
   "groups": [
     {
       "id": "engine-buffered-tool-results",
@@ -94,12 +94,12 @@
         "AssistantMessage",
         "ToolResultMessage"
       ],
-      "disposition": "keep-experimental-with-rationale",
-      "expected_stability": "experimental",
+      "disposition": "promote-with-evidence",
+      "expected_stability": "optional-support",
       "expected_rows": 19,
       "use_site_status": "available only with transcript-compat for Clankers desktop/session/provider/controller compatibility",
-      "validation": "cargo test -p clanker-message --features transcript-compat",
-      "rationale": "these concrete transcript records remain readable compatibility DTOs but are not stable default SDK contracts"
+      "validation": "cargo test -p clanker-message --features transcript-compat && scripts/check-message-contract-boundary.rs",
+      "rationale": "these concrete transcript records are supported optional compatibility DTOs for hosts that explicitly opt into transcript-compat while remaining outside default green SDK contracts"
     }
   ]
 }
