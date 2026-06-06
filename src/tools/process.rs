@@ -28,6 +28,7 @@ use clankers_runtime::RuntimeError;
 use clankers_runtime::process_jobs::AdoptProcessJobRequest;
 use clankers_runtime::process_jobs::BackendRef;
 use clankers_runtime::process_jobs::ProcessJobBackendCapabilities;
+use clankers_runtime::process_jobs::ProcessJobBackendCapabilitiesReceiptExt;
 use clankers_runtime::process_jobs::ProcessJobBackendKind;
 use clankers_runtime::process_jobs::ProcessJobCwd;
 use clankers_runtime::process_jobs::ProcessJobError;

@@ -234,6 +234,203 @@ impl ProcessJobCapabilitySet {
     }
 }
 
+/// Backend capability descriptor used before dispatching mutations.
+#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
+pub struct ProcessJobBackendCapabilities {
+    pub backend: Option<ProcessJobBackendKind>,
+    pub supports_shell: bool,
+    pub supports_direct_exec: bool,
+    pub supports_stdin: bool,
+    pub supports_restart: bool,
+    pub supports_kill: bool,
+    pub supports_kill_tree: bool,
+    pub supports_control_group: bool,
+    pub supports_adopt: bool,
+    #[serde(default)]
+    pub supports_garbage_collect: bool,
+    pub supports_resource_limits: bool,
+    pub supports_log_cursor: bool,
+    pub supports_log_range: bool,
+    pub supports_queueing: bool,
+    pub supports_priority: bool,
+    pub supports_dependencies: bool,
+    pub supports_live_status: bool,
+    pub supports_completion_notifications: bool,
+    pub supports_readiness_watch: bool,
+    pub durable_across_daemon_restart: bool,
+    pub unavailable_reason: Option<String>,
+}
+
+/// Short alias used by Cairn and service-layer callers for the process/job backend matrix.
+pub type BackendCapabilities = ProcessJobBackendCapabilities;
+
+impl ProcessJobBackendCapabilities {
+    #[must_use]
+    pub fn native() -> Self {
+        Self {
+            backend: Some(ProcessJobBackendKind::Native),
+            supports_shell: true,
+            supports_direct_exec: true,
+            supports_stdin: true,
+            supports_restart: true,
+            supports_kill: true,
+            supports_kill_tree: true,
+            supports_control_group: true,
+            supports_adopt: true,
+            supports_garbage_collect: true,
+            supports_resource_limits: false,
+            supports_log_cursor: true,
+            supports_log_range: true,
+            supports_queueing: false,
+            supports_priority: false,
+            supports_dependencies: false,
+            supports_live_status: true,
+            supports_completion_notifications: true,
+            supports_readiness_watch: true,
+            durable_across_daemon_restart: false,
+            unavailable_reason: None,
+        }
+    }
+
+    #[must_use]
+    pub fn pueue() -> Self {
+        Self {
+            backend: Some(ProcessJobBackendKind::Pueue),
+            supports_shell: true,
+            supports_direct_exec: true,
+            supports_stdin: false,
+            supports_restart: true,
+            supports_kill: true,
+            supports_kill_tree: false,
+            supports_control_group: false,
+            supports_adopt: true,
+            supports_garbage_collect: false,
+            supports_resource_limits: false,
+            supports_log_cursor: true,
+            supports_log_range: true,
+            supports_queueing: true,
+            supports_priority: true,
+            supports_dependencies: true,
+            supports_live_status: true,
+            supports_completion_notifications: true,
+            supports_readiness_watch: false,
+            durable_across_daemon_restart: true,
+            unavailable_reason: None,
+        }
+    }
+
+    #[must_use]
+    pub fn systemd() -> Self {
+        Self {
+            backend: Some(ProcessJobBackendKind::Systemd),
+            supports_shell: true,
+            supports_direct_exec: true,
+            supports_stdin: false,
+            supports_restart: true,
+            supports_kill: true,
+            supports_kill_tree: true,
+            supports_control_group: true,
+            supports_adopt: true,
+            supports_garbage_collect: false,
+            supports_resource_limits: true,
+            supports_log_cursor: true,
+            supports_log_range: true,
+            supports_queueing: false,
+            supports_priority: false,
+            supports_dependencies: false,
+            supports_live_status: true,
+            supports_completion_notifications: true,
+            supports_readiness_watch: true,
+            durable_across_daemon_restart: true,
+            unavailable_reason: None,
+        }
+    }
+
+    #[must_use]
+    pub fn unavailable(backend: ProcessJobBackendKind, reason: impl Into<String>) -> Self {
+        Self {
+            backend: Some(backend),
+            unavailable_reason: Some(reason.into()),
+            ..Self::default()
+        }
+    }
+
+    #[must_use]
+    pub fn for_backend(backend: ProcessJobBackendKind) -> Self {
+        match backend {
+            ProcessJobBackendKind::Native => Self::native(),
+            ProcessJobBackendKind::Pueue => Self::pueue(),
+            ProcessJobBackendKind::Systemd => Self::systemd(),
+            ProcessJobBackendKind::Unknown => Self::default(),
+        }
+    }
+
+    #[must_use]
+    pub fn supports_operation(&self, operation: ProcessJobOperation) -> bool {
+        if self.unavailable_reason.is_some() {
+            return false;
+        }
+        match operation {
+            ProcessJobOperation::Start => self.supports_shell || self.supports_direct_exec,
+            ProcessJobOperation::List | ProcessJobOperation::Poll | ProcessJobOperation::Wait => {
+                self.supports_live_status
+            }
+            ProcessJobOperation::Log => self.supports_log_cursor || self.supports_log_range,
+            ProcessJobOperation::Kill => self.supports_kill,
+            ProcessJobOperation::Restart => self.supports_restart,
+            ProcessJobOperation::WriteStdin | ProcessJobOperation::CloseStdin => self.supports_stdin,
+            ProcessJobOperation::Adopt => self.supports_adopt,
+            ProcessJobOperation::GarbageCollect => self.supports_garbage_collect,
+        }
+    }
+
+    #[must_use]
+    pub fn unsupported_detail(&self, operation: ProcessJobOperation) -> Option<&'static str> {
+        if self.supports_operation(operation) {
+            return None;
+        }
+        Some(match operation {
+            ProcessJobOperation::Start => "start requires shell or direct_exec support",
+            ProcessJobOperation::List | ProcessJobOperation::Poll | ProcessJobOperation::Wait => {
+                "status operations require live_status support"
+            }
+            ProcessJobOperation::Log => "log requires log_cursor or bounded_log support",
+            ProcessJobOperation::Kill => "kill requires kill support",
+            ProcessJobOperation::Restart => "restart requires restart support",
+            ProcessJobOperation::WriteStdin | ProcessJobOperation::CloseStdin => "stdin requires stdin support",
+            ProcessJobOperation::Adopt => "adoption requires adoption support",
+            ProcessJobOperation::GarbageCollect => "gc requires garbage collection support",
+        })
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ProcessJobSafeCapabilityHints {
+    pub supports_kill: bool,
+    pub supports_restart: bool,
+    pub supports_stdin: bool,
+    pub supports_logs: bool,
+    pub supports_resource_limits: bool,
+}
+
+impl ProcessJobSafeCapabilityHints {
+    #[must_use]
+    pub fn from_capabilities(capabilities: &ProcessJobBackendCapabilities) -> Self {
+        Self {
+            supports_kill: capabilities.supports_kill,
+            supports_restart: capabilities.supports_restart,
+            supports_stdin: capabilities.supports_stdin,
+            supports_logs: capabilities.supports_log_cursor || capabilities.supports_log_range,
+            supports_resource_limits: capabilities.supports_resource_limits,
+        }
+    }
+
+    #[must_use]
+    pub fn for_backend(backend: ProcessJobBackendKind) -> Self {
+        Self::from_capabilities(&ProcessJobBackendCapabilities::for_backend(backend))
+    }
+}
+
 impl ProcessJobCallerScope {
     #[must_use]
     pub fn matches_owner(&self, owner: &ProcessJobOwnerScope) -> bool {
@@ -373,6 +570,32 @@ mod tests {
             .label(),
             "backend-unavailable(missing)"
         );
+    }
+
+    #[test]
+    fn backend_capabilities_advertise_supported_operations() {
+        let native = ProcessJobBackendCapabilities::native();
+        assert!(native.supports_operation(ProcessJobOperation::Start));
+        assert!(native.supports_operation(ProcessJobOperation::WriteStdin));
+        assert_eq!(native.unsupported_detail(ProcessJobOperation::Start), None);
+
+        let pueue = ProcessJobBackendCapabilities::pueue();
+        assert!(pueue.supports_operation(ProcessJobOperation::Log));
+        assert!(!pueue.supports_operation(ProcessJobOperation::WriteStdin));
+        assert_eq!(pueue.unsupported_detail(ProcessJobOperation::WriteStdin), Some("stdin requires stdin support"));
+
+        let unavailable = ProcessJobBackendCapabilities::unavailable(ProcessJobBackendKind::Systemd, "missing");
+        assert!(!unavailable.supports_operation(ProcessJobOperation::List));
+    }
+
+    #[test]
+    fn safe_capability_hints_project_non_sensitive_booleans() {
+        let hints = ProcessJobSafeCapabilityHints::for_backend(ProcessJobBackendKind::Pueue);
+        assert!(hints.supports_kill);
+        assert!(hints.supports_restart);
+        assert!(!hints.supports_stdin);
+        assert!(hints.supports_logs);
+        assert!(!hints.supports_resource_limits);
     }
 
     #[test]

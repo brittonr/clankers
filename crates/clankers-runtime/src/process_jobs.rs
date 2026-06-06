@@ -31,11 +31,13 @@ pub const PROCESS_JOB_MAX_SAFE_PREVIEW_CHARS: usize = 160;
 pub const PROCESS_JOB_MAX_SAFE_EXCERPT_CHARS: usize = 512;
 pub const PROCESS_JOB_MAX_SAFE_METADATA_VALUE_CHARS: usize = 128;
 
+pub use clankers_tool_host::process_jobs::BackendCapabilities;
+pub use clankers_tool_host::process_jobs::BackendRef;
 pub use clankers_tool_host::process_jobs::PROCESS_JOB_PROFILE_METADATA_NAME;
 pub use clankers_tool_host::process_jobs::PROCESS_JOB_PROFILE_METADATA_POLICY;
 pub use clankers_tool_host::process_jobs::PROCESS_JOB_PROFILE_METADATA_SCHEMA_VERSION;
 pub use clankers_tool_host::process_jobs::PROCESS_JOB_PROFILE_METADATA_SOURCE;
-pub use clankers_tool_host::process_jobs::BackendRef;
+pub use clankers_tool_host::process_jobs::ProcessJobBackendCapabilities;
 pub use clankers_tool_host::process_jobs::ProcessJobBackendKind;
 pub use clankers_tool_host::process_jobs::ProcessJobCallerScope;
 pub use clankers_tool_host::process_jobs::ProcessJobCapabilitySet;
@@ -47,6 +49,7 @@ pub use clankers_tool_host::process_jobs::ProcessJobOperation;
 pub use clankers_tool_host::process_jobs::ProcessJobOwnerScope;
 pub use clankers_tool_host::process_jobs::ProcessJobProfileReceiptMetadata;
 pub use clankers_tool_host::process_jobs::ProcessJobResourcePolicy;
+pub use clankers_tool_host::process_jobs::ProcessJobSafeCapabilityHints;
 pub use clankers_tool_host::process_jobs::ProcessJobStatus;
 pub use clankers_tool_host::process_jobs::native_process_job_admission_decision;
 
@@ -1617,33 +1620,6 @@ impl Default for ProcessJobProjectionBounds {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct ProcessJobSafeCapabilityHints {
-    pub supports_kill: bool,
-    pub supports_restart: bool,
-    pub supports_stdin: bool,
-    pub supports_logs: bool,
-    pub supports_resource_limits: bool,
-}
-
-impl ProcessJobSafeCapabilityHints {
-    #[must_use]
-    pub fn from_capabilities(capabilities: &ProcessJobBackendCapabilities) -> Self {
-        Self {
-            supports_kill: capabilities.supports_kill,
-            supports_restart: capabilities.supports_restart,
-            supports_stdin: capabilities.supports_stdin,
-            supports_logs: capabilities.supports_log_cursor || capabilities.supports_log_range,
-            supports_resource_limits: capabilities.supports_resource_limits,
-        }
-    }
-
-    #[must_use]
-    pub fn for_backend(backend: ProcessJobBackendKind) -> Self {
-        Self::from_capabilities(&ProcessJobBackendCapabilities::for_backend(backend))
-    }
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ProcessJobProjectionItem {
     pub id: ProcessJobId,
     pub backend: ProcessJobBackendKind,
@@ -1724,177 +1700,19 @@ pub fn project_process_job_list(
     }
 }
 
-/// Backend capability descriptor used before dispatching mutations.
-#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
-pub struct ProcessJobBackendCapabilities {
-    pub backend: Option<ProcessJobBackendKind>,
-    pub supports_shell: bool,
-    pub supports_direct_exec: bool,
-    pub supports_stdin: bool,
-    pub supports_restart: bool,
-    pub supports_kill: bool,
-    pub supports_kill_tree: bool,
-    pub supports_control_group: bool,
-    pub supports_adopt: bool,
-    #[serde(default)]
-    pub supports_garbage_collect: bool,
-    pub supports_resource_limits: bool,
-    pub supports_log_cursor: bool,
-    pub supports_log_range: bool,
-    pub supports_queueing: bool,
-    pub supports_priority: bool,
-    pub supports_dependencies: bool,
-    pub supports_live_status: bool,
-    pub supports_completion_notifications: bool,
-    pub supports_readiness_watch: bool,
-    pub durable_across_daemon_restart: bool,
-    pub unavailable_reason: Option<String>,
+/// Runtime receipt projection retained as a compatibility extension over backend capability DTOs.
+pub trait ProcessJobBackendCapabilitiesReceiptExt {
+    #[must_use]
+    fn unsupported_receipt(
+        &self,
+        operation: ProcessJobOperation,
+        id: Option<ProcessJobId>,
+        message: impl Into<String>,
+    ) -> ProcessJobReceipt;
 }
 
-/// Short alias used by Cairn and service-layer callers for the process/job backend matrix.
-pub type BackendCapabilities = ProcessJobBackendCapabilities;
-
-impl ProcessJobBackendCapabilities {
-    #[must_use]
-    pub fn native() -> Self {
-        Self {
-            backend: Some(ProcessJobBackendKind::Native),
-            supports_shell: true,
-            supports_direct_exec: true,
-            supports_stdin: true,
-            supports_restart: true,
-            supports_kill: true,
-            supports_kill_tree: true,
-            supports_control_group: true,
-            supports_adopt: true,
-            supports_garbage_collect: true,
-            supports_resource_limits: false,
-            supports_log_cursor: true,
-            supports_log_range: true,
-            supports_queueing: false,
-            supports_priority: false,
-            supports_dependencies: false,
-            supports_live_status: true,
-            supports_completion_notifications: true,
-            supports_readiness_watch: true,
-            durable_across_daemon_restart: false,
-            unavailable_reason: None,
-        }
-    }
-
-    #[must_use]
-    pub fn pueue() -> Self {
-        Self {
-            backend: Some(ProcessJobBackendKind::Pueue),
-            supports_shell: true,
-            supports_direct_exec: true,
-            supports_stdin: false,
-            supports_restart: true,
-            supports_kill: true,
-            supports_kill_tree: false,
-            supports_control_group: false,
-            supports_adopt: true,
-            supports_garbage_collect: false,
-            supports_resource_limits: false,
-            supports_log_cursor: true,
-            supports_log_range: true,
-            supports_queueing: true,
-            supports_priority: true,
-            supports_dependencies: true,
-            supports_live_status: true,
-            supports_completion_notifications: true,
-            supports_readiness_watch: false,
-            durable_across_daemon_restart: true,
-            unavailable_reason: None,
-        }
-    }
-
-    #[must_use]
-    pub fn systemd() -> Self {
-        Self {
-            backend: Some(ProcessJobBackendKind::Systemd),
-            supports_shell: true,
-            supports_direct_exec: true,
-            supports_stdin: false,
-            supports_restart: true,
-            supports_kill: true,
-            supports_kill_tree: true,
-            supports_control_group: true,
-            supports_adopt: true,
-            supports_garbage_collect: false,
-            supports_resource_limits: true,
-            supports_log_cursor: true,
-            supports_log_range: true,
-            supports_queueing: false,
-            supports_priority: false,
-            supports_dependencies: false,
-            supports_live_status: true,
-            supports_completion_notifications: true,
-            supports_readiness_watch: true,
-            durable_across_daemon_restart: true,
-            unavailable_reason: None,
-        }
-    }
-
-    #[must_use]
-    pub fn unavailable(backend: ProcessJobBackendKind, reason: impl Into<String>) -> Self {
-        Self {
-            backend: Some(backend),
-            unavailable_reason: Some(reason.into()),
-            ..Self::default()
-        }
-    }
-
-    #[must_use]
-    pub fn for_backend(backend: ProcessJobBackendKind) -> Self {
-        match backend {
-            ProcessJobBackendKind::Native => Self::native(),
-            ProcessJobBackendKind::Pueue => Self::pueue(),
-            ProcessJobBackendKind::Systemd => Self::systemd(),
-            ProcessJobBackendKind::Unknown => Self::default(),
-        }
-    }
-
-    #[must_use]
-    pub fn supports_operation(&self, operation: ProcessJobOperation) -> bool {
-        if self.unavailable_reason.is_some() {
-            return false;
-        }
-        match operation {
-            ProcessJobOperation::Start => self.supports_shell || self.supports_direct_exec,
-            ProcessJobOperation::List | ProcessJobOperation::Poll | ProcessJobOperation::Wait => {
-                self.supports_live_status
-            }
-            ProcessJobOperation::Log => self.supports_log_cursor || self.supports_log_range,
-            ProcessJobOperation::Kill => self.supports_kill,
-            ProcessJobOperation::Restart => self.supports_restart,
-            ProcessJobOperation::WriteStdin | ProcessJobOperation::CloseStdin => self.supports_stdin,
-            ProcessJobOperation::Adopt => self.supports_adopt,
-            ProcessJobOperation::GarbageCollect => self.supports_garbage_collect,
-        }
-    }
-
-    #[must_use]
-    pub fn unsupported_detail(&self, operation: ProcessJobOperation) -> Option<&'static str> {
-        if self.supports_operation(operation) {
-            return None;
-        }
-        Some(match operation {
-            ProcessJobOperation::Start => "start requires shell or direct_exec support",
-            ProcessJobOperation::List | ProcessJobOperation::Poll | ProcessJobOperation::Wait => {
-                "status operations require live_status support"
-            }
-            ProcessJobOperation::Log => "log requires log_cursor or bounded_log support",
-            ProcessJobOperation::Kill => "kill requires kill support",
-            ProcessJobOperation::Restart => "restart requires restart support",
-            ProcessJobOperation::WriteStdin | ProcessJobOperation::CloseStdin => "stdin requires stdin support",
-            ProcessJobOperation::Adopt => "adoption requires adoption support",
-            ProcessJobOperation::GarbageCollect => "gc requires garbage collection support",
-        })
-    }
-
-    #[must_use]
-    pub fn unsupported_receipt(
+impl ProcessJobBackendCapabilitiesReceiptExt for ProcessJobBackendCapabilities {
+    fn unsupported_receipt(
         &self,
         operation: ProcessJobOperation,
         id: Option<ProcessJobId>,
