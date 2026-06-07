@@ -444,7 +444,7 @@
     },
     "most_shared_dto_crates": [
       {
-        "dependent_count": 16,
+        "dependent_count": 17,
         "dependents": [
           "clanker-router",
           "clanker-tui-types",
@@ -456,6 +456,7 @@
           "clankers-engine",
           "clankers-engine-host",
           "clankers-model-selection",
+          "clankers-plugin",
           "clankers-procmon",
           "clankers-provider",
           "clankers-runtime",
@@ -467,11 +468,10 @@
         "package": "clanker-message"
       },
       {
-        "dependent_count": 4,
+        "dependent_count": 3,
         "dependents": [
           "clankers",
           "clankers-config",
-          "clankers-plugin",
           "clankers-tui"
         ],
         "owner": "shared DTO/display/protocol type; inward dependencies require explicit edge justification",

@@ -14,8 +14,8 @@ serde_json = { workspace = true }
 tokio = { workspace = true }
 tracing = { workspace = true }
 libc = "0.2"
+clanker-message = { workspace = true }
 clankers-hooks = { version = "0.1.0", path = "../clankers-hooks" }
-clanker-tui-types = { workspace = true }
 
 [lints]
 workspace = true
