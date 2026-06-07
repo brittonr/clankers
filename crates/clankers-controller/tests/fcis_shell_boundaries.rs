@@ -502,12 +502,11 @@ const AGENT_TURN_ENGINE_RETRY_FORBIDDEN_PATHS: [&str; 3] = [
     "RETRY_BACKOFF_BASE_SECONDS",
     "RETRY_BACKOFF_EXPONENT_STEP",
 ];
-const AGENT_TURN_SHELL_CONCERN_REQUIRED_PATHS: [&str; 5] = [
+const AGENT_TURN_SHELL_CONCERN_REQUIRED_PATHS: [&str; 4] = [
     "check_model_switch",
     "update_usage_tracking",
     "stream_model_request",
     "execute_tools_parallel_with_substrate",
-    "clankers_hooks::HookPipeline",
 ];
 const AGENT_TURN_TRANSCRIPT_FILE: &str = "crates/clankers-agent/src/turn/transcript.rs";
 const AGENT_TURN_TRANSCRIPT_REQUIRED_PATHS: [&str; 2] = ["AgentEvent::TurnStart", "AgentEvent::TurnEnd"];

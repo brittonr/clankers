@@ -3,7 +3,6 @@
 //! Maintains a global deny-list of paths that tools should never read or write.
 
 use std::path::PathBuf;
-use std::sync::OnceLock;
 
 /// Paths resolved relative to `$HOME` that no tool should ever touch.
 static SENSITIVE_PATHS: &[&str] = &[
@@ -107,17 +106,12 @@ impl PathPolicy {
     }
 }
 
-static POLICY: OnceLock<PathPolicy> = OnceLock::new();
+/// Initialize the path policy compatibility hook.
+pub fn init_policy() {}
 
-/// Initialize the global path policy. Call once at startup.
-pub fn init_policy() {
-    let _ = POLICY.set(PathPolicy::new());
-}
-
-/// Check a path against the global policy.
-/// Returns `None` (allowed) if the policy hasn't been initialized.
+/// Check a path against the standard policy.
 pub fn check_path(raw_path: &str) -> Option<String> {
-    POLICY.get().and_then(|policy| policy.check(raw_path))
+    PathPolicy::new().check(raw_path)
 }
 
 #[cfg(test)]

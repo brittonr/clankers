@@ -3,6 +3,7 @@
 ## Corrections
 | Date | Source | What Went Wrong | What To Do Instead |
 |------|--------|----------------|-------------------|
+| 2026-06-07 | self | Ran the FCIS boundary rail after a config display-dependency commit and found stale boundary anchors/global-singleton leakage that should have been caught before push | Include the focused FCIS rail in dependency-drain validation before committing when touching agent/runtime boundary seams. |
 | 2026-06-07 | self | Typed `status_result` instead of `status-result` in a reused Steel process helper, causing a FreeIdentifier failure before the Cairn gate ran | Copy the known-good process helper exactly; avoid hand-editing variable names inside validation snippets. |
 | 2026-06-07 | self | Resumed from a compacted handoff and started live edits/validation before re-reading the always-on napkin | Even when the summary says the napkin was previously read, read `.agent/napkin.md` again before the first repo edit or command in the live turn. |
 | 2026-06-07 | self | Added `dirs = { workspace = true }` / `tempfile = { workspace = true }` to `clankers-tool-host` even though those names are not in `[workspace.dependencies]`, repeating an existing warning | Check root `[workspace.dependencies]` before using `workspace = true`; otherwise use explicit versions already present elsewhere in the root manifest. |
