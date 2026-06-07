@@ -11,6 +11,18 @@ use super::event_projection::daemon_event_to_tui_event;
 
 pub(crate) const MAX_DAEMON_EVENTS_PER_DRAIN: usize = 64;
 
+fn plugin_summary_to_tui(summary: &clankers_protocol::PluginSummary) -> clanker_tui_types::PluginSummary {
+    clanker_tui_types::PluginSummary {
+        name: summary.name.clone(),
+        version: summary.version.clone(),
+        state: summary.state.clone(),
+        tools: summary.tools.clone(),
+        permissions: summary.permissions.clone(),
+        kind: summary.kind.clone(),
+        last_error: summary.last_error.clone(),
+    }
+}
+
 /// Drain available DaemonEvents from the client and apply them to App state.
 pub(crate) fn drain_daemon_events(
     app: &mut App,
@@ -285,7 +297,7 @@ pub(crate) fn process_daemon_event(
             });
         }
         DaemonEvent::PluginList { plugins } => {
-            app.daemon_plugins = Some(plugins.clone());
+            app.daemon_plugins = Some(plugins.iter().map(plugin_summary_to_tui).collect());
             // Display plugin list when it arrives (in response to /plugin)
             if plugins.is_empty() {
                 app.push_system("No plugins loaded.".to_string(), false);

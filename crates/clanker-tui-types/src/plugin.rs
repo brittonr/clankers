@@ -88,6 +88,20 @@ fn default_one() -> u16 {
     1
 }
 
+/// Summary of a daemon/plugin runtime entry for display surfaces.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct PluginSummary {
+    pub name: String,
+    pub version: String,
+    pub state: String,
+    pub tools: Vec<String>,
+    pub permissions: Vec<String>,
+    #[serde(default = "default_none_string")]
+    pub kind: Option<String>,
+    #[serde(default = "default_none_string")]
+    pub last_error: Option<String>,
+}
+
 /// State for all plugin-contributed UI elements.
 #[derive(Debug, Default, Clone)]
 pub struct PluginUiState {

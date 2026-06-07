@@ -217,7 +217,7 @@ pub struct App {
     pub completion_source: Box<dyn clanker_tui_types::CompletionSource>,
     pub plugin_ui: PluginUiState,
     /// Plugin summaries from the daemon (populated via DaemonEvent::PluginList).
-    pub daemon_plugins: Option<Vec<clankers_protocol::PluginSummary>>,
+    pub daemon_plugins: Option<Vec<clanker_tui_types::PluginSummary>>,
     pub panels: super::panel::PanelManager,
     pub context_gauge: super::components::context_gauge::ContextGauge,
     pub git_status: super::components::git_status::GitStatus,

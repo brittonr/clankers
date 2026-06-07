@@ -478,11 +478,10 @@
         "package": "clanker-tui-types"
       },
       {
-        "dependent_count": 3,
+        "dependent_count": 2,
         "dependents": [
           "clankers",
-          "clankers-controller",
-          "clankers-tui"
+          "clankers-controller"
         ],
         "owner": "shared DTO/display/protocol type; inward dependencies require explicit edge justification",
         "package": "clankers-protocol"

@@ -1954,7 +1954,6 @@ dependencies = [
  "chrono",
  "clanker-tui-types",
  "clankers-autoresearch",
- "clankers-protocol",
  "crossterm",
  "git2",
  "image",
