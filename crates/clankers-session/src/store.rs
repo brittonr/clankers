@@ -6,9 +6,6 @@ use std::io::Write;
 use std::path::Path;
 use std::path::PathBuf;
 
-use clanker_message::Content;
-use clanker_message::transcript::AgentMessage;
-
 use super::entry::SessionEntry;
 use crate::error::Result;
 use crate::error::session_err;
@@ -208,122 +205,9 @@ pub struct SessionSummary {
 
 /// Read session summary (header + first user message) without loading all entries.
 ///
-/// Supports both `.automerge` and `.jsonl` files.
+/// Supports both `.automerge` and `.jsonl` files through the format owner.
 pub fn read_session_summary(path: &Path) -> Option<SessionSummary> {
-    if path.extension().is_some_and(|ext| ext == "automerge") {
-        return read_session_summary_automerge(path);
-    }
-    read_session_summary_jsonl(path)
-}
-
-fn read_session_summary_automerge(path: &Path) -> Option<SessionSummary> {
-    let doc = crate::automerge_store::load_document(path).ok()?;
-    let header = crate::automerge_store::read_header(&doc).ok()?;
-    let messages = crate::automerge_store::read_messages(&doc).ok()?;
-
-    let message_count = messages.len();
-    let first_user_text = messages.iter().find_map(|m| {
-        if let AgentMessage::User(ref u) = m.message {
-            let text: String = u
-                .content
-                .iter()
-                .filter_map(|c| {
-                    if let Content::Text { text } = c {
-                        Some(text.as_str())
-                    } else {
-                        None
-                    }
-                })
-                .collect::<Vec<_>>()
-                .join(" ");
-            if text.is_empty() {
-                None
-            } else if text.len() > 80 {
-                Some(format!("{}…", &text[..80]))
-            } else {
-                Some(text)
-            }
-        } else {
-            None
-        }
-    });
-
-    Some(SessionSummary {
-        session_id: header.session_id,
-        cwd: header.cwd,
-        model: header.model,
-        created_at: header.created_at,
-        message_count,
-        first_user_message: first_user_text,
-        file_path: path.to_path_buf(),
-    })
-}
-
-#[cfg_attr(
-    dylint_lib = "tigerstyle",
-    allow(
-        nested_conditionals,
-        reason = "complex control flow — extracting helpers would obscure logic"
-    )
-)]
-fn read_session_summary_jsonl(path: &Path) -> Option<SessionSummary> {
-    let file = std::fs::File::open(path).ok()?;
-    let reader = std::io::BufReader::new(file);
-
-    let mut header: Option<super::entry::HeaderEntry> = None;
-    let mut first_user_text: Option<String> = None;
-    let mut message_count: usize = 0;
-
-    for line in reader.lines() {
-        let line = line.ok()?;
-        if line.trim().is_empty() {
-            continue;
-        }
-        if let Ok(entry) = serde_json::from_str::<SessionEntry>(&line) {
-            match entry {
-                SessionEntry::Header(h) => header = Some(h),
-                SessionEntry::Message(m) => {
-                    message_count += 1;
-                    if first_user_text.is_none()
-                        && let AgentMessage::User(ref u) = m.message
-                    {
-                        let text: String = u
-                            .content
-                            .iter()
-                            .filter_map(|c| {
-                                if let Content::Text { text } = c {
-                                    Some(text.as_str())
-                                } else {
-                                    None
-                                }
-                            })
-                            .collect::<Vec<_>>()
-                            .join(" ");
-                        if !text.is_empty() {
-                            let preview = if text.len() > 80 {
-                                format!("{}…", &text[..80])
-                            } else {
-                                text
-                            };
-                            first_user_text = Some(preview);
-                        }
-                    }
-                }
-                _ => {}
-            }
-        }
-    }
-
-    let h = header?;
-    Some(SessionSummary {
-        session_id: h.session_id,
-        cwd: h.cwd,
-        model: h.model,
-        created_at: h.created_at,
-        message_count,
-        first_user_message: first_user_text,
-        file_path: path.to_path_buf(),
-    })
+    crate::session_format::read_summary(path)
 }
 
 /// Import a session file into the sessions directory.
@@ -331,30 +215,11 @@ fn read_session_summary_jsonl(path: &Path) -> Option<SessionSummary> {
 /// Supports both `.automerge` and `.jsonl` formats. JSONL files are imported
 /// as-is (can be migrated later). Automerge files are copied directly.
 pub fn import_session(sessions_dir: &Path, source: &Path) -> Result<PathBuf> {
-    let is_automerge = source.extension().is_some_and(|ext| ext == "automerge");
-
-    let header = if is_automerge {
-        let doc = crate::automerge_store::load_document(source)?;
-        crate::automerge_store::read_header(&doc)?
-    } else {
-        let entries = read_entries(source)?;
-        entries
-            .into_iter()
-            .find_map(|e| if let SessionEntry::Header(h) = e { Some(h) } else { None })
-            .ok_or_else(|| crate::error::SessionError {
-                message: "Import file has no header entry".into(),
-            })?
-    };
-
-    let dest = if is_automerge {
-        session_file_path_automerge(sessions_dir, &header.cwd, &header.session_id)
-    } else {
-        session_file_path(sessions_dir, &header.cwd, &header.session_id)
-    };
+    let dest = crate::session_format::import_destination(sessions_dir, source)?;
 
     if dest.exists() {
         return Err(crate::error::SessionError {
-            message: format!("Session {} already exists at {}", header.session_id, dest.display()),
+            message: format!("Session already exists at {}", dest.display()),
         });
     }
 
@@ -386,6 +251,8 @@ pub fn find_session_by_id(sessions_dir: &Path, cwd: &str, partial_id: &str) -> O
 #[cfg(test)]
 mod tests {
     use chrono::Utc;
+    use clanker_message::Content;
+    use clanker_message::transcript::AgentMessage;
     use clanker_message::transcript::MessageId;
     use clanker_message::transcript::UserMessage;
     use clankers_artifacts::ArtifactHash;

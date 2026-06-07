@@ -11,18 +11,7 @@ pub(super) struct SystemdCliRunner;
 #[async_trait]
 impl SystemdRunner for SystemdCliRunner {
     async fn run(&self, program: &str, args: &[String]) -> Result<String, RuntimeError> {
-        let output = Command::new(program)
-            .args(args)
-            .output()
-            .await
-            .map_err(|e| RuntimeError::InvalidTool(format!("failed to execute {program}: {e}")))?;
-        if !output.status.success() {
-            let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
-            let stdout = String::from_utf8_lossy(&output.stdout).trim().to_string();
-            let message = if stderr.is_empty() { stdout } else { stderr };
-            return Err(RuntimeError::InvalidTool(format!("{program} {:?} failed: {message}", args)));
-        }
-        Ok(String::from_utf8_lossy(&output.stdout).to_string())
+        TokioProcessJobCommandRunner.run_command(program, args).await
     }
 }
 

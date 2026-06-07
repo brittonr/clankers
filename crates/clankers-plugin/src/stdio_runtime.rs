@@ -117,7 +117,7 @@ pub fn configure_stdio_runtime(manager: &Arc<Mutex<PluginManager>>, cwd: PathBuf
         warn!("Plugin manager mutex was poisoned while configuring stdio runtime, recovering");
         poisoned.into_inner()
     });
-    manager.stdio_bootstrap = Some(StdioBootstrapConfig { cwd, mode });
+    manager.stdio_runtime.bootstrap = Some(StdioBootstrapConfig { cwd, mode });
 }
 
 pub fn start_stdio_plugins(manager: &Arc<Mutex<PluginManager>>) {
@@ -157,7 +157,8 @@ pub async fn shutdown_plugin_runtime(manager: &Arc<Mutex<PluginManager>>, reason
             poisoned.into_inner()
         });
         manager
-            .stdio_supervisors
+            .stdio_runtime
+            .supervisors
             .iter()
             .map(|(name, handle)| (name.clone(), handle.clone()))
             .collect::<Vec<_>>()
@@ -180,7 +181,7 @@ pub async fn shutdown_plugin_runtime(manager: &Arc<Mutex<PluginManager>>, reason
     loop {
         let remaining = {
             let manager = manager.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
-            manager.stdio_supervisors.len()
+            manager.stdio_runtime.supervisors.len()
         };
         if remaining == 0 || tokio::time::Instant::now() >= deadline {
             break;
@@ -209,19 +210,23 @@ pub(crate) fn start_stdio_plugin(manager: &Arc<Mutex<PluginManager>>, name: &str
         if matches!(info.state, PluginState::Disabled | PluginState::Error(_)) {
             return Ok(());
         }
-        if manager.stdio_supervisors.contains_key(name) {
+        if manager.stdio_runtime.supervisors.contains_key(name) {
             return Ok(());
         }
         let bootstrap = manager
-            .stdio_bootstrap
+            .stdio_runtime
+            .bootstrap
             .clone()
             .ok_or_else(|| format!("stdio runtime not configured for plugin '{}'", name))?;
-        let run_id = manager.next_stdio_run_id;
-        manager.next_stdio_run_id += 1;
+        let run_id = manager.stdio_runtime.next_run_id;
+        manager.stdio_runtime.next_run_id += 1;
         manager.plugins.get_mut(name).expect("checked above").state = PluginState::Starting;
-        manager.stdio_live_state.remove(name);
+        manager.stdio_runtime.live_state.remove(name);
         let (command_tx, command_rx) = mpsc::unbounded_channel();
-        manager.stdio_supervisors.insert(name.to_string(), StdioSupervisorHandle { run_id, command_tx });
+        manager
+            .stdio_runtime
+            .supervisors
+            .insert(name.to_string(), StdioSupervisorHandle { run_id, command_tx });
         (bootstrap, run_id, command_rx)
     };
 
@@ -234,11 +239,11 @@ pub(crate) fn start_stdio_plugin(manager: &Arc<Mutex<PluginManager>>, name: &str
 }
 
 pub(crate) fn stop_stdio_plugin(manager: &mut PluginManager, name: &str, reason: &str, target_state: PluginState) {
-    let Some(handle) = manager.stdio_supervisors.remove(name) else {
+    let Some(handle) = manager.stdio_runtime.supervisors.remove(name) else {
         return;
     };
-    if manager.stdio_live_state.get(name).is_some_and(|state| state.run_id == handle.run_id) {
-        manager.stdio_live_state.remove(name);
+    if manager.stdio_runtime.live_state.get(name).is_some_and(|state| state.run_id == handle.run_id) {
+        manager.stdio_runtime.live_state.remove(name);
     }
     if let Some(info) = manager.plugins.get_mut(name) {
         info.state = target_state.clone();
@@ -258,19 +263,21 @@ pub(crate) fn stop_stdio_plugin(manager: &mut PluginManager, name: &str, reason:
 
 pub(crate) fn live_tools(manager: &PluginManager, name: &str) -> Vec<String> {
     manager
-        .stdio_live_state
+        .stdio_runtime
+        .live_state
         .get(name)
         .map(|state| state.tools.iter().map(|tool| tool.name.clone()).collect())
         .unwrap_or_default()
 }
 
 pub(crate) fn live_registered_tools(manager: &PluginManager, name: &str) -> Vec<RegisteredTool> {
-    manager.stdio_live_state.get(name).map(|state| state.tools.clone()).unwrap_or_default()
+    manager.stdio_runtime.live_state.get(name).map(|state| state.tools.clone()).unwrap_or_default()
 }
 
 pub(crate) fn live_event_subscriptions(manager: &PluginManager, name: &str) -> Vec<String> {
     manager
-        .stdio_live_state
+        .stdio_runtime
+        .live_state
         .get(name)
         .map(|state| state.event_subscriptions.clone())
         .unwrap_or_default()
@@ -292,7 +299,8 @@ pub fn send_stdio_event(
             return Err(format!("Plugin '{}' is not active (state: {:?})", plugin, info.state));
         }
         manager
-            .stdio_supervisors
+            .stdio_runtime
+            .supervisors
             .get(plugin)
             .cloned()
             .ok_or_else(|| format!("Plugin '{}' is not connected", plugin))?
@@ -309,7 +317,7 @@ pub fn send_stdio_event(
 
 pub fn drain_stdio_host_events(manager: &Arc<Mutex<PluginManager>>) -> Vec<StdioHostEvent> {
     let mut manager = manager.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
-    std::mem::take(&mut manager.stdio_host_events)
+    std::mem::take(&mut manager.stdio_runtime.host_events)
 }
 
 pub fn start_stdio_tool_call(
@@ -329,12 +337,13 @@ pub fn start_stdio_tool_call(
         if info.state != PluginState::Active {
             return Err(format!("Plugin '{}' is not active (state: {:?})", plugin, info.state));
         }
-        let tools = manager.stdio_live_state.get(plugin).map(|state| state.tools.as_slice()).unwrap_or(&[]);
+        let tools = manager.stdio_runtime.live_state.get(plugin).map(|state| state.tools.as_slice()).unwrap_or(&[]);
         if !tools.iter().any(|registered| registered.name == tool) {
             return Err(format!("Plugin '{}' has not registered tool '{}'", plugin, tool));
         }
         manager
-            .stdio_supervisors
+            .stdio_runtime
+            .supervisors
             .get(plugin)
             .cloned()
             .ok_or_else(|| format!("Plugin '{}' is not connected", plugin))?
@@ -361,7 +370,8 @@ pub fn cancel_stdio_tool_call(
     let handle = {
         let manager = manager.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
         manager
-            .stdio_supervisors
+            .stdio_runtime
+            .supervisors
             .get(plugin)
             .cloned()
             .ok_or_else(|| format!("Plugin '{}' is not connected", plugin))?
@@ -379,7 +389,8 @@ pub fn abandon_stdio_tool_call(manager: &Arc<Mutex<PluginManager>>, plugin: &str
     let handle = {
         let manager = manager.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
         manager
-            .stdio_supervisors
+            .stdio_runtime
+            .supervisors
             .get(plugin)
             .cloned()
             .ok_or_else(|| format!("Plugin '{}' is not connected", plugin))?
@@ -1063,7 +1074,7 @@ fn finish_pending_calls(pending_calls: &mut HashMap<String, PendingToolCall>, ev
 }
 
 fn tool_collision_owner(manager: &PluginManager, plugin_name: &str, tool_name: &str) -> Option<String> {
-    if manager.stdio_reserved_tool_names.contains(tool_name) {
+    if manager.stdio_runtime.reserved_tool_names.contains(tool_name) {
         return Some("built-in".to_string());
     }
 
@@ -1079,7 +1090,7 @@ fn tool_collision_owner(manager: &PluginManager, plugin_name: &str, tool_name: &
         }
     }
 
-    for (other_plugin, state) in &manager.stdio_live_state {
+    for (other_plugin, state) in &manager.stdio_runtime.live_state {
         if other_plugin == plugin_name {
             continue;
         }
@@ -1123,8 +1134,8 @@ fn queue_ui_actions(manager: &Arc<Mutex<PluginManager>>, name: &str, run_id: u64
     }
 
     let mut manager = manager.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
-    if manager.stdio_supervisors.get(name).is_some_and(|handle| handle.run_id == run_id) {
-        manager.stdio_host_events.extend(filtered.into_iter().map(StdioHostEvent::Ui));
+    if manager.stdio_runtime.supervisors.get(name).is_some_and(|handle| handle.run_id == run_id) {
+        manager.stdio_runtime.host_events.extend(filtered.into_iter().map(StdioHostEvent::Ui));
     }
 }
 
@@ -1134,8 +1145,8 @@ fn queue_display_message(manager: &Arc<Mutex<PluginManager>>, name: &str, run_id
     }
 
     let mut manager = manager.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
-    if manager.stdio_supervisors.get(name).is_some_and(|handle| handle.run_id == run_id) {
-        manager.stdio_host_events.push(StdioHostEvent::Display {
+    if manager.stdio_runtime.supervisors.get(name).is_some_and(|handle| handle.run_id == run_id) {
+        manager.stdio_runtime.host_events.push(StdioHostEvent::Display {
             plugin: name.to_string(),
             message,
         });
@@ -1156,7 +1167,12 @@ fn record_stderr_line(manager: &Arc<Mutex<PluginManager>>, name: &str, run_id: u
 
 fn enrich_reason_with_stderr(manager: &Arc<Mutex<PluginManager>>, name: &str, base: String) -> String {
     let manager = manager.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
-    let stderr_tail = manager.stdio_live_state.get(name).map(|state| state.stderr_tail.clone()).unwrap_or_default();
+    let stderr_tail = manager
+        .stdio_runtime
+        .live_state
+        .get(name)
+        .map(|state| state.stderr_tail.clone())
+        .unwrap_or_default();
     if stderr_tail.is_empty() {
         base
     } else {
@@ -1173,7 +1189,7 @@ fn set_plugin_state(manager: &Arc<Mutex<PluginManager>>, name: &str, state: Plug
 
 fn set_plugin_state_if_current(manager: &Arc<Mutex<PluginManager>>, name: &str, run_id: u64, state: PluginState) {
     let mut manager = manager.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
-    if manager.stdio_supervisors.get(name).is_some_and(|handle| handle.run_id == run_id)
+    if manager.stdio_runtime.supervisors.get(name).is_some_and(|handle| handle.run_id == run_id)
         && let Some(info) = manager.plugins.get_mut(name)
     {
         info.state = state;
@@ -1187,7 +1203,7 @@ fn set_plugin_state_if_current_or_absent(
     state: PluginState,
 ) {
     let mut manager = manager.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
-    let should_update = match manager.stdio_supervisors.get(name) {
+    let should_update = match manager.stdio_runtime.supervisors.get(name) {
         Some(handle) => handle.run_id == run_id,
         None => true,
     };
@@ -1197,7 +1213,7 @@ fn set_plugin_state_if_current_or_absent(
 }
 
 fn live_state_for_run<'a>(manager: &'a mut PluginManager, name: &str, run_id: u64) -> &'a mut StdioLiveState {
-    let state = manager.stdio_live_state.entry(name.to_string()).or_default();
+    let state = manager.stdio_runtime.live_state.entry(name.to_string()).or_default();
     if state.run_id != run_id {
         *state = StdioLiveState {
             run_id,
@@ -1209,15 +1225,15 @@ fn live_state_for_run<'a>(manager: &'a mut PluginManager, name: &str, run_id: u6
 
 fn clear_live_state_if_run(manager: &Arc<Mutex<PluginManager>>, name: &str, run_id: u64) {
     let mut manager = manager.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
-    if manager.stdio_live_state.get(name).is_some_and(|state| state.run_id == run_id) {
-        manager.stdio_live_state.remove(name);
+    if manager.stdio_runtime.live_state.get(name).is_some_and(|state| state.run_id == run_id) {
+        manager.stdio_runtime.live_state.remove(name);
     }
 }
 
 fn remove_supervisor_if_current(manager: &Arc<Mutex<PluginManager>>, name: &str, run_id: u64) {
     let mut manager = manager.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
-    if manager.stdio_supervisors.get(name).is_some_and(|handle| handle.run_id == run_id) {
-        manager.stdio_supervisors.remove(name);
+    if manager.stdio_runtime.supervisors.get(name).is_some_and(|handle| handle.run_id == run_id) {
+        manager.stdio_runtime.supervisors.remove(name);
     }
 }
 

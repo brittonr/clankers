@@ -28,6 +28,7 @@ pub mod error;
 pub mod export;
 pub mod ledger;
 pub mod merge;
+mod session_format;
 pub mod store;
 pub mod tree;
 
@@ -135,19 +136,9 @@ impl SessionManager {
     /// Legacy JSONL files are auto-migrated: an `.automerge` file is saved
     /// alongside and all subsequent writes go to it.
     pub fn open(file_path: PathBuf) -> Result<Self> {
-        let is_jsonl = file_path.extension().is_some_and(|ext| ext == "jsonl");
-
-        let (doc, file_path) = if is_jsonl {
-            // Legacy path: read JSONL, build Automerge doc, save alongside
-            let entries = store::read_entries(&file_path)?;
-            let mut doc = Self::build_doc_from_entries(&entries)?;
-            let automerge_path = file_path.with_extension("automerge");
-            automerge_store::save_document(&mut doc, &automerge_path)?;
-            (doc, automerge_path)
-        } else {
-            let doc = automerge_store::load_document(&file_path)?;
-            (doc, file_path)
-        };
+        let opened = session_format::open_as_automerge(file_path)?;
+        let doc = opened.doc;
+        let file_path = opened.file_path;
 
         let header = automerge_store::read_header(&doc)?;
         let messages = automerge_store::read_messages(&doc)?;
@@ -185,40 +176,6 @@ impl SessionManager {
             worktree_path: header.worktree_path,
             worktree_branch: header.worktree_branch,
         })
-    }
-
-    /// Build an Automerge doc from parsed JSONL entries (for migration).
-    fn build_doc_from_entries(entries: &[SessionEntry]) -> Result<AutoCommit> {
-        let header = entries
-            .iter()
-            .find_map(|e| {
-                if let SessionEntry::Header(h) = e {
-                    Some(h.clone())
-                } else {
-                    None
-                }
-            })
-            .ok_or_else(|| SessionError {
-                message: "No header entry".into(),
-            })?;
-
-        let mut doc = automerge_store::create_document(&header)?;
-
-        for entry in entries {
-            match entry {
-                SessionEntry::Message(m) => {
-                    automerge_store::put_message(&mut doc, m)?;
-                }
-                SessionEntry::Header(_) => {} // already handled
-                other => {
-                    if let Some(annotation) = AnnotationEntry::from_session_entry(other) {
-                        automerge_store::put_annotation(&mut doc, &annotation)?;
-                    }
-                }
-            }
-        }
-
-        Ok(doc)
     }
 
     /// Append a message to the session (skips if already persisted).

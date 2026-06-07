@@ -3,7 +3,9 @@
 //! All credential storage uses clanker-router's multi-provider auth store
 //! at `~/.config/clanker-router/auth.json`.
 
+use std::future::Future;
 use std::path::Path;
+use std::pin::Pin;
 
 use base64::Engine;
 use base64::engine::general_purpose::URL_SAFE_NO_PAD;
@@ -190,6 +192,57 @@ async fn refresh_openai_codex_token(refresh_token: &str) -> crate::error::Result
     })
 }
 
+type OAuthFlowFuture<'a> = Pin<Box<dyn Future<Output = crate::error::Result<OAuthCredentials>> + Send + 'a>>;
+
+trait OAuthProviderFlow: Sync {
+    fn provider_name(&self) -> &'static str;
+    fn build_auth_url(&self) -> crate::error::Result<(String, String)>;
+    fn exchange_code<'a>(&self, code: &'a str, state: &'a str, verifier: &'a str) -> OAuthFlowFuture<'a>;
+    fn refresh_token<'a>(&self, refresh_token: &'a str) -> OAuthFlowFuture<'a>;
+}
+
+struct AnthropicOAuthProviderFlow;
+struct OpenAiCodexOAuthProviderFlow;
+
+static ANTHROPIC_OAUTH_FLOW: AnthropicOAuthProviderFlow = AnthropicOAuthProviderFlow;
+static OPENAI_CODEX_OAUTH_FLOW: OpenAiCodexOAuthProviderFlow = OpenAiCodexOAuthProviderFlow;
+
+impl OAuthProviderFlow for AnthropicOAuthProviderFlow {
+    fn provider_name(&self) -> &'static str {
+        "anthropic"
+    }
+
+    fn build_auth_url(&self) -> crate::error::Result<(String, String)> {
+        Ok(clanker_router::oauth::build_auth_url())
+    }
+
+    fn exchange_code<'a>(&self, code: &'a str, state: &'a str, verifier: &'a str) -> OAuthFlowFuture<'a> {
+        Box::pin(async move { clanker_router::oauth::exchange_code(code, state, verifier).await.map_err(Into::into) })
+    }
+
+    fn refresh_token<'a>(&self, refresh_token: &'a str) -> OAuthFlowFuture<'a> {
+        Box::pin(async move { clanker_router::oauth::refresh_token(refresh_token).await.map_err(Into::into) })
+    }
+}
+
+impl OAuthProviderFlow for OpenAiCodexOAuthProviderFlow {
+    fn provider_name(&self) -> &'static str {
+        "openai-codex"
+    }
+
+    fn build_auth_url(&self) -> crate::error::Result<(String, String)> {
+        Ok(build_openai_codex_auth_url())
+    }
+
+    fn exchange_code<'a>(&self, code: &'a str, _state: &'a str, verifier: &'a str) -> OAuthFlowFuture<'a> {
+        Box::pin(async move { exchange_openai_codex_code(code, verifier).await })
+    }
+
+    fn refresh_token<'a>(&self, refresh_token: &'a str) -> OAuthFlowFuture<'a> {
+        Box::pin(async move { refresh_openai_codex_token(refresh_token).await })
+    }
+}
+
 /// Provider-aware OAuth driver selection.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum OAuthFlow {
@@ -198,11 +251,15 @@ pub enum OAuthFlow {
 }
 
 impl OAuthFlow {
-    pub fn provider_name(self) -> &'static str {
+    fn provider_flow(self) -> &'static dyn OAuthProviderFlow {
         match self {
-            Self::Anthropic => "anthropic",
-            Self::OpenAiCodex => "openai-codex",
+            Self::Anthropic => &ANTHROPIC_OAUTH_FLOW,
+            Self::OpenAiCodex => &OPENAI_CODEX_OAUTH_FLOW,
         }
+    }
+
+    pub fn provider_name(self) -> &'static str {
+        self.provider_flow().provider_name()
     }
 
     pub fn from_provider(provider: Option<&str>) -> crate::error::Result<Self> {
@@ -216,10 +273,7 @@ impl OAuthFlow {
     }
 
     pub fn build_auth_url(self) -> crate::error::Result<(String, String)> {
-        match self {
-            Self::Anthropic => Ok(clanker_router::oauth::build_auth_url()),
-            Self::OpenAiCodex => Ok(build_openai_codex_auth_url()),
-        }
+        self.provider_flow().build_auth_url()
     }
 
     pub async fn exchange_code(
@@ -228,20 +282,11 @@ impl OAuthFlow {
         state: &str,
         verifier: &str,
     ) -> crate::error::Result<OAuthCredentials> {
-        match self {
-            Self::Anthropic => clanker_router::oauth::exchange_code(code, state, verifier).await.map_err(Into::into),
-            Self::OpenAiCodex => {
-                let _ = state;
-                exchange_openai_codex_code(code, verifier).await
-            }
-        }
+        self.provider_flow().exchange_code(code, state, verifier).await
     }
 
     pub async fn refresh_token(self, refresh_token: &str) -> crate::error::Result<OAuthCredentials> {
-        match self {
-            Self::Anthropic => clanker_router::oauth::refresh_token(refresh_token).await.map_err(Into::into),
-            Self::OpenAiCodex => refresh_openai_codex_token(refresh_token).await,
-        }
+        self.provider_flow().refresh_token(refresh_token).await
     }
 }
 

@@ -11,18 +11,7 @@ pub(super) struct PueueCliRunner;
 #[async_trait]
 impl PueueRunner for PueueCliRunner {
     async fn run(&self, args: &[String]) -> Result<String, RuntimeError> {
-        let output = Command::new("pueue")
-            .args(args)
-            .output()
-            .await
-            .map_err(|e| RuntimeError::InvalidTool(format!("failed to execute pueue: {e}")))?;
-        if !output.status.success() {
-            let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
-            let stdout = String::from_utf8_lossy(&output.stdout).trim().to_string();
-            let message = if stderr.is_empty() { stdout } else { stderr };
-            return Err(RuntimeError::InvalidTool(format!("pueue {:?} failed: {message}", args)));
-        }
-        Ok(String::from_utf8_lossy(&output.stdout).to_string())
+        TokioProcessJobCommandRunner.run_command("pueue", args).await
     }
 }
 

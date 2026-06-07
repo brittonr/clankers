@@ -37,6 +37,7 @@ pub mod stdio_runtime;
 pub mod ui;
 
 mod restricted_sandbox;
+mod runtime;
 
 #[cfg(test)]
 #[path = "sandbox_tests.rs"]
@@ -123,37 +124,54 @@ impl PluginInfo {
     }
 }
 
-/// Plugin manager with WASM execution
+#[derive(Default)]
+pub(crate) struct ExtismRuntimeState {
+    /// Loaded WASM plugin instances (behind Mutex because extism::Plugin is not Send)
+    pub(crate) instances: HashMap<String, Mutex<extism::Plugin>>,
+}
+
+pub(crate) struct StdioRuntimeState {
+    pub(crate) reserved_tool_names: HashSet<String>,
+    pub(crate) next_run_id: u64,
+    pub(crate) bootstrap: Option<stdio_runtime::StdioBootstrapConfig>,
+    pub(crate) supervisors: HashMap<String, stdio_runtime::StdioSupervisorHandle>,
+    pub(crate) live_state: HashMap<String, stdio_runtime::StdioLiveState>,
+    pub(crate) host_events: Vec<stdio_runtime::StdioHostEvent>,
+}
+
+impl Default for StdioRuntimeState {
+    fn default() -> Self {
+        Self {
+            reserved_tool_names: HashSet::new(),
+            next_run_id: 1,
+            bootstrap: None,
+            supervisors: HashMap::new(),
+            live_state: HashMap::new(),
+            host_events: Vec::new(),
+        }
+    }
+}
+
+/// Plugin manager with runtime-specific execution behind runtime state owners.
 pub struct PluginManager {
     plugins: HashMap<String, PluginInfo>,
-    /// Loaded WASM plugin instances (behind Mutex because extism::Plugin is not Send)
-    instances: HashMap<String, Mutex<extism::Plugin>>,
+    extism_runtime: ExtismRuntimeState,
     global_dir: PathBuf,
     project_dir: Option<PathBuf>,
     /// Additional directories to scan for plugins
     extra_dirs: Vec<PathBuf>,
-    stdio_reserved_tool_names: HashSet<String>,
-    next_stdio_run_id: u64,
-    stdio_bootstrap: Option<stdio_runtime::StdioBootstrapConfig>,
-    stdio_supervisors: HashMap<String, stdio_runtime::StdioSupervisorHandle>,
-    stdio_live_state: HashMap<String, stdio_runtime::StdioLiveState>,
-    stdio_host_events: Vec<stdio_runtime::StdioHostEvent>,
+    stdio_runtime: StdioRuntimeState,
 }
 
 impl PluginManager {
     pub fn new(global_dir: PathBuf, project_dir: Option<PathBuf>) -> Self {
         Self {
             plugins: HashMap::new(),
-            instances: HashMap::new(),
+            extism_runtime: ExtismRuntimeState::default(),
             global_dir,
             project_dir,
             extra_dirs: Vec::new(),
-            stdio_reserved_tool_names: HashSet::new(),
-            next_stdio_run_id: 1,
-            stdio_bootstrap: None,
-            stdio_supervisors: HashMap::new(),
-            stdio_live_state: HashMap::new(),
-            stdio_host_events: Vec::new(),
+            stdio_runtime: StdioRuntimeState::default(),
         }
     }
 
@@ -163,7 +181,7 @@ impl PluginManager {
     }
 
     pub fn set_stdio_reserved_tool_names(&mut self, names: impl IntoIterator<Item = String>) {
-        self.stdio_reserved_tool_names = names.into_iter().collect();
+        self.stdio_runtime.reserved_tool_names = names.into_iter().collect();
     }
 
     /// Discover plugins from directories
@@ -223,7 +241,7 @@ impl PluginManager {
 
         match extism::Plugin::new(manifest, [], true) {
             Ok(plugin) => {
-                self.instances.insert(name.to_string(), Mutex::new(plugin));
+                self.extism_runtime.instances.insert(name.to_string(), Mutex::new(plugin));
                 if let Some(info) = self.plugins.get_mut(name) {
                     info.state = PluginState::Active;
                 }
@@ -244,7 +262,8 @@ impl PluginManager {
     /// Recovers from poisoned mutexes (e.g. if a previous call panicked)
     /// and isolates plugin errors so one bad plugin can't take down others.
     pub fn call_plugin(&self, name: &str, function: &str, input: &str) -> Result<String, String> {
-        let instance = self.instances.get(name).ok_or_else(|| format!("Plugin '{}' not loaded", name))?;
+        let instance =
+            self.extism_runtime.instances.get(name).ok_or_else(|| format!("Plugin '{}' not loaded", name))?;
 
         let mut plugin = instance.lock().unwrap_or_else(|poisoned| {
             tracing::warn!("Plugin '{}' mutex was poisoned, recovering", name);
@@ -263,7 +282,11 @@ impl PluginManager {
 
     /// Check if a plugin has a specific function
     pub fn has_function(&self, name: &str, function: &str) -> bool {
-        self.instances.get(name).and_then(|i| i.lock().ok()).is_some_and(|p| p.function_exists(function))
+        self.extism_runtime
+            .instances
+            .get(name)
+            .and_then(|i| i.lock().ok())
+            .is_some_and(|p| p.function_exists(function))
     }
 
     /// Get a loaded plugin's info
@@ -288,44 +311,31 @@ impl PluginManager {
     /// Disable a plugin (unload runtime, set state to Disabled).
     pub fn disable(&mut self, name: &str) -> Result<(), String> {
         let kind = self.plugins.get(name).ok_or_else(|| format!("Plugin '{}' not found", name))?.manifest.kind.clone();
-        self.instances.remove(name);
-        if kind == manifest::PluginKind::Stdio {
-            stdio_runtime::stop_stdio_plugin(self, name, "plugin disabled", PluginState::Disabled);
-        } else if let Some(info) = self.plugins.get_mut(name) {
-            info.state = PluginState::Disabled;
-        }
-        Ok(())
+        runtime::plugin_runtime_for_kind(&kind).disable(self, name)
     }
 
     /// Enable a previously disabled plugin (reload its runtime).
     pub fn enable(&mut self, name: &str) -> Result<(), String> {
+        self.enable_with_runtime_action(name).map(|_| ())
+    }
+
+    fn enable_with_runtime_action(&mut self, name: &str) -> Result<runtime::PluginRuntimeAfterGuardDrop, String> {
         let info = self.plugins.get(name).ok_or_else(|| format!("Plugin '{}' not found", name))?;
         if info.state != PluginState::Disabled {
             return Err(format!("Plugin '{}' is not disabled (state: {:?})", name, info.state));
         }
-        if info.manifest.kind == manifest::PluginKind::Stdio {
-            if let Some(info) = self.plugins.get_mut(name) {
-                info.state = PluginState::Loaded;
-            }
-            Ok(())
-        } else {
-            self.load_wasm(name)
-        }
+        let kind = info.manifest.kind.clone();
+        runtime::plugin_runtime_for_kind(&kind).enable(self, name)
     }
 
     /// Reload a plugin (unload + re-load runtime).
     pub fn reload(&mut self, name: &str) -> Result<(), String> {
+        self.reload_with_runtime_action(name).map(|_| ())
+    }
+
+    fn reload_with_runtime_action(&mut self, name: &str) -> Result<runtime::PluginRuntimeAfterGuardDrop, String> {
         let kind = self.plugins.get(name).ok_or_else(|| format!("Plugin '{}' not found", name))?.manifest.kind.clone();
-        self.instances.remove(name);
-        if kind == manifest::PluginKind::Stdio {
-            stdio_runtime::stop_stdio_plugin(self, name, "plugin reload", PluginState::Loaded);
-            if let Some(info) = self.plugins.get_mut(name) {
-                info.state = PluginState::Loaded;
-            }
-            Ok(())
-        } else {
-            self.load_wasm(name)
-        }
+        runtime::plugin_runtime_for_kind(&kind).reload(self, name)
     }
 
     /// Reload all non-disabled plugins.
@@ -357,7 +367,7 @@ impl PluginManager {
 
     /// Inject a pre-built WASM plugin instance (for testing).
     pub fn inject_instance(&mut self, name: String, plugin: extism::Plugin) {
-        self.instances.insert(name, Mutex::new(plugin));
+        self.extism_runtime.instances.insert(name, Mutex::new(plugin));
     }
 
     /// Get mutable access to a plugin's info (for testing state overrides).
@@ -388,31 +398,19 @@ impl PluginManager {
 }
 
 pub fn enable_plugin(manager: &std::sync::Arc<Mutex<PluginManager>>, name: &str) -> Result<(), String> {
-    let kind = {
+    let action = {
         let mut guard = manager.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
-        let kind = guard.get(name).ok_or_else(|| format!("Plugin '{}' not found", name))?.manifest.kind.clone();
-        guard.enable(name)?;
-        kind
+        guard.enable_with_runtime_action(name)?
     };
-
-    if kind == manifest::PluginKind::Stdio {
-        stdio_runtime::start_stdio_plugin(manager, name)?;
-    }
-    Ok(())
+    action.run(manager, name)
 }
 
 pub fn reload_plugin(manager: &std::sync::Arc<Mutex<PluginManager>>, name: &str) -> Result<(), String> {
-    let kind = {
+    let action = {
         let mut guard = manager.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
-        let kind = guard.get(name).ok_or_else(|| format!("Plugin '{}' not found", name))?.manifest.kind.clone();
-        guard.reload(name)?;
-        kind
+        guard.reload_with_runtime_action(name)?
     };
-
-    if kind == manifest::PluginKind::Stdio {
-        stdio_runtime::start_stdio_plugin(manager, name)?;
-    }
-    Ok(())
+    action.run(manager, name)
 }
 
 pub fn reload_all_plugins(manager: &std::sync::Arc<Mutex<PluginManager>>) {

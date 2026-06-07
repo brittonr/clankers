@@ -136,9 +136,10 @@ pub async fn run_remote_attach(
     };
 
     // Open an attach stream
-    let (mut send, mut recv) = conn.open_bi().await.map_err(|e| crate::error::Error::Provider {
+    let (send, recv) = conn.open_bi().await.map_err(|e| crate::error::Error::Provider {
         message: format!("Failed to open QUIC stream: {e}"),
     })?;
+    let mut stream = QuicBiStream { send, recv };
 
     // Send DaemonRequest::Attach as the first frame, then the normal
     // session protocol continues over the same stream.
@@ -147,10 +148,14 @@ pub async fn run_remote_attach(
     let request = clankers_protocol::DaemonRequest::Attach {
         handshake: handshake.clone(),
     };
-    quic_write_frame(&mut send, &request).await?;
+    frame::write_frame(&mut stream, &request)
+        .await
+        .map_err(|error| remote_frame_error("QUIC attach request write failed", error))?;
 
     // Read AttachResponse
-    let response: clankers_protocol::AttachResponse = quic_read_frame(&mut recv).await?;
+    let response: clankers_protocol::AttachResponse = frame::read_frame(&mut stream)
+        .await
+        .map_err(|error| remote_frame_error("QUIC attach response read failed", error))?;
     let resolved_session_id = match response {
         clankers_protocol::AttachResponse::Ok { session_id } => session_id,
         clankers_protocol::AttachResponse::Error { message } => {
@@ -171,7 +176,7 @@ pub async fn run_remote_attach(
     // and sent back SessionInfo. We need to skip the ClientAdapter handshake.
     //
     // Instead, we read the SessionInfo ourselves and feed events manually.
-    let (model_name, _session_hash) = match quic_read_frame::<DaemonEvent>(&mut recv).await {
+    let (model_name, _session_hash) = match frame::read_frame::<_, DaemonEvent>(&mut stream).await {
         Ok(DaemonEvent::SessionInfo {
             model,
             system_prompt_hash,
@@ -205,8 +210,7 @@ pub async fn run_remote_attach(
     //
     // Solution: build ClientAdapter manually from channels with a thin
     // adapter that reads/writes frames on the QUIC stream.
-    let bi = QuicBiStream { send, recv };
-    let client = build_quic_client_adapter(bi);
+    let client = build_quic_client_adapter(stream);
 
     // Replay history
     client.replay_history();
@@ -409,7 +413,8 @@ async fn try_quic_reconnect(
 
 /// Open a new bi-stream on a connection and perform the attach handshake.
 async fn try_quic_attach_stream(conn: &::iroh::endpoint::Connection, session_id: &str) -> Option<ClientAdapter> {
-    let (mut send, mut recv) = conn.open_bi().await.ok()?;
+    let (send, recv) = conn.open_bi().await.ok()?;
+    let mut stream = QuicBiStream { send, recv };
 
     let request = clankers_protocol::DaemonRequest::Attach {
         handshake: clankers_protocol::Handshake {
@@ -419,9 +424,9 @@ async fn try_quic_attach_stream(conn: &::iroh::endpoint::Connection, session_id:
             session_id: Some(session_id.to_string()),
         },
     };
-    quic_write_frame(&mut send, &request).await.ok()?;
+    frame::write_frame(&mut stream, &request).await.ok()?;
 
-    let response: clankers_protocol::AttachResponse = quic_read_frame(&mut recv).await.ok()?;
+    let response: clankers_protocol::AttachResponse = frame::read_frame(&mut stream).await.ok()?;
     match response {
         clankers_protocol::AttachResponse::Ok { .. } => {}
         clankers_protocol::AttachResponse::Error { message } => {
@@ -431,13 +436,12 @@ async fn try_quic_attach_stream(conn: &::iroh::endpoint::Connection, session_id:
     }
 
     // Read SessionInfo
-    match quic_read_frame::<DaemonEvent>(&mut recv).await {
+    match frame::read_frame::<_, DaemonEvent>(&mut stream).await {
         Ok(DaemonEvent::SessionInfo { .. }) => {}
         _ => return None,
     }
 
-    let bi = QuicBiStream { send, recv };
-    Some(build_quic_client_adapter(bi))
+    Some(build_quic_client_adapter(stream))
 }
 
 // ── Client adapter construction ─────────────────────────────────────────────
@@ -483,9 +487,10 @@ fn build_quic_client_adapter(stream: QuicBiStream) -> ClientAdapter {
 
 /// Create a new session on the remote daemon via a control stream.
 async fn create_remote_session(conn: &::iroh::endpoint::Connection, model: Option<String>) -> Result<String> {
-    let (mut send, mut recv) = conn.open_bi().await.map_err(|e| crate::error::Error::Provider {
+    let (send, recv) = conn.open_bi().await.map_err(|e| crate::error::Error::Provider {
         message: format!("Failed to open control stream: {e}"),
     })?;
+    let mut stream = QuicBiStream { send, recv };
 
     let request = clankers_protocol::DaemonRequest::Control {
         command: clankers_protocol::ControlCommand::CreateSession {
@@ -498,10 +503,14 @@ async fn create_remote_session(conn: &::iroh::endpoint::Connection, model: Optio
             thinking_level: None,
         },
     };
-    quic_write_frame(&mut send, &request).await?;
-    send.finish().ok();
+    frame::write_frame(&mut stream, &request)
+        .await
+        .map_err(|error| remote_frame_error("QUIC control request write failed", error))?;
+    stream.send.finish().ok();
 
-    let response: clankers_protocol::ControlResponse = quic_read_frame(&mut recv).await?;
+    let response: clankers_protocol::ControlResponse = frame::read_frame(&mut stream)
+        .await
+        .map_err(|error| remote_frame_error("QUIC control response read failed", error))?;
     match response {
         clankers_protocol::ControlResponse::Created { session_id, .. } => Ok(session_id),
         clankers_protocol::ControlResponse::Error { message } => Err(crate::error::Error::Provider {
@@ -515,38 +524,10 @@ async fn create_remote_session(conn: &::iroh::endpoint::Connection, model: Optio
 
 // ── QUIC frame helpers ──────────────────────────────────────────────────────
 
-async fn quic_write_frame<T: serde::Serialize>(send: &mut ::iroh::endpoint::SendStream, value: &T) -> Result<()> {
-    let data = serde_json::to_vec(value).map_err(|e| crate::error::Error::Provider {
-        message: format!("Serialize error: {e}"),
-    })?;
-    let len = (data.len() as u32).to_be_bytes();
-    send.write_all(&len).await.map_err(|e| crate::error::Error::Provider {
-        message: format!("QUIC write error: {e}"),
-    })?;
-    send.write_all(&data).await.map_err(|e| crate::error::Error::Provider {
-        message: format!("QUIC write error: {e}"),
-    })?;
-    Ok(())
-}
-
-async fn quic_read_frame<T: serde::de::DeserializeOwned>(recv: &mut ::iroh::endpoint::RecvStream) -> Result<T> {
-    let mut len_buf = [0u8; 4];
-    recv.read_exact(&mut len_buf).await.map_err(|e| crate::error::Error::Provider {
-        message: format!("QUIC read error: {e}"),
-    })?;
-    let len = usize::try_from(u32::from_be_bytes(len_buf)).unwrap_or(0);
-    if len > 10_000_000 {
-        return Err(crate::error::Error::Provider {
-            message: format!("Frame too large: {len}"),
-        });
+fn remote_frame_error(context: &str, error: frame::FrameError) -> crate::error::Error {
+    crate::error::Error::Provider {
+        message: format!("{context}: {error}"),
     }
-    let mut data = vec![0u8; len];
-    recv.read_exact(&mut data).await.map_err(|e| crate::error::Error::Provider {
-        message: format!("QUIC read error: {e}"),
-    })?;
-    serde_json::from_slice(&data).map_err(|e| crate::error::Error::Provider {
-        message: format!("Deserialize error: {e}"),
-    })
 }
 
 #[cfg(test)]
