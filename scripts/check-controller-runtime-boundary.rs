@@ -79,15 +79,25 @@ const CHECKS: &[SourceCheck] = &[
         forbidden: &[],
     },
     SourceCheck {
-        id: "projection-owner",
+        id: "controller-protocol-projection-owner",
         path: "crates/clankers-controller/src/convert.rs",
-        owner: "controller projection conversion module",
+        owner: "controller protocol projection conversion module",
         required: &[
             "agent_event_to_daemon_event",
             "semantic_event_to_daemon_event",
+            "semantic_event_to_json_value",
+        ],
+        forbidden: &["clanker_tui_types", "TuiEvent", "daemon_event_to_tui_event", "agent_message_to_tui_events"],
+    },
+    SourceCheck {
+        id: "attach-display-projection-owner",
+        path: "src/modes/attach/event_projection.rs",
+        owner: "attach display projection edge",
+        required: &[
             "daemon_event_to_tui_event",
-            "semantic_event_to_tui_event",
             "agent_message_to_tui_events",
+            "semantic_event_to_tui_event",
+            "use clanker_tui_types::TuiEvent",
         ],
         forbidden: &[],
     },

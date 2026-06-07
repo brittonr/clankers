@@ -64,6 +64,7 @@ const CONTROLLER_INPUT_TRANSLATION_FILES: [&str; 3] = [
     CONTROLLER_COMMAND_THINKING_FILE,
 ];
 const CONTROLLER_EVENT_TRANSLATION_FILE: &str = "crates/clankers-controller/src/convert.rs";
+const ATTACH_EVENT_PROJECTION_FILE: &str = "src/modes/attach/event_projection.rs";
 const CONTROLLER_EVENT_TRANSLATION_CALLER_FILE: &str = "crates/clankers-controller/src/event_processing.rs";
 const TRANSPORT_PROTOCOL_CONVERSION_FILE: &str = "crates/clankers-controller/src/transport_convert.rs";
 const TRANSPORT_PROTOCOL_FRAMING_FILES: [&str; 4] = [
@@ -175,10 +176,11 @@ const COMMAND_SEMANTIC_OUTPUT_REQUIRED_PATHS: [&str; 2] = [
     "SemanticErrorClass::InvalidInput",
 ];
 const CONVERT_SEMANTIC_OUTPUT_REQUIRED_PATHS: [&str; 2] = ["SemanticEvent::Error", "DaemonEvent::SystemMessage"];
-const EVENT_TRANSLATION_REQUIRED_FUNCTIONS: [&str; 3] = [
-    AGENT_EVENT_TO_DAEMON_FUNCTION,
+const EVENT_TRANSLATION_REQUIRED_FUNCTIONS: [&str; 1] = [AGENT_EVENT_TO_DAEMON_FUNCTION];
+const ATTACH_DISPLAY_PROJECTION_REQUIRED_FUNCTIONS: [&str; 3] = [
     DAEMON_EVENT_TO_TUI_FUNCTION,
     AGENT_MESSAGE_TO_TUI_FUNCTION,
+    "semantic_event_to_tui_event",
 ];
 const EVENT_TRANSLATION_REQUIRED_PATHS: [&str; 12] = [
     "DaemonEvent::ContentBlockStart",
@@ -2013,16 +2015,15 @@ fn controller_command_user_visible_error_projects_through_semantic_owner() {
 #[test]
 fn controller_output_and_event_translation_stays_centralized() {
     for relative_path in rust_source_files_under(CONTROLLER_SOURCE_DIR) {
-        if relative_path == CONTROLLER_EVENT_TRANSLATION_FILE {
-            continue;
-        }
-
         let paths = collect_non_test_paths(&relative_path);
         assert_segment_absent(&relative_path, &paths, TUI_EVENT_SEGMENT);
         assert_exact_path_absent(&relative_path, &paths, DAEMON_EVENT_TO_TUI_FUNCTION);
         assert_exact_path_absent(&relative_path, &paths, AGENT_MESSAGE_TO_TUI_FUNCTION);
         if relative_path != CONTROLLER_EVENT_TRANSLATION_CALLER_FILE {
             assert_exact_path_absent(&relative_path, &paths, AGENT_EVENT_TO_DAEMON_FUNCTION);
+        }
+        if relative_path == CONTROLLER_EVENT_TRANSLATION_FILE {
+            continue;
         }
         for translation_path in TRANSLATION_ONLY_DAEMON_EVENT_PATHS {
             assert_exact_path_absent(&relative_path, &paths, translation_path);
@@ -2038,9 +2039,22 @@ fn controller_output_and_event_translation_stays_centralized() {
         &EVENT_TRANSLATION_REQUIRED_FUNCTIONS,
     );
     assert!(
-        !find_paths_with_segment(&convert_paths, TUI_EVENT_SEGMENT).is_empty(),
-        "{} lost TuiEvent translation paths",
+        find_paths_with_segment(&convert_paths, TUI_EVENT_SEGMENT).is_empty(),
+        "{} must not own TuiEvent translation paths; attach display edge owns them",
         CONTROLLER_EVENT_TRANSLATION_FILE
+    );
+
+    let attach_projection_paths = collect_non_test_paths(ATTACH_EVENT_PROJECTION_FILE);
+    let attach_projection_function_names = collect_non_test_function_names(ATTACH_EVENT_PROJECTION_FILE);
+    assert_required_function_names_present(
+        ATTACH_EVENT_PROJECTION_FILE,
+        &attach_projection_function_names,
+        &ATTACH_DISPLAY_PROJECTION_REQUIRED_FUNCTIONS,
+    );
+    assert!(
+        !find_paths_with_segment(&attach_projection_paths, TUI_EVENT_SEGMENT).is_empty(),
+        "{} must own TuiEvent display projection paths",
+        ATTACH_EVENT_PROJECTION_FILE
     );
 
     let event_processing_paths = collect_non_test_paths(CONTROLLER_EVENT_TRANSLATION_CALLER_FILE);

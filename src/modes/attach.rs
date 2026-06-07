@@ -27,6 +27,7 @@ use crate::slash_commands;
 use crate::tui_config::load_theme;
 
 mod client_loop;
+mod event_projection;
 mod events;
 mod session;
 

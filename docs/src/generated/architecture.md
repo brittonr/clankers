@@ -15,17 +15,15 @@ Workspace crate dependencies (auto-extracted from Cargo.toml files).
 ```mermaid
 graph TD
     clanker-router --> clanker-message
+    clanker-tui-types --> clanker-message
     adapters --> clanker-message
     adapters --> engine
     adapters --> engine-host
     adapters --> tool-host
     agent --> clanker-loop
     agent --> clanker-message
-    agent --> clanker-router
-    agent --> clanker-tui-types
     agent --> adapters
     agent --> artifacts
-    agent --> config
     agent --> core
     agent --> db
     agent --> engine
@@ -39,6 +37,7 @@ graph TD
     agent --> skills
     agent --> tool-host
     agent --> util
+    config --> clanker-message
     config --> clanker-router
     config --> clanker-tui-types
     config --> agent-defs
@@ -47,7 +46,6 @@ graph TD
     config --> ucan
     controller --> clanker-loop
     controller --> clanker-message
-    controller --> clanker-tui-types
     controller --> agent
     controller --> config
     controller --> core
@@ -68,7 +66,6 @@ graph TD
     procmon --> clanker-tui-types
     provider --> clanker-message
     provider --> clanker-router
-    provider --> clanker-tui-types
     runtime --> clanker-message
     runtime --> artifacts
     runtime --> engine
@@ -93,7 +90,7 @@ graph TD
 
 | Crate | Lines | Tests | Description |
 |-------|------:|------:|-------------|
-| `clanker-tui-types` | 1833 | 14 |  |
+| `clanker-tui-types` | 1756 | 14 |  |
 | `tui` | 16869 | 284 | Terminal UI (ratatui + crossterm) |
 | `zellij` | 906 | 39 | Zellij integration and orchestration |
 | `tts` | 1286 | 49 | clankers-tts — Multi-provider text-to-speech router |
@@ -102,19 +99,19 @@ graph TD
 
 | Crate | Lines | Tests | Description |
 |-------|------:|------:|-------------|
-| `clanker-message` | 1296 | 27 |  |
-| `agent` | 12837 | 189 | Agent core — turn loop, event bus, tool interface, context management |
+| `clanker-message` | 1413 | 28 |  |
+| `agent` | 14222 | 195 | Agent core — turn loop, event bus, tool interface, context management |
 | `agent-defs` | 906 | 29 |  |
 | `core` | 1693 | 42 |  |
 | `engine` | 1966 | 34 | Host-facing reusable engine contracts for model/tool turn policy that compose alongside `clankers-core` through controller/agent adapter seams. |
-| `controller` | 10645 | 226 | Transport-agnostic session controller for agent orchestration. |
+| `controller` | 11552 | 233 | Transport-agnostic session controller for agent orchestration. |
 
 ### LLM routing
 
 | Crate | Lines | Tests | Description |
 |-------|------:|------:|-------------|
 | `clanker-router` | 21981 | 385 | clanker-router — Model router and auth gateway for LLM providers |
-| `provider` | 9435 | 177 | LLM provider abstraction |
+| `provider` | 9694 | 180 | LLM provider abstraction |
 | `model-selection` | 1524 | 49 | Multi-model routing policy |
 | `prompts` | 174 | 5 | Prompt templates Prompt template scanning and loading |
 
@@ -122,12 +119,12 @@ graph TD
 
 | Crate | Lines | Tests | Description |
 |-------|------:|------:|-------------|
-| `config` | 3163 | 74 | Configuration loading and path resolution for clankers. |
+| `config` | 3155 | 74 | Configuration loading and path resolution for clankers. |
 | `db` | 7161 | 212 | Embedded database (redb) for structured persistent storage. |
-| `hooks` | 1706 | 49 |  |
+| `hooks` | 1759 | 50 |  |
 | `nix` | 1279 | 61 |  |
 | `protocol` | 2247 | 79 | Wire protocol types for daemon-client communication. |
-| `session` | 5012 | 111 | Session persistence and tree management for agent conversations |
+| `session` | 5027 | 111 | Session persistence and tree management for agent conversations |
 
 ### Networking & security
 
@@ -142,7 +139,7 @@ graph TD
 | Crate | Lines | Tests | Description |
 |-------|------:|------:|-------------|
 | `clanker-plugin-sdk` | 534 | 0 | SDK for building [clankers](https://github.com/brittonr/clankers) WASM plugins. |
-| `plugin` | 3824 | 41 | Plugin system (Extism WASM) |
+| `plugin` | 3967 | 42 | Plugin system (Extism WASM) |
 | `skills` | 773 | 17 | Skills (markdown-based) |
 | `procmon` | 483 | 5 | Core process monitor for tracking child processes and resource usage. |
 
@@ -150,5 +147,5 @@ graph TD
 
 | Crate | Lines | Tests | Description |
 |-------|------:|------:|-------------|
-| `util` | 2496 | 86 | Shared utility functions for clankers. |
+| `util` | 2509 | 87 | Shared utility functions for clankers. |
 

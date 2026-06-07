@@ -11,13 +11,14 @@ const ERROR_EXIT: u8 = 1;
 const COMMAND: &str = "crates/clankers-controller/src/command.rs";
 const DOMAIN_EVENT: &str = "crates/clankers-controller/src/domain_event.rs";
 const CONVERT: &str = "crates/clankers-controller/src/convert.rs";
+const ATTACH_EVENT_PROJECTION: &str = "src/modes/attach/event_projection.rs";
 const CORE_EFFECTS: &str = "crates/clankers-controller/src/core_effects.rs";
 const EFFECT_INTERPRETATION: &str = "crates/clankers-controller/src/effect_interpretation.rs";
 const TRANSPORT_CONVERT: &str = "crates/clankers-controller/src/transport_convert.rs";
 
 const COMMAND_MARKERS: &[&str] = &[
-    "CoreInput::SetThinkingLevel",
-    "CoreInput::CycleThinkingLevel",
+    "RuntimeControlRequest::SetThinkingLevel",
+    "SessionCommand::CycleThinkingLevel",
     "CoreInput::SetDisabledTools",
     "CoreInput::PromptRequested",
     "CoreInput::PromptCompleted",
@@ -37,7 +38,13 @@ const DOMAIN_MARKERS: &[&str] = &[
 const CONVERT_MARKERS: &[&str] = &[
     "agent_event_to_domain_event(event).and_then",
     "pub fn semantic_event_to_daemon_event",
-    "pub fn daemon_event_to_tui_event",
+    "pub fn semantic_event_to_json_value",
+];
+
+const ATTACH_EVENT_PROJECTION_MARKERS: &[&str] = &[
+    "daemon_event_to_tui_event",
+    "agent_message_to_tui_events",
+    "use clanker_tui_types::TuiEvent",
 ];
 
 const CORE_EFFECT_MARKERS: &[&str] = &[
@@ -81,6 +88,7 @@ fn run() -> Result<(), String> {
     require_markers(COMMAND, COMMAND_MARKERS)?;
     require_markers(DOMAIN_EVENT, DOMAIN_MARKERS)?;
     require_markers(CONVERT, CONVERT_MARKERS)?;
+    require_markers(ATTACH_EVENT_PROJECTION, ATTACH_EVENT_PROJECTION_MARKERS)?;
     require_markers(CORE_EFFECTS, CORE_EFFECT_MARKERS)?;
     require_markers(EFFECT_INTERPRETATION, INTERPRET_MARKERS)?;
     require_markers(TRANSPORT_CONVERT, TRANSPORT_MARKERS)?;

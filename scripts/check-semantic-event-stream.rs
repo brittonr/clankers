@@ -23,6 +23,7 @@ const AGENT_EVENTS: &str = "crates/clankers-agent/src/events.rs";
 const RUNTIME_EVENTS: &str = "crates/clankers-runtime/src/events.rs";
 const CONTROLLER_DOMAIN: &str = "crates/clankers-controller/src/domain_event.rs";
 const CONTROLLER_CONVERT: &str = "crates/clankers-controller/src/convert.rs";
+const ATTACH_EVENT_PROJECTION: &str = "src/modes/attach/event_projection.rs";
 const RECEIPT_PATH: &str = "target/embedded-sdk-release/semantic-event-stream-receipt.json";
 
 const SEMANTIC_FORBIDDEN: &[&str] = &[
@@ -52,8 +53,8 @@ const REQUIRED_MARKERS: &[(&str, &str)] = &[
     (RUNTIME_EVENTS, "pub fn to_semantic_event"),
     (CONTROLLER_DOMAIN, "pub(crate) type ControllerDomainEvent = SemanticEvent"),
     (CONTROLLER_CONVERT, "semantic_event_to_daemon_event"),
-    (CONTROLLER_CONVERT, "semantic_event_to_tui_event"),
     (CONTROLLER_CONVERT, "semantic_event_to_json_value"),
+    (ATTACH_EVENT_PROJECTION, "semantic_event_to_tui_event"),
 ];
 
 fn main() -> ExitCode {
@@ -103,9 +104,19 @@ fn run() -> Result<(), String> {
             "-p",
             "clankers-controller",
             "--lib",
-            "semantic_event_projection_preserves_daemon_tui_and_json_shapes",
+            "semantic_event_projection_preserves_daemon_and_json_shapes",
         ],
-        "controller semantic edge projection fixture",
+        "controller semantic daemon/json projection fixture",
+    )?;
+    run_cargo_test(
+        [
+            "test",
+            "-p",
+            "clankers",
+            "--lib",
+            "semantic_event_to_tui_remains_attach_edge_projection",
+        ],
+        "attach semantic TUI projection fixture",
     )?;
     write_receipt()
 }

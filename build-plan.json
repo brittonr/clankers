@@ -1972,10 +1972,6 @@
           "externCrateName": "clanker_message"
         },
         {
-          "packageId": "path+file:///home/brittonr/git/clankers/crates/clanker-tui-types#0.1.0",
-          "externCrateName": "clanker_tui_types"
-        },
-        {
           "packageId": "path+file:///home/brittonr/git/clankers/crates/clankers-agent#0.1.0",
           "externCrateName": "clankers_agent"
         },

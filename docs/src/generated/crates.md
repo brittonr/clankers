@@ -69,7 +69,7 @@ trait RevocationStore
 
 ## clanker-message
 
-**1296** lines of Rust · **27** tests
+**1413** lines of Rust · **28** tests
 
 <details><summary>Public API</summary>
 
@@ -84,12 +84,14 @@ enum SemanticStopReason
 enum SemanticToolStatus
 enum StopReason
 enum StreamEvent
+enum ThinkingLevel
 enum ToolResultContent
 fn base64
 fn contains_secret_markers
 fn empty
 fn error
 fn finalize
+fn from_str_or_budget
 fn generate
 fn generate_id
 fn id
@@ -555,7 +557,9 @@ trait SseEventHandler
 
 ## clanker-tui-types
 
-**1833** lines of Rust · **14** tests
+**1756** lines of Rust · **14** tests
+
+**Workspace deps:** `clanker-message`
 
 <details><summary>Public API</summary>
 
@@ -580,34 +584,28 @@ enum ProgressKind
 enum RouterStatus
 enum SelectorAction
 enum SubagentEvent
-enum ThinkingLevel
 enum TuiEvent
 enum Widget
 fn all
 fn as_percentage
-fn budget_tokens
 fn bytes
 fn canonical_block_envelope_v1_bytes
 fn display_string
 fn emoji
 fn finalize_metadata
 fn finalized_block_hash
-fn from_budget
 fn from_name
 fn from_source
-fn from_str_or_budget
 fn gc_notifications
 fn has_content
 fn is_active
 fn is_complete
-fn is_enabled
 fn items
 fn label
 fn lines
 fn name
 fn new
 fn new_synthetic
-fn next
 fn parse_action
 fn percentage
 fn phase
@@ -716,18 +714,23 @@ struct ScriptedToolExecutor
 
 Agent core — turn loop, event bus, tool interface, context management
 
-**12837** lines of Rust · **189** tests
+**14222** lines of Rust · **195** tests
 
-**Workspace deps:** `clanker-loop`, `clanker-message`, `clanker-router`, `clanker-tui-types`, `clankers-adapters`, `clankers-artifacts`, `clankers-config`, `clankers-core`, `clankers-db`, `clankers-engine`, `clankers-engine-host`, `clankers-hooks`, `clankers-model-selection`, `clankers-procmon`, `clankers-prompts`, `clankers-provider`, `clankers-runtime`, `clankers-skills`, `clankers-tool-host`, `clankers-util`
+**Workspace deps:** `clanker-loop`, `clanker-message`, `clankers-adapters`, `clankers-artifacts`, `clankers-core`, `clankers-db`, `clankers-engine`, `clankers-engine-host`, `clankers-hooks`, `clankers-model-selection`, `clankers-procmon`, `clankers-prompts`, `clankers-provider`, `clankers-runtime`, `clankers-skills`, `clankers-tool-host`, `clankers-util`
 
 <details><summary>Public API</summary>
 
 ```
 enum AgentError
 enum AgentEvent
+enum AgentSteelTurnPlanningFallbackMode
+enum AgentSteelTurnPlanningRolloutStage
+enum AgentToolSteelSubstrateFallbackMode
+enum AgentToolSteelSubstrateRolloutStage
 enum AgentTurnExecutionPlanner
 enum CompactionStrategy
 enum InjectionMode
+enum ProgressKind
 enum SoulPromptSourceKind
 enum SoulPromptStatus
 enum SteelToolSubstrateActivationError
@@ -741,6 +744,7 @@ fn assemble_system_prompt_sections
 fn build
 fn build_context
 fn build_system_prompt
+fn bytes
 fn cancel_token
 fn check_model_switch_authorization
 fn check_prompt_authorization
@@ -767,16 +771,22 @@ fn empty
 fn event_kind
 fn event_sender
 fn feed
-fn from_settings
+fn from_policy_settings
+fn from_role_models
 fn hook_pipeline
 fn is_active
 fn is_retryable
 fn is_thinking_enabled
+fn items
 fn latest_compaction_summary
+fn lines
 fn messages
 fn model
 fn model_switch_slot
 fn new
+fn new_with_agent_settings
+fn percentage
+fn phase
 fn pop_last_exchange
 fn process_event_to_agent
 fn prompt
@@ -785,6 +795,7 @@ fn provider
 fn prune_tool_results
 fn reset_cancel
 fn reset_window
+fn resolve
 fn search_index
 fn seed_messages
 fn select_tail_by_budget
@@ -816,14 +827,15 @@ fn tool_definitions
 fn tools
 fn truncate_messages
 fn try_set_model
+fn uses_bundled_profile
+fn with_agent_model_roles
 fn with_capability_gate
 fn with_cost_tracker
 fn with_db
 fn with_hook_pipeline
 fn with_hooks
-fn with_model_roles
+fn with_message
 fn with_model_switch_slot
-fn with_paths
 fn with_routing_policy
 fn with_search_index
 fn with_session_id
@@ -831,19 +843,31 @@ fn with_thinking
 fn with_tools
 struct Agent
 struct AgentBuilder
+struct AgentBuilderConfig
 struct AgentContext
+struct AgentMemorySettings
+struct AgentModelRoles
+struct AgentSettings
+struct AgentSkillSettings
+struct AgentSteelTurnPlanningAuthorityGrantSettings
+struct AgentSteelTurnPlanningSettings
+struct AgentSystemPromptSettings
 struct AgentToolSteelSubstrateConfig
+struct AgentToolSteelSubstrateSettings
 struct AgentTurnPlanningOutcome
 struct AgentTurnSteelPlanningConfig
 struct AutoCompactConfig
+struct AutoCompactSettings
 struct CompactionResult
 struct ContextFile
 struct LegacyAgentToolExecutor
+struct PromptDiscoveryPaths
 struct PromptFeatures
 struct PromptResources
 struct SoulPromptAssembly
 struct SoulPromptMetadata
 struct ToolContext
+struct ToolProgress
 struct TtsrEngine
 struct TtsrFiring
 struct TtsrRule
@@ -1006,9 +1030,9 @@ struct RecordOutcome
 
 Configuration loading and path resolution for clankers.
 
-**3163** lines of Rust · **74** tests
+**3155** lines of Rust · **74** tests
 
-**Workspace deps:** `clanker-router`, `clanker-tui-types`, `clankers-agent-defs`, `clankers-hooks`, `clankers-model-selection`, `clankers-ucan`
+**Workspace deps:** `clanker-message`, `clanker-router`, `clanker-tui-types`, `clankers-agent-defs`, `clankers-hooks`, `clankers-model-selection`, `clankers-ucan`
 
 <details><summary>Public API</summary>
 
@@ -1097,9 +1121,9 @@ struct ThemeSelection
 
 Transport-agnostic session controller for agent orchestration.
 
-**10645** lines of Rust · **226** tests
+**11552** lines of Rust · **233** tests
 
-**Workspace deps:** `clanker-loop`, `clanker-message`, `clanker-tui-types`, `clankers-agent`, `clankers-config`, `clankers-core`, `clankers-db`, `clankers-engine`, `clankers-hooks`, `clankers-protocol`, `clankers-provider`, `clankers-session`
+**Workspace deps:** `clanker-loop`, `clanker-message`, `clankers-agent`, `clankers-config`, `clankers-core`, `clankers-db`, `clankers-engine`, `clankers-hooks`, `clankers-protocol`, `clankers-provider`, `clankers-session`
 
 <details><summary>Public API</summary>
 
@@ -1112,19 +1136,25 @@ enum ShellPromptCompletion
 fn abort
 fn ack_follow_up_dispatch
 fn agent_event_to_daemon_event
-fn agent_message_to_tui_events
 fn apply_control_with_runtime_adapter
+fn apply_controller_thinking_level
+fn apply_core_filtered_tools
+fn apply_runtime_control
 fn attach_error
 fn attach_ok
 fn avg_duration_ms
 fn bind_session_socket
 fn cancelled
 fn check_post_prompt
+fn check_prompt_authorization
+fn check_session_manage_authorization
 fn clamp_capabilities
 fn cleanup_socket_dir
 fn clear
 fn clear_auto_test
+fn clear_messages
 fn client_handshake
+fn compact_messages
 fn complete_dispatched_follow_up
 fn completed_count
 fn connect
@@ -1141,7 +1171,6 @@ fn control_status
 fn control_tree
 fn current_cancel_token
 fn current_tool_infos
-fn daemon_event_to_tui_event
 fn daemon_lock_path
 fn daemon_log_path
 fn daemon_status
@@ -1156,6 +1185,7 @@ fn from_channels
 fn handle_command
 fn handle_command_with_streaming_events
 fn has_active_loop
+fn image_count
 fn init_socket_dir
 fn into_summary
 fn is_busy
@@ -1167,6 +1197,7 @@ fn make_test_controller
 fn matrix_keys
 fn maybe_auto_test
 fn maybe_continue_loop
+fn messages
 fn metrics_mut
 fn metrics_summary
 fn model
@@ -1177,6 +1208,7 @@ fn observability_receipt
 fn pending_count
 fn pending_dispatched_follow_up_id
 fn pid_file_path
+fn pop_last_exchange
 fn process
 fn process_event
 fn prompt
@@ -1193,14 +1225,15 @@ fn register_key
 fn rejected
 fn remove_session
 fn replay_history
+fn reset_cancel
 fn respond
 fn run_control_socket
 fn run_session_socket
 fn run_session_socket_with_listener
 fn running_daemon_pid
+fn seed_messages
 fn semantic_event_to_daemon_event
 fn semantic_event_to_json_value
-fn semantic_event_to_tui_event
 fn send
 fn session_by_key
 fn session_id
@@ -1215,7 +1248,9 @@ fn set_model
 fn set_model_name
 fn set_search_index
 fn set_session_id
+fn set_system_prompt
 fn set_tool_rebuilder
+fn set_user_tool_filter
 fn shutdown
 fn signal_loop_break
 fn socket_dir
@@ -1224,18 +1259,29 @@ fn start_embedded_prompt_with_follow_up
 fn start_loop
 fn status
 fn stop_loop
+fn submit_prompt
+fn submit_prompt_with_event_sink
 fn submit_prompt_with_runtime_adapter
 fn succeeded
 fn summary
-fn sync_loop_from_tui
+fn sync_loop_status
+fn system_prompt
 fn take_outgoing
 fn take_pending
+fn text_only
 fn tool_blocked_event
+fn truncate_messages
 fn try_recv
+fn try_set_model
+fn with_images
+fn without_events
+struct AgentBackedRuntimeAdapter
+struct AgentRuntimePromptRequest
 struct AuditTracker
 struct ClientAdapter
 struct ConfirmStore
 struct ControllerConfig
+struct ControllerLoopStatus
 struct DaemonState
 struct FakeRuntimeAdapter
 struct LoopConfig
@@ -1553,7 +1599,7 @@ struct EngineTurnResult
 
 ## clankers-engine-host
 
-**2297** lines of Rust · **30** tests
+**2595** lines of Rust · **32** tests
 
 **Workspace deps:** `clanker-message`, `clankers-engine`, `clankers-tool-host`
 
@@ -1564,41 +1610,58 @@ enum HostAdapterComponent
 enum HostAdapterError
 enum HostStreamEvent
 enum ModelHostOutcome
+enum SessionLedgerEntry
+enum SessionLedgerError
+enum SessionLedgerRole
 enum StreamAccumulatorError
 enum UsageObservationKind
 fn cancel_turn_input
+fn engine_message_from_ledger_message
+fn engine_messages_from_ledger_messages
 fn failed
 fn finish
+fn ledger_entries_from_engine_messages
+fn ledger_message_from_engine_message
+fn ledger_messages_from_engine_messages
 fn message
 fn model_completed_input
 fn model_failed_input
 fn new
 fn push
+fn receipt
+fn replay
+fn replay_ledger_entries
 fn retry_ready_input
 fn run_engine_turn
+fn safe_message
+fn summary
+fn text
+fn text_summary
 fn tool_completed_input
 fn tool_failed_input
 fn tool_feedback_input
+fn unsupported
+fn usage
+fn with_prompt_id
 struct AdapterDiagnostic
-struct EngineCostObservation
-struct EngineHistoryRecord
-struct EngineHookObservation
-struct EnginePersistenceRecord
-struct EnginePromptBundle
 struct EngineRunReport
 struct EngineRunSeed
 struct HostAdapters
 struct ProviderStreamError
+struct SessionLedgerMessage
+struct SessionLedgerReceipt
+struct SessionLedgerRecord
+struct SessionLedgerReplay
+struct SessionLedgerReplayMetadata
+struct SessionLedgerSummary
+struct SessionLedgerUnsupported
+struct SessionLedgerUsage
 struct StreamAccumulator
 struct StreamFoldResult
 struct UsageObservation
 trait CancellationSource
-trait CostAccountingPort
 trait EngineEventSink
-trait HookPort
 trait ModelHost
-trait PersistencePort
-trait PromptHistoryPort
 trait RetrySleeper
 trait UsageObserver
 ```
@@ -1611,7 +1674,7 @@ trait UsageObserver
 
 ## clankers-hooks
 
-**1706** lines of Rust · **49** tests
+**1759** lines of Rust · **50** tests
 
 <details><summary>Public API</summary>
 
@@ -1833,7 +1896,7 @@ struct ParsedFlakeRef
 
 Plugin system (Extism WASM)
 
-**3824** lines of Rust · **41** tests
+**3967** lines of Rust · **42** tests
 
 **Workspace deps:** `clanker-tui-types`, `clankers-hooks`
 
@@ -2047,9 +2110,9 @@ struct ToolInfo
 
 LLM provider abstraction
 
-**9435** lines of Rust · **177** tests
+**9694** lines of Rust · **180** tests
 
-**Workspace deps:** `clanker-message`, `clanker-router`, `clanker-tui-types`
+**Workspace deps:** `clanker-message`, `clanker-router`
 
 <details><summary>Public API</summary>
 
@@ -2059,6 +2122,7 @@ enum EntitlementState
 enum FailoverReason
 enum OAuthFlow
 enum ProviderErrorKind
+enum ProviderRouterConcern
 fn auth_err
 fn auto_start_and_connect
 fn build_auth_url
@@ -2132,6 +2196,7 @@ struct FakeProvider
 struct PendingOAuthLogin
 struct ProviderAttempt
 struct ProviderError
+struct ProviderRouterConcernOwner
 struct RouterCompatAdapter
 struct RouterProvider
 struct RpcProvider
@@ -2149,7 +2214,7 @@ trait Provider
 
 Host-facing embedding facade for Clankers.
 
-**16330** lines of Rust · **173** tests
+**16411** lines of Rust · **186** tests
 
 **Workspace deps:** `clanker-message`, `clankers-artifacts`, `clankers-engine`, `clankers-engine-host`, `clankers-tool-host`
 
@@ -2178,23 +2243,9 @@ enum OrchestrationIssueCode
 enum OrchestrationPlanStatus
 enum OrchestrationPlannerKind
 enum OrchestrationRolloutStage
-enum ProcessJobBackendKind
-enum ProcessJobCwd
-enum ProcessJobErrorCode
 enum ProcessJobLifecycleBucket
 enum ProcessJobLogReconciliationState
-enum ProcessJobLogWriteDisposition
-enum ProcessJobNotificationKind
-enum ProcessJobOperation
-enum ProcessJobOwnerScope
-enum ProcessJobReceiptPayload
 enum ProcessJobReconciliationState
-enum ProcessJobRetentionClass
-enum ProcessJobRetentionEligibility
-enum ProcessJobStatus
-enum ProcessJobStream
-enum ProcessJobToolRequest
-enum ProcessJobToolResult
 enum ProjectProcessJobProfileSourcePrecedence
 enum ProjectProcessJobProfileValidationCode
 enum PromptSourceKind
@@ -2209,8 +2260,6 @@ enum RuntimeToolStatus
 enum RuntimeUsageObservationKind
 enum RustNativeFallbackStatus
 enum SessionEvent
-enum SessionLedgerEntry
-enum SessionLedgerRole
 enum SideEffectLevel
 enum SteelAmbientAccessKind
 enum SteelHostCallOutcome
@@ -2227,6 +2276,15 @@ enum SteelMutationRollbackReason
 enum SteelMutationRollbackStatus
 enum SteelMutationUcanExpiryStatus
 enum SteelMutationVerificationStatus
+enum SteelOrchestrationActivationDecision
+enum SteelOrchestrationMutationReason
+enum SteelOrchestrationMutationStatus
+enum SteelRepoEvolutionActivationReason
+enum SteelRepoEvolutionActivationStatus
+enum SteelRepoEvolutionFallbackMode
+enum SteelRepoEvolutionLoadError
+enum SteelRepoEvolutionPlanReason
+enum SteelRepoEvolutionPlanStatus
 enum SteelRuntimeReasonCode
 enum SteelRuntimeStatusCode
 enum SteelToolExecutorKind
@@ -2242,8 +2300,6 @@ enum ToolCollisionPolicy
 enum ToolStatus
 enum WasmToolExecutionStatus
 fn all
-fn allows_log_access
-fn allows_operation
 fn apply_steel_mutation_host_function
 fn approve
 fn as_str
@@ -2253,23 +2309,15 @@ fn assistant
 fn authorize_dynamic_runtime_action
 fn authorize_steel_mutation
 fn authorize_steel_turn_execution
-fn backend_unavailable
 fn body_hash
-fn bounded_log_reader
-fn bounded_watch_patterns
 fn build
 fn builder
 fn bytes
-fn can_access
 fn cancellation_adapter
 fn cancelled
-fn canonical_bytes
 fn capability_metadata
 fn class
-fn classify_summary
-fn classify_write
 fn collision_policy
-fn common
 fn comparison_default
 fn completed
 fn confirmation_broker
@@ -2280,8 +2328,8 @@ fn custom_tool
 fn default_deny
 fn default_effect_class
 fn default_enabled
+fn denied_hash_marker
 fn deny
-fn derive_id
 fn descriptors
 fn desktop_default
 fn disabled
@@ -2290,10 +2338,10 @@ fn disabled_tools
 fn effect_class
 fn effect_classes
 fn effect_request
-fn eligibility_for_summary
 fn embedding_safe
 fn empty
 fn evaluate_remote_dependency_sync
+fn evaluate_repo_evolution_plan
 fn evaluate_steel_request
 fn event_buffer
 fn event_observer
@@ -2301,66 +2349,48 @@ fn executed
 fn extension_runtime_tools
 fn failed
 fn failure
-fn for_backend
-fn for_start_request
 fn for_stream
-fn from_capabilities
 fn from_effect_result
 fn from_host
-fn from_identity_envelope
 fn from_json_str
-fn from_metadata
 fn from_static
-fn full_control
 fn full_replace
 fn headless_prompt_parity_fixture
 fn host_context_only
 fn in_memory
+fn inactive_repo_evolution_receipt
 fn initial_effect_handler_subset
 fn initial_subset_deny_by_default
 fn interrupt
-fn into_receipt
 fn into_summary_update
-fn into_tool_receipt
 fn is_allowed
-fn is_authorized
-fn is_blake3_native
-fn is_terminal
-fn label
 fn ledger_entries_from_engine_messages
 fn ledger_messages_from_engine_messages
-fn legacy
-fn matches_owner
-fn message
+fn load_repo_evolution_pack
 fn model_adapter
-fn native
 fn new
-fn observe_only
 fn omissions
-fn operation
 fn pack
 fn packs
 fn parse
 fn parse_steel_mutation_policy
-fn permission_denied
 fn persist_and_deliver_notification
 fn plan_tool_invocation_with_steel_or_fallback
 fn plan_turn_with_steel_or_fallback
 fn preflight_steel_mutation_host_function
+fn process_job_timestamp
 fn project_process_job_list
+fn promote_staged_orchestration_pack
+fn promote_staged_orchestration_pack_to_directory
 fn prompt_assembly
 fn prompt_source_service
-fn protects_active_state
-fn pueue
 fn pure
-fn raw_log_reader
 fn ready
 fn receipt
 fn receipt_hash
 fn reconcile_external_backend_reference
 fn reconcile_persisted_process_jobs
 fn reference_for
-fn refresh_summary
 fn replay
 fn replay_authorized_notifications
 fn replay_context
@@ -2376,6 +2406,8 @@ fn resume_session
 fn retry_adapter
 fn retryable
 fn reviewed
+fn rollback_orchestration_pack
+fn rollback_orchestration_pack_to_directory
 fn rollback_steel_mutation_host_function
 fn route_through_effect_handler
 fn run_confirmed_action
@@ -2384,15 +2416,9 @@ fn run_effect_fail_closed
 fn run_fake_steel_orchestration
 fn run_fake_wasm_tool_execution
 fn rust_native_turn_plan
-fn safe_command_preview
 fn safe_event_summary
-fn safe_identity_metadata
 fn safe_label
-fn safe_log_excerpt
 fn safe_message
-fn safe_metadata_value
-fn safe_notification_decision
-fn safe_notification_event
 fn services
 fn session_id
 fn set_disabled_tools
@@ -2400,20 +2426,16 @@ fn set_model
 fn shutdown
 fn skipped
 fn stable_action_key
-fn state_payload
+fn stage_orchestration_patch_after_isolated_apply
+fn stage_orchestration_patch_to_directory
 fn stateless
 fn steel_ambient_access_negative_fixtures
 fn steel_runtime_status
 fn steel_tool_plan_payload
 fn submit_prompt
 fn succeeded
-fn summary
-fn supports_operation
-fn systemd
 fn take_events
 fn terminal
-fn text
-fn text_summary
 fn to_effect_result
 fn to_json
 fn to_semantic_event
@@ -2421,16 +2443,13 @@ fn tool_adapter
 fn tool_catalog
 fn tool_result
 fn tools
-fn unavailable
 fn unavailable_in_core_crate
-fn unsupported
-fn unsupported_detail
-fn unsupported_receipt
-fn unsupported_with_detail
-fn usage
 fn usage_adapter
 fn user_prompt
 fn user_text
+fn validate_orchestration_patch_proposal
+fn validate_repo_evolution_pack_from_export
+fn validate_repo_evolution_pack_from_sources
 fn verify_observation
 fn with
 fn with_artifact_dependencies
@@ -2445,7 +2464,6 @@ fn with_input_schema_hash
 fn with_issuer
 fn with_metadata
 fn with_output_artifact
-fn with_prompt_id
 fn with_proof_references
 fn with_replay_status
 fn with_required_artifacts
@@ -2456,10 +2474,8 @@ fn with_session_capabilities
 fn with_source
 fn with_target_hash
 fn with_ucan_authorization
-struct AdoptProcessJobRequest
 struct AssembledPrompt
 struct AuthStoreAccessRequest
-struct BackendRef
 struct BasaltSteelContractEvidence
 struct ConfirmationDecision
 struct ConfirmationRequest
@@ -2489,15 +2505,12 @@ struct FailClosedConfirmationBroker
 struct FakeSteelOrchestrationProfile
 struct FakeSteelOrchestrationReceipt
 struct FakeSteelOrchestrationRequest
-struct GarbageCollectProcessJobsRequest
 struct HostContext
 struct InMemorySessionStore
-struct ListProcessJobsRequest
 struct ModelFailure
 struct ModelRequest
 struct ModelRequestMetadata
 struct ModelResponse
-struct MutateProcessJobRequest
 struct NativeProcessJobIdentity
 struct NativeProcessJobLogLayout
 struct NativeProcessJobObservation
@@ -2510,46 +2523,15 @@ struct OrchestrationCandidate
 struct OrchestrationDecision
 struct OrchestrationPlan
 struct OrchestrationPlanReceipt
-struct PollProcessJobRequest
-struct ProcessJobBackendCapabilities
 struct ProcessJobBackendStart
 struct ProcessJobBackendStatus
-struct ProcessJobCallerScope
-struct ProcessJobCapabilitySet
-struct ProcessJobError
-struct ProcessJobEventId
-struct ProcessJobFilter
-struct ProcessJobGarbageCollectionFailure
-struct ProcessJobGarbageCollectionReceipt
-struct ProcessJobId
-struct ProcessJobIdentityEnvelope
 struct ProcessJobListProjection
-struct ProcessJobLogChunk
-struct ProcessJobLogCursor
-struct ProcessJobLogOverflowPolicy
-struct ProcessJobLogRange
-struct ProcessJobLogRef
 struct ProcessJobLogRetentionPolicy
-struct ProcessJobNotificationDecision
-struct ProcessJobNotificationEvent
-struct ProcessJobNotificationObservation
-struct ProcessJobNotificationPolicy
 struct ProcessJobNotificationPolicyState
-struct ProcessJobProfileReceiptMetadata
 struct ProcessJobProjectionBounds
 struct ProcessJobProjectionItem
-struct ProcessJobReceipt
-struct ProcessJobReceiptCommon
 struct ProcessJobReconciliationOutcome
 struct ProcessJobReconciliationReport
-struct ProcessJobRedactionPolicy
-struct ProcessJobReleasedLogRef
-struct ProcessJobResourcePolicy
-struct ProcessJobRetentionMetadata
-struct ProcessJobRetentionPolicy
-struct ProcessJobSafeCapabilityHints
-struct ProcessJobSummary
-struct ProcessJobToolReceipt
 struct ProjectProcessJobProfile
 struct ProjectProcessJobProfileManifestSource
 struct ProjectProcessJobProfilePolicy
@@ -2571,7 +2553,6 @@ struct ProviderMessage
 struct ProviderModelFailure
 struct ProviderModelRequest
 struct ProviderModelResponse
-struct ReadProcessJobLogRequest
 struct RemoteArtifactEnvelope
 struct RemoteDependencyFailure
 struct RemoteDependencySyncReport
@@ -2587,21 +2568,11 @@ struct RuntimeToolResponse
 struct RuntimeUsageObservation
 struct SessionHandle
 struct SessionId
-struct SessionLedgerMessage
-struct SessionLedgerReceipt
-struct SessionLedgerRecord
-struct SessionLedgerReplay
-struct SessionLedgerReplayMetadata
-struct SessionLedgerSummary
-struct SessionLedgerUnsupported
-struct SessionLedgerUsage
 struct SessionOptions
 struct SessionRecord
 struct SkillResolution
 struct SkillResolutionRequest
 struct SkillSnippet
-struct StartProcessJobProfileRequest
-struct StartProcessJobRequest
 struct StaticEffectHandler
 struct StaticPromptSourceService
 struct SteelHostCallReceipt
@@ -2625,7 +2596,23 @@ struct SteelMutationUcanGrant
 struct SteelMutationUcanPolicy
 struct SteelMutationVerbPolicy
 struct SteelMutationVerificationReceipt
+struct SteelOrchestrationGateResult
+struct SteelOrchestrationMutationReceipt
+struct SteelOrchestrationPackState
+struct SteelOrchestrationPatchPayload
+struct SteelOrchestrationPatchProposal
 struct SteelOrchestrationProfile
+struct SteelOrchestrationRollbackReference
+struct SteelRepoEvolutionAction
+struct SteelRepoEvolutionActivationReceipt
+struct SteelRepoEvolutionBudgets
+struct SteelRepoEvolutionHostContract
+struct SteelRepoEvolutionPack
+struct SteelRepoEvolutionPackSources
+struct SteelRepoEvolutionPlan
+struct SteelRepoEvolutionPlanReceipt
+struct SteelRepoEvolutionScriptBinding
+struct SteelRepoEvolutionScriptReceipt
 struct SteelRuntimeProfile
 struct SteelRuntimeReceipt
 struct SteelRuntimeRequest
@@ -2650,11 +2637,9 @@ struct TurnPlanningInput
 struct UcanAuthorizationMetadata
 struct UnavailableRuntimeToolAdapter
 struct UnsupportedContextReference
-struct WaitProcessJobRequest
 struct WasmToolExecutionProfile
 struct WasmToolExecutionReceipt
 struct WasmToolExecutionRequest
-struct WriteProcessJobStdinRequest
 trait AuthService
 trait CacheStore
 trait CheckpointStore
@@ -2666,6 +2651,7 @@ trait ExtensionRuntimeService
 trait ModelAdapter
 trait PluginStore
 trait ProcessJobBackend
+trait ProcessJobBackendCapabilitiesReceiptExt
 trait ProcessJobLogStore
 trait ProcessJobNotificationPolicyEngine
 trait ProcessJobNotificationSink
@@ -2698,7 +2684,7 @@ trait SteelMutationVerifier
 
 Session persistence and tree management for agent conversations
 
-**5012** lines of Rust · **111** tests
+**5027** lines of Rust · **111** tests
 
 **Workspace deps:** `clanker-message`, `clankers-artifacts`
 
@@ -2874,7 +2860,7 @@ struct Skill
 
 Reusable tool execution contracts for engine-host runners.
 
-**744** lines of Rust · **12** tests
+**3047** lines of Rust · **33** tests
 
 **Workspace deps:** `clanker-message`, `clankers-engine`
 
@@ -2882,48 +2868,190 @@ Reusable tool execution contracts for engine-host runners.
 
 ```
 enum CapabilityDecision
+enum ProcessJobBackendKind
+enum ProcessJobCwd
+enum ProcessJobErrorCode
+enum ProcessJobLogWriteDisposition
+enum ProcessJobNotificationKind
+enum ProcessJobOperation
+enum ProcessJobOwnerScope
+enum ProcessJobReceiptPayload
+enum ProcessJobRetentionClass
+enum ProcessJobRetentionEligibility
+enum ProcessJobStatus
+enum ProcessJobStream
+enum ProcessJobToolRequest
+enum ProcessJobToolResult
+enum ToolHookDecision
+enum ToolHookPhase
 enum ToolHostError
 enum ToolHostOutcome
 enum ToolHostServiceKind
 enum ToolHostServiceStatus
 enum ToolProgressKind
+enum ToolRuntimePolicyDecision
+enum ToolRuntimePolicyKind
 fn active
+fn after
+fn allows_log_access
+fn allows_operation
 fn available
+fn backend_unavailable
+fn before
+fn bounded_log_reader
+fn bounded_watch_patterns
+fn can_access
 fn cancelled
+fn canonical_bytes
+fn classify_summary
+fn classify_write
+fn common
+fn derive_id
+fn eligibility_for_summary
 fn emit_progress
 fn empty
 fn ensure_allowed
 fn ensure_not_cancelled
 fn finish
+fn for_backend
+fn for_start_request
+fn from_capabilities
+fn from_identity_envelope
+fn from_metadata
+fn from_unix_seconds
+fn full_control
 fn get
+fn into_receipt
+fn into_tool_receipt
+fn is_authorized
 fn is_available
+fn is_blake3_native
+fn is_terminal
+fn label
+fn legacy
+fn matches_owner
+fn native
+fn native_process_job_admission_decision
 fn new
+fn observe_only
+fn operation
+fn permission_denied
+fn protects_active_state
+fn pueue
 fn push
+fn raw_log_reader
+fn refresh_summary
 fn require_service
+fn safe_command_preview
+fn safe_identity_metadata
+fn safe_log_excerpt
+fn safe_metadata_value
+fn safe_notification_decision
+fn safe_notification_event
+fn saturating_add_seconds
+fn state_payload
+fn summary
+fn supports_operation
+fn systemd
 fn tool_call_id
 fn unavailable
+fn unix_seconds
+fn unsupported
+fn unsupported_detail
+fn unsupported_with_detail
 fn with_cancellation
+fn with_cancellation_service
 fn with_capability
+fn with_capability_service
+fn with_content_type
+fn with_hook_service
 fn with_metadata
 fn with_progress_sink
+fn with_runtime_policy
+fn with_search_service
 fn with_service
 fn with_services
+fn with_storage_service
+struct AdoptProcessJobRequest
+struct BackendRef
+struct GarbageCollectProcessJobsRequest
+struct ListProcessJobsRequest
+struct MutateProcessJobRequest
 struct NullToolProgressSink
+struct PollProcessJobRequest
+struct ProcessJobBackendCapabilities
+struct ProcessJobCallerScope
+struct ProcessJobCapabilitySet
+struct ProcessJobError
+struct ProcessJobEventId
+struct ProcessJobFilter
+struct ProcessJobGarbageCollectionFailure
+struct ProcessJobGarbageCollectionReceipt
+struct ProcessJobId
+struct ProcessJobIdentityEnvelope
+struct ProcessJobLogChunk
+struct ProcessJobLogCursor
+struct ProcessJobLogOverflowPolicy
+struct ProcessJobLogRange
+struct ProcessJobLogRef
+struct ProcessJobNativeAdmissionDecision
+struct ProcessJobNativeAdmissionInput
+struct ProcessJobNotificationDecision
+struct ProcessJobNotificationEvent
+struct ProcessJobNotificationObservation
+struct ProcessJobNotificationPolicy
+struct ProcessJobProfileReceiptMetadata
+struct ProcessJobReceipt
+struct ProcessJobReceiptCommon
+struct ProcessJobRedactionPolicy
+struct ProcessJobReleasedLogRef
+struct ProcessJobResourcePolicy
+struct ProcessJobRetentionMetadata
+struct ProcessJobRetentionPolicy
+struct ProcessJobSafeCapabilityHints
+struct ProcessJobSummary
+struct ProcessJobTimestamp
+struct ProcessJobToolReceipt
+struct ProcessJobUnsupportedDetail
+struct ReadProcessJobLogRequest
+struct StartProcessJobProfileRequest
+struct StartProcessJobRequest
+struct ToolCapabilityRequest
 struct ToolDescriptor
+struct ToolHookRequest
 struct ToolHostServiceHandle
 struct ToolHostServices
 struct ToolInvocationCancellation
 struct ToolInvocationContext
 struct ToolOutputAccumulator
 struct ToolProgressEvent
+struct ToolRuntimePolicyRequest
+struct ToolSearchHit
+struct ToolSearchRequest
+struct ToolSearchResult
+struct ToolStorageKey
+struct ToolStorageReadRequest
+struct ToolStorageReadResult
+struct ToolStorageValue
+struct ToolStorageWriteRequest
+struct ToolStorageWriteResult
 struct ToolTruncationLimits
 struct ToolTruncationMetadata
+struct WaitProcessJobRequest
+struct WriteProcessJobStdinRequest
 trait CapabilityChecker
 trait NeutralToolExecutor
+trait ProcessJobNotificationRedactionTarget
+trait ToolCancellationService
+trait ToolCapabilityService
 trait ToolCatalog
 trait ToolExecutor
 trait ToolHook
+trait ToolHookService
 trait ToolProgressSink
+trait ToolRuntimePolicyService
+trait ToolSearchService
+trait ToolStorageService
 ```
 
 </details>
@@ -3517,7 +3645,7 @@ trait UcanAuthorizer
 
 Shared utility functions for clankers.
 
-**2496** lines of Rust · **86** tests
+**2509** lines of Rust · **87** tests
 
 **Workspace deps:** `clanker-message`, `clanker-tui-types`
 

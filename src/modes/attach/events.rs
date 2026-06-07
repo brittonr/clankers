@@ -1,5 +1,4 @@
 use clankers_controller::client::ClientAdapter;
-use clankers_controller::convert::daemon_event_to_tui_event;
 use clankers_protocol::DaemonEvent;
 use clankers_protocol::SessionCommand;
 use clankers_tui::app::App;
@@ -7,6 +6,8 @@ use clankers_tui::app::AppState;
 use tracing::debug;
 
 use super::commands::AttachParityTracker;
+use super::event_projection::agent_message_to_tui_events;
+use super::event_projection::daemon_event_to_tui_event;
 
 pub(crate) const MAX_DAEMON_EVENTS_PER_DRAIN: usize = 64;
 
@@ -186,7 +187,7 @@ pub(crate) fn process_daemon_event(
             if *is_replaying_history {
                 match serde_json::from_value::<clanker_message::transcript::AgentMessage>(block.clone()) {
                     Ok(msg) => {
-                        let events = clankers_controller::convert::agent_message_to_tui_events(&msg);
+                        let events = agent_message_to_tui_events(&msg);
                         for tui_event in &events {
                             app.handle_tui_event(tui_event);
                         }

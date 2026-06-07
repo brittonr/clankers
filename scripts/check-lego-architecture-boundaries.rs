@@ -68,6 +68,7 @@ const CONTROLLER_COMMAND_THINKING: &str = "crates/clankers-controller/src/comman
 const CONTROLLER_AUTO_TEST: &str = "crates/clankers-controller/src/auto_test.rs";
 const CONTROLLER_CORE_EFFECTS: &str = "crates/clankers-controller/src/core_effects.rs";
 const CONTROLLER_CONVERT: &str = "crates/clankers-controller/src/convert.rs";
+const ATTACH_EVENT_PROJECTION: &str = "src/modes/attach/event_projection.rs";
 const CONTROLLER_DOMAIN_EVENT: &str = "crates/clankers-controller/src/domain_event.rs";
 const CONTROLLER_EFFECT_INTERPRETATION: &str = "crates/clankers-controller/src/effect_interpretation.rs";
 const PROVIDER_ROUTER_BRIDGE: &str = "crates/clankers-provider/src/router_request_bridge.rs";
@@ -104,7 +105,6 @@ const CONTROLLER_CONCRETE_DEPS: &[&str] = &[
     "clankers-provider",
     "clankers-protocol",
     "clankers-session",
-    "clanker-tui-types",
 ];
 
 const DTO_PACKAGES: &[&str] = &["clanker-message", "clanker-tui-types", "clankers-protocol"];
@@ -456,7 +456,6 @@ fn controller_dependency_owner(target_crate: &str) -> Result<(&'static str, &'st
     match target_crate {
         "clanker-loop" => Ok(("loop state service", "crates/clankers-controller/src/loop_mode.rs", "loop policy remains in clanker-loop/core effects")),
         "clanker-message" => Ok(("shared semantic/message DTO", "crates/clankers-controller/src/convert.rs", "controller projects from SemanticEvent/message DTOs only")),
-        "clanker-tui-types" => Ok(("display sync compatibility", "crates/clankers-controller/src/auto_test.rs", "display state sync remains edge-only until moved behind neutral DTO")),
         "clankers-agent" => Ok(("daemon agent runtime adapter", "crates/clankers-controller/src/runtime_adapter.rs", "prompt/control execution moves behind ControllerRuntimeAdapter")),
         "clankers-config" => Ok(("controller config DTO", "crates/clankers-controller/src/config.rs", "configuration remains construction input only")),
         "clankers-core" => Ok(("pure control reducer", "crates/clankers-controller/src/command.rs", "core policy remains in clankers-core and interpretation seams")),
@@ -1388,8 +1387,10 @@ fn provider_router_bridge_signature() -> Result<Value, String> {
 fn controller_domain_event_signature() -> Result<Value, String> {
     let domain_event_file = read_rust_file(CONTROLLER_DOMAIN_EVENT)?;
     let convert_file = read_rust_file(CONTROLLER_CONVERT)?;
+    let attach_projection_file = read_rust_file(ATTACH_EVENT_PROJECTION)?;
     let domain_event = &domain_event_file.source;
     let convert = &convert_file.source;
+    let attach_projection = &attach_projection_file.source;
 
     require_rust_fn(
         &domain_event_file,
@@ -1416,10 +1417,17 @@ fn controller_domain_event_signature() -> Result<Value, String> {
         "semantic_event_to_daemon_event",
         "daemon projection is owned by semantic event edge adapter",
     )?;
-    require_rust_path(
-        &convert_file,
+    forbid_rust_path(&convert_file, "clanker_tui_types", "controller protocol projection must not own TUI DTOs")?;
+    forbid_rust_path(&convert_file, "TuiEvent", "controller protocol projection must not own TUI DTOs")?;
+    require_rust_fn(
+        &attach_projection_file,
         "semantic_event_to_tui_event",
-        "TUI projection is owned by semantic event edge adapter",
+        "TUI projection is owned by attach display edge adapter",
+    )?;
+    require_rust_fn(
+        &attach_projection_file,
+        "daemon_event_to_tui_event",
+        "daemon-to-TUI projection is owned by attach display edge adapter",
     )?;
 
     require_contains(
@@ -1458,14 +1466,24 @@ fn controller_domain_event_signature() -> Result<Value, String> {
     forbid_contains(domain_event, "clankers_protocol", "semantic event adapter protocol crate dependency")?;
     forbid_contains(domain_event, "clanker_tui_types", "semantic event adapter TUI crate dependency")?;
     require_contains(
+        attach_projection,
+        "use clanker_tui_types::TuiEvent",
+        "attach display projection owns TUI DTO construction",
+    )?;
+    require_contains(
         convert,
         "agent_event_to_domain_event(event).and_then(|event| semantic_event_to_daemon_event(&event))",
         "protocol projection delegates through semantic event seam",
     )?;
     require_contains(
         convert,
-        "semantic_event_projection_preserves_daemon_tui_and_json_shapes",
-        "semantic edge projection parity fixture",
+        "semantic_event_projection_preserves_daemon_and_json_shapes",
+        "semantic daemon/json projection parity fixture",
+    )?;
+    require_contains(
+        attach_projection,
+        "semantic_event_to_tui_remains_attach_edge_projection",
+        "semantic TUI projection parity fixture",
     )?;
 
     Ok(json!({
@@ -1477,6 +1495,7 @@ fn controller_domain_event_signature() -> Result<Value, String> {
         "protocol_references_in_domain_module": 0,
         "tui_references_in_domain_module": 0,
         "protocol_projection_owner": "convert::semantic_event_to_daemon_event",
+        "display_projection_owner": "src/modes/attach/event_projection.rs",
         "typed_rail_kind": "Rust AST function, path, alias, and forbidden edge-dependency checks"
     }))
 }

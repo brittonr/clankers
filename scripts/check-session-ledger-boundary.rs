@@ -250,12 +250,12 @@ const INVENTORY: &[BoundaryInventoryEntry] = &[
         forbidden_markers: &[],
     },
     BoundaryInventoryEntry {
-        id: "controller-history-replay-projection",
-        path: "crates/clankers-controller/src/convert.rs",
-        owner: "clankers-controller::convert",
+        id: "attach-history-replay-projection",
+        path: "src/modes/attach/event_projection.rs",
+        owner: "attach::event_projection",
         boundary: "display replay projection",
         required_markers: &[
-            "pub fn agent_message_to_tui_events",
+            "agent_message_to_tui_events",
             "AgentMessage::User",
             "AgentMessage::ToolResult",
             "AgentMessage::CompactionSummary",

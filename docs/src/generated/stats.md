@@ -11,48 +11,48 @@
 | Metric | Count |
 |--------|------:|
 | Workspace crates | 34 |
-| Lines of Rust (crates/) | 141,912 |
-| Lines of Rust (src/) | 70,131 |
-| **Total lines of Rust** | **212,043** |
-| Tests (crates/) | 2,688 |
-| Tests (src/) | 1,032 |
-| **Total tests** | **3,720** |
-| Public API items | 3,012 |
+| Lines of Rust (crates/) | 147,401 |
+| Lines of Rust (src/) | 72,368 |
+| **Total lines of Rust** | **219,769** |
+| Tests (crates/) | 2,744 |
+| Tests (src/) | 1,057 |
+| **Total tests** | **3,801** |
+| Public API items | 3,138 |
 
 ## Crates by size
 
 | Crate | Lines | Tests |
 |-------|------:|------:|
-| `src/ (binary)` | 70,131 | 1032 |
+| `src/ (binary)` | 72,368 | 1057 |
 | `clanker-router` | 21,981 | 385 |
 | `clankers-tui` | 16,869 | 284 |
-| `clankers-runtime` | 16,330 | 173 |
-| `clankers-agent` | 12,837 | 189 |
-| `clankers-controller` | 10,645 | 226 |
-| `clankers-provider` | 9,435 | 177 |
+| `clankers-runtime` | 16,411 | 186 |
+| `clankers-agent` | 14,222 | 195 |
+| `clankers-controller` | 11,552 | 233 |
+| `clankers-provider` | 9,694 | 180 |
 | `clankers-db` | 7,161 | 212 |
-| `clankers-session` | 5,012 | 111 |
+| `clankers-session` | 5,027 | 111 |
 | `clankers-ucan` | 4,764 | 114 |
-| `clankers-plugin` | 3,824 | 41 |
-| `clankers-config` | 3,163 | 74 |
-| `clankers-util` | 2,496 | 86 |
-| `clankers-engine-host` | 2,297 | 30 |
+| `clankers-plugin` | 3,967 | 42 |
+| `clankers-config` | 3,155 | 74 |
+| `clankers-tool-host` | 3,047 | 33 |
+| `clankers-engine-host` | 2,595 | 32 |
+| `clankers-util` | 2,509 | 87 |
 | `clankers-protocol` | 2,247 | 79 |
 | `clankers-engine` | 1,966 | 34 |
-| `clanker-tui-types` | 1,833 | 14 |
 | `clanker-auth` | 1,789 | 21 |
-| `clankers-hooks` | 1,706 | 49 |
+| `clankers-hooks` | 1,759 | 50 |
+| `clanker-tui-types` | 1,756 | 14 |
 | `clankers-core` | 1,693 | 42 |
 | `clankers-matrix` | 1,527 | 8 |
 | `clankers-model-selection` | 1,524 | 49 |
-| `clanker-message` | 1,296 | 27 |
+| `clanker-message` | 1,413 | 28 |
 | `clankers-tts` | 1,286 | 49 |
 | `clankers-nix` | 1,279 | 61 |
 | `clankers-artifacts` | 1,072 | 20 |
 | `clankers-agent-defs` | 906 | 29 |
 | `clankers-zellij` | 906 | 39 |
 | `clankers-skills` | 773 | 17 |
-| `clankers-tool-host` | 744 | 12 |
 | `clankers-adapters` | 703 | 7 |
 | `clankers-autoresearch` | 657 | 19 |
 | `clanker-plugin-sdk` | 534 | 0 |

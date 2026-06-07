@@ -295,7 +295,6 @@
     },
     "controller_crate": {
       "concrete_dependencies": [
-        "clanker-tui-types",
         "clankers-agent",
         "clankers-config",
         "clankers-db",
@@ -304,8 +303,8 @@
         "clankers-provider",
         "clankers-session"
       ],
-      "concrete_dependency_count": 8,
-      "internal_dependency_count": 11,
+      "concrete_dependency_count": 7,
+      "internal_dependency_count": 10,
       "owner": "session orchestration shell; translation, effect, continuation, persistence, and projection seams stay separately testable",
       "owner_receipts": [
         {
@@ -314,13 +313,6 @@
           "owner_category": "shared semantic/message DTO",
           "source_crate": "clankers-controller",
           "target_crate": "clanker-message"
-        },
-        {
-          "adapter_module": "crates/clankers-controller/src/auto_test.rs",
-          "convergence_condition": "display state sync remains edge-only until moved behind neutral DTO",
-          "owner_category": "display sync compatibility",
-          "source_crate": "clankers-controller",
-          "target_crate": "clanker-tui-types"
         },
         {
           "adapter_module": "crates/clankers-controller/src/runtime_adapter.rs",
@@ -415,6 +407,7 @@
       "domain_event_module": "crates/clankers-controller/src/domain_event.rs",
       "neutral_event_contract": "clanker_message::SemanticEvent",
       "neutral_receipt_dto": "SemanticImage",
+      "display_projection_owner": "src/modes/attach/event_projection.rs",
       "protocol_projection_module": "crates/clankers-controller/src/convert.rs",
       "protocol_projection_owner": "convert::semantic_event_to_daemon_event",
       "protocol_references_in_domain_module": 0,
@@ -493,11 +486,10 @@
         "package": "clanker-message"
       },
       {
-        "dependent_count": 8,
+        "dependent_count": 7,
         "dependents": [
           "clankers",
           "clankers-config",
-          "clankers-controller",
           "clankers-model-selection",
           "clankers-plugin",
           "clankers-procmon",
