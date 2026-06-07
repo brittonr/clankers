@@ -36,6 +36,8 @@ pub use cost::CostSummary;
 pub use cost::ModelCostBreakdown;
 pub use process::ProcessDataSource;
 pub use process::ProcessDisplayState;
+pub use process::ProcessEvent;
+pub use process::ProcessMeta;
 pub use process::ProcessSnapshot;
 // Re-export result streaming types at crate root
 pub use result_streaming::ResultChunk;

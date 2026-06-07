@@ -1602,7 +1602,6 @@ dependencies = [
  "clankers-engine-host",
  "clankers-hooks",
  "clankers-model-selection",
- "clankers-procmon",
  "clankers-prompts",
  "clankers-provider",
  "clankers-runtime",

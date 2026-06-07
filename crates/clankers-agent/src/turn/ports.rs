@@ -215,10 +215,10 @@ pub(crate) const AGENT_CONCRETE_DEPENDENCY_BUDGET: &[AgentConcreteDependencyBudg
     AgentConcreteDependencyBudgetEntry {
         family: AgentConcreteDependencyFamily::Procmon,
         crate_name: "clankers-procmon",
-        owner: AgentConcreteDependencyOwner::ProcessEventProjection,
-        production_modules: &["crates/clankers-agent/src/events.rs"],
-        selected_slice_status: "remaining",
-        convergence: "replace procmon-native process events with reusable process observation DTOs before AgentEvent projection",
+        owner: AgentConcreteDependencyOwner::NoProductionEdge,
+        production_modules: &[],
+        selected_slice_status: "neutral process observation DTOs are owned by clanker-message; clankers-agent has no clankers-procmon dependency",
+        convergence: "keep concrete process monitor construction and procmon-native types at root/tool edges",
     },
     AgentConcreteDependencyBudgetEntry {
         family: AgentConcreteDependencyFamily::DisplayProtocol,

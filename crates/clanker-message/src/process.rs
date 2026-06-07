@@ -2,6 +2,41 @@
 
 use std::time::Duration;
 
+use serde::Deserialize;
+use serde::Serialize;
+
+/// Events emitted by a process monitor.
+#[derive(Debug, Clone)]
+pub enum ProcessEvent {
+    /// A new process was registered.
+    Spawn { pid: u32, meta: ProcessMeta },
+    /// A resource usage sample for a tracked process.
+    Sample {
+        pid: u32,
+        cpu_percent: f32,
+        rss_bytes: u64,
+        children: Vec<u32>,
+    },
+    /// A tracked process has exited.
+    Exit {
+        pid: u32,
+        exit_code: Option<i32>,
+        wall_time: Duration,
+        peak_rss: u64,
+    },
+}
+
+/// Metadata about why a process was spawned.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ProcessMeta {
+    /// Tool name that spawned the process.
+    pub tool_name: String,
+    /// Command that was executed.
+    pub command: String,
+    /// Tool call ID for correlation.
+    pub call_id: String,
+}
+
 /// A snapshot of a tracked process for display or receipts.
 #[derive(Debug, Clone)]
 pub struct ProcessSnapshot {

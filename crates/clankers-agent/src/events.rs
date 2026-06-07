@@ -157,7 +157,7 @@ pub enum AgentEvent {
     // Process monitoring events
     ProcessSpawn {
         pid: u32,
-        meta: clankers_procmon::ProcessMeta,
+        meta: clanker_message::ProcessMeta,
     },
     ProcessSample {
         pid: u32,
@@ -346,11 +346,11 @@ fn tool_result_content_to_semantic_parts(content: &[crate::tool::ToolResultConte
     (text, images)
 }
 
-/// Convert a `ProcessEvent` from the procmon crate into an `AgentEvent`.
-pub fn process_event_to_agent(pe: clankers_procmon::ProcessEvent) -> AgentEvent {
+/// Convert a neutral process observation event into an `AgentEvent`.
+pub fn process_event_to_agent(pe: clanker_message::ProcessEvent) -> AgentEvent {
     match pe {
-        clankers_procmon::ProcessEvent::Spawn { pid, meta } => AgentEvent::ProcessSpawn { pid, meta },
-        clankers_procmon::ProcessEvent::Sample {
+        clanker_message::ProcessEvent::Spawn { pid, meta } => AgentEvent::ProcessSpawn { pid, meta },
+        clanker_message::ProcessEvent::Sample {
             pid,
             cpu_percent,
             rss_bytes,
@@ -361,7 +361,7 @@ pub fn process_event_to_agent(pe: clankers_procmon::ProcessEvent) -> AgentEvent 
             rss_bytes,
             children,
         },
-        clankers_procmon::ProcessEvent::Exit {
+        clanker_message::ProcessEvent::Exit {
             pid,
             exit_code,
             wall_time,
