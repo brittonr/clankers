@@ -1678,7 +1678,6 @@ dependencies = [
  "clanker-loop",
  "clanker-message",
  "clankers-agent",
- "clankers-config",
  "clankers-core",
  "clankers-db",
  "clankers-engine",

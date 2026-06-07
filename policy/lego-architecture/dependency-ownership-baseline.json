@@ -291,15 +291,13 @@
     "controller_crate": {
       "concrete_dependencies": [
         "clankers-agent",
-        "clankers-config",
         "clankers-db",
         "clankers-hooks",
         "clankers-protocol",
-        "clankers-provider",
         "clankers-session"
       ],
-      "concrete_dependency_count": 7,
-      "internal_dependency_count": 10,
+      "concrete_dependency_count": 5,
+      "internal_dependency_count": 8,
       "owner": "session orchestration shell; translation, effect, continuation, persistence, and projection seams stay separately testable",
       "owner_receipts": [
         {
@@ -315,13 +313,6 @@
           "owner_category": "daemon agent runtime adapter",
           "source_crate": "clankers-controller",
           "target_crate": "clankers-agent"
-        },
-        {
-          "adapter_module": "crates/clankers-controller/src/config.rs",
-          "convergence_condition": "configuration remains construction input only",
-          "owner_category": "controller config DTO",
-          "source_crate": "clankers-controller",
-          "target_crate": "clankers-config"
         },
         {
           "adapter_module": "crates/clankers-controller/src/command.rs",
@@ -357,13 +348,6 @@
           "owner_category": "transport protocol edge",
           "source_crate": "clankers-controller",
           "target_crate": "clankers-protocol"
-        },
-        {
-          "adapter_module": "crates/clankers-controller/src/command.rs",
-          "convergence_condition": "provider types disappear when agent runtime adapter owns execution",
-          "owner_category": "provider thinking compatibility",
-          "source_crate": "clankers-controller",
-          "target_crate": "clankers-provider"
         },
         {
           "adapter_module": "crates/clankers-controller/src/persistence.rs",

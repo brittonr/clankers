@@ -14,8 +14,6 @@ clankers-session = { version = "0.1.0", path = "../clankers-session" }
 clankers-hooks = { version = "0.1.0", path = "../clankers-hooks" }
 clanker-loop = { workspace = true }
 clanker-message = { workspace = true, features = ["transcript-compat"] }
-clankers-provider = { version = "0.1.0", path = "../clankers-provider" }
-clankers-config = { version = "0.1.0", path = "../clankers-config" }
 clankers-db = { version = "0.1.0", path = "../clankers-db" }
 async-trait = "0.1"
 serde = { workspace = true }
@@ -27,6 +25,7 @@ chrono = { workspace = true }
 libc = "0.2"
 
 [dev-dependencies]
+clankers-provider = { version = "0.1.0", path = "../clankers-provider" }
 syn = { version = "2", features = ["full", "visit"] }
 tempfile = "3.8"
 
