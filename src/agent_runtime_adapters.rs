@@ -187,6 +187,44 @@ impl AgentHookService for HookPipelineAgentHookService {
 }
 
 #[derive(Clone)]
+pub struct HookPipelineControllerHookService {
+    pipeline: Arc<clankers_hooks::HookPipeline>,
+}
+
+impl HookPipelineControllerHookService {
+    #[must_use]
+    pub fn new(pipeline: Arc<clankers_hooks::HookPipeline>) -> Self {
+        Self { pipeline }
+    }
+}
+
+#[async_trait]
+impl clankers_controller::ControllerHookService for HookPipelineControllerHookService {
+    async fn fire(
+        &self,
+        point: clankers_controller::ControllerHookPoint,
+        payload: &clankers_controller::ControllerHookPayload,
+    ) -> clankers_controller::ControllerHookVerdict {
+        let hook_point = controller_hook_point_to_hooks(point);
+        let payload = controller_hook_payload_to_hooks(payload);
+        controller_hook_verdict_from_hooks(self.pipeline.fire(hook_point, &payload).await)
+    }
+
+    fn fire_async(
+        &self,
+        point: clankers_controller::ControllerHookPoint,
+        payload: clankers_controller::ControllerHookPayload,
+    ) {
+        let pipeline = self.pipeline.clone();
+        tokio::spawn(async move {
+            let hook_point = controller_hook_point_to_hooks(point);
+            let payload = controller_hook_payload_to_hooks(&payload);
+            pipeline.fire(hook_point, &payload).await;
+        });
+    }
+}
+
+#[derive(Clone)]
 pub struct HookPipelineToolHookService {
     pipeline: Arc<clankers_hooks::HookPipeline>,
     session_id: String,
@@ -236,6 +274,99 @@ impl ToolHookService for HookPipelineToolHookService {
                 clankers_hooks::HookVerdict::Deny { reason } => ToolHookDecision::Deny { reason },
             })
         })
+    }
+}
+
+fn controller_hook_point_to_hooks(point: clankers_controller::ControllerHookPoint) -> clankers_hooks::HookPoint {
+    match point {
+        clankers_controller::ControllerHookPoint::PrePrompt => clankers_hooks::HookPoint::PrePrompt,
+        clankers_controller::ControllerHookPoint::PostPrompt => clankers_hooks::HookPoint::PostPrompt,
+        clankers_controller::ControllerHookPoint::SessionStart => clankers_hooks::HookPoint::SessionStart,
+        clankers_controller::ControllerHookPoint::SessionEnd => clankers_hooks::HookPoint::SessionEnd,
+        clankers_controller::ControllerHookPoint::PreTurn => clankers_hooks::HookPoint::PreTurn,
+        clankers_controller::ControllerHookPoint::TurnStart => clankers_hooks::HookPoint::TurnStart,
+        clankers_controller::ControllerHookPoint::TurnEnd => clankers_hooks::HookPoint::TurnEnd,
+        clankers_controller::ControllerHookPoint::PostTurn => clankers_hooks::HookPoint::PostTurn,
+        clankers_controller::ControllerHookPoint::ModelChange => clankers_hooks::HookPoint::ModelChange,
+    }
+}
+
+fn controller_hook_payload_to_hooks(payload: &clankers_controller::ControllerHookPayload) -> HookPayload {
+    match &payload.data {
+        clankers_controller::ControllerHookData::Prompt {
+            prompt_id,
+            text,
+            system_prompt,
+            status,
+            error,
+        } => HookPayload::prompt_with_metadata(
+            &payload.event_name,
+            &payload.session_id,
+            prompt_id,
+            text,
+            system_prompt.as_deref(),
+            controller_hook_status_to_hooks(*status),
+            error.as_ref().map(controller_hook_error_to_hooks),
+        ),
+        clankers_controller::ControllerHookData::Turn {
+            prompt_id,
+            model,
+            prompt_text,
+            message_count,
+            tool_call_count,
+            status,
+            error,
+            usage,
+        } => HookPayload::turn(
+            &payload.event_name,
+            &payload.session_id,
+            prompt_id,
+            model,
+            prompt_text,
+            *message_count,
+            *tool_call_count,
+            controller_hook_status_to_hooks(*status),
+            error.as_ref().map(controller_hook_error_to_hooks),
+            usage.as_ref().map(controller_hook_usage_to_hooks),
+        ),
+        clankers_controller::ControllerHookData::Session { session_id } => {
+            HookPayload::session(&payload.event_name, session_id)
+        }
+        clankers_controller::ControllerHookData::ModelChange { from, to, reason } => {
+            HookPayload::model_change(&payload.event_name, &payload.session_id, from, to, reason)
+        }
+        clankers_controller::ControllerHookData::Empty => HookPayload::empty(&payload.event_name, &payload.session_id),
+    }
+}
+
+fn controller_hook_status_to_hooks(status: clankers_controller::ControllerHookStatus) -> clankers_hooks::HookStatus {
+    match status {
+        clankers_controller::ControllerHookStatus::Pending => clankers_hooks::HookStatus::Pending,
+        clankers_controller::ControllerHookStatus::Success => clankers_hooks::HookStatus::Success,
+        clankers_controller::ControllerHookStatus::Denied => clankers_hooks::HookStatus::Denied,
+        clankers_controller::ControllerHookStatus::Cancelled => clankers_hooks::HookStatus::Cancelled,
+        clankers_controller::ControllerHookStatus::Error => clankers_hooks::HookStatus::Error,
+    }
+}
+
+fn controller_hook_error_to_hooks(error: &clankers_controller::ControllerHookSafeError) -> clankers_hooks::HookSafeError {
+    clankers_hooks::HookSafeError::new(&error.message, error.kind.as_deref())
+}
+
+fn controller_hook_usage_to_hooks(usage: &clankers_controller::ControllerHookUsage) -> clankers_hooks::HookUsage {
+    clankers_hooks::HookUsage {
+        input_tokens: usage.input_tokens,
+        output_tokens: usage.output_tokens,
+        cache_creation_input_tokens: usage.cache_creation_input_tokens,
+        cache_read_input_tokens: usage.cache_read_input_tokens,
+    }
+}
+
+fn controller_hook_verdict_from_hooks(verdict: clankers_hooks::HookVerdict) -> clankers_controller::ControllerHookVerdict {
+    match verdict {
+        clankers_hooks::HookVerdict::Continue => clankers_controller::ControllerHookVerdict::Continue,
+        clankers_hooks::HookVerdict::Modify(value) => clankers_controller::ControllerHookVerdict::Modify(value),
+        clankers_hooks::HookVerdict::Deny { reason } => clankers_controller::ControllerHookVerdict::Deny { reason },
     }
 }
 

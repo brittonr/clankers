@@ -1315,6 +1315,133 @@ mod tests {
         }
     }
 
+    #[derive(Clone)]
+    struct TestHookPipelineControllerService {
+        pipeline: Arc<clankers_hooks::HookPipeline>,
+    }
+
+    impl TestHookPipelineControllerService {
+        fn new(pipeline: Arc<clankers_hooks::HookPipeline>) -> Self {
+            Self { pipeline }
+        }
+    }
+
+    #[async_trait::async_trait]
+    impl crate::ControllerHookService for TestHookPipelineControllerService {
+        async fn fire(
+            &self,
+            point: crate::ControllerHookPoint,
+            payload: &crate::ControllerHookPayload,
+        ) -> crate::ControllerHookVerdict {
+            let point = test_hook_point_to_concrete(point);
+            let payload = test_hook_payload_to_concrete(payload);
+            test_hook_verdict_to_controller(self.pipeline.fire(point, &payload).await)
+        }
+
+        fn fire_async(&self, point: crate::ControllerHookPoint, payload: crate::ControllerHookPayload) {
+            let pipeline = self.pipeline.clone();
+            tokio::spawn(async move {
+                let point = test_hook_point_to_concrete(point);
+                let payload = test_hook_payload_to_concrete(&payload);
+                pipeline.fire(point, &payload).await;
+            });
+        }
+    }
+
+    fn test_hook_point_to_concrete(point: crate::ControllerHookPoint) -> clankers_hooks::HookPoint {
+        match point {
+            crate::ControllerHookPoint::PrePrompt => clankers_hooks::HookPoint::PrePrompt,
+            crate::ControllerHookPoint::PostPrompt => clankers_hooks::HookPoint::PostPrompt,
+            crate::ControllerHookPoint::SessionStart => clankers_hooks::HookPoint::SessionStart,
+            crate::ControllerHookPoint::SessionEnd => clankers_hooks::HookPoint::SessionEnd,
+            crate::ControllerHookPoint::PreTurn => clankers_hooks::HookPoint::PreTurn,
+            crate::ControllerHookPoint::TurnStart => clankers_hooks::HookPoint::TurnStart,
+            crate::ControllerHookPoint::TurnEnd => clankers_hooks::HookPoint::TurnEnd,
+            crate::ControllerHookPoint::PostTurn => clankers_hooks::HookPoint::PostTurn,
+            crate::ControllerHookPoint::ModelChange => clankers_hooks::HookPoint::ModelChange,
+        }
+    }
+
+    fn test_hook_payload_to_concrete(payload: &crate::ControllerHookPayload) -> clankers_hooks::HookPayload {
+        match &payload.data {
+            crate::ControllerHookData::Session { session_id } => {
+                clankers_hooks::HookPayload::session(&payload.event_name, session_id)
+            }
+            crate::ControllerHookData::ModelChange { from, to, reason } => {
+                clankers_hooks::HookPayload::model_change(&payload.event_name, &payload.session_id, from, to, reason)
+            }
+            _ => clankers_hooks::HookPayload::empty(&payload.event_name, &payload.session_id),
+        }
+    }
+
+    fn test_hook_verdict_to_controller(verdict: clankers_hooks::HookVerdict) -> crate::ControllerHookVerdict {
+        match verdict {
+            clankers_hooks::HookVerdict::Continue => crate::ControllerHookVerdict::Continue,
+            clankers_hooks::HookVerdict::Modify(value) => crate::ControllerHookVerdict::Modify(value),
+            clankers_hooks::HookVerdict::Deny { reason } => crate::ControllerHookVerdict::Deny { reason },
+        }
+    }
+
+    #[derive(Clone)]
+    struct TestHookPipelineToolHookService {
+        pipeline: Arc<clankers_hooks::HookPipeline>,
+        session_id: String,
+    }
+
+    impl TestHookPipelineToolHookService {
+        fn new(pipeline: Arc<clankers_hooks::HookPipeline>, session_id: String) -> Self {
+            Self { pipeline, session_id }
+        }
+    }
+
+    impl clankers_tool_host::ToolHookService for TestHookPipelineToolHookService {
+        fn decide(
+            &self,
+            request: clankers_tool_host::ToolHookRequest,
+        ) -> clankers_tool_host::ToolHostFuture<
+            '_,
+            std::result::Result<clankers_tool_host::ToolHookDecision, clankers_tool_host::ToolHostError>,
+        > {
+            let pipeline = self.pipeline.clone();
+            let session_id = self.session_id.clone();
+            Box::pin(async move {
+                let point = match request.phase {
+                    clankers_tool_host::ToolHookPhase::Before => clankers_hooks::HookPoint::PreTool,
+                    clankers_tool_host::ToolHookPhase::After => clankers_hooks::HookPoint::PostTool,
+                };
+                let event_name = match request.phase {
+                    clankers_tool_host::ToolHookPhase::Before => "pre-tool",
+                    clankers_tool_host::ToolHookPhase::After => "post-tool",
+                };
+                let result_json =
+                    (request.phase == clankers_tool_host::ToolHookPhase::After).then(|| request.input.clone());
+                let input = if request.phase == clankers_tool_host::ToolHookPhase::After {
+                    serde_json::json!({})
+                } else {
+                    request.input.clone()
+                };
+                let payload = clankers_hooks::HookPayload::tool(
+                    event_name,
+                    &session_id,
+                    &request.tool_name,
+                    &request.call_id,
+                    input,
+                    result_json,
+                );
+                let verdict = pipeline.fire(point, &payload).await;
+                Ok(match verdict {
+                    clankers_hooks::HookVerdict::Continue => clankers_tool_host::ToolHookDecision::Continue,
+                    clankers_hooks::HookVerdict::Modify(input) => {
+                        clankers_tool_host::ToolHookDecision::Modify { input }
+                    }
+                    clankers_hooks::HookVerdict::Deny { reason } => {
+                        clankers_tool_host::ToolHookDecision::Deny { reason }
+                    }
+                })
+            })
+        }
+    }
+
     struct OrderingTool {
         definition: clankers_agent::ToolDefinition,
     }
@@ -1439,7 +1566,9 @@ mod tests {
         SessionController::new(agent, ControllerConfig {
             session_id: "test-session".to_string(),
             model: "test-model".to_string(),
-            hook_pipeline,
+            hook_service: hook_pipeline.map(|pipeline| {
+                Arc::new(TestHookPipelineControllerService::new(pipeline)) as Arc<dyn crate::ControllerHookService>
+            }),
             ..Default::default()
         })
     }
@@ -1622,11 +1751,18 @@ mod tests {
             clankers_agent::AgentSettings::default(),
             "test-model".to_string(),
             "You are a test assistant.".to_string(),
-        );
+        )
+        .with_tool_hook_service(Arc::new(TestHookPipelineToolHookService::new(
+            Arc::clone(&pipeline),
+            "test-session".to_string(),
+        )));
         let mut ctrl = SessionController::new(agent, ControllerConfig {
             session_id: "test-session".to_string(),
             model: "test-model".to_string(),
-            hook_pipeline: Some(pipeline),
+            hook_service: Some(
+                Arc::new(TestHookPipelineControllerService::new(Arc::clone(&pipeline)))
+                    as Arc<dyn crate::ControllerHookService>,
+            ),
             ..Default::default()
         });
         let mut streamed_events = Vec::new();

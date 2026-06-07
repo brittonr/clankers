@@ -195,7 +195,10 @@ fn assemble_session_runtime_in_dir(
         capabilities: tool_patterns.clone(),
         capability_ceiling: tool_patterns,
         session_manager,
-        hook_pipeline,
+        hook_service: hook_pipeline.as_ref().map(|pipeline| {
+            Arc::new(crate::agent_runtime_adapters::HookPipelineControllerHookService::new(Arc::clone(pipeline)))
+                as Arc<dyn clankers_controller::ControllerHookService>
+        }),
         initial_thinking_level: crate::modes::common::core_thinking_level(factory.settings.parsed_thinking_level()),
         auto_test_command: factory.settings.auto_test_command.clone(),
         auto_test_enabled: factory.settings.auto_test_command.is_some(),

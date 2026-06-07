@@ -292,12 +292,11 @@
       "concrete_dependencies": [
         "clankers-agent",
         "clankers-db",
-        "clankers-hooks",
         "clankers-protocol",
         "clankers-session"
       ],
-      "concrete_dependency_count": 5,
-      "internal_dependency_count": 8,
+      "concrete_dependency_count": 4,
+      "internal_dependency_count": 7,
       "owner": "session orchestration shell; translation, effect, continuation, persistence, and projection seams stay separately testable",
       "owner_receipts": [
         {
@@ -334,13 +333,6 @@
           "owner_category": "engine composition fixture",
           "source_crate": "clankers-controller",
           "target_crate": "clankers-engine"
-        },
-        {
-          "adapter_module": "crates/clankers-controller/src/event_processing.rs",
-          "convergence_condition": "hook policy remains in hooks crate",
-          "owner_category": "lifecycle hook adapter",
-          "source_crate": "clankers-controller",
-          "target_crate": "clankers-hooks"
         },
         {
           "adapter_module": "crates/clankers-controller/src/transport_convert.rs",

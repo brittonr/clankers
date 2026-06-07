@@ -205,7 +205,10 @@ pub async fn run_interactive(
             session_id: app.session_id.clone(),
             model: model.clone(),
             session_manager,
-            hook_pipeline,
+            hook_service: hook_pipeline.as_ref().map(|pipeline| {
+                Arc::new(crate::agent_runtime_adapters::HookPipelineControllerHookService::new(Arc::clone(pipeline)))
+                    as Arc<dyn clankers_controller::ControllerHookService>
+            }),
             initial_thinking_level: super::common::core_thinking_level(settings.parsed_thinking_level()),
             ..Default::default()
         };

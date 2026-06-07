@@ -1684,6 +1684,7 @@ dependencies = [
  "clankers-protocol",
  "clankers-provider",
  "clankers-session",
+ "clankers-tool-host",
  "libc",
  "serde",
  "serde_json",

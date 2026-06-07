@@ -3,8 +3,9 @@
 use std::sync::Arc;
 
 use clankers_core::CoreThinkingLevel;
-use clankers_hooks::HookPipeline;
 use clankers_session::SessionManager;
+
+use crate::ControllerHookService;
 
 /// Configuration needed to create a SessionController.
 #[derive(Default)]
@@ -25,8 +26,8 @@ pub struct ControllerConfig {
     pub capability_ceiling: Option<Vec<String>>,
     /// Session persistence manager.
     pub session_manager: Option<SessionManager>,
-    /// Hook pipeline for lifecycle events.
-    pub hook_pipeline: Option<Arc<HookPipeline>>,
+    /// Hook service for lifecycle events.
+    pub hook_service: Option<Arc<dyn ControllerHookService>>,
     /// Auto-test command from settings.
     pub auto_test_command: Option<String>,
     /// Whether auto-test is enabled on startup.

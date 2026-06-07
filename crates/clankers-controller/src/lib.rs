@@ -46,6 +46,7 @@ pub(crate) mod core_engine_composition;
 pub(crate) mod domain_event;
 pub(crate) mod effect_interpretation;
 pub mod event_processing;
+pub mod hooks;
 pub mod loop_mode;
 pub mod metrics_capture;
 pub mod persistence;
@@ -61,9 +62,16 @@ use clanker_loop::LoopId;
 use clankers_agent::Agent;
 use clankers_agent::events::AgentEvent;
 use clankers_core::CoreState;
-use clankers_hooks::HookPipeline;
 use clankers_protocol::DaemonEvent;
 use clankers_session::SessionManager;
+pub use hooks::ControllerHookData;
+pub use hooks::ControllerHookPayload;
+pub use hooks::ControllerHookPoint;
+pub use hooks::ControllerHookSafeError;
+pub use hooks::ControllerHookService;
+pub use hooks::ControllerHookStatus;
+pub use hooks::ControllerHookUsage;
+pub use hooks::ControllerHookVerdict;
 pub use runtime_adapter::AgentBackedRuntimeAdapter;
 pub use runtime_adapter::AgentRuntimePromptRequest;
 pub use runtime_adapter::ControllerRuntimeAdapter;
@@ -212,8 +220,8 @@ pub struct SessionController {
     pub(crate) active_loop_id: Option<LoopId>,
     /// Accumulated tool output for break conditions.
     pub(crate) loop_turn_output: String,
-    /// Lifecycle hooks pipeline.
-    pub(crate) hook_pipeline: Option<Arc<HookPipeline>>,
+    /// Lifecycle hook service.
+    pub(crate) hook_service: Option<Arc<dyn ControllerHookService>>,
     /// Tool call timing and leak detection.
     pub(crate) audit: AuditTracker,
     /// Maps call_id → tool_name for tool result persistence.
@@ -259,12 +267,12 @@ pub trait ToolRebuilder: Send + Sync {
 
 #[derive(Clone)]
 struct ControllerAgentHookService {
-    pipeline: Arc<clankers_hooks::HookPipeline>,
+    service: Arc<dyn ControllerHookService>,
 }
 
 impl ControllerAgentHookService {
-    fn new(pipeline: Arc<clankers_hooks::HookPipeline>) -> Self {
-        Self { pipeline }
+    fn new(service: Arc<dyn ControllerHookService>) -> Self {
+        Self { service }
     }
 }
 
@@ -277,53 +285,48 @@ impl clankers_agent::AgentHookService for ControllerAgentHookService {
     ) -> clankers_agent::AgentHookVerdict {
         let hook_point = controller_hook_point_from_agent(point);
         let payload = controller_hook_payload_from_agent(payload);
-        controller_hook_verdict_to_agent(self.pipeline.fire(hook_point, &payload).await)
+        controller_hook_verdict_to_agent(self.service.fire(hook_point, &payload).await)
     }
 
     fn fire_async(&self, point: clankers_agent::AgentHookPoint, payload: clankers_agent::AgentHookPayload) {
-        let pipeline = self.pipeline.clone();
-        tokio::spawn(async move {
-            let hook_point = controller_hook_point_from_agent(point);
-            let payload = controller_hook_payload_from_agent(&payload);
-            pipeline.fire(hook_point, &payload).await;
-        });
+        let hook_point = controller_hook_point_from_agent(point);
+        let payload = controller_hook_payload_from_agent(&payload);
+        self.service.fire_async(hook_point, payload);
     }
 }
 
-fn controller_hook_point_from_agent(point: clankers_agent::AgentHookPoint) -> clankers_hooks::HookPoint {
+fn controller_hook_point_from_agent(point: clankers_agent::AgentHookPoint) -> ControllerHookPoint {
     match point {
-        clankers_agent::AgentHookPoint::PrePrompt => clankers_hooks::HookPoint::PrePrompt,
-        clankers_agent::AgentHookPoint::PostPrompt => clankers_hooks::HookPoint::PostPrompt,
-        clankers_agent::AgentHookPoint::PreTurn => clankers_hooks::HookPoint::PreTurn,
-        clankers_agent::AgentHookPoint::PostTurn => clankers_hooks::HookPoint::PostTurn,
+        clankers_agent::AgentHookPoint::PrePrompt => ControllerHookPoint::PrePrompt,
+        clankers_agent::AgentHookPoint::PostPrompt => ControllerHookPoint::PostPrompt,
+        clankers_agent::AgentHookPoint::PreTurn => ControllerHookPoint::PreTurn,
+        clankers_agent::AgentHookPoint::PostTurn => ControllerHookPoint::PostTurn,
     }
 }
 
-fn controller_hook_verdict_to_agent(verdict: clankers_hooks::HookVerdict) -> clankers_agent::AgentHookVerdict {
+fn controller_hook_verdict_to_agent(verdict: ControllerHookVerdict) -> clankers_agent::AgentHookVerdict {
     match verdict {
-        clankers_hooks::HookVerdict::Continue => clankers_agent::AgentHookVerdict::Continue,
-        clankers_hooks::HookVerdict::Modify(value) => clankers_agent::AgentHookVerdict::Modify(value),
-        clankers_hooks::HookVerdict::Deny { reason } => clankers_agent::AgentHookVerdict::Deny { reason },
+        ControllerHookVerdict::Continue => clankers_agent::AgentHookVerdict::Continue,
+        ControllerHookVerdict::Modify(value) => clankers_agent::AgentHookVerdict::Modify(value),
+        ControllerHookVerdict::Deny { reason } => clankers_agent::AgentHookVerdict::Deny { reason },
     }
 }
 
-fn controller_hook_payload_from_agent(payload: &clankers_agent::AgentHookPayload) -> clankers_hooks::HookPayload {
-    match &payload.data {
+fn controller_hook_payload_from_agent(payload: &clankers_agent::AgentHookPayload) -> ControllerHookPayload {
+    let data = match &payload.data {
         clankers_agent::AgentHookData::Prompt {
             prompt_id,
             text,
             system_prompt,
             status,
             error,
-        } => clankers_hooks::HookPayload::prompt_with_metadata(
-            &payload.event_name,
-            &payload.session_id,
-            prompt_id,
-            text,
-            system_prompt.as_deref(),
-            controller_hook_status_from_agent(*status),
-            error.as_ref().map(controller_hook_error_from_agent),
-        ),
+        } => ControllerHookData::Prompt {
+            prompt_id: prompt_id.clone(),
+            text: text.clone(),
+            system_prompt: system_prompt.clone(),
+            status: controller_hook_status_from_agent(*status),
+            error: error.as_ref().map(controller_hook_error_from_agent),
+        },
         clankers_agent::AgentHookData::Turn {
             prompt_id,
             model,
@@ -333,37 +336,43 @@ fn controller_hook_payload_from_agent(payload: &clankers_agent::AgentHookPayload
             status,
             error,
             usage,
-        } => clankers_hooks::HookPayload::turn(
-            &payload.event_name,
-            &payload.session_id,
-            prompt_id,
-            model,
-            prompt_text,
-            *message_count,
-            *tool_call_count,
-            controller_hook_status_from_agent(*status),
-            error.as_ref().map(controller_hook_error_from_agent),
-            usage.as_ref().map(controller_hook_usage_from_agent),
-        ),
+        } => ControllerHookData::Turn {
+            prompt_id: prompt_id.clone(),
+            model: model.clone(),
+            prompt_text: prompt_text.clone(),
+            message_count: *message_count,
+            tool_call_count: *tool_call_count,
+            status: controller_hook_status_from_agent(*status),
+            error: error.as_ref().map(controller_hook_error_from_agent),
+            usage: usage.as_ref().map(controller_hook_usage_from_agent),
+        },
+    };
+    ControllerHookPayload {
+        event_name: payload.event_name.clone(),
+        session_id: payload.session_id.clone(),
+        data,
     }
 }
 
-fn controller_hook_status_from_agent(status: clankers_agent::AgentHookStatus) -> clankers_hooks::HookStatus {
+fn controller_hook_status_from_agent(status: clankers_agent::AgentHookStatus) -> ControllerHookStatus {
     match status {
-        clankers_agent::AgentHookStatus::Pending => clankers_hooks::HookStatus::Pending,
-        clankers_agent::AgentHookStatus::Success => clankers_hooks::HookStatus::Success,
-        clankers_agent::AgentHookStatus::Denied => clankers_hooks::HookStatus::Denied,
-        clankers_agent::AgentHookStatus::Error => clankers_hooks::HookStatus::Error,
-        clankers_agent::AgentHookStatus::Cancelled => clankers_hooks::HookStatus::Cancelled,
+        clankers_agent::AgentHookStatus::Pending => ControllerHookStatus::Pending,
+        clankers_agent::AgentHookStatus::Success => ControllerHookStatus::Success,
+        clankers_agent::AgentHookStatus::Denied => ControllerHookStatus::Denied,
+        clankers_agent::AgentHookStatus::Error => ControllerHookStatus::Error,
+        clankers_agent::AgentHookStatus::Cancelled => ControllerHookStatus::Cancelled,
     }
 }
 
-fn controller_hook_error_from_agent(error: &clankers_agent::AgentHookSafeError) -> clankers_hooks::HookSafeError {
-    clankers_hooks::HookSafeError::new(&error.message, error.kind.as_deref())
+fn controller_hook_error_from_agent(error: &clankers_agent::AgentHookSafeError) -> ControllerHookSafeError {
+    ControllerHookSafeError {
+        message: error.message.clone(),
+        kind: error.kind.clone(),
+    }
 }
 
-fn controller_hook_usage_from_agent(usage: &clankers_agent::AgentHookUsage) -> clankers_hooks::HookUsage {
-    clankers_hooks::HookUsage {
+fn controller_hook_usage_from_agent(usage: &clankers_agent::AgentHookUsage) -> ControllerHookUsage {
+    ControllerHookUsage {
         input_tokens: usage.input_tokens,
         output_tokens: usage.output_tokens,
         cache_creation_input_tokens: usage.cache_creation_input_tokens,
@@ -382,8 +391,8 @@ impl SessionController {
     pub fn new(mut agent: Agent, config: ControllerConfig) -> Self {
         agent.set_session_id(config.session_id.clone());
         agent.apply_controller_thinking_level(Self::provider_thinking_level(config.initial_thinking_level));
-        if let Some(pipeline) = config.hook_pipeline.as_ref() {
-            agent = agent.with_hook_service(Arc::new(ControllerAgentHookService::new(Arc::clone(pipeline))));
+        if let Some(service) = config.hook_service.as_ref() {
+            agent = agent.with_hook_service(Arc::new(ControllerAgentHookService::new(Arc::clone(service))));
         }
         let event_rx = agent.subscribe();
         let model = config.model.clone();
@@ -402,7 +411,7 @@ impl SessionController {
             loop_engine: LoopEngine::new(),
             active_loop_id: None,
             loop_turn_output: String::new(),
-            hook_pipeline: config.hook_pipeline,
+            hook_service: config.hook_service,
             audit: AuditTracker::new(),
             tool_call_names: HashMap::new(),
             bash_confirms: ConfirmStore::new(),
@@ -446,7 +455,7 @@ impl SessionController {
             loop_engine: LoopEngine::new(),
             active_loop_id: None,
             loop_turn_output: String::new(),
-            hook_pipeline: config.hook_pipeline,
+            hook_service: config.hook_service,
             audit: AuditTracker::new(),
             tool_call_names: HashMap::new(),
             bash_confirms: ConfirmStore::new(),
@@ -579,10 +588,10 @@ impl SessionController {
                 info!("session {}: flushed {flushed} unsaved messages on shutdown", self.session_id);
             }
         }
-        if let Some(ref pipeline) = self.hook_pipeline {
+        if let Some(ref service) = self.hook_service {
             debug!("firing SessionEnd hook");
-            let payload = clankers_hooks::HookPayload::session(&self.session_id, "");
-            let _ = pipeline.fire(clankers_hooks::HookPoint::SessionEnd, &payload).await;
+            let payload = ControllerHookPayload::session("session-end", &self.session_id);
+            let _ = service.fire(ControllerHookPoint::SessionEnd, &payload).await;
         }
         info!("session controller shut down: {}", self.session_id);
     }

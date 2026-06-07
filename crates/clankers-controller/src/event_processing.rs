@@ -8,6 +8,8 @@ use clankers_protocol::DaemonEvent;
 
 use crate::SessionController;
 use crate::convert::agent_event_to_daemon_event;
+use crate::hooks::ControllerHookPayload;
+use crate::hooks::ControllerHookPoint;
 
 impl SessionController {
     /// Drain pending events. Called in a loop by the transport layer.
@@ -125,40 +127,28 @@ impl SessionController {
 
     /// Fire lifecycle hooks for session and turn events.
     fn fire_lifecycle_hooks(&self, event: &AgentEvent) {
-        let Some(ref pipeline) = self.hook_pipeline else {
+        let Some(ref service) = self.hook_service else {
             return;
         };
 
         let session_id = self.session_id.clone();
         match event {
             AgentEvent::SessionStart { session_id: sid } => {
-                pipeline.fire_async(
-                    clankers_hooks::HookPoint::SessionStart,
-                    clankers_hooks::HookPayload::session("session-start", sid),
-                );
+                service.fire_async(ControllerHookPoint::SessionStart, ControllerHookPayload::session("session-start", sid));
             }
             AgentEvent::SessionShutdown { session_id: sid } => {
-                pipeline.fire_async(
-                    clankers_hooks::HookPoint::SessionEnd,
-                    clankers_hooks::HookPayload::session("session-end", sid),
-                );
+                service.fire_async(ControllerHookPoint::SessionEnd, ControllerHookPayload::session("session-end", sid));
             }
             AgentEvent::TurnStart { .. } => {
-                pipeline.fire_async(
-                    clankers_hooks::HookPoint::TurnStart,
-                    clankers_hooks::HookPayload::empty("turn-start", &session_id),
-                );
+                service.fire_async(ControllerHookPoint::TurnStart, ControllerHookPayload::empty("turn-start", &session_id));
             }
             AgentEvent::TurnEnd { .. } => {
-                pipeline.fire_async(
-                    clankers_hooks::HookPoint::TurnEnd,
-                    clankers_hooks::HookPayload::empty("turn-end", &session_id),
-                );
+                service.fire_async(ControllerHookPoint::TurnEnd, ControllerHookPayload::empty("turn-end", &session_id));
             }
             AgentEvent::ModelChange { from, to, reason } => {
-                pipeline.fire_async(
-                    clankers_hooks::HookPoint::ModelChange,
-                    clankers_hooks::HookPayload::model_change("model-change", &session_id, from, to, reason),
+                service.fire_async(
+                    ControllerHookPoint::ModelChange,
+                    ControllerHookPayload::model_change("model-change", &session_id, from, to, reason),
                 );
             }
             _ => {}

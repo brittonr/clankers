@@ -27,7 +27,7 @@ const CHECKS: &[SourceCheck] = &[
             "pub struct SessionController",
             "pub(crate) agent: Option<Agent>",
             "pub session_manager: Option<SessionManager>",
-            "hook_pipeline: Option<Arc<HookPipeline>>",
+            "hook_service: Option<Arc<dyn ControllerHookService>>",
             "outgoing: Vec<DaemonEvent>",
             "search_index: Option<Arc<clankers_db::search_index::SearchIndex>>",
             "Production command handling must wrap this value in",
