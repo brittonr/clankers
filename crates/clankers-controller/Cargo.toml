@@ -9,7 +9,6 @@ description = "Transport-agnostic session controller for agent orchestration"
 clankers-protocol = { version = "0.1.0", path = "../clankers-protocol" }
 clankers-agent = { version = "0.1.0", path = "../clankers-agent" }
 clankers-core = { version = "0.1.0", path = "../clankers-core" }
-clankers-engine = { version = "0.1.0", path = "../clankers-engine" }
 clankers-session = { version = "0.1.0", path = "../clankers-session" }
 clanker-loop = { workspace = true }
 clanker-message = { workspace = true, features = ["transcript-compat"] }
@@ -24,6 +23,7 @@ chrono = { workspace = true }
 libc = "0.2"
 
 [dev-dependencies]
+clankers-engine = { version = "0.1.0", path = "../clankers-engine" }
 clankers-hooks = { version = "0.1.0", path = "../clankers-hooks" }
 clankers-provider = { version = "0.1.0", path = "../clankers-provider" }
 clankers-tool-host = { version = "0.1.0", path = "../clankers-tool-host" }

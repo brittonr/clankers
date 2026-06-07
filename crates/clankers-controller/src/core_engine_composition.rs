@@ -5,12 +5,18 @@
 //! timers. It only normalizes accepted core prompt work into engine-native data
 //! and preserves controller-owned correlation for later shell feedback.
 
-use clanker_message::ThinkingConfig;
-use clanker_message::ToolDefinition;
 use clankers_core::CoreEffectId;
 use clankers_core::FollowUpSource;
+
+#[cfg(test)]
+use clanker_message::ThinkingConfig;
+#[cfg(test)]
+use clanker_message::ToolDefinition;
+#[cfg(test)]
 use clankers_engine::EngineInput;
+#[cfg(test)]
 use clankers_engine::EngineMessage;
+#[cfg(test)]
 use clankers_engine::EnginePromptSubmission;
 
 /// Prompt accepted by `clankers-core` and ready to enter engine-owned policy.
@@ -32,7 +38,7 @@ pub(crate) struct AcceptedPromptStart {
 
 /// Shell policy that parameterizes an engine submission without giving the
 /// composition seam access to runtime objects.
-#[allow(dead_code)]
+#[cfg(test)]
 #[derive(Debug, Clone)]
 pub(crate) struct EngineSubmissionPolicy {
     pub(crate) model: String,
@@ -48,7 +54,7 @@ pub(crate) struct EngineSubmissionPolicy {
 }
 
 /// Engine submission paired with core correlation retained by controller code.
-#[allow(dead_code)]
+#[cfg(test)]
 #[derive(Debug, Clone)]
 pub(crate) struct EngineSubmissionPlan {
     pub(crate) core_effect_id: CoreEffectId,
@@ -56,7 +62,7 @@ pub(crate) struct EngineSubmissionPlan {
     pub(crate) engine_input: EngineInput,
 }
 
-#[allow(dead_code)]
+#[cfg(test)]
 pub(crate) fn engine_submission_from_prompt_start(
     prompt_start: &AcceptedPromptStart,
     prior_messages: Vec<EngineMessage>,

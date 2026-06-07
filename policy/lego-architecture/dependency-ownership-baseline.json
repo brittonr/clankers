@@ -296,7 +296,7 @@
         "clankers-session"
       ],
       "concrete_dependency_count": 4,
-      "internal_dependency_count": 7,
+      "internal_dependency_count": 6,
       "owner": "session orchestration shell; translation, effect, continuation, persistence, and projection seams stay separately testable",
       "owner_receipts": [
         {
@@ -326,13 +326,6 @@
           "owner_category": "optional search index shell",
           "source_crate": "clankers-controller",
           "target_crate": "clankers-db"
-        },
-        {
-          "adapter_module": "crates/clankers-controller/src/core_engine_composition.rs",
-          "convergence_condition": "engine data remains adapter source only",
-          "owner_category": "engine composition fixture",
-          "source_crate": "clankers-controller",
-          "target_crate": "clankers-engine"
         },
         {
           "adapter_module": "crates/clankers-controller/src/transport_convert.rs",
