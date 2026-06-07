@@ -84,6 +84,7 @@ pub use clankers_tool_host::process_jobs::ProcessJobTimestamp;
 pub use clankers_tool_host::process_jobs::ProcessJobToolReceipt;
 pub use clankers_tool_host::process_jobs::ProcessJobToolRequest;
 pub use clankers_tool_host::process_jobs::ProcessJobToolResult;
+pub use clankers_tool_host::process_jobs::ProcessJobUnsupportedDetail;
 pub use clankers_tool_host::process_jobs::ReadProcessJobLogRequest;
 pub use clankers_tool_host::process_jobs::StartProcessJobProfileRequest;
 pub use clankers_tool_host::process_jobs::StartProcessJobRequest;
@@ -321,7 +322,7 @@ impl ProcessJobReconciliationOutcome {
         summary.backend_ref = self.backend_ref;
         summary.status = self.status;
         let updated_at = process_job_timestamp(updated_at);
-        summary.updated_at = updated_at.clone();
+        summary.updated_at = updated_at;
         summary.log_refs = self.log_refs;
         if summary.status.is_terminal() && summary.completed_at.is_none() {
             summary.completed_at = Some(updated_at);
@@ -1076,16 +1077,18 @@ impl ProcessJobBackendCapabilitiesReceiptExt for ProcessJobBackendCapabilities {
         message: impl Into<String>,
     ) -> ProcessJobReceipt {
         let backend = self.backend.unwrap_or(ProcessJobBackendKind::Unknown);
-        ProcessJobReceipt::unsupported_with_detail(
+        ProcessJobReceipt::unsupported_with_detail(ProcessJobUnsupportedDetail {
             operation,
             id,
             backend,
-            operation.action_name(),
-            self.unsupported_detail(operation)
-                .map(std::string::ToString::to_string)
-                .unwrap_or_else(|| "capability unsupported".to_string()),
-            message,
-        )
+            action: operation.action_name().to_string(),
+            capability_detail: Some(
+                self.unsupported_detail(operation)
+                    .map(std::string::ToString::to_string)
+                    .unwrap_or_else(|| "capability unsupported".to_string()),
+            ),
+            message: message.into(),
+        })
     }
 }
 

@@ -30,6 +30,12 @@ pub const PROCESS_JOB_ID_PREFIX: &str = "proc_b3_";
 pub const PROCESS_JOB_IDENTITY_DOMAIN: &str = "clankers.process-job.identity";
 pub const PROCESS_JOB_IDENTITY_VERSION: u8 = 1;
 
+const DEFAULT_PROCESS_JOB_RETENTION_SECS: u64 = 1_209_600;
+const DEFAULT_PROCESS_JOB_LOG_LINE_BYTES: u64 = 65_536;
+const DEFAULT_PROCESS_JOB_LOG_CHUNK_BYTES: u64 = 1_048_576;
+const DEFAULT_PROCESS_JOB_LOG_FILE_BYTES: u64 = 67_108_864;
+const DEFAULT_PROCESS_JOB_LOG_TOTAL_BYTES: u64 = 1_073_741_824;
+
 /// Unix timestamp used by backend-neutral process/job contracts.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 #[serde(transparent)]
@@ -55,6 +61,22 @@ impl ProcessJobTimestamp {
 fn add_timestamp_duration(timestamp: ProcessJobTimestamp, duration: Duration) -> Option<ProcessJobTimestamp> {
     let seconds = i64::try_from(duration.as_secs()).ok()?;
     Some(timestamp.saturating_add_seconds(seconds))
+}
+
+fn absent_process_job_profile_metadata() -> Option<ProcessJobProfileReceiptMetadata> {
+    None
+}
+
+fn absent_capability_detail() -> Option<String> {
+    None
+}
+
+fn empty_process_job_identity_metadata() -> BTreeMap<String, String> {
+    BTreeMap::new()
+}
+
+fn empty_process_job_watch_patterns() -> Vec<String> {
+    Vec::new()
 }
 
 /// Stable Clankers-owned process/job identifier.
@@ -702,7 +724,10 @@ pub struct ProcessJobSummary {
     pub updated_at: ProcessJobTimestamp,
     pub completed_at: Option<ProcessJobTimestamp>,
     pub log_refs: Vec<ProcessJobLogRef>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[serde(
+        default = "absent_process_job_profile_metadata",
+        skip_serializing_if = "Option::is_none"
+    )]
     pub profile: Option<ProcessJobProfileReceiptMetadata>,
 }
 
@@ -717,9 +742,9 @@ pub struct ProcessJobRetentionPolicy {
 impl Default for ProcessJobRetentionPolicy {
     fn default() -> Self {
         Self {
-            max_age: Some(Duration::from_secs(14 * 24 * 60 * 60)),
+            max_age: Some(Duration::from_secs(DEFAULT_PROCESS_JOB_RETENTION_SECS)),
             max_records: Some(1000),
-            max_log_bytes: Some(1024 * 1024 * 1024),
+            max_log_bytes: Some(DEFAULT_PROCESS_JOB_LOG_TOTAL_BYTES),
         }
     }
 }
@@ -944,7 +969,7 @@ pub struct ProcessJobError {
     pub id: Option<ProcessJobId>,
     pub backend: Option<ProcessJobBackendKind>,
     pub action: Option<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[serde(default = "absent_capability_detail", skip_serializing_if = "Option::is_none")]
     pub capability_detail: Option<String>,
     pub message: String,
 }
@@ -957,7 +982,10 @@ pub struct ProcessJobReceiptCommon {
     pub backend: Option<ProcessJobBackendKind>,
     pub status: Option<ProcessJobStatus>,
     pub backend_ref: Option<BackendRef>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[serde(
+        default = "absent_process_job_profile_metadata",
+        skip_serializing_if = "Option::is_none"
+    )]
     pub profile: Option<ProcessJobProfileReceiptMetadata>,
     pub summary: String,
     pub error: Option<ProcessJobError>,
@@ -998,10 +1026,24 @@ pub struct ProcessJobReceipt {
     pub status: Option<ProcessJobStatus>,
     pub backend_ref: Option<BackendRef>,
     pub log_refs: Vec<ProcessJobLogRef>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[serde(
+        default = "absent_process_job_profile_metadata",
+        skip_serializing_if = "Option::is_none"
+    )]
     pub profile: Option<ProcessJobProfileReceiptMetadata>,
     pub summary: String,
     pub error: Option<ProcessJobError>,
+}
+
+/// Options for constructing an unsupported-backend receipt with capability detail.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ProcessJobUnsupportedDetail {
+    pub operation: ProcessJobOperation,
+    pub id: Option<ProcessJobId>,
+    pub backend: ProcessJobBackendKind,
+    pub action: String,
+    pub capability_detail: Option<String>,
+    pub message: String,
 }
 
 impl ProcessJobReceipt {
@@ -1099,19 +1141,22 @@ impl ProcessJobReceipt {
         action: impl Into<String>,
         message: impl Into<String>,
     ) -> Self {
-        Self::unsupported_with_detail(operation, id, backend, action, None::<String>, message)
+        Self::unsupported_with_detail(ProcessJobUnsupportedDetail {
+            operation,
+            id,
+            backend,
+            action: action.into(),
+            capability_detail: None,
+            message: message.into(),
+        })
     }
 
     #[must_use]
-    pub fn unsupported_with_detail(
-        operation: ProcessJobOperation,
-        id: Option<ProcessJobId>,
-        backend: ProcessJobBackendKind,
-        action: impl Into<String>,
-        capability_detail: impl Into<Option<String>>,
-        message: impl Into<String>,
-    ) -> Self {
-        let message = message.into();
+    pub fn unsupported_with_detail(detail: ProcessJobUnsupportedDetail) -> Self {
+        let operation = detail.operation;
+        let id = detail.id;
+        let backend = detail.backend;
+        let message = detail.message;
         Self {
             operation,
             id: id.clone(),
@@ -1126,8 +1171,8 @@ impl ProcessJobReceipt {
                 operation,
                 id,
                 backend: Some(backend),
-                action: Some(action.into()),
-                capability_detail: capability_detail.into(),
+                action: Some(detail.action),
+                capability_detail: detail.capability_detail,
                 message,
             }),
         }
@@ -1220,7 +1265,7 @@ pub struct ProcessJobIdentityEnvelope {
     pub cwd: ProcessJobCwd,
     pub profile: Option<String>,
     pub request_nonce: String,
-    #[serde(default)]
+    #[serde(default = "empty_process_job_identity_metadata")]
     pub metadata: BTreeMap<String, String>,
 }
 
@@ -1255,12 +1300,17 @@ impl ProcessJobIdentityEnvelope {
             ("profile".to_string(), self.profile.clone().unwrap_or_default()),
             ("request_nonce".to_string(), self.request_nonce.clone()),
         ];
+        fields.reserve(self.metadata.len());
         for (key, value) in &self.metadata {
             fields.push((format!("metadata.{key}"), value.clone()));
         }
         fields.sort_by(|left, right| left.0.cmp(&right.0));
 
-        let mut canonical = Vec::new();
+        let canonical_capacity_bytes =
+            fields.iter().fold(b"clankers-process-job-identity-v1\n".len(), |capacity, (key, value)| {
+                capacity.saturating_add(key.len()).saturating_add(value.len()).saturating_add(32)
+            });
+        let mut canonical = Vec::with_capacity(canonical_capacity_bytes);
         canonical.extend_from_slice(b"clankers-process-job-identity-v1\n");
         for (key, value) in fields {
             canonical.extend_from_slice(key.len().to_string().as_bytes());
@@ -1319,7 +1369,7 @@ fn cwd_path(cwd: &ProcessJobCwd) -> Option<String> {
 pub struct ProcessJobNotificationPolicy {
     #[serde(default)]
     pub notify_on_complete: bool,
-    #[serde(default)]
+    #[serde(default = "empty_process_job_watch_patterns")]
     pub watch_patterns: Vec<String>,
 }
 
@@ -1540,10 +1590,10 @@ pub struct ProcessJobLogOverflowPolicy {
 impl Default for ProcessJobLogOverflowPolicy {
     fn default() -> Self {
         Self {
-            max_line_bytes: 64 * 1024,
-            max_chunk_bytes: 1024 * 1024,
-            max_file_bytes: 64 * 1024 * 1024,
-            max_total_bytes: 1024 * 1024 * 1024,
+            max_line_bytes: DEFAULT_PROCESS_JOB_LOG_LINE_BYTES,
+            max_chunk_bytes: DEFAULT_PROCESS_JOB_LOG_CHUNK_BYTES,
+            max_file_bytes: DEFAULT_PROCESS_JOB_LOG_FILE_BYTES,
+            max_total_bytes: DEFAULT_PROCESS_JOB_LOG_TOTAL_BYTES,
         }
     }
 }
@@ -1553,11 +1603,11 @@ impl ProcessJobLogOverflowPolicy {
     pub fn classify_write(&self, line_bytes: u64, chunk_bytes: u64, total_bytes: u64) -> ProcessJobLogWriteDisposition {
         if line_bytes > self.max_line_bytes {
             ProcessJobLogWriteDisposition::TruncateLine {
-                dropped_bytes: line_bytes - self.max_line_bytes,
+                dropped_bytes: line_bytes.saturating_sub(self.max_line_bytes),
             }
         } else if chunk_bytes > self.max_chunk_bytes {
             ProcessJobLogWriteDisposition::TruncateChunk {
-                dropped_bytes: chunk_bytes - self.max_chunk_bytes,
+                dropped_bytes: chunk_bytes.saturating_sub(self.max_chunk_bytes),
             }
         } else if total_bytes > self.max_total_bytes || total_bytes > self.max_file_bytes {
             ProcessJobLogWriteDisposition::DegradeDiskFull
@@ -1663,14 +1713,14 @@ mod tests {
     #[test]
     fn receipt_errors_and_tool_result_envelopes_are_backend_neutral() {
         let id = ProcessJobId::legacy("proc_1");
-        let receipt = ProcessJobReceipt::unsupported_with_detail(
-            ProcessJobOperation::WriteStdin,
-            Some(id.clone()),
-            ProcessJobBackendKind::Pueue,
-            "write_stdin",
-            Some("stdin requires stdin support".to_string()),
-            "cannot write stdin",
-        );
+        let receipt = ProcessJobReceipt::unsupported_with_detail(ProcessJobUnsupportedDetail {
+            operation: ProcessJobOperation::WriteStdin,
+            id: Some(id.clone()),
+            backend: ProcessJobBackendKind::Pueue,
+            action: "write_stdin".to_string(),
+            capability_detail: Some("stdin requires stdin support".to_string()),
+            message: "cannot write stdin".to_string(),
+        });
         let tool_receipt = receipt.clone().into_tool_receipt();
 
         assert_eq!(
