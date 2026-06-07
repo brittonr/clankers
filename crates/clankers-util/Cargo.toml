@@ -7,7 +7,7 @@ description = "Shared utility functions for clankers"
 
 [dependencies]
 clanker-message = { workspace = true }
-clanker-tui-types = { workspace = true }
+rat-markdown = { workspace = true }
 dirs = "6"
 base64 = "0.22"
 hex = "0.4"
