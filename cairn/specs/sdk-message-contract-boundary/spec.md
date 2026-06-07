@@ -75,13 +75,8 @@ Message contract changes MUST preserve existing serialization while preventing t
 
 Clankers transcript compatibility records MAY remain public only through an explicit compatibility module or feature that documents ownership by desktop/session/provider/controller adapters.
 
-#### Scenario: compatibility callers opt in [r[sdk-message-contract-boundary.transcript-compat-feature.opt-in]]
-- GIVEN a desktop or adapter path needs `AgentMessage`, `MessageId`, `generate_id`, or persisted transcript variants
-- WHEN it imports those records
-- THEN the import MUST use the explicit transcript compatibility boundary
-- AND the generic embedded SDK examples MUST NOT depend on that compatibility boundary
-
-#### Scenario: compatibility serialization remains covered [r[sdk-message-contract-boundary.transcript-compat-feature.serialization]]
-- GIVEN existing Clankers transcript records remain readable for desktop/session adapters
-- WHEN compatibility fixtures run
-- THEN persisted user, assistant, tool-result, bash, branch, compaction, and custom transcript records MUST deserialize or report an explicit migration error
+#### Scenario: compatibility APIs carry owners and fixtures [r[sdk-message-contract-boundary.transcript-compat-feature.owner-fixtures]]
+- GIVEN a transcript, provider, session, or legacy import API is labeled optional support or compatibility-only
+- WHEN SDK inventory and boundary rails validate the API
+- THEN the API MUST name its owning adapter or feature boundary and have a serialization or behavior fixture
+- AND default green SDK examples and root exports MUST NOT require that compatibility API unless the example explicitly opts in

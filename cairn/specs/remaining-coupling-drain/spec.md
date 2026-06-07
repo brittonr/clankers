@@ -16,35 +16,6 @@ Clankers MUST track every remaining coupling hotspot identified by the post-deco
 - THEN every hotspot MUST have a requirement and at least one implementation or verification task
 - THEN future drain work can be prioritized without relying on untracked prose
 
-### Requirement: Root shell policy drains to owned bricks [r[remaining-coupling-drain.root-shell-policy]]
-
-The root `clankers` crate MUST remain an application-edge shell: it may wire concrete services, but reusable domain policy, storage schemas, provider shaping, process-job policy, rendering semantics, and protocol conversion MUST live in named workspace crates or focused adapter modules with owner receipts.
-
-#### Scenario: root dependency edges remain app-edge wiring [r[remaining-coupling-drain.root-shell-policy.app-edge-wiring]]
-- GIVEN root code uses an internal workspace crate
-- WHEN architecture rails inventory the dependency edge
-- THEN the edge MUST have an owner receipt explaining why it is application-edge wiring
-- THEN reusable behavior behind that edge MUST be tested at its owner rather than only through root modes
-
-#### Scenario: root modules shrink policy ownership [r[remaining-coupling-drain.root-shell-policy.policy-drained]]
-- GIVEN a large root tool or mode module owns reusable behavior
-- WHEN the behavior can be expressed as a neutral service, DTO, or workspace brick
-- THEN implementation MUST move that behavior to the owner and leave root code as parsing, wiring, or projection
-
-### Requirement: Agent concrete dependencies shrink behind ports [r[remaining-coupling-drain.agent-concrete-dependencies]]
-
-`clankers-agent` MUST keep turn policy behind model, tool, storage, prompt, hook, skill, cost, and cancellation ports, and MUST reduce direct concrete dependencies on provider/router/DB/config/procmon/TUI systems as those adapters move to application edges.
-
-#### Scenario: turn policy uses neutral ports [r[remaining-coupling-drain.agent-concrete-dependencies.neutral-ports]]
-- GIVEN a turn helper needs model execution, tool execution, storage, hooks, usage, skills, or cancellation
-- WHEN source-boundary rails inspect reusable turn policy
-- THEN concrete provider/router/auth, DB/search, TUI display, procmon, and project path lookup types MUST be absent unless the module is a named adapter
-
-#### Scenario: dependency budget moves downward [r[remaining-coupling-drain.agent-concrete-dependencies.budget-decreases]]
-- GIVEN `clankers-agent` still has concrete dependency receipts
-- WHEN a drain slice touches one dependency family
-- THEN the slice MUST either remove that dependency, narrow it to a dev/test/adapter-only edge, or update the owner receipt with a smaller convergence condition
-
 ### Requirement: Process-job policy splits from the root tool [r[remaining-coupling-drain.process-job-policy]]
 
 The agent-visible `process` tool MUST stay a thin JSON-to-typed-request adapter over process-job services. Native process management, backend capability rules, durable storage mapping, redaction, notification policy, and retention/GC MUST be owned by runtime/process service modules or backend adapters.
@@ -59,20 +30,6 @@ The agent-visible `process` tool MUST stay a thin JSON-to-typed-request adapter 
 - GIVEN a process job uses native, pueue, systemd, or future backends
 - WHEN policy differs by backend
 - THEN capability, storage, retention, notification, and redaction behavior MUST be isolated behind typed backend/service interfaces with focused tests
-
-### Requirement: Controller command seams split by responsibility [r[remaining-coupling-drain.controller-command-seams]]
-
-`clankers-controller` MUST keep command input translation, authorization, core reducer effect interpretation, runtime dispatch, persistence, continuation policy, and protocol/event projection in separately testable modules.
-
-#### Scenario: command dispatch does not own every layer [r[remaining-coupling-drain.controller-command-seams.single-purpose]]
-- GIVEN a session command is handled
-- WHEN source-boundary rails inspect controller command code
-- THEN no single function or module SHOULD own wire parsing, authorization, core input construction, runtime mutation, persistence, and daemon/TUI event projection for the same behavior
-
-#### Scenario: projection stays centralized [r[remaining-coupling-drain.controller-command-seams.projection-owner]]
-- GIVEN controller behavior emits user-visible or transport-visible output
-- WHEN that output is converted to protocol/TUI events
-- THEN conversion MUST go through the explicit projection owner rather than reconstructing protocol DTOs in command policy paths
 
 ### Requirement: Daemon actor construction separates assembly from loop policy [r[remaining-coupling-drain.daemon-actor-assembly]]
 
@@ -104,21 +61,6 @@ Display/protocol DTO crates MUST stay at projection edges. Agent, runtime, and r
 - THEN they MUST be projected from neutral domain events/receipts at transport adapters
 - THEN transport DTOs MUST NOT become canonical domain state in reusable modules
 
-### Requirement: Provider/router compatibility converges to one owner per concern [r[remaining-coupling-drain.provider-router-convergence]]
-
-Provider-native request shaping, model/account discovery, auth refresh/probing, routing/fallback/cooldown, retry behavior, and stream normalization MUST each have one owner. Compatibility layers MUST translate DTOs only and MUST NOT duplicate policy.
-
-#### Scenario: compatibility adapters are thin [r[remaining-coupling-drain.provider-router-convergence.thin-adapters]]
-- GIVEN a `clankers-provider` adapter calls `clanker-router`
-- WHEN source and fixture rails inspect the adapter
-- THEN it MUST only translate DTOs, stream events, and errors
-- THEN routing, fallback, cooldown, auth probe, and provider-native body-shaping policy MUST remain owned by the router/provider backend modules
-
-#### Scenario: duplicate provider abstractions are tracked [r[remaining-coupling-drain.provider-router-convergence.duplicate-abstractions]]
-- GIVEN two provider request/event traits remain in the workspace
-- WHEN a new backend or request field is added
-- THEN constructor-count and projection parity rails MUST prove the adapters stay in sync or the duplicate abstraction must be collapsed
-
 ### Requirement: Drain closeout preserves behavior and traceability [r[remaining-coupling-drain.closeout-validation]]
 
 Every drain slice MUST preserve existing user-visible behavior and update traceability, evidence, and architecture rails before closeout.
@@ -133,21 +75,6 @@ Every drain slice MUST preserve existing user-visible behavior and update tracea
 - WHEN a reviewer opens the evidence path
 - THEN it MUST contain the exact command, result, and relevant pass/fail summary needed to verify the claim without relying on transient terminal scrollback
 
-### Requirement: Runtime facade classification is explicit [r[remaining-coupling-drain.runtime-facade-classification]]
-
-`clankers-runtime` MUST be classified as yellow-only, a documented green-subset facade, or a split set of green/yellow owners before new runtime APIs are advertised as embedded SDK contracts.
-
-#### Scenario: runtime exports have green yellow red owners [r[remaining-coupling-drain.runtime-facade-classification.owner-map]]
-- GIVEN runtime facade public exports are reviewed
-- WHEN classification validation runs
-- THEN each exported runtime API group MUST be mapped to green reusable SDK, yellow app-edge integration, or red desktop-only ownership
-- AND SDK docs and lego policy MUST agree with that classification
-
-#### Scenario: classification gates promotion [r[remaining-coupling-drain.runtime-facade-classification.promotion-gate]]
-- GIVEN a runtime API depends on provider/auth/plugin/process/prompt filesystem/session storage/desktop state
-- WHEN it is considered for embedded SDK promotion
-- THEN it MUST either move behind a green neutral owner or remain yellow app-edge with explicit host injection requirements
-
 ### Requirement: Runtime public API rail is real inventory [r[remaining-coupling-drain.runtime-public-api-rail]]
 
 Runtime facade boundary checks MUST inventory actual public exports and dependencies rather than relying on a small hardcoded denied-name list.
@@ -161,16 +88,6 @@ Runtime facade boundary checks MUST inventory actual public exports and dependen
 - GIVEN runtime classification changes
 - WHEN receipt generation runs
 - THEN public API labels, dependency summaries, and source hashes MUST be deterministic and included in reviewable evidence
-
-### Requirement: Runtime defaults fail closed without ambient services [r[remaining-coupling-drain.runtime-fail-closed-defaults]]
-
-Runtime facade services that require provider, auth, plugin, process, prompt filesystem, skill, session, or storage behavior MUST fail closed unless a host explicitly injects the required service.
-
-#### Scenario: missing runtime services do not discover desktop state [r[remaining-coupling-drain.runtime-fail-closed-defaults.no-ambient]]
-- GIVEN an embedded host creates runtime defaults without service injection
-- WHEN provider, auth, plugin, process, prompt filesystem, skill, session, or storage behavior is requested
-- THEN runtime MUST return a typed unavailable/unsupported error
-- AND it MUST NOT probe global/project config, auth files, daemon sockets, plugin directories, or desktop session stores
 
 ### Requirement: Trait seam refactors are explicit [r[remaining-coupling-drain.trait-seam-refactors]]
 
@@ -227,3 +144,140 @@ Architecture boundary verification MUST replace brittle string-presence anchors 
 - WHEN workspace dependency and constructor inventories are generated
 - THEN lower layers MUST NOT depend on or construct higher-layer types except through documented adapter seams
 - AND rail diagnostics MUST name the source owner, forbidden target layer, and expected replacement path
+
+### Requirement: Controller command seams split by responsibility [r[remaining-coupling-drain.controller-command-seams]]
+
+`clankers-controller` MUST keep command input translation, authorization, core reducer effect interpretation, runtime dispatch, persistence, continuation policy, and protocol/event projection in separately testable modules.
+
+#### Scenario: command dispatch does not own every layer [r[remaining-coupling-drain.controller-command-seams.single-purpose]]
+- GIVEN a session command is handled
+- WHEN source-boundary rails inspect controller command code
+- THEN no single function or module SHOULD own wire parsing, authorization, core input construction, runtime mutation, persistence, and daemon/TUI event projection for the same behavior
+
+#### Scenario: projection stays centralized [r[remaining-coupling-drain.controller-command-seams.projection-owner]]
+- GIVEN controller behavior emits user-visible or transport-visible output
+- WHEN that output is converted to protocol/TUI events
+- THEN conversion MUST go through the explicit projection owner rather than reconstructing protocol DTOs in command policy paths
+
+#### Scenario: projection constructors have one owner [r[remaining-coupling-drain.controller-command-seams.constructor-owners]]
+- GIVEN controller, daemon, attach, TUI, provider, or session code needs to emit edge-specific DTOs
+- WHEN source-boundary rails inventory constructor sites
+- THEN reusable logic MUST emit neutral domain DTOs and edge-specific constructors MUST appear only in the declared projection owner module
+- AND exceptions MUST be named adapter seams with focused tests
+
+### Requirement: Agent concrete dependencies shrink behind ports [r[remaining-coupling-drain.agent-concrete-dependencies]]
+
+`clankers-agent` MUST keep turn policy behind model, tool, storage, prompt, hook, skill, cost, and cancellation ports, and MUST reduce direct concrete dependencies on provider/router/DB/config/procmon/TUI systems as those adapters move to application edges.
+
+#### Scenario: turn policy uses neutral ports [r[remaining-coupling-drain.agent-concrete-dependencies.neutral-ports]]
+- GIVEN a turn helper needs model execution, tool execution, storage, hooks, usage, skills, or cancellation
+- WHEN source-boundary rails inspect reusable turn policy
+- THEN concrete provider/router/auth, DB/search, TUI display, procmon, and project path lookup types MUST be absent unless the module is a named adapter
+
+#### Scenario: dependency budget moves downward [r[remaining-coupling-drain.agent-concrete-dependencies.budget-decreases]]
+- GIVEN `clankers-agent` still has concrete dependency receipts
+- WHEN a drain slice touches one dependency family
+- THEN the slice MUST either remove that dependency, narrow it to a dev/test/adapter-only edge, or update the owner receipt with a smaller convergence condition
+
+#### Scenario: neutral ports separate policy from adapters [r[remaining-coupling-drain.agent-concrete-dependencies.port-boundary-rule]]
+- GIVEN reusable agent, controller, runtime, or engine-host policy needs external behavior
+- WHEN the seam is touched for decoupling
+- THEN the policy MUST express the need as typed DTOs, effects, or service traits injected by the host
+- AND concrete provider, tool, storage, hook, plugin, config, process, or display implementations MUST remain in named adapter modules
+
+### Requirement: Provider/router compatibility converges to one owner per concern [r[remaining-coupling-drain.provider-router-convergence]]
+
+Provider-native request shaping, model/account discovery, auth refresh/probing, routing/fallback/cooldown, retry behavior, and stream normalization MUST each have one owner. Compatibility layers MUST translate DTOs only and MUST NOT duplicate policy.
+
+#### Scenario: compatibility adapters are thin [r[remaining-coupling-drain.provider-router-convergence.thin-adapters]]
+- GIVEN a `clankers-provider` adapter calls `clanker-router`
+- WHEN source and fixture rails inspect the adapter
+- THEN it MUST only translate DTOs, stream events, and errors
+- THEN routing, fallback, cooldown, auth probe, and provider-native body-shaping policy MUST remain owned by the router/provider backend modules
+
+#### Scenario: duplicate provider abstractions are tracked [r[remaining-coupling-drain.provider-router-convergence.duplicate-abstractions]]
+- GIVEN two provider request/event traits remain in the workspace
+- WHEN a new backend or request field is added
+- THEN constructor-count and projection parity rails MUST prove the adapters stay in sync or the duplicate abstraction must be collapsed
+
+#### Scenario: provider concerns have owner receipts [r[remaining-coupling-drain.provider-router-convergence.concern-owner-map]]
+- GIVEN provider/router code owns request shaping, auth, discovery, routing, retry, cache-key, or stream-normalization behavior
+- WHEN provider-router boundary validation inventories that behavior
+- THEN each concern MUST name exactly one policy owner and any compatibility adapter MUST name the projection helper or backend entrypoint it delegates to
+- AND duplicate policy in compatibility adapters MUST fail unless it is a documented temporary convergence row with a focused fixture
+
+#### Scenario: compatibility adapters delegate policy [r[remaining-coupling-drain.provider-router-convergence.adapter-delegation]]
+- GIVEN `clankers-provider` compatibility code calls `clanker-router` or a routed backend
+- WHEN request, cache-key, retry, auth-probe, or stream behavior changes
+- THEN compatibility code MUST translate DTOs, stream events, and errors only
+- AND provider-native body construction, routing/fallback/cooldown, auth probe, retry, and stream state-machine policy MUST remain in the declared owner module with parity fixtures
+
+### Requirement: Root shell policy drains to owned bricks [r[remaining-coupling-drain.root-shell-policy]]
+
+The root `clankers` crate MUST remain an application-edge shell: it may wire concrete services, but reusable domain policy, storage schemas, provider shaping, process-job policy, rendering semantics, and protocol conversion MUST live in named workspace crates or focused adapter modules with owner receipts.
+
+#### Scenario: root dependency edges remain app-edge wiring [r[remaining-coupling-drain.root-shell-policy.app-edge-wiring]]
+- GIVEN root code uses an internal workspace crate
+- WHEN architecture rails inventory the dependency edge
+- THEN the edge MUST have an owner receipt explaining why it is application-edge wiring
+- THEN reusable behavior behind that edge MUST be tested at its owner rather than only through root modes
+
+#### Scenario: root modules shrink policy ownership [r[remaining-coupling-drain.root-shell-policy.policy-drained]]
+- GIVEN a large root tool or mode module owns reusable behavior
+- WHEN the behavior can be expressed as a neutral service, DTO, or workspace brick
+- THEN implementation MUST move that behavior to the owner and leave root code as parsing, wiring, or projection
+
+#### Scenario: root module policy has an owner map [r[remaining-coupling-drain.root-shell-policy.root-module-ownership-map]]
+- GIVEN a root `src/` module imports an internal workspace crate or constructs an edge DTO
+- WHEN dependency ownership validation inventories that module
+- THEN the module MUST be classified as shell wiring, edge projection, adapter exception, or temporary policy with a named drain target
+- AND every temporary-policy row MUST include a convergence condition and focused validation path before the slice can close
+
+#### Scenario: root policy drains by slice [r[remaining-coupling-drain.root-shell-policy.policy-slice-drain]]
+- GIVEN a root module owns reusable behavior that can be expressed as a neutral service, DTO, or workspace brick
+- WHEN a drain slice touches that behavior
+- THEN the reusable behavior MUST move to the named owner or become a documented adapter exception
+- AND root code MUST retain only parsing, service assembly, or projection responsibilities for that behavior
+
+### Requirement: Runtime defaults fail closed without ambient services [r[remaining-coupling-drain.runtime-fail-closed-defaults]]
+
+Runtime facade services that require provider, auth, plugin, process, prompt filesystem, skill, session, or storage behavior MUST fail closed unless a host explicitly injects the required service.
+
+#### Scenario: missing runtime services do not discover desktop state [r[remaining-coupling-drain.runtime-fail-closed-defaults.no-ambient]]
+- GIVEN an embedded host creates runtime defaults without service injection
+- WHEN provider, auth, plugin, process, prompt filesystem, skill, session, or storage behavior is requested
+- THEN runtime MUST return a typed unavailable/unsupported error
+- AND it MUST NOT probe global/project config, auth files, daemon sockets, plugin directories, or desktop session stores
+
+#### Scenario: prompt and skill contracts are host injected [r[remaining-coupling-drain.runtime-fail-closed-defaults.prompt-skill-host-injection]]
+- GIVEN prompt assembly or skill lookup needs filesystem/config/project state
+- WHEN an embedded host uses runtime defaults without injecting prompt or skill services
+- THEN runtime MUST return typed unavailable diagnostics instead of reading `.clankers`, `.pi`, global config, or project skill directories
+- AND reusable prompt/skill DTOs MUST live in a neutral owner independent of desktop path discovery
+
+### Requirement: Runtime facade classification is explicit [r[remaining-coupling-drain.runtime-facade-classification]]
+
+`clankers-runtime` MUST be classified as yellow-only, a documented green-subset facade, or a split set of green/yellow owners before new runtime APIs are advertised as embedded SDK contracts.
+
+#### Scenario: runtime exports have green yellow red owners [r[remaining-coupling-drain.runtime-facade-classification.owner-map]]
+- GIVEN runtime facade public exports are reviewed
+- WHEN classification validation runs
+- THEN each exported runtime API group MUST be mapped to green reusable SDK, yellow app-edge integration, or red desktop-only ownership
+- AND SDK docs and lego policy MUST agree with that classification
+
+#### Scenario: classification gates promotion [r[remaining-coupling-drain.runtime-facade-classification.promotion-gate]]
+- GIVEN a runtime API depends on provider/auth/plugin/process/prompt filesystem/session storage/desktop state
+- WHEN it is considered for embedded SDK promotion
+- THEN it MUST either move behind a green neutral owner or remain yellow app-edge with explicit host injection requirements
+
+#### Scenario: steel orchestration contracts split from execution policy [r[remaining-coupling-drain.runtime-facade-classification.steel-contract-owner]]
+- GIVEN Steel turn planning, host-call, or repo-evolution data is useful to embedded hosts
+- WHEN those public APIs are reviewed for SDK promotion
+- THEN serializable plan, host-call, script metadata, and pack-manifest DTOs MUST be separated from executable Steel evaluation, file loading, mutation, Nickel resolution, clocks, and host service calls
+- AND executable Steel behavior MUST remain yellow runtime policy unless a future green owner has fixture-backed no-authority validation
+
+#### Scenario: runtime adapter shells are separately classified [r[remaining-coupling-drain.runtime-facade-classification.adapter-shell-buckets]]
+- GIVEN `clankers-runtime` exposes contracts and desktop service implementations
+- WHEN runtime facade inventory is generated
+- THEN each public API group MUST be classified as green contract, yellow host-injection surface, or desktop adapter shell
+- AND desktop adapter shell groups MUST NOT be advertised as default embedded SDK contracts
