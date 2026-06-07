@@ -373,7 +373,7 @@ clankers --agent researcher --agent-scope project
 
 ## Capability Tokens
 
-UCAN-based authorization tokens for scoping access to daemon sessions:
+Public UCAN authorization tokens for scoping access to daemon sessions. Remote daemon/session/tool admission combines OnixResearch `ucan` credentials with Basalt policy checks and redacted receipts; legacy `clanker-auth` tokens remain a local compatibility substrate only.
 
 ```
 clankers token create --read-only       # read-only token
@@ -462,7 +462,7 @@ Workspace-local crates under `crates/`:
 | `clankers-tool-host` | Shared tool catalog/executor host traits |
 | `clankers-tts` | Text-to-speech integration |
 | `clankers-tui` | Terminal UI (ratatui) |
-| `clankers-ucan` | Clankers-specific capability tokens over `clanker-auth` |
+| `clankers-ucan` | Public UCAN credential envelopes, Basalt admission receipts, and legacy local capability helpers |
 | `clankers-util` | Shared utilities (logging, direnv, parsing, truncation, etc.) |
 | `clankers-zellij` | Zellij session sharing |
 

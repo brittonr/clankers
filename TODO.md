@@ -2,7 +2,6 @@
 
 - [x] **snix Integration** — In-process Nix evaluation, store ref annotation, flake ref parsing. (legacy lifecycle item; migrated Cairn tree to `cairn/`)
 - [x] **Matrix Daemon v2** — Daemon-integrated Matrix: heartbeat scheduler, trigger pipes, idle reaper, `allowed_users`, `!` command prefix, `<sendfile>` uploads. (legacy lifecycle item; migrated Cairn tree to `cairn/`)
-- [ ] **UCAN Auth** — Capability-based auth for daemon/remote access with delegation chains. (track future lifecycle work under `cairn/changes/`)
 
 ## Done
 
@@ -31,3 +30,4 @@
 - [x] Automerge Sessions
 - [x] Calendar Plugin (CalDAV)
 - [x] Dynamic Registry Pattern
+- [x] UCAN Auth — Public UCAN + Basalt capability auth for daemon/remote access with delegation chains (archived in `cairn/archive/1970-01-01-ucan-basalt-daemon-auth/`, with concrete/canonical file-tool hardening follow-ups)
