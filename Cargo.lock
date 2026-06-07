@@ -1608,7 +1608,6 @@ dependencies = [
  "clankers-runtime",
  "clankers-skills",
  "clankers-tool-host",
- "clankers-util",
  "futures",
  "parking_lot",
  "regex",
@@ -1781,8 +1780,8 @@ dependencies = [
 name = "clankers-model-selection"
 version = "0.1.0"
 dependencies = [
+ "clanker-message",
  "clanker-router",
- "clanker-tui-types",
  "parking_lot",
  "serde",
  "serde_json",
@@ -1828,7 +1827,7 @@ dependencies = [
 name = "clankers-procmon"
 version = "0.1.0"
 dependencies = [
- "clanker-tui-types",
+ "clanker-message",
  "parking_lot",
  "serde",
  "sysinfo",
@@ -1928,8 +1927,10 @@ dependencies = [
  "blake3",
  "clanker-message",
  "clankers-engine",
+ "dirs 6.0.0",
  "serde",
  "serde_json",
+ "tempfile",
  "thiserror 2.0.18",
 ]
 

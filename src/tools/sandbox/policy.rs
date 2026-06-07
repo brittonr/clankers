@@ -1,6 +1,6 @@
 //! Environment sanitization for bash child processes.
 //!
-//! Path policy is now in `clankers-util::path_policy` — this module
+//! Path policy is now in `clankers-tool-host::path_policy` — this module
 //! only handles environment variable scrubbing.
 
 /// Environment variables that should be stripped from bash child processes.

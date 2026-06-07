@@ -6,8 +6,8 @@ license.workspace = true
 description = "Multi-model routing policy, cost tracking, and orchestration"
 
 [dependencies]
+clanker-message = { workspace = true }
 clanker-router = { workspace = true }
-clanker-tui-types = { workspace = true }
 tracing = { workspace = true }
 parking_lot = "0.12"
 serde = { workspace = true }

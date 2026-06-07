@@ -204,11 +204,10 @@
         "clankers-procmon",
         "clankers-prompts",
         "clankers-provider",
-        "clankers-skills",
-        "clankers-util"
+        "clankers-skills"
       ],
-      "concrete_dependency_count": 8,
-      "internal_dependency_count": 16,
+      "concrete_dependency_count": 7,
+      "internal_dependency_count": 15,
       "owner": "turn orchestration shell; concrete systems should migrate behind model/tool/config/storage/hook/prompt/skill/cost ports",
       "package": "clankers-agent"
     },
@@ -465,7 +464,7 @@
     },
     "most_shared_dto_crates": [
       {
-        "dependent_count": 14,
+        "dependent_count": 16,
         "dependents": [
           "clanker-router",
           "clanker-tui-types",
@@ -476,6 +475,8 @@
           "clankers-controller",
           "clankers-engine",
           "clankers-engine-host",
+          "clankers-model-selection",
+          "clankers-procmon",
           "clankers-provider",
           "clankers-runtime",
           "clankers-session",
@@ -486,13 +487,11 @@
         "package": "clanker-message"
       },
       {
-        "dependent_count": 7,
+        "dependent_count": 5,
         "dependents": [
           "clankers",
           "clankers-config",
-          "clankers-model-selection",
           "clankers-plugin",
-          "clankers-procmon",
           "clankers-tui",
           "clankers-util"
         ],

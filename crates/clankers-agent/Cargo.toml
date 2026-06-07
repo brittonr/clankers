@@ -20,7 +20,6 @@ clankers-provider = { version = "0.1.0", path = "../clankers-provider" }
 clankers-runtime = { version = "0.1.0", path = "../clankers-runtime" }
 clankers-artifacts = { version = "0.1.0", path = "../clankers-artifacts" }
 clankers-skills = { version = "0.1.0", path = "../clankers-skills" }
-clankers-util = { version = "0.1.0", path = "../clankers-util" }
 
 async-trait = "0.1"
 chrono = { workspace = true }

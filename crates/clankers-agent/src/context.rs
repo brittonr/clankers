@@ -123,7 +123,7 @@ pub fn compact_stale_tool_results(messages: &[AgentMessage], keep_recent: usize)
 /// Estimate tokens for a single message
 fn estimate_message_tokens(message: &AgentMessage) -> usize {
     let json = serde_json::to_string(message).unwrap_or_default();
-    clankers_util::token::estimate_tokens(&json)
+    clanker_message::estimate_tokens(&json)
 }
 
 /// Build full context for an LLM request
@@ -133,7 +133,7 @@ pub fn build_context(
     max_input_tokens: usize,
     compact: bool,
 ) -> AgentContext {
-    let system_tokens = clankers_util::token::estimate_tokens(system_prompt);
+    let system_tokens = clanker_message::estimate_tokens(system_prompt);
     let effective_messages = if compact {
         compact_stale_tool_results(messages, crate::compaction::RECENT_TOOL_RESULTS_TO_KEEP)
     } else {

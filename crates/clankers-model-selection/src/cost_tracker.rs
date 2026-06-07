@@ -7,7 +7,7 @@ use std::collections::HashMap;
 use std::path::Path;
 use std::sync::RwLock;
 
-use clanker_tui_types::CostProvider;
+use clanker_message::CostProvider;
 use serde::Deserialize;
 use serde::Serialize;
 
@@ -114,10 +114,10 @@ struct ModelUsage {
 
 // ── Budget status ───────────────────────────────────────────────────────────
 
-// Cost display types re-exported from clanker-tui-types (canonical definitions).
-pub use clanker_tui_types::BudgetStatus;
-pub use clanker_tui_types::CostSummary;
-pub use clanker_tui_types::ModelCostBreakdown;
+// Cost contracts re-exported from clanker-message (canonical definitions).
+pub use clanker_message::BudgetStatus;
+pub use clanker_message::CostSummary;
+pub use clanker_message::ModelCostBreakdown;
 
 // ── Budget event (returned, not sent directly) ──────────────────────────────
 

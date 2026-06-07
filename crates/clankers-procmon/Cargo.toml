@@ -6,7 +6,7 @@ license.workspace = true
 description = "Process monitoring — tracks child processes, CPU, and memory usage"
 
 [dependencies]
-clanker-tui-types = { workspace = true }
+clanker-message = { workspace = true }
 parking_lot = "0.12"
 serde = { workspace = true }
 sysinfo = "0.34"

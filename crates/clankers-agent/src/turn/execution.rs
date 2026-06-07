@@ -1047,7 +1047,7 @@ fn create_error_result_with_event_sink(
 ///
 /// Returns `Some(reason)` if any path is blocked, `None` if all are allowed.
 fn check_tool_paths(input: &Value) -> Option<String> {
-    use clankers_util::path_policy::check_path;
+    use clankers_tool_host::path_policy::check_path;
 
     // Direct path parameters used by read, write, edit, ls, find, grep, etc.
     for key in ["path", "file", "directory", "cwd"] {
