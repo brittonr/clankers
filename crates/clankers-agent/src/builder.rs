@@ -1,15 +1,18 @@
 //! Builder for Agent with automatic routing and cost tracking setup
 
+use std::any::Any;
 use std::sync::Arc;
 
 use clanker_message::ThinkingConfig;
 use clanker_message::ThinkingLevel;
-use clankers_db::Db;
-use clankers_provider::Provider;
+use clankers_tool_host::ToolHookService;
+use clankers_tool_host::ToolSearchService;
 
 use crate::Agent;
 use crate::AgentCostRecorder;
+use crate::AgentMemoryContextProvider;
 use crate::AgentModelRoles;
+use crate::AgentModelService;
 use crate::AgentRoutingPolicy;
 use crate::AgentSettings;
 use crate::tool::Tool;
@@ -20,12 +23,15 @@ use crate::tool::Tool;
 /// The builder automatically wires routing policy and cost tracker from settings when
 /// `build()` is called.
 pub struct AgentBuilder {
-    provider: Arc<dyn Provider>,
+    provider: Arc<dyn AgentModelService>,
     config: AgentBuilderConfig,
     model: String,
     system_prompt: String,
     tools: Vec<Arc<dyn Tool>>,
-    db: Option<Db>,
+    memory_context_provider: Option<Arc<dyn AgentMemoryContextProvider>>,
+    tool_context_services: Vec<Arc<dyn Any + Send + Sync>>,
+    tool_search_service: Option<Arc<dyn ToolSearchService>>,
+    tool_hook_service: Option<Arc<dyn ToolHookService>>,
     thinking: Option<ThinkingConfig>,
     capability_gate: Option<Arc<dyn crate::tool::CapabilityGate>>,
 }
@@ -56,14 +62,22 @@ impl Default for AgentBuilderConfig {
 
 impl AgentBuilder {
     /// Create a new AgentBuilder with required parameters.
-    pub fn new(provider: Arc<dyn Provider>, config: AgentBuilderConfig, model: String, system_prompt: String) -> Self {
+    pub fn new(
+        provider: Arc<dyn AgentModelService>,
+        config: AgentBuilderConfig,
+        model: String,
+        system_prompt: String,
+    ) -> Self {
         Self {
             provider,
             config,
             model,
             system_prompt,
             tools: Vec::new(),
-            db: None,
+            memory_context_provider: None,
+            tool_context_services: Vec::new(),
+            tool_search_service: None,
+            tool_hook_service: None,
             thinking: None,
             capability_gate: None,
         }
@@ -75,9 +89,30 @@ impl AgentBuilder {
         self
     }
 
-    /// Attach a database handle to this agent
-    pub fn with_db(mut self, db: Db) -> Self {
-        self.db = Some(db);
+    /// Attach a memory context provider to this agent.
+    pub fn with_memory_context_provider(mut self, provider: Arc<dyn AgentMemoryContextProvider>) -> Self {
+        self.memory_context_provider = Some(provider);
+        self
+    }
+
+    /// Attach a concrete legacy tool-context service to this agent.
+    pub fn with_tool_context_service<T>(mut self, service: Arc<T>) -> Self
+    where
+        T: Any + Send + Sync + 'static,
+    {
+        self.tool_context_services.push(service);
+        self
+    }
+
+    /// Attach a neutral search service for migrated tools.
+    pub fn with_tool_search_service(mut self, service: Arc<dyn ToolSearchService>) -> Self {
+        self.tool_search_service = Some(service);
+        self
+    }
+
+    /// Attach a neutral hook service for migrated tool hooks.
+    pub fn with_tool_hook_service(mut self, service: Arc<dyn ToolHookService>) -> Self {
+        self.tool_hook_service = Some(service);
         self
     }
 
@@ -104,9 +139,16 @@ impl AgentBuilder {
             self.system_prompt,
         );
 
-        // Attach database if provided
-        if let Some(db) = self.db {
-            agent = agent.with_db(db);
+        // Attach optional memory/tool services supplied by the application edge.
+        if let Some(provider) = self.memory_context_provider {
+            agent = agent.with_memory_context_provider(provider);
+        }
+        agent = agent.with_tool_context_services(self.tool_context_services);
+        if let Some(service) = self.tool_search_service {
+            agent = agent.with_tool_search_service(service);
+        }
+        if let Some(service) = self.tool_hook_service {
+            agent = agent.with_tool_hook_service(service);
         }
 
         // Wire routing policy from the app-edge adapter.

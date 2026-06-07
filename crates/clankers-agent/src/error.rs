@@ -49,13 +49,12 @@ impl AgentError {
     }
 }
 
-impl From<clankers_provider::error::ProviderError> for AgentError {
-    fn from(e: clankers_provider::error::ProviderError) -> Self {
-        let status = e.status;
-        let retryable = e.is_retryable() && !e.should_compress();
+impl From<crate::model::AgentModelError> for AgentError {
+    fn from(e: crate::model::AgentModelError) -> Self {
+        let retryable = e.retryable && !e.should_compress;
         Self::ProviderStreaming {
             message: e.message,
-            status,
+            status: e.status,
             retryable,
         }
     }

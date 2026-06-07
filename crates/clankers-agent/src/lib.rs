@@ -26,12 +26,15 @@ pub mod compaction;
 pub mod context;
 pub mod error;
 pub mod events;
+pub mod hooks;
+pub mod model;
 pub mod routing;
 pub mod system_prompt;
 pub mod tool;
 pub mod ttsr;
 pub mod turn;
 
+use std::any::Any;
 use std::collections::HashMap;
 use std::sync::Arc;
 
@@ -42,8 +45,6 @@ use clanker_message::StopReason;
 use clanker_message::ThinkingConfig;
 use clanker_message::ThinkingLevel;
 use clanker_message::transcript::*;
-use clankers_db::Db;
-use clankers_provider::Provider;
 use clankers_runtime::SteelRepoEvolutionActivationStatus;
 use clankers_runtime::load_repo_evolution_pack;
 use tokio::sync::broadcast;
@@ -60,6 +61,19 @@ pub use self::tool::ToolDefinition;
 pub use self::tool::ToolResult;
 pub use self::tool::ToolResultContent;
 pub use self::tool::model_switch_slot;
+pub use hooks::AgentHookData;
+pub use hooks::AgentHookPayload;
+pub use hooks::AgentHookPoint;
+pub use hooks::AgentHookSafeError;
+pub use hooks::AgentHookService;
+pub use hooks::AgentHookStatus;
+pub use hooks::AgentHookUsage;
+pub use hooks::AgentHookVerdict;
+pub use model::AgentCompletionRequest;
+pub use model::AgentModelError;
+pub use model::AgentModelResult;
+pub use model::AgentModelService;
+pub use model::thinking_level_to_config;
 pub use routing::AgentCostRecorder;
 pub use routing::AgentModelSelection;
 pub use routing::AgentOrchestrationPhase;
@@ -68,6 +82,8 @@ pub use routing::AgentRoutingPolicy;
 pub use routing::AgentRoutingSignals;
 pub use routing::AgentRoutingToolUse;
 use self::turn::TurnConfig;
+use clankers_tool_host::ToolHookService;
+use clankers_tool_host::ToolSearchService;
 use self::turn::steel_tool_substrate_config_from_settings;
 use self::turn::steel_turn_planning_config_from_settings;
 
@@ -182,6 +198,16 @@ fn canonical_model_role_name(name: &str) -> String {
     }
 }
 
+/// Agent-owned memory context provider used for appending memory to the system prompt.
+pub trait AgentMemoryContextProvider: Send + Sync {
+    fn memory_context(
+        &self,
+        cwd: Option<&str>,
+        global_limit: Option<usize>,
+        project_limit: Option<usize>,
+    ) -> Option<String>;
+}
+
 struct TurnToolUsage {
     tool_call_count: usize,
     used_skill_manage: bool,
@@ -201,25 +227,23 @@ fn replace_first_text_content(content: &mut Vec<Content>, replacement: &str) {
     });
 }
 
-fn hook_status_for_result(result: &Result<()>) -> clankers_hooks::HookStatus {
+fn hook_status_for_result(result: &Result<()>) -> AgentHookStatus {
     match result {
-        Ok(()) => clankers_hooks::HookStatus::Success,
-        Err(AgentError::Cancelled) => clankers_hooks::HookStatus::Cancelled,
-        Err(AgentError::Agent { message }) if message.contains("denied") => clankers_hooks::HookStatus::Denied,
-        Err(AgentError::ProviderStreaming { .. } | AgentError::Agent { .. }) => clankers_hooks::HookStatus::Error,
+        Ok(()) => AgentHookStatus::Success,
+        Err(AgentError::Cancelled) => AgentHookStatus::Cancelled,
+        Err(AgentError::Agent { message }) if message.contains("denied") => AgentHookStatus::Denied,
+        Err(AgentError::ProviderStreaming { .. } | AgentError::Agent { .. }) => AgentHookStatus::Error,
     }
 }
 
-fn hook_error_for_result(result: &Result<()>) -> Option<clankers_hooks::HookSafeError> {
+fn hook_error_for_result(result: &Result<()>) -> Option<AgentHookSafeError> {
     match result {
         Ok(()) => None,
-        Err(AgentError::Cancelled) => {
-            Some(clankers_hooks::HookSafeError::new("operation cancelled", Some("cancelled")))
-        }
+        Err(AgentError::Cancelled) => Some(AgentHookSafeError::new("operation cancelled", Some("cancelled"))),
         Err(AgentError::ProviderStreaming { message, .. }) => {
-            Some(clankers_hooks::HookSafeError::new(message, Some("provider_streaming")))
+            Some(AgentHookSafeError::new(message, Some("provider_streaming")))
         }
-        Err(AgentError::Agent { message }) => Some(clankers_hooks::HookSafeError::new(message, Some("agent"))),
+        Err(AgentError::Agent { message }) => Some(AgentHookSafeError::new(message, Some("agent"))),
     }
 }
 
@@ -227,9 +251,9 @@ fn token_count_to_u64(value: usize) -> u64 {
     u64::try_from(value).unwrap_or(u64::MAX)
 }
 
-fn turn_hook_usage_since(messages: &[AgentMessage], start_index: usize) -> Option<clankers_hooks::HookUsage> {
+fn turn_hook_usage_since(messages: &[AgentMessage], start_index: usize) -> Option<AgentHookUsage> {
     let mut saw_usage = false;
-    let mut usage = clankers_hooks::HookUsage::default();
+    let mut usage = AgentHookUsage::default();
 
     for message in messages.iter().skip(start_index) {
         let AgentMessage::Assistant(assistant) = message else {
@@ -258,8 +282,8 @@ fn tool_call_count_since(messages: &[AgentMessage], start_index: usize) -> usize
 }
 
 pub struct Agent {
-    /// The LLM provider
-    provider: Arc<dyn Provider>,
+    /// The LLM model service.
+    provider: Arc<dyn AgentModelService>,
     /// Latest structured compaction summary for iterative updates.
     latest_compaction_summary: Option<String>,
     /// Available tools by name
@@ -280,8 +304,14 @@ pub struct Agent {
     thinking: Option<ThinkingConfig>,
     /// Current thinking level
     thinking_level: ThinkingLevel,
-    /// Persistent database handle (memory, usage, history, etc.)
-    db: Option<Db>,
+    /// Memory context provider for system-prompt augmentation.
+    memory_context_provider: Option<Arc<dyn AgentMemoryContextProvider>>,
+    /// Concrete services passed through to legacy tools.
+    tool_context_services: Vec<Arc<dyn Any + Send + Sync>>,
+    /// Neutral search service for migrated tools.
+    tool_search_service: Option<Arc<dyn ToolSearchService>>,
+    /// Neutral hook service for tool pre/post hooks.
+    tool_hook_service: Option<Arc<dyn ToolHookService>>,
     /// Routing policy for multi-model conversations
     routing_policy: Option<Arc<dyn AgentRoutingPolicy>>,
     /// Model roles for resolving role names to model IDs.
@@ -292,8 +322,8 @@ pub struct Agent {
     cost_provider: Option<Arc<dyn clanker_message::CostProvider>>,
     /// Shared slot for agent-initiated model switching
     model_switch_slot: Option<ModelSwitchSlot>,
-    /// Hook pipeline for lifecycle/tool/git hooks
-    hook_pipeline: Option<Arc<clankers_hooks::HookPipeline>>,
+    /// Hook service for lifecycle hooks.
+    hook_service: Option<Arc<dyn AgentHookService>>,
     /// Session ID for hook payloads
     session_id: String,
     /// Capability gate for tool call authorization (None = full access).
@@ -310,7 +340,7 @@ pub struct Agent {
 impl Agent {
     /// Create a new agent from agent-owned runtime settings.
     pub fn new_with_agent_settings(
-        provider: Arc<dyn Provider>,
+        provider: Arc<dyn AgentModelService>,
         tools: Vec<Arc<dyn Tool>>,
         settings: AgentSettings,
         model: String,
@@ -332,13 +362,16 @@ impl Agent {
             system_prompt,
             thinking: None,
             thinking_level: ThinkingLevel::Off,
-            db: None,
+            memory_context_provider: None,
+            tool_context_services: Vec::new(),
+            tool_search_service: None,
+            tool_hook_service: None,
             routing_policy: None,
             model_roles: AgentModelRoles::default(),
             cost_recorder: None,
             cost_provider: None,
             model_switch_slot: None,
-            hook_pipeline: None,
+            hook_service: None,
             session_id: String::new(),
             capability_gate: None,
             user_tool_filter: None,
@@ -346,15 +379,45 @@ impl Agent {
         }
     }
 
-    /// Attach a database handle to this agent.
-    pub fn with_db(mut self, db: Db) -> Self {
-        self.db = Some(db);
+    /// Attach a memory context provider to this agent.
+    pub fn with_memory_context_provider(mut self, provider: Arc<dyn AgentMemoryContextProvider>) -> Self {
+        self.memory_context_provider = Some(provider);
         self
     }
 
-    /// Get the database handle, if attached.
-    pub fn db(&self) -> Option<&Db> {
-        self.db.as_ref()
+    /// Attach an application-edge service passed through to legacy tools.
+    pub fn with_tool_context_service<T>(mut self, service: Arc<T>) -> Self
+    where
+        T: Any + Send + Sync + 'static,
+    {
+        self.tool_context_services.push(service);
+        self
+    }
+
+    /// Attach an application-edge service list passed through to legacy tools.
+    pub fn with_tool_context_services(mut self, services: Vec<Arc<dyn Any + Send + Sync>>) -> Self {
+        self.tool_context_services.extend(services);
+        self
+    }
+
+    /// Clone an application-edge legacy service by concrete type.
+    pub fn tool_context_service_arc<T>(&self) -> Option<Arc<T>>
+    where
+        T: Any + Send + Sync + 'static,
+    {
+        self.tool_context_services.iter().find_map(|service| Arc::clone(service).downcast::<T>().ok())
+    }
+
+    /// Attach a neutral search service for migrated tools.
+    pub fn with_tool_search_service(mut self, service: Arc<dyn ToolSearchService>) -> Self {
+        self.tool_search_service = Some(service);
+        self
+    }
+
+    /// Attach a neutral hook service for tool pre/post hooks.
+    pub fn with_tool_hook_service(mut self, service: Arc<dyn ToolHookService>) -> Self {
+        self.tool_hook_service = Some(service);
+        self
     }
 
     /// Set the routing policy for multi-model conversations
@@ -392,10 +455,15 @@ impl Agent {
         self
     }
 
-    /// Attach a hook pipeline for lifecycle/tool/git hooks
-    pub fn with_hook_pipeline(mut self, pipeline: Arc<clankers_hooks::HookPipeline>) -> Self {
-        self.hook_pipeline = Some(pipeline);
+    /// Attach a hook service for lifecycle hooks.
+    pub fn with_hook_service(mut self, service: Arc<dyn AgentHookService>) -> Self {
+        self.hook_service = Some(service);
         self
+    }
+
+    #[cfg(test)]
+    fn with_hook_pipeline(self, pipeline: Arc<clankers_hooks::HookPipeline>) -> Self {
+        self.with_hook_service(pipeline)
     }
 
     /// Set the session ID (used in hook payloads)
@@ -581,12 +649,13 @@ impl Agent {
         let model_port = turn::ProviderModelPort::new(self.provider.as_ref());
         let tool_port = turn::ControllerToolPort {
             controller_tools: &self.tools,
-            services: turn::ControllerToolServices::from_concrete(
+            services: turn::ControllerToolServices::from_agent_services(
                 self.event_tx.clone(),
                 self.cancel.clone(),
-                self.hook_pipeline.clone(),
                 self.session_id.clone(),
-                self.db.clone(),
+                self.tool_context_services.clone(),
+                self.tool_hook_service.clone(),
+                self.tool_search_service.clone(),
                 self.capability_gate.clone(),
                 self.user_tool_filter.clone(),
                 config.steel_tool_substrate.clone(),
@@ -631,36 +700,36 @@ impl Agent {
     }
 
     async fn fire_pre_prompt_hook(&self, prompt_id: &str, text: &str) -> Result<Option<String>> {
-        let Some(pipeline) = &self.hook_pipeline else {
+        let Some(service) = &self.hook_service else {
             return Ok(None);
         };
 
-        let payload = clankers_hooks::HookPayload::prompt_with_metadata(
+        let payload = AgentHookPayload::prompt_with_metadata(
             "pre-prompt",
             &self.session_id,
             prompt_id,
             text,
             Some(&self.system_prompt),
-            clankers_hooks::HookStatus::Pending,
+            AgentHookStatus::Pending,
             None,
         );
-        match pipeline.fire(clankers_hooks::HookPoint::PrePrompt, &payload).await {
-            clankers_hooks::HookVerdict::Continue => Ok(None),
-            clankers_hooks::HookVerdict::Modify(modified) => {
+        match service.fire(AgentHookPoint::PrePrompt, &payload).await {
+            AgentHookVerdict::Continue => Ok(None),
+            AgentHookVerdict::Modify(modified) => {
                 Ok(modified.get("text").and_then(serde_json::Value::as_str).map(ToOwned::to_owned))
             }
-            clankers_hooks::HookVerdict::Deny { reason } => Err(AgentError::Agent {
+            AgentHookVerdict::Deny { reason } => Err(AgentError::Agent {
                 message: format!("prompt denied by pre-prompt hook: {reason}"),
             }),
         }
     }
 
     fn fire_post_prompt_hook(&self, prompt_id: &str, text: &str, result: &Result<()>) {
-        let Some(pipeline) = &self.hook_pipeline else {
+        let Some(service) = &self.hook_service else {
             return;
         };
 
-        let payload = clankers_hooks::HookPayload::prompt_with_metadata(
+        let payload = AgentHookPayload::prompt_with_metadata(
             "post-prompt",
             &self.session_id,
             prompt_id,
@@ -669,15 +738,15 @@ impl Agent {
             hook_status_for_result(result),
             hook_error_for_result(result),
         );
-        pipeline.fire_async(clankers_hooks::HookPoint::PostPrompt, payload);
+        service.fire_async(AgentHookPoint::PostPrompt, payload);
     }
 
     async fn fire_pre_turn_hook(&self, prompt_id: &str, text: &str, model: &str, message_count: usize) -> Result<()> {
-        let Some(pipeline) = &self.hook_pipeline else {
+        let Some(service) = &self.hook_service else {
             return Ok(());
         };
 
-        let payload = clankers_hooks::HookPayload::turn(
+        let payload = AgentHookPayload::turn(
             "pre-turn",
             &self.session_id,
             prompt_id,
@@ -685,13 +754,13 @@ impl Agent {
             text,
             token_count_to_u64(message_count),
             0,
-            clankers_hooks::HookStatus::Pending,
+            AgentHookStatus::Pending,
             None,
             None,
         );
-        match pipeline.fire(clankers_hooks::HookPoint::PreTurn, &payload).await {
-            clankers_hooks::HookVerdict::Continue | clankers_hooks::HookVerdict::Modify(_) => Ok(()),
-            clankers_hooks::HookVerdict::Deny { reason } => Err(AgentError::Agent {
+        match service.fire(AgentHookPoint::PreTurn, &payload).await {
+            AgentHookVerdict::Continue | AgentHookVerdict::Modify(_) => Ok(()),
+            AgentHookVerdict::Deny { reason } => Err(AgentError::Agent {
                 message: format!("turn denied by pre-turn hook: {reason}"),
             }),
         }
@@ -705,11 +774,11 @@ impl Agent {
         start_message_index: usize,
         result: &Result<()>,
     ) {
-        let Some(pipeline) = &self.hook_pipeline else {
+        let Some(service) = &self.hook_service else {
             return;
         };
 
-        let payload = clankers_hooks::HookPayload::turn(
+        let payload = AgentHookPayload::turn(
             "post-turn",
             &self.session_id,
             prompt_id,
@@ -721,7 +790,7 @@ impl Agent {
             hook_error_for_result(result),
             turn_hook_usage_since(&self.messages, start_message_index),
         );
-        pipeline.fire_async(clankers_hooks::HookPoint::PostTurn, payload);
+        service.fire_async(AgentHookPoint::PostTurn, payload);
     }
 
     /// Append a user message to the conversation
@@ -746,12 +815,7 @@ impl Agent {
 
     /// Get the maximum input token count for the current model
     fn get_max_input_tokens(&self) -> usize {
-        self.provider
-            .models()
-            .iter()
-            .find(|m| m.id == self.model)
-            .map(|m| m.max_input_tokens)
-            .unwrap_or(200_000)
+        self.provider.max_input_tokens(&self.model).unwrap_or(200_000)
     }
 
     /// Handle auto-compaction if messages exceed threshold
@@ -867,9 +931,9 @@ impl Agent {
         }
     }
 
-    /// Build the system prompt with memories appended (if db is available).
+    /// Build the system prompt with memories appended (if a memory provider is available).
     fn system_prompt_with_memory(&self) -> String {
-        let Some(db) = &self.db else {
+        let Some(provider) = &self.memory_context_provider else {
             return self.system_prompt.clone();
         };
 
@@ -880,10 +944,8 @@ impl Agent {
         let global_limit = Some(self.settings.memory.global_char_limit);
         let project_limit = Some(self.settings.memory.project_char_limit);
 
-        match db.memory().context_for_with_limits(cwd_str, global_limit, project_limit) {
-            Ok(memory_context) if !memory_context.is_empty() => {
-                format!("{}\n\n{}", self.system_prompt, memory_context)
-            }
+        match provider.memory_context(cwd_str, global_limit, project_limit) {
+            Some(memory_context) if !memory_context.is_empty() => format!("{}\n\n{}", self.system_prompt, memory_context),
             _ => self.system_prompt.clone(),
         }
     }
@@ -1000,7 +1062,7 @@ impl Agent {
     /// Set thinking to a specific level. Returns the new level.
     pub fn set_thinking_level(&mut self, level: ThinkingLevel) -> ThinkingLevel {
         self.thinking_level = level;
-        self.thinking = clankers_provider::thinking_level_to_config(level);
+        self.thinking = model::thinking_level_to_config(level);
         level
     }
 
@@ -1040,8 +1102,8 @@ impl Agent {
         self.tools.values().map(|t| t.definition().clone()).collect()
     }
 
-    /// Get a reference to the provider
-    pub fn provider(&self) -> &Arc<dyn Provider> {
+    /// Get a reference to the model service.
+    pub fn provider(&self) -> &Arc<dyn AgentModelService> {
         &self.provider
     }
 
@@ -1056,8 +1118,7 @@ impl Agent {
         tracing::info!("Starting orchestrated turn: {} ({} phases)", plan.pattern, total_phases,);
 
         let base_system_prompt = self.system_prompt_with_memory();
-        let model_info = self.provider.models().iter().find(|m| m.id == self.model).cloned();
-        let max_input = model_info.map(|m| m.max_input_tokens).unwrap_or(200_000);
+        let max_input = self.provider.max_input_tokens(&self.model).unwrap_or(200_000);
         let turn_start_message_index = self.messages.len();
         let mut turn_model = self.model.clone();
         let mut pre_turn_fired = false;
@@ -1130,12 +1191,13 @@ impl Agent {
                 let model_port = turn::ProviderModelPort::new(self.provider.as_ref());
                 let tool_port = turn::ControllerToolPort {
                     controller_tools: &self.tools,
-                    services: turn::ControllerToolServices::from_concrete(
+                    services: turn::ControllerToolServices::from_agent_services(
                         self.event_tx.clone(),
                         self.cancel.clone(),
-                        self.hook_pipeline.clone(),
                         self.session_id.clone(),
-                        self.db.clone(),
+                        self.tool_context_services.clone(),
+                        self.tool_hook_service.clone(),
+                        self.tool_search_service.clone(),
                         self.capability_gate.clone(),
                         self.user_tool_filter.clone(),
                         config.steel_tool_substrate.clone(),
@@ -1700,7 +1762,7 @@ mod tests {
         )
     }
 
-    fn make_structured_test_agent(provider: Arc<dyn clankers_provider::Provider>) -> Agent {
+    fn make_structured_test_agent(provider: Arc<dyn AgentModelService>) -> Agent {
         Agent::new_with_agent_settings(
             provider,
             vec![],
@@ -1994,7 +2056,7 @@ mod tests {
     #[tokio::test]
     async fn handle_auto_compaction_reuses_previous_summary() {
         let captured_prompt = Arc::new(std::sync::Mutex::new(None));
-        let provider: Arc<dyn clankers_provider::Provider> = Arc::new(CompactionSummaryProvider {
+        let provider: Arc<dyn AgentModelService> = Arc::new(CompactionSummaryProvider {
             response: "## Active Task\n- merged",
             captured_prompt: captured_prompt.clone(),
         });

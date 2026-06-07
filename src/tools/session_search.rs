@@ -330,7 +330,7 @@ impl Tool for SessionSearchTool {
         let mut results = search_tantivy(ctx, query, &matcher, limit, cwd);
 
         if results.len() < limit
-            && let Some(db) = ctx.db()
+            && let Some(db) = ctx.service::<clankers_db::Db>()
         {
             let exclude_ids: Vec<String> = results.iter().map(|r| r.session_id.clone()).collect();
             let idx_results = self.search_index(db, &matcher, cwd, limit - results.len());
@@ -361,7 +361,7 @@ fn search_tantivy(
     if cwd.is_some() {
         return Vec::new();
     }
-    let Some(search_index) = ctx.search_index() else {
+    let Some(search_index) = ctx.service::<clankers_db::search_index::SearchIndex>() else {
         return Vec::new();
     };
     let Ok(hits) = search_index.search(query, limit * 3) else {
@@ -572,7 +572,7 @@ mod tests {
     use super::*;
 
     fn make_ctx_with_db(db: &clankers_db::Db) -> ToolContext {
-        ToolContext::new("test".to_string(), CancellationToken::new(), None).with_db(db.clone())
+        ToolContext::new("test".to_string(), CancellationToken::new(), None).with_service(std::sync::Arc::new(db.clone()))
     }
 
     fn make_ctx() -> ToolContext {

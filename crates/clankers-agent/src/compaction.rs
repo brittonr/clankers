@@ -21,7 +21,8 @@ use clanker_message::transcript::AgentMessage;
 use clanker_message::transcript::MessageId;
 use clanker_message::transcript::UserMessage;
 use clanker_message::estimate_tokens;
-use clankers_provider::Provider;
+use crate::model::AgentCompletionRequest;
+use crate::model::AgentModelService;
 use tokio::sync::mpsc;
 pub use tool_summaries::prune_tool_results;
 pub use tool_summaries::summarize_tool_result;
@@ -208,7 +209,7 @@ pub async fn compact_with_llm(
     messages: &[AgentMessage],
     max_tokens: usize,
     keep_recent: usize,
-    provider: &dyn Provider,
+    provider: &dyn AgentModelService,
     model: &str,
     session_id: &str,
 ) -> CompactionResult {
@@ -220,7 +221,7 @@ pub async fn summarize_middle(
     max_tokens: usize,
     keep_recent: usize,
     previous_summary: Option<&str>,
-    provider: &dyn Provider,
+    provider: &dyn AgentModelService,
     model: &str,
     session_id: &str,
 ) -> CompactionResult {
@@ -265,7 +266,7 @@ pub async fn compact_structured(
     messages: &[AgentMessage],
     max_tokens: usize,
     tail_budget_fraction: f64,
-    provider: &dyn Provider,
+    provider: &dyn AgentModelService,
     model: &str,
     session_id: &str,
     previous_summary: Option<&str>,
@@ -306,7 +307,7 @@ Do not tell the next model to rerun tools unless the excerpt explicitly says wor
     )
 }
 
-async fn request_summary(provider: &dyn Provider, model: &str, session_id: &str, summary_prompt: &str) -> String {
+async fn request_summary(provider: &dyn AgentModelService, model: &str, session_id: &str, summary_prompt: &str) -> String {
     let extra_params = if session_id.is_empty() {
         std::collections::HashMap::new()
     } else {
@@ -316,7 +317,7 @@ async fn request_summary(provider: &dyn Provider, model: &str, session_id: &str,
         )])
     };
 
-    let summary_request = clankers_provider::CompletionRequest {
+    let summary_request = AgentCompletionRequest {
         model: model.to_string(),
         messages: vec![AgentMessage::User(UserMessage {
             id: MessageId::generate(),
@@ -566,12 +567,12 @@ mod tests {
     }
 
     #[async_trait::async_trait]
-    impl Provider for CapturingSummaryProvider {
+    impl AgentModelService for CapturingSummaryProvider {
         async fn complete(
             &self,
-            request: clankers_provider::CompletionRequest,
+            request: AgentCompletionRequest,
             tx: mpsc::Sender<StreamEvent>,
-        ) -> clankers_provider::error::Result<()> {
+        ) -> crate::model::AgentModelResult<()> {
             let prompt_text = request
                 .messages
                 .iter()
@@ -586,7 +587,7 @@ mod tests {
             self.captured_prompts.lock().unwrap_or_else(|poisoned| poisoned.into_inner()).push(prompt_text);
 
             if self.fail {
-                return Err(clankers_provider::error::provider_err("summary failed"));
+                return Err(crate::model::AgentModelError::new("summary failed"));
             }
 
             tx.send(StreamEvent::ContentBlockDelta {
@@ -598,10 +599,6 @@ mod tests {
             .await
             .ok();
             Ok(())
-        }
-
-        fn models(&self) -> &[clankers_provider::Model] {
-            &[]
         }
 
         fn name(&self) -> &str {

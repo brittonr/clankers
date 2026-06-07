@@ -3,6 +3,7 @@
 ## Corrections
 | Date | Source | What Went Wrong | What To Do Instead |
 |------|--------|----------------|-------------------|
+| 2026-06-07 | self | Resumed from a compacted handoff and started live edits/validation before re-reading the always-on napkin | Even when the summary says the napkin was previously read, read `.agent/napkin.md` again before the first repo edit or command in the live turn. |
 | 2026-06-07 | self | Added `dirs = { workspace = true }` / `tempfile = { workspace = true }` to `clankers-tool-host` even though those names are not in `[workspace.dependencies]`, repeating an existing warning | Check root `[workspace.dependencies]` before using `workspace = true`; otherwise use explicit versions already present elsewhere in the root manifest. |
 | 2026-06-07 | self | Wrote a Cairn evidence file with a JSON string accidentally truncated mid-sentence before checking the file | After any long `write` payload for evidence, immediately read the file and rewrite before validation; prefer smaller strings or heredoc-like complete content. |
 | 2026-06-06 | self | Resumed from compacted context and started editing/running validation before reading the always-on napkin | Even with detailed handoff context, read `.agent/napkin.md` before the first repo edit or command in the live turn. |

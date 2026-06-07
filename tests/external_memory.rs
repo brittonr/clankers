@@ -1,3 +1,5 @@
+use std::sync::Arc;
+
 use clankers::modes::common::ToolEnv;
 use clankers::modes::common::ToolSet;
 use clankers::modes::common::ToolTier;
@@ -47,7 +49,7 @@ fn result_text(result: &ToolResult) -> String {
 fn tool_context(db: Option<Db>) -> ToolContext {
     let ctx = ToolContext::new("external-memory-call".to_string(), CancellationToken::new(), None);
     match db {
-        Some(db) => ctx.with_db(db),
+        Some(db) => ctx.with_service(Arc::new(db)),
         None => ctx,
     }
 }

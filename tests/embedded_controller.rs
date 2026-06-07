@@ -151,7 +151,7 @@ fn make_embedded_controller() -> SessionController {
 }
 
 fn make_daemon_controller() -> SessionController {
-    let provider = Arc::new(MockProvider);
+    let provider = Arc::new(clankers::agent_runtime_adapters::ProviderModelServiceAdapter::new(Arc::new(MockProvider)));
     let agent = Agent::new_with_agent_settings(
         provider,
         vec![],
@@ -168,7 +168,7 @@ fn make_daemon_controller() -> SessionController {
 
 fn make_steel_smoke_controller(settings: clankers_config::settings::Settings) -> (SessionController, Arc<AtomicUsize>) {
     let calls = Arc::new(AtomicUsize::new(0));
-    let provider = Arc::new(CountingProvider { calls: calls.clone() });
+    let provider = Arc::new(clankers::agent_runtime_adapters::ProviderModelServiceAdapter::new(Arc::new(CountingProvider { calls: calls.clone() })));
     let agent = Agent::new_with_agent_settings(
         provider,
         vec![],
@@ -301,7 +301,7 @@ fn structured_settings() -> clankers_config::settings::Settings {
 fn make_structured_agent(provider: Arc<dyn clankers_provider::Provider>) -> Agent {
     let settings = structured_settings();
     Agent::new_with_agent_settings(
-        provider,
+        Arc::new(clankers::agent_runtime_adapters::ProviderModelServiceAdapter::new(provider)),
         vec![],
         clankers::agent_config::agent_settings_from_config(&settings),
         "test-model".to_string(),

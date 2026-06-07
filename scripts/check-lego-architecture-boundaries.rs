@@ -150,7 +150,7 @@ fn run() -> Result<PathBuf, String> {
     let daemon_session_assembly = daemon_session_assembly_signature()?;
 
     require_nonempty(&root_internal, "root internal dependency inventory")?;
-    require_nonempty(&agent_concrete, "agent concrete dependency inventory")?;
+    // Agent concrete production dependencies may reach zero as ports replace app-edge systems.
     require_nonempty(&controller_concrete, "controller concrete dependency inventory")?;
     require_nonempty(&shared_dtos, "shared DTO crate inventory")?;
 
@@ -363,6 +363,9 @@ fn dependency_map(
             .ok_or_else(|| format!("package {name} missing dependencies"))?;
         let mut internal = BTreeSet::new();
         for dep in deps {
+            if dep.get("kind").and_then(Value::as_str) == Some("dev") {
+                continue;
+            }
             let dep_name = required_str(dep, "name")?;
             if workspace_packages.contains(dep_name) && dep_name != name {
                 internal.insert(dep_name.to_string());
@@ -996,9 +999,7 @@ fn agent_turn_ports_signature() -> Result<Value, String> {
     for (field, type_path, label) in [
         ("event_tx", "AgentEvent", "legacy progress/event sender field"),
         ("signal", "CancellationToken", "legacy cancellation field"),
-        ("hook_pipeline", "HookPipeline", "legacy hook field"),
-        ("db", "Db", "legacy storage field"),
-        ("search_index", "SearchIndex", "legacy search-index field"),
+        ("services", "Any", "adapter-owned legacy service slots"),
     ] {
         require_struct_field_type_path(&tool_file, "ToolContext", field, type_path, label)?;
     }

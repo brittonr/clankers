@@ -689,7 +689,7 @@ mod tests {
         });
         let provider: Arc<dyn Provider> = Arc::new(RouterCompatAdapter::new(inner.clone()));
         let agent = Agent::new_with_agent_settings(
-            provider,
+            Arc::new(crate::agent_runtime_adapters::ProviderModelServiceAdapter::new(provider)),
             vec![],
             clankers_agent::AgentSettings::default(),
             "test-model".to_string(),

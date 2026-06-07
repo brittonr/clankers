@@ -245,7 +245,7 @@ impl ExternalMemoryTool {
             }
         };
 
-        let db = match ctx.db() {
+        let db = match ctx.service::<clankers_db::Db>() {
             Some(db) => db,
             None => {
                 let elapsed_ms = started.elapsed().as_millis();
@@ -539,7 +539,7 @@ mod tests {
     use super::*;
 
     fn make_ctx(db: &Db) -> ToolContext {
-        ToolContext::new("test".to_string(), CancellationToken::new(), None).with_db(db.clone())
+        ToolContext::new("test".to_string(), CancellationToken::new(), None).with_service(std::sync::Arc::new(db.clone()))
     }
 
     fn result_text(result: &ToolResult) -> String {

@@ -28,7 +28,10 @@ pub async fn run_json_with_options(
     opts: JsonOptions,
 ) -> Result<()> {
     let builder_config = crate::agent_config::agent_builder_config_from_settings(&settings, provider.models(), None);
-    let mut builder = AgentBuilder::new(provider, builder_config, model, system_prompt).with_tools(tools);
+    let model_service: Arc<dyn clankers_agent::AgentModelService> = Arc::new(
+        crate::agent_runtime_adapters::ProviderModelServiceAdapter::new(provider),
+    );
+    let mut builder = AgentBuilder::new(model_service, builder_config, model, system_prompt).with_tools(tools);
     if let Some(thinking) = opts.thinking.clone() {
         builder = builder.with_thinking(thinking);
     }

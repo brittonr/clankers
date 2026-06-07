@@ -338,8 +338,11 @@ pub async fn handle_prompt_streaming_pub(request: &Request, state: &ServerState,
     // Create agent and set up event streaming
     let builder_config =
         crate::agent_config::agent_builder_config_from_settings(&ctx.settings, ctx.provider.models(), None);
+    let model_service: Arc<dyn clankers_agent::AgentModelService> = Arc::new(
+        crate::agent_runtime_adapters::ProviderModelServiceAdapter::new(Arc::clone(&ctx.provider)),
+    );
     let mut builder =
-        clankers_agent::builder::AgentBuilder::new(Arc::clone(&ctx.provider), builder_config, model, system_prompt)
+        clankers_agent::builder::AgentBuilder::new(model_service, builder_config, model, system_prompt)
             .with_tools(ctx.tools.clone());
     if let Some(caps) = &ctx.settings.default_capabilities {
         let gate = std::sync::Arc::new(crate::capability_gate::UcanCapabilityGate::new(caps.clone()));

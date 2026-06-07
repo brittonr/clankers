@@ -961,7 +961,7 @@ mod tests {
     }
 
     fn make_daemon_controller() -> SessionController {
-        let provider = Arc::new(MockProvider);
+        let provider = Arc::new(crate::agent_runtime_adapters::ProviderModelServiceAdapter::new(Arc::new(MockProvider)));
         let agent = Agent::new_with_agent_settings(
             provider,
             vec![],

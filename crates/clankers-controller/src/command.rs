@@ -952,6 +952,7 @@ mod tests {
     use crate::ToolRebuilder;
     use crate::config::ControllerConfig;
     use crate::test_helpers::make_test_controller;
+    use crate::test_helpers::model_service;
 
     const FIRST_EFFECT_ID: clankers_core::CoreEffectId = clankers_core::CoreEffectId(1);
     const LOOP_ITERATION_LIMIT: u32 = 2;
@@ -1429,7 +1430,7 @@ mod tests {
         hook_pipeline: Option<Arc<clankers_hooks::HookPipeline>>,
     ) -> SessionController {
         let agent = clankers_agent::Agent::new_with_agent_settings(
-            provider,
+            model_service(provider),
             vec![],
             clankers_agent::AgentSettings::default(),
             "test-model".to_string(),
@@ -1616,7 +1617,7 @@ mod tests {
             },
         });
         let agent = clankers_agent::Agent::new_with_agent_settings(
-            provider.clone(),
+            model_service(provider.clone()),
             vec![tool],
             clankers_agent::AgentSettings::default(),
             "test-model".to_string(),

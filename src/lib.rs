@@ -35,6 +35,7 @@
 
 pub use clankers_agent_defs as agent_defs;
 pub mod agent_config;
+pub mod agent_runtime_adapters;
 pub mod capability_gate;
 pub mod checkpoints;
 pub mod cli;
@@ -43,6 +44,7 @@ pub mod error;
 pub mod event_translator;
 pub mod modes;
 pub mod plugin;
+pub mod prompt_resources;
 pub mod runtime_prompt;
 pub mod runtime_services;
 pub mod self_evolution;

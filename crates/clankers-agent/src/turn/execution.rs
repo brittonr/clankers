@@ -1,6 +1,6 @@
 //! Tool execution logic and turn execution flow
 
-use std::collections::BTreeMap;
+use std::any::Any;
 use std::collections::HashMap;
 use std::sync::Arc;
 
@@ -21,8 +21,8 @@ use clankers_engine::EngineModelRequest;
 use clankers_engine::EngineToolCall;
 use clankers_engine_host::stream::HostStreamEvent;
 use clankers_engine_host::stream::ProviderStreamError;
-use clankers_provider::CompletionRequest;
-use clankers_provider::Provider;
+use crate::model::AgentCompletionRequest;
+use crate::model::AgentModelService;
 use clankers_tool_host::CapabilityDecision;
 use clankers_tool_host::ToolCancellationService;
 use clankers_tool_host::ToolCapabilityRequest;
@@ -31,18 +31,17 @@ use clankers_tool_host::ToolCatalog;
 use clankers_tool_host::ToolDescriptor;
 use clankers_tool_host::ToolExecutor;
 use clankers_tool_host::ToolHookDecision;
+#[cfg(test)]
 use clankers_tool_host::ToolHookPhase;
 use clankers_tool_host::ToolHookRequest;
 use clankers_tool_host::ToolHookService;
 use clankers_tool_host::ToolHostError;
+#[cfg(test)]
 use clankers_tool_host::ToolHostFuture;
 use clankers_tool_host::ToolHostOutcome;
 use clankers_tool_host::ToolInvocationCancellation;
 use clankers_tool_host::ToolProgressEvent;
 use clankers_tool_host::ToolProgressSink;
-use clankers_tool_host::ToolSearchHit;
-use clankers_tool_host::ToolSearchRequest;
-use clankers_tool_host::ToolSearchResult;
 use clankers_tool_host::ToolSearchService;
 use serde_json::Value;
 use tokio::sync::broadcast;
@@ -193,12 +192,13 @@ impl ToolCatalog for AgentToolCatalog<'_> {
 
 impl ControllerToolServices {
     #[allow(clippy::too_many_arguments)]
-    pub(crate) fn from_concrete(
+    pub(crate) fn from_agent_services(
         event_tx: broadcast::Sender<AgentEvent>,
         cancel: CancellationToken,
-        hook_pipeline: Option<Arc<clankers_hooks::HookPipeline>>,
         session_id: String,
-        db: Option<clankers_db::Db>,
+        legacy_services: Vec<Arc<dyn Any + Send + Sync>>,
+        hook_service: Option<Arc<dyn ToolHookService>>,
+        search_service: Option<Arc<dyn ToolSearchService>>,
         capability_gate: Option<Arc<dyn crate::tool::CapabilityGate>>,
         user_tool_filter: Option<Vec<String>>,
         steel_tool_substrate: Option<AgentToolSteelSubstrateConfig>,
@@ -210,33 +210,25 @@ impl ControllerToolServices {
             event_tx: event_tx.clone(),
         });
         let cancellation = Arc::new(TokenToolCancellationService { cancel: cancel.clone() });
-        let hooks = hook_pipeline.clone().map(|pipeline| {
-            Arc::new(ControllerHookService {
-                pipeline,
-                session_id: session_id.clone(),
-            }) as Arc<dyn ToolHookService>
-        });
         let capability = (capability_gate.is_some() || user_tool_filter.is_some()).then(|| {
             Arc::new(ControllerCapabilityService {
                 capability_gate,
                 user_tool_filter,
             }) as Arc<dyn ToolCapabilityService>
         });
-        let search = db.clone().map(|db| Arc::new(DbMemorySearchService { db }) as Arc<dyn ToolSearchService>);
         let legacy_runner = Arc::new(AgentLegacyToolRunner {
             event_tx,
             cancel,
-            hook_pipeline,
             session_id,
-            db,
+            services: legacy_services,
         });
         Self {
             events,
             progress,
             cancellation,
             storage: None,
-            search,
-            hooks,
+            search: search_service,
+            hooks: hook_service,
             capability,
             legacy_runner,
             steel_tool_substrate,
@@ -284,41 +276,6 @@ impl ToolCancellationService for TokenToolCancellationService {
     }
 }
 
-struct DbMemorySearchService {
-    db: clankers_db::Db,
-}
-
-impl ToolSearchService for DbMemorySearchService {
-    fn search(&self, request: ToolSearchRequest) -> std::result::Result<ToolSearchResult, ToolHostError> {
-        let scope_filter = request.metadata.get("scope").map(String::as_str).unwrap_or("all");
-        let entries = self.db.memory().search(&request.query).map_err(|error| ToolHostError::HostFailed {
-            message: error.to_string(),
-        })?;
-        let hits = entries
-            .into_iter()
-            .filter(|entry| match scope_filter {
-                "global" => matches!(entry.scope, clankers_db::memory::MemoryScope::Global),
-                "project" => matches!(entry.scope, clankers_db::memory::MemoryScope::Project { .. }),
-                _ => true,
-            })
-            .take(usize::try_from(request.limit).unwrap_or(usize::MAX))
-            .enumerate()
-            .map(|(index, entry)| {
-                let mut metadata = BTreeMap::new();
-                metadata.insert("memory_id".to_string(), entry.id.to_string());
-                metadata.insert("scope".to_string(), entry.scope.to_string());
-                ToolSearchHit {
-                    title: entry.id.to_string(),
-                    snippet: entry.text,
-                    rank: u32::try_from(index + 1).unwrap_or(u32::MAX),
-                    metadata,
-                }
-            })
-            .collect();
-        Ok(ToolSearchResult { hits })
-    }
-}
-
 struct ControllerCapabilityService {
     capability_gate: Option<Arc<dyn crate::tool::CapabilityGate>>,
     user_tool_filter: Option<Vec<String>>,
@@ -347,11 +304,13 @@ impl ToolCapabilityService for ControllerCapabilityService {
     }
 }
 
-struct ControllerHookService {
-    pipeline: Arc<clankers_hooks::HookPipeline>,
-    session_id: String,
+#[cfg(test)]
+pub(super) struct ControllerHookService {
+    pub(super) pipeline: Arc<clankers_hooks::HookPipeline>,
+    pub(super) session_id: String,
 }
 
+#[cfg(test)]
 impl ToolHookService for ControllerHookService {
     fn decide(
         &self,
@@ -395,9 +354,8 @@ impl ToolHookService for ControllerHookService {
 struct AgentLegacyToolRunner {
     event_tx: broadcast::Sender<AgentEvent>,
     cancel: CancellationToken,
-    hook_pipeline: Option<Arc<clankers_hooks::HookPipeline>>,
     session_id: String,
-    db: Option<clankers_db::Db>,
+    services: Vec<Arc<dyn Any + Send + Sync>>,
 }
 
 #[async_trait]
@@ -409,9 +367,8 @@ impl LegacyToolRunner for AgentLegacyToolRunner {
             input,
             &self.event_tx,
             self.cancel.clone(),
-            self.hook_pipeline.clone(),
             self.session_id.clone(),
-            self.db.clone(),
+            self.services.clone(),
         )
         .await
     }
@@ -518,8 +475,8 @@ fn first_text_block(content: &[Content]) -> Option<String> {
 
 /// Execute a single engine-requested model call: stream response and collect results.
 pub(super) async fn stream_model_request(
-    provider: &dyn Provider,
-    request: CompletionRequest,
+    provider: &dyn AgentModelService,
+    request: AgentCompletionRequest,
     event_tx: &broadcast::Sender<AgentEvent>,
     cancel: &CancellationToken,
 ) -> Result<CollectedResponse> {
@@ -567,9 +524,9 @@ pub(super) fn engine_messages_from_agent_messages(messages: &[AgentMessage]) -> 
         .collect()
 }
 
-pub(super) fn completion_request_from_engine_request(engine_request: &EngineModelRequest) -> Result<CompletionRequest> {
+pub(super) fn completion_request_from_engine_request(engine_request: &EngineModelRequest) -> Result<AgentCompletionRequest> {
     let messages = agent_messages_from_engine_messages(&engine_request.messages)?;
-    Ok(CompletionRequest {
+    Ok(AgentCompletionRequest {
         model: engine_request.model.clone(),
         messages,
         system_prompt: Some(engine_request.system_prompt.clone()),
@@ -751,12 +708,23 @@ pub(super) async fn execute_tools_parallel(
     capability_gate: Option<Arc<dyn crate::tool::CapabilityGate>>,
     user_tool_filter: Option<Vec<String>>,
 ) -> Vec<ToolResultMessage> {
-    let services = ControllerToolServices::from_concrete(
+    let mut legacy_services: Vec<Arc<dyn Any + Send + Sync>> = Vec::new();
+    if let Some(db) = db {
+        legacy_services.push(Arc::new(db));
+    }
+    let hook_service = hook_pipeline.map(|pipeline| {
+        Arc::new(ControllerHookService {
+            pipeline,
+            session_id: session_id.to_string(),
+        }) as Arc<dyn ToolHookService>
+    });
+    let services = ControllerToolServices::from_agent_services(
         event_tx.clone(),
         cancel,
-        hook_pipeline,
         session_id.to_string(),
-        db,
+        legacy_services,
+        hook_service,
+        None,
         capability_gate,
         user_tool_filter,
         None,
@@ -938,9 +906,8 @@ async fn execute_tool_with_accumulator(
     input: Value,
     event_tx: &broadcast::Sender<AgentEvent>,
     cancel: CancellationToken,
-    hook_pipeline: Option<Arc<clankers_hooks::HookPipeline>>,
     session_id: String,
-    db: Option<clankers_db::Db>,
+    services: Vec<Arc<dyn Any + Send + Sync>>,
 ) -> ToolExecResult {
     // Subscribe to event bus BEFORE tool execution to capture all chunks
     let mut chunk_rx = event_tx.subscribe();
@@ -963,14 +930,9 @@ async fn execute_tool_with_accumulator(
     });
 
     // Execute tool
-    let mut ctx =
-        ToolContext::new(call_id.to_string(), cancel, Some(event_tx.clone())).with_session_id(session_id.clone());
-    if let Some(pipeline) = hook_pipeline {
-        ctx = ctx.with_hooks(pipeline, session_id);
-    }
-    if let Some(db) = db {
-        ctx = ctx.with_db(db);
-    }
+    let ctx = ToolContext::new(call_id.to_string(), cancel, Some(event_tx.clone()))
+        .with_session_id(session_id)
+        .with_services(&services);
     let direct_result = tool.execute(&ctx, input).await;
 
     // Stop collector and decide which result to use
@@ -1449,21 +1411,18 @@ mod tests {
     }
 
     #[test]
-    fn concrete_controller_services_expose_db_memory_search_service() {
-        let db = clankers_db::Db::in_memory().expect("in-memory db");
-        db.memory()
-            .save(&clankers_db::memory::MemoryEntry::new(
-                "neutral service search memory",
-                clankers_db::memory::MemoryScope::Global,
-            ))
-            .expect("save memory fixture");
+    fn controller_services_expose_neutral_search_service() {
         let (event_tx, _rx) = broadcast::channel(16);
-        let services = ControllerToolServices::from_concrete(
+        let search = Arc::new(FakeNeutralSearch {
+            queries: std::sync::Mutex::new(Vec::new()),
+        });
+        let services = ControllerToolServices::from_agent_services(
             event_tx,
             CancellationToken::new(),
-            None,
             "session".to_string(),
-            Some(db),
+            Vec::new(),
+            None,
+            Some(search),
             None,
             None,
             None,
@@ -1478,8 +1437,7 @@ mod tests {
             .expect("search should pass")
             .hits;
         assert_eq!(hits.len(), 1);
-        assert_eq!(hits[0].snippet, "neutral service search memory");
-        assert_eq!(hits[0].metadata.get("scope").map(String::as_str), Some("global"));
+        assert_eq!(hits[0].snippet, "neutral");
     }
 
     #[test]
@@ -1547,11 +1505,12 @@ mod tests {
             disabled_actions: Vec::new(),
         };
 
-        let services = ControllerToolServices::from_concrete(
+        let services = ControllerToolServices::from_agent_services(
             event_tx.clone(),
             CancellationToken::new(),
-            None,
             "session".to_string(),
+            Vec::new(),
+            None,
             None,
             None,
             None,

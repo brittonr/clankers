@@ -113,7 +113,7 @@ impl Tool for ReadTool {
         if offset.is_none()
             && limit.is_none()
             && !Self::is_image_file(path)
-            && let Some(db) = ctx.db()
+            && let Some(db) = ctx.service::<clankers_db::Db>()
             && let Ok(metadata) = std::fs::metadata(path)
         {
             use std::os::unix::fs::MetadataExt;
@@ -142,7 +142,7 @@ impl Tool for ReadTool {
                 if !result.is_error
                     && offset.is_none()
                     && limit.is_none()
-                    && let Some(db) = ctx.db()
+                    && let Some(db) = ctx.service::<clankers_db::Db>()
                     && let Ok(metadata) = std::fs::metadata(path)
                 {
                     use std::os::unix::fs::MetadataExt;

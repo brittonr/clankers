@@ -149,7 +149,7 @@ async fn run_replay_once() -> Value {
     };
 
     let agent = Agent::new_with_agent_settings(
-        provider.clone(),
+        Arc::new(clankers::agent_runtime_adapters::ProviderModelServiceAdapter::new(provider.clone())),
         vec![tool],
         clankers::agent_config::agent_settings_from_config(&settings),
         MODEL.to_string(),

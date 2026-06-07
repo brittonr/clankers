@@ -171,7 +171,7 @@ async fn main() -> Result<()> {
         project_context_file: project_paths.context_file.clone(),
         project_context_dir: project_paths.context_dir.clone(),
     };
-    let resources = clankers_agent::system_prompt::discover_resources(&prompt_paths);
+    let resources = clankers::prompt_resources::discover_agent_prompt_resources(&prompt_paths);
     let system_prompt = clankers_agent::system_prompt::assemble_system_prompt(
         &base_prompt,
         &resources,

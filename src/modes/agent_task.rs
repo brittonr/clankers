@@ -286,7 +286,7 @@ async fn handle_switch_account(
 /// the model to improve the user's prompt for clarity and specificity.
 /// Falls back to the original text if the rewrite call fails.
 pub(crate) async fn rewrite_prompt(
-    provider: &std::sync::Arc<dyn clankers_provider::Provider>,
+    provider: &std::sync::Arc<dyn clankers_agent::AgentModelService>,
     model: &str,
     session_id: &str,
     original: &str,
@@ -296,7 +296,7 @@ pub(crate) async fn rewrite_prompt(
     use clanker_message::transcript::AgentMessage;
     use clanker_message::transcript::MessageId;
     use clanker_message::transcript::UserMessage;
-    use clankers_provider::CompletionRequest;
+    use clankers_agent::AgentCompletionRequest;
 
     let system = "You are a prompt engineer. Your job is to rewrite the user's prompt \
         to be clearer, more specific, and more effective for an AI coding assistant. \
@@ -320,7 +320,7 @@ pub(crate) async fn rewrite_prompt(
         )])
     };
 
-    let request = CompletionRequest {
+    let request = AgentCompletionRequest {
         model: model.to_string(),
         messages: vec![user_msg],
         system_prompt: Some(system.to_string()),
@@ -380,12 +380,18 @@ mod tests {
     use clanker_message::streaming::ContentDelta;
     use clanker_message::streaming::StreamEvent;
     use clankers_agent::Agent;
+    use clankers_agent::AgentModelService;
     use clankers_provider::CompletionRequest;
     use clankers_provider::Model;
     use clankers_provider::Provider;
     use tokio::sync::mpsc;
 
+    use crate::agent_runtime_adapters::ProviderModelServiceAdapter;
     use crate::modes::interactive::TaskResult;
+
+    fn agent_model_service(provider: Arc<dyn Provider>) -> Arc<dyn AgentModelService> {
+        Arc::new(ProviderModelServiceAdapter::new(provider))
+    }
 
     /// Mock provider that streams back a fixed response.
     struct MockRewriteProvider {
@@ -528,7 +534,7 @@ mod tests {
         });
         let provider_dyn: Arc<dyn Provider> = provider.clone();
         let mut agent = Agent::new_with_agent_settings(
-            provider_dyn,
+            agent_model_service(provider_dyn),
             Vec::new(),
             clankers_agent::AgentSettings::default(),
             "test-model".to_string(),
@@ -549,21 +555,21 @@ mod tests {
         let provider: Arc<dyn Provider> = Arc::new(MockRewriteProvider {
             response: "Improved version of the prompt".to_string(),
         });
-        let result = super::rewrite_prompt(&provider, "test-model", "", "fix the bug").await;
+        let result = super::rewrite_prompt(&agent_model_service(provider), "test-model", "", "fix the bug").await;
         assert_eq!(result, "Improved version of the prompt");
     }
 
     #[tokio::test]
     async fn rewrite_prompt_falls_back_on_error() {
         let provider: Arc<dyn Provider> = Arc::new(FailingProvider);
-        let result = super::rewrite_prompt(&provider, "test-model", "", "fix the bug").await;
+        let result = super::rewrite_prompt(&agent_model_service(provider), "test-model", "", "fix the bug").await;
         assert_eq!(result, "fix the bug");
     }
 
     #[tokio::test]
     async fn rewrite_prompt_falls_back_on_empty_response() {
         let provider: Arc<dyn Provider> = Arc::new(EmptyProvider);
-        let result = super::rewrite_prompt(&provider, "test-model", "", "fix the bug").await;
+        let result = super::rewrite_prompt(&agent_model_service(provider), "test-model", "", "fix the bug").await;
         assert_eq!(result, "fix the bug");
     }
 
@@ -572,7 +578,7 @@ mod tests {
         let provider: Arc<dyn Provider> = Arc::new(MockRewriteProvider {
             response: "  improved prompt  \n".to_string(),
         });
-        let result = super::rewrite_prompt(&provider, "test-model", "", "original").await;
+        let result = super::rewrite_prompt(&agent_model_service(provider), "test-model", "", "original").await;
         assert_eq!(result, "improved prompt");
     }
 
@@ -619,7 +625,7 @@ mod tests {
         });
         let provider_dyn: Arc<dyn Provider> = provider.clone();
 
-        let _ = super::rewrite_prompt(&provider_dyn, "my-model", "session-42", "do the thing").await;
+        let _ = super::rewrite_prompt(&agent_model_service(provider_dyn), "my-model", "session-42", "do the thing").await;
 
         let req = provider.captured.lock().unwrap().take().unwrap();
         assert_eq!(req.model, "my-model");

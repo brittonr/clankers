@@ -396,6 +396,7 @@ mod tests {
     use tokio::sync::mpsc;
 
     use super::*;
+    use crate::test_helpers::model_service;
 
     struct StreamingProvider;
 
@@ -451,7 +452,7 @@ mod tests {
 
     fn test_agent() -> Agent {
         Agent::new_with_agent_settings(
-            Arc::new(StreamingProvider),
+            model_service(Arc::new(StreamingProvider)),
             Vec::new(),
             clankers_agent::AgentSettings::default(),
             "runtime-model".to_string(),

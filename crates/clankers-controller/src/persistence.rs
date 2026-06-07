@@ -29,8 +29,8 @@ impl SessionController {
             if let Err(error) = sm.record_compaction_summary(summary.clone()) {
                 warn!("failed to persist compaction summary: {error}");
             }
-            if let Some(db) = self.agent.as_ref().and_then(|agent| agent.db())
-                && let Err(error) = persist_compaction_summary_tool_result(db, sm.session_id(), summary)
+            if let Some(db) = self.agent.as_ref().and_then(|agent| agent.tool_context_service_arc::<clankers_db::Db>())
+                && let Err(error) = persist_compaction_summary_tool_result(&db, sm.session_id(), summary)
             {
                 warn!("failed to persist compaction summary tool result: {error}");
             }
@@ -130,6 +130,7 @@ mod tests {
     use super::*;
     use crate::config::ControllerConfig;
     use crate::test_helpers::MockProvider;
+    use crate::test_helpers::model_service;
 
     fn make_controller_with_persistence() -> (SessionController, TempDir, clankers_db::Db) {
         let tmp = TempDir::new().expect("tempdir should exist");
@@ -139,13 +140,13 @@ mod tests {
             clankers_session::SessionManager::create(tmp.path(), &cwd, "test-model", None, None, None)
                 .expect("session manager should create");
         let agent = clankers_agent::Agent::new_with_agent_settings(
-            Arc::new(MockProvider),
+            model_service(Arc::new(MockProvider)),
             vec![],
             clankers_agent::AgentSettings::default(),
             "test-model".to_string(),
             "test system prompt".to_string(),
         )
-        .with_db(db.clone());
+        .with_tool_context_service(Arc::new(db.clone()));
         let controller = SessionController::new(agent, ControllerConfig {
             session_id: session_manager.session_id().to_string(),
             model: "test-model".to_string(),

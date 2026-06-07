@@ -31,9 +31,13 @@ pub(crate) fn build_agent_with_tools(
     db: &Option<clankers_db::Db>,
     schedule_engine: Option<Arc<clanker_scheduler::ScheduleEngine>>,
 ) -> (Agent, tokio::sync::broadcast::Receiver<AgentEvent>, crate::tools::bash::ConfirmRx) {
+    let model_service: Arc<dyn clankers_agent::AgentModelService> = Arc::new(
+        crate::agent_runtime_adapters::ProviderModelServiceAdapter::new(Arc::clone(&provider)),
+    );
+
     // Create a temporary agent with empty tools to get event_tx for tool construction
     let temp_agent = Agent::new_with_agent_settings(
-        Arc::clone(&provider),
+        Arc::clone(&model_service),
         Vec::new(),
         crate::agent_config::agent_settings_from_config(settings),
         model.clone(),
@@ -85,7 +89,7 @@ pub(crate) fn build_agent_with_tools(
         provider.models(),
         Some(&paths.global_config_dir),
     );
-    let mut agent_builder = clankers_agent::builder::AgentBuilder::new(provider, builder_config, model, system_prompt)
+    let mut agent_builder = clankers_agent::builder::AgentBuilder::new(model_service, builder_config, model, system_prompt)
         .with_tools(active_tools);
 
     // Apply default capability restrictions from settings
@@ -94,9 +98,16 @@ pub(crate) fn build_agent_with_tools(
         agent_builder = agent_builder.with_capability_gate(gate);
     }
 
-    // Attach the global database so the agent can read memories and record usage
+    // Attach the global database through agent-owned service ports.
     if let Some(db) = db {
-        agent_builder = agent_builder.with_db(db.clone());
+        agent_builder = agent_builder
+            .with_memory_context_provider(std::sync::Arc::new(
+                crate::agent_runtime_adapters::DbMemoryContextProvider::new(db.clone()),
+            ))
+            .with_tool_context_service(std::sync::Arc::new(db.clone()))
+            .with_tool_search_service(std::sync::Arc::new(
+                crate::agent_runtime_adapters::DbMemorySearchService::new(db.clone()),
+            ));
         let db = db.clone();
         tokio::spawn(async move {
             crate::tools::process::reconcile_durable_native_process_jobs(&db).await;

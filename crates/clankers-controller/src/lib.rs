@@ -257,6 +257,120 @@ pub trait ToolRebuilder: Send + Sync {
     fn rebuild_filtered(&self, disabled: &[String]) -> Vec<Arc<dyn clankers_agent::Tool>>;
 }
 
+#[derive(Clone)]
+struct ControllerAgentHookService {
+    pipeline: Arc<clankers_hooks::HookPipeline>,
+}
+
+impl ControllerAgentHookService {
+    fn new(pipeline: Arc<clankers_hooks::HookPipeline>) -> Self {
+        Self { pipeline }
+    }
+}
+
+#[async_trait::async_trait]
+impl clankers_agent::AgentHookService for ControllerAgentHookService {
+    async fn fire(
+        &self,
+        point: clankers_agent::AgentHookPoint,
+        payload: &clankers_agent::AgentHookPayload,
+    ) -> clankers_agent::AgentHookVerdict {
+        let hook_point = controller_hook_point_from_agent(point);
+        let payload = controller_hook_payload_from_agent(payload);
+        controller_hook_verdict_to_agent(self.pipeline.fire(hook_point, &payload).await)
+    }
+
+    fn fire_async(&self, point: clankers_agent::AgentHookPoint, payload: clankers_agent::AgentHookPayload) {
+        let pipeline = self.pipeline.clone();
+        tokio::spawn(async move {
+            let hook_point = controller_hook_point_from_agent(point);
+            let payload = controller_hook_payload_from_agent(&payload);
+            pipeline.fire(hook_point, &payload).await;
+        });
+    }
+}
+
+fn controller_hook_point_from_agent(point: clankers_agent::AgentHookPoint) -> clankers_hooks::HookPoint {
+    match point {
+        clankers_agent::AgentHookPoint::PrePrompt => clankers_hooks::HookPoint::PrePrompt,
+        clankers_agent::AgentHookPoint::PostPrompt => clankers_hooks::HookPoint::PostPrompt,
+        clankers_agent::AgentHookPoint::PreTurn => clankers_hooks::HookPoint::PreTurn,
+        clankers_agent::AgentHookPoint::PostTurn => clankers_hooks::HookPoint::PostTurn,
+    }
+}
+
+fn controller_hook_verdict_to_agent(verdict: clankers_hooks::HookVerdict) -> clankers_agent::AgentHookVerdict {
+    match verdict {
+        clankers_hooks::HookVerdict::Continue => clankers_agent::AgentHookVerdict::Continue,
+        clankers_hooks::HookVerdict::Modify(value) => clankers_agent::AgentHookVerdict::Modify(value),
+        clankers_hooks::HookVerdict::Deny { reason } => clankers_agent::AgentHookVerdict::Deny { reason },
+    }
+}
+
+fn controller_hook_payload_from_agent(payload: &clankers_agent::AgentHookPayload) -> clankers_hooks::HookPayload {
+    match &payload.data {
+        clankers_agent::AgentHookData::Prompt {
+            prompt_id,
+            text,
+            system_prompt,
+            status,
+            error,
+        } => clankers_hooks::HookPayload::prompt_with_metadata(
+            &payload.event_name,
+            &payload.session_id,
+            prompt_id,
+            text,
+            system_prompt.as_deref(),
+            controller_hook_status_from_agent(*status),
+            error.as_ref().map(controller_hook_error_from_agent),
+        ),
+        clankers_agent::AgentHookData::Turn {
+            prompt_id,
+            model,
+            prompt_text,
+            message_count,
+            tool_call_count,
+            status,
+            error,
+            usage,
+        } => clankers_hooks::HookPayload::turn(
+            &payload.event_name,
+            &payload.session_id,
+            prompt_id,
+            model,
+            prompt_text,
+            *message_count,
+            *tool_call_count,
+            controller_hook_status_from_agent(*status),
+            error.as_ref().map(controller_hook_error_from_agent),
+            usage.as_ref().map(controller_hook_usage_from_agent),
+        ),
+    }
+}
+
+fn controller_hook_status_from_agent(status: clankers_agent::AgentHookStatus) -> clankers_hooks::HookStatus {
+    match status {
+        clankers_agent::AgentHookStatus::Pending => clankers_hooks::HookStatus::Pending,
+        clankers_agent::AgentHookStatus::Success => clankers_hooks::HookStatus::Success,
+        clankers_agent::AgentHookStatus::Denied => clankers_hooks::HookStatus::Denied,
+        clankers_agent::AgentHookStatus::Error => clankers_hooks::HookStatus::Error,
+        clankers_agent::AgentHookStatus::Cancelled => clankers_hooks::HookStatus::Cancelled,
+    }
+}
+
+fn controller_hook_error_from_agent(error: &clankers_agent::AgentHookSafeError) -> clankers_hooks::HookSafeError {
+    clankers_hooks::HookSafeError::new(&error.message, error.kind.as_deref())
+}
+
+fn controller_hook_usage_from_agent(usage: &clankers_agent::AgentHookUsage) -> clankers_hooks::HookUsage {
+    clankers_hooks::HookUsage {
+        input_tokens: usage.input_tokens,
+        output_tokens: usage.output_tokens,
+        cache_creation_input_tokens: usage.cache_creation_input_tokens,
+        cache_read_input_tokens: usage.cache_read_input_tokens,
+    }
+}
+
 impl SessionController {
     /// Compatibility constructor for daemon mode.
     ///
@@ -269,7 +383,7 @@ impl SessionController {
         agent.set_session_id(config.session_id.clone());
         agent.apply_controller_thinking_level(Self::provider_thinking_level(config.initial_thinking_level));
         if let Some(pipeline) = config.hook_pipeline.as_ref() {
-            agent = agent.with_hook_pipeline(Arc::clone(pipeline));
+            agent = agent.with_hook_service(Arc::new(ControllerAgentHookService::new(Arc::clone(pipeline))));
         }
         let event_rx = agent.subscribe();
         let model = config.model.clone();
@@ -545,6 +659,72 @@ pub(crate) mod test_helpers {
 
     use super::*;
 
+    #[derive(Clone)]
+    pub struct ProviderModelServiceAdapter {
+        provider: Arc<dyn clankers_provider::Provider>,
+    }
+
+    impl ProviderModelServiceAdapter {
+        pub fn new(provider: Arc<dyn clankers_provider::Provider>) -> Self {
+            Self { provider }
+        }
+    }
+
+    pub fn model_service(provider: Arc<dyn clankers_provider::Provider>) -> Arc<dyn clankers_agent::AgentModelService> {
+        Arc::new(ProviderModelServiceAdapter::new(provider))
+    }
+
+    #[async_trait::async_trait]
+    impl clankers_agent::AgentModelService for ProviderModelServiceAdapter {
+        async fn complete(
+            &self,
+            request: clankers_agent::AgentCompletionRequest,
+            tx: tokio::sync::mpsc::Sender<clanker_message::streaming::StreamEvent>,
+        ) -> clankers_agent::AgentModelResult<()> {
+            self.provider
+                .complete(provider_request_from_agent(request), tx)
+                .await
+                .map_err(agent_model_error_from_provider)
+        }
+
+        fn name(&self) -> &str {
+            self.provider.name()
+        }
+
+        fn max_input_tokens(&self, model: &str) -> Option<usize> {
+            self.provider.models().iter().find(|candidate| candidate.id == model).map(|candidate| candidate.max_input_tokens)
+        }
+
+        async fn reload_credentials(&self) {
+            self.provider.reload_credentials().await;
+        }
+    }
+
+    fn provider_request_from_agent(request: clankers_agent::AgentCompletionRequest) -> clankers_provider::CompletionRequest {
+        clankers_provider::CompletionRequest {
+            model: request.model,
+            messages: request.messages,
+            system_prompt: request.system_prompt,
+            max_tokens: request.max_tokens,
+            temperature: request.temperature,
+            tools: request.tools,
+            thinking: request.thinking,
+            no_cache: request.no_cache,
+            cache_ttl: request.cache_ttl,
+            extra_params: request.extra_params,
+        }
+    }
+
+    fn agent_model_error_from_provider(error: clankers_provider::error::ProviderError) -> clankers_agent::AgentModelError {
+        let retryable = error.is_retryable();
+        let should_compress = error.should_compress();
+        let status = error.status;
+        clankers_agent::AgentModelError::new(error.message)
+            .with_status(status)
+            .retryable(retryable)
+            .should_compress(should_compress)
+    }
+
     /// Minimal mock provider for controller tests (no actual LLM calls).
     pub struct MockProvider;
 
@@ -566,7 +746,7 @@ pub(crate) mod test_helpers {
     }
 
     pub fn make_test_controller() -> SessionController {
-        let provider = Arc::new(MockProvider);
+        let provider = model_service(Arc::new(MockProvider));
         let agent = Agent::new_with_agent_settings(
             provider,
             vec![],

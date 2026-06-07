@@ -500,7 +500,7 @@ impl ProcessTool {
             };
         }
         match NativeProcessJobBackendAdapter::for_invocation(
-            ctx.db().cloned(),
+            ctx.service::<clankers_db::Db>().cloned(),
             self.process_monitor.clone(),
             ctx.call_id.clone(),
         )
@@ -520,13 +520,13 @@ impl ProcessTool {
         };
         let policy = process_job_retention_policy(&json!({}));
         let log_dir = retention_log_dir(params);
-        let _ = apply_process_job_retention(ctx.db(), policy, log_dir.clone(), ProcessJobFilter::default()).await;
+        let _ = apply_process_job_retention(ctx.service::<clankers_db::Db>(), policy, log_dir.clone(), ProcessJobFilter::default()).await;
         let backend_filter = request.filter.backend;
         let mut summaries = Vec::new();
         if backend_filter.is_none_or(|backend| backend == ProcessJobBackendKind::Native) {
             let entries = native::all_entries();
             let mut durable = Vec::new();
-            if let Some(db) = ctx.db() {
+            if let Some(db) = ctx.service::<clankers_db::Db>() {
                 let live_ids = entries.iter().map(|entry| entry.id.as_str()).collect::<std::collections::BTreeSet<_>>();
                 durable = reconcile_durable_native_process_jobs(db)
                     .await
@@ -593,7 +593,7 @@ impl ProcessTool {
             Err(result) => return result,
         };
         let policy = process_job_retention_policy(params);
-        let receipt = apply_process_job_retention(ctx.db(), policy, retention_log_dir(params), request.filter).await;
+        let receipt = apply_process_job_retention(ctx.service::<clankers_db::Db>(), policy, retention_log_dir(params), request.filter).await;
         Self::tool_receipt_result(ProcessJobToolResult::GarbageCollect(receipt))
     }
 
@@ -607,7 +607,7 @@ impl ProcessTool {
         if let Some(id) = Self::pueue_id(&session_id) {
             return match Self::pueue_service().poll(id, request.cursor).await {
                 Ok(receipt) => Self::pueue_receipt_result(Ok(receipt)).await,
-                Err(error) => match durable_record(ctx.db(), &session_id).await {
+                Err(error) => match durable_record(ctx.service::<clankers_db::Db>(), &session_id).await {
                     Some(record) => ToolResult::text(format!(
                         "{}; backend poll unavailable: {error}",
                         durable_degraded_log_message(&record, retention_log_dir(params).as_ref())
@@ -619,7 +619,7 @@ impl ProcessTool {
         if let Some(id) = Self::systemd_id(&session_id) {
             return match Self::systemd_service().poll(id, request.cursor).await {
                 Ok(receipt) => Self::systemd_receipt_result(Ok(receipt)).await,
-                Err(error) => match durable_record(ctx.db(), &session_id).await {
+                Err(error) => match durable_record(ctx.service::<clankers_db::Db>(), &session_id).await {
                     Some(record) => ToolResult::text(format!(
                         "{}; backend poll unavailable: {error}",
                         durable_degraded_log_message(&record, retention_log_dir(params).as_ref())
@@ -631,13 +631,13 @@ impl ProcessTool {
         let entry = match native::get(&session_id) {
             Some(entry) => entry,
             None => {
-                if let Some(record) = durable_record(ctx.db(), &session_id).await {
+                if let Some(record) = durable_record(ctx.service::<clankers_db::Db>(), &session_id).await {
                     return ToolResult::text(durable_degraded_log_message(&record, retention_log_dir(params).as_ref()));
                 }
                 return ToolResult::error(format!("Unknown process session_id: {session_id}"));
             }
         };
-        persist_entry(ctx.db(), &entry).await;
+        persist_entry(ctx.service::<clankers_db::Db>(), &entry).await;
         let output = entry.drain_new_output();
         let mut text = format!("{} status: {}\n", entry.id, entry.status().label());
         if output.is_empty() {
@@ -670,7 +670,7 @@ impl ProcessTool {
         let session_id = request.id.0.clone();
         if let Some(id) = Self::pueue_id(&session_id) {
             return match Self::pueue_service().log(id, request.range.clone()).await {
-                Ok(chunk) if chunk.text.is_empty() => match durable_record(ctx.db(), &session_id).await {
+                Ok(chunk) if chunk.text.is_empty() => match durable_record(ctx.service::<clankers_db::Db>(), &session_id).await {
                     Some(record) => ToolResult::text(format!(
                         "{}; backend log read returned no output",
                         durable_degraded_log_message(&record, retention_log_dir(params).as_ref())
@@ -678,7 +678,7 @@ impl ProcessTool {
                     None => Self::tool_receipt_result(ProcessJobToolResult::Log(chunk)),
                 },
                 Ok(chunk) => Self::tool_receipt_result(ProcessJobToolResult::Log(chunk)),
-                Err(error) => match durable_record(ctx.db(), &session_id).await {
+                Err(error) => match durable_record(ctx.service::<clankers_db::Db>(), &session_id).await {
                     Some(record) => ToolResult::text(format!(
                         "{}; backend log read unavailable: {error}",
                         durable_degraded_log_message(&record, retention_log_dir(params).as_ref())
@@ -689,7 +689,7 @@ impl ProcessTool {
         }
         if let Some(id) = Self::systemd_id(&session_id) {
             return match Self::systemd_service().log(id, request.range.clone()).await {
-                Ok(chunk) if chunk.text.is_empty() => match durable_record(ctx.db(), &session_id).await {
+                Ok(chunk) if chunk.text.is_empty() => match durable_record(ctx.service::<clankers_db::Db>(), &session_id).await {
                     Some(record) => ToolResult::text(format!(
                         "{}; backend log read returned no output",
                         durable_degraded_log_message(&record, retention_log_dir(params).as_ref())
@@ -697,7 +697,7 @@ impl ProcessTool {
                     None => Self::tool_receipt_result(ProcessJobToolResult::Log(chunk)),
                 },
                 Ok(chunk) => Self::tool_receipt_result(ProcessJobToolResult::Log(chunk)),
-                Err(error) => match durable_record(ctx.db(), &session_id).await {
+                Err(error) => match durable_record(ctx.service::<clankers_db::Db>(), &session_id).await {
                     Some(record) => ToolResult::text(format!(
                         "{}; backend log read unavailable: {error}",
                         durable_degraded_log_message(&record, retention_log_dir(params).as_ref())
@@ -709,13 +709,13 @@ impl ProcessTool {
         let entry = match native::get(&session_id) {
             Some(entry) => entry,
             None => {
-                if let Some(record) = durable_record(ctx.db(), &session_id).await {
+                if let Some(record) = durable_record(ctx.service::<clankers_db::Db>(), &session_id).await {
                     return ToolResult::text(durable_degraded_log_message(&record, retention_log_dir(params).as_ref()));
                 }
                 return ToolResult::error(format!("Unknown process session_id: {session_id}"));
             }
         };
-        persist_entry(ctx.db(), &entry).await;
+        persist_entry(ctx.service::<clankers_db::Db>(), &entry).await;
         let output = entry.snapshot_output();
         let limit = usize::try_from(request.range.limit_bytes).unwrap_or(DEFAULT_LOG_LIMIT).min(DEFAULT_LOG_LIMIT);
         let start = request
@@ -756,7 +756,7 @@ impl ProcessTool {
         let entry = match native::get(&session_id) {
             Some(entry) => entry,
             None => {
-                if let Some(record) = durable_record(ctx.db(), &session_id).await {
+                if let Some(record) = durable_record(ctx.service::<clankers_db::Db>(), &session_id).await {
                     return ToolResult::text(format!(
                         "{} durable status: {} (live wait unavailable; refs: {})",
                         record.id,
@@ -771,12 +771,12 @@ impl ProcessTool {
         let deadline = Instant::now() + Duration::from_secs(timeout_secs);
         while !entry.status().is_done() {
             if timeout_secs > 0 && Instant::now() >= deadline {
-                persist_entry(ctx.db(), &entry).await;
+                persist_entry(ctx.service::<clankers_db::Db>(), &entry).await;
                 return ToolResult::text(format!("{} still running after {}s", entry.id, timeout_secs));
             }
             tokio::time::sleep(Duration::from_millis(50)).await;
         }
-        persist_entry(ctx.db(), &entry).await;
+        persist_entry(ctx.service::<clankers_db::Db>(), &entry).await;
         let output = entry.drain_new_output();
         let mut text = format!("{} finished with status: {}", entry.id, entry.status().label());
         if !output.is_empty() {
@@ -802,7 +802,7 @@ impl ProcessTool {
         let entry = match native::get(&session_id) {
             Some(entry) => entry,
             None => {
-                if let Some(record) = durable_record(ctx.db(), &session_id).await {
+                if let Some(record) = durable_record(ctx.service::<clankers_db::Db>(), &session_id).await {
                     return ToolResult::text(format!(
                         "{}; kill not sent because no live process handle is attached (refs: {}).",
                         durable_reconciliation_note(&record),
@@ -930,7 +930,7 @@ impl ProcessTool {
             return Self::systemd_receipt_result(Self::systemd_service().restart(id).await).await;
         }
         match NativeProcessJobBackendAdapter::for_invocation(
-            ctx.db().cloned(),
+            ctx.service::<clankers_db::Db>().cloned(),
             self.process_monitor.clone(),
             ctx.call_id.clone(),
         )
@@ -1012,7 +1012,7 @@ mod tests {
     }
 
     fn make_ctx_with_db(db: clankers_db::Db) -> ToolContext {
-        make_ctx().with_db(db)
+        make_ctx().with_service(std::sync::Arc::new(db))
     }
 
     fn text(result: &ToolResult) -> String {

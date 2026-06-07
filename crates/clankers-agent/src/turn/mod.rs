@@ -68,9 +68,7 @@ use clankers_engine_host::run_engine_turn;
 #[cfg(test)]
 use clankers_engine_host::runtime::cancel_turn_input;
 #[cfg(test)]
-use clankers_provider::CompletionRequest;
-#[cfg(test)]
-use clankers_provider::Provider;
+use crate::model::AgentCompletionRequest as CompletionRequest;
 use execution::completion_request_from_engine_request;
 use execution::create_error_result;
 use execution::engine_messages_from_agent_messages;
@@ -343,7 +341,7 @@ mod tests {
 
     #[allow(clippy::too_many_arguments)]
     async fn test_run_turn_loop(
-        provider: &dyn Provider,
+        provider: &dyn crate::model::AgentModelService,
         tools: &HashMap<String, Arc<dyn Tool>>,
         messages: &mut Vec<AgentMessage>,
         config: &TurnConfig,
@@ -358,14 +356,25 @@ mod tests {
         user_tool_filter: Option<Vec<String>>,
     ) -> Result<()> {
         let model_port = ProviderModelPort::new(provider);
+        let mut legacy_services: Vec<Arc<dyn std::any::Any + Send + Sync>> = Vec::new();
+        if let Some(db) = db {
+            legacy_services.push(Arc::new(db));
+        }
+        let hook_service = hook_pipeline.map(|pipeline| {
+            Arc::new(execution::ControllerHookService {
+                pipeline,
+                session_id: session_id.to_string(),
+            }) as Arc<dyn clankers_tool_host::ToolHookService>
+        });
         let tool_port = ControllerToolPort {
             controller_tools: tools,
-            services: ControllerToolServices::from_concrete(
+            services: ControllerToolServices::from_agent_services(
                 event_tx.clone(),
                 cancel.clone(),
-                hook_pipeline,
                 session_id.to_string(),
-                db,
+                legacy_services,
+                hook_service,
+                None,
                 capability_gate,
                 user_tool_filter,
                 config.steel_tool_substrate.clone(),

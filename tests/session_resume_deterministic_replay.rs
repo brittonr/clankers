@@ -171,7 +171,7 @@ async fn run_resume_replay_once() -> Value {
     let initial_tool: Arc<dyn Tool> = Arc::new(LookupOrderTool::new(tool_calls.clone(), session_id.clone()));
     let initial_settings = deterministic_settings();
     let initial_agent = Agent::new_with_agent_settings(
-        initial_provider.clone(),
+        Arc::new(clankers::agent_runtime_adapters::ProviderModelServiceAdapter::new(initial_provider.clone())),
         vec![initial_tool],
         clankers::agent_config::agent_settings_from_config(&initial_settings),
         MODEL.to_string(),
@@ -204,7 +204,7 @@ async fn run_resume_replay_once() -> Value {
     let follow_tool: Arc<dyn Tool> = Arc::new(LookupOrderTool::new(tool_calls.clone(), session_id.clone()));
     let follow_settings = deterministic_settings();
     let mut follow_agent = Agent::new_with_agent_settings(
-        follow_provider.clone(),
+        Arc::new(clankers::agent_runtime_adapters::ProviderModelServiceAdapter::new(follow_provider.clone())),
         vec![follow_tool],
         clankers::agent_config::agent_settings_from_config(&follow_settings),
         MODEL.to_string(),

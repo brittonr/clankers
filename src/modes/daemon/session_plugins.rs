@@ -273,7 +273,7 @@ mod tests {
     fn test_controller() -> SessionController {
         let model = "test-model".to_string();
         let agent = clankers_agent::builder::AgentBuilder::new(
-            Arc::new(StubProvider),
+            Arc::new(crate::agent_runtime_adapters::ProviderModelServiceAdapter::new(Arc::new(StubProvider))),
             clankers_agent::builder::AgentBuilderConfig::default(),
             model.clone(),
             String::new(),

@@ -250,7 +250,7 @@ impl Tool for MemoryTool {
     }
 
     async fn execute(&self, ctx: &ToolContext, params: Value) -> ToolResult {
-        let db = match ctx.db() {
+        let db = match ctx.service::<clankers_db::Db>() {
             Some(db) => db,
             None => return ToolResult::error("Memory tool requires a database connection."),
         };
@@ -277,7 +277,7 @@ mod tests {
     use super::*;
 
     fn make_ctx(db: &Db) -> ToolContext {
-        ToolContext::new("test".to_string(), CancellationToken::new(), None).with_db(db.clone())
+        ToolContext::new("test".to_string(), CancellationToken::new(), None).with_service(std::sync::Arc::new(db.clone()))
     }
 
     fn result_text(result: &ToolResult) -> String {

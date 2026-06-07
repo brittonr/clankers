@@ -14,8 +14,24 @@ use std::hash::Hasher;
 use std::path::Path;
 use std::path::PathBuf;
 
-use clankers_prompts as prompts;
-use clankers_skills as skills;
+/// A neutral skill record discovered by an application shell.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct PromptSkill {
+    pub name: String,
+    pub description: String,
+    pub path: PathBuf,
+    pub content: String,
+}
+
+/// A neutral prompt-template record discovered by an application shell.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct PromptTemplateInfo {
+    pub name: String,
+    pub description: String,
+    pub path: PathBuf,
+    pub content: String,
+    pub variables: Vec<String>,
+}
 
 /// A context file with its source path and content
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -81,8 +97,8 @@ pub struct SoulPromptAssembly {
 
 /// All discovered context resources
 pub struct PromptResources {
-    pub skills: Vec<skills::Skill>,
-    pub prompts: Vec<prompts::PromptTemplate>,
+    pub skills: Vec<PromptSkill>,
+    pub prompts: Vec<PromptTemplateInfo>,
     pub context_files: Vec<String>,
     /// AGENTS.md / CLAUDE.md files (global + walk up from cwd)
     pub agents_files: Vec<ContextFile>,
@@ -99,8 +115,15 @@ pub struct PromptResources {
 
 /// Discover all prompt resources from global and project paths
 pub fn discover_resources(paths: &PromptDiscoveryPaths) -> PromptResources {
-    let skills = skills::discover_skills(&paths.global_skills_dir, Some(&paths.project_skills_dir));
-    let prompts = prompts::discover_prompts(&paths.global_prompts_dir, Some(&paths.project_prompts_dir));
+    discover_resources_with_catalogs(paths, Vec::new(), Vec::new())
+}
+
+/// Build prompt resources from neutral skill and prompt-template catalogs discovered by an application shell.
+pub fn discover_resources_with_catalogs(
+    paths: &PromptDiscoveryPaths,
+    skills: Vec<PromptSkill>,
+    prompts: Vec<PromptTemplateInfo>,
+) -> PromptResources {
     let context_files = load_context_files(paths);
     let agents_files = load_agents_files(&paths.global_config_dir, &paths.project_root);
     let soul_personality = load_soul_personality(&paths.global_config_dir, paths);
@@ -129,6 +152,19 @@ fn format_agents_section(agents_files: &[ContextFile]) -> String {
         writeln!(&mut section, "{}", ctx_file.content).ok();
     }
     section
+}
+
+fn format_skills_for_context(skills: &[PromptSkill]) -> String {
+    if skills.is_empty() {
+        return String::new();
+    }
+
+    let mut out = String::from("## Available Skills\n\n");
+    for skill in skills {
+        writeln!(&mut out, "- **{}**: {}", skill.name, skill.description).ok();
+        writeln!(&mut out, "  Location: {}", skill.path.display()).ok();
+    }
+    out
 }
 
 /// Assemble the full system prompt from all sources.
@@ -206,7 +242,7 @@ pub fn assemble_system_prompt_sections(
     }
 
     // Skills
-    let skills_ctx = skills::format_skills_for_context(&resources.skills);
+    let skills_ctx = format_skills_for_context(&resources.skills);
     if !skills_ctx.is_empty() {
         parts.push(skills_ctx);
     }

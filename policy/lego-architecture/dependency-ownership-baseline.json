@@ -1,7 +1,7 @@
 {
   "artifact_hashes": [
     {
-      "blake3": "fc1ddcd9264121ed522063b08712a6ae751e31b1a6db86491ce19118b75d02df",
+      "blake3": "38f1ccf754c47634af17cf6f60e89c1dc7e78eef3dcc73e4c039b0b20a63dc35",
       "path": "policy/lego-architecture/dependency-ownership-baseline.json"
     },
     {
@@ -17,7 +17,7 @@
       "path": "cairn/specs/lego-architecture-boundaries/spec.md"
     },
     {
-      "blake3": "3d00fe3e2339ef0130e42e431cacee5f6f36c98db8d967513794185984833659",
+      "blake3": "863e132f79d6a8d1bbd02e6f41dca4914cee436d45a33364953e3fcd820d2e36",
       "path": "src/tools/process.rs"
     },
     {
@@ -25,55 +25,59 @@
       "path": "src/tools/process/adapter.rs"
     },
     {
-      "blake3": "a156d1dac8130a4bc7ba8145f779f2250fad33d18c044c89513d84783924a7a1",
+      "blake3": "5fbd7b8bac8b04ce0dc0837228894def0570fc9008fa688fc8bb5cc6049d1a96",
       "path": "src/tools/process/durable.rs"
     },
     {
-      "blake3": "394e7b7187ec5f3aeb102e243bc020b571c28d98440e9038f948857eaf2365d1",
+      "blake3": "ecd2f7e8b6fa8c11ab30da4373f4f72e1bc72c9c786d99f463d9b21709a21f99",
       "path": "src/tools/process/native.rs"
     },
     {
-      "blake3": "11522e0fcb16d6e029896eb658b6e3ffc1dbe56b895c4c545b8c9ea63c6623c7",
+      "blake3": "ff303588062832c0c8892d9b11bc8f6a6d80faa0f1ebfe576aa5044e216c76b6",
       "path": "src/tools/process/pueue.rs"
     },
     {
-      "blake3": "63ef382479af0b81936bc17617b478123826d453e9dcabbfd8027a14955f4bef",
+      "blake3": "47ed26a5674231db71fa8393e52d95fa20fda0294aa1e6f61069e31126a839be",
       "path": "src/tools/process/systemd.rs"
     },
     {
-      "blake3": "6097e478ce2116f35f8f275d8abdb6d53f0e48f4e90f6cfcd8d9ffd9377f68c9",
+      "blake3": "f051cee2349d94060c693473eaaebd4ee70a5e6058f51ef36db93fbfb53f5058",
+      "path": "src/agent_config.rs"
+    },
+    {
+      "blake3": "b9d544e9e995fc5cddf7163842776768e9b1c1cefa3d6a2accacfae6a43ff4b7",
       "path": "crates/clankers-agent/src/lib.rs"
     },
     {
-      "blake3": "c9053b855b7a7d1765666c3d457587490894bc40ae0f4fb3a094ec3df216f26e",
+      "blake3": "32e88591031c2a5dfd7747a378faaa44278210fc91cad2dcba2c291858e65153",
       "path": "crates/clankers-agent/src/builder.rs"
     },
     {
-      "blake3": "bada2989fcf1540fea25b05e994d141657beff79b5fea875eacc772a3daeddb4",
+      "blake3": "5af11f259606d7de79c3d9eb74c0b805260b1ec3f45b231d8b15d43cbfcf6860",
       "path": "crates/clankers-agent/src/compaction.rs"
     },
     {
-      "blake3": "a14426a1f6d2ee53208e3ab5d5eb690a74c556ca831034ca3e3880487a0d384e",
+      "blake3": "3c47c21e5b72ff28bf5d17f522edd61f239d5454f0c2a50ca70a283e0182cd66",
       "path": "crates/clankers-agent/src/compaction/tool_summaries.rs"
     },
     {
-      "blake3": "0934b89a442c74895b9e70bef262c31df07087aa5d0a5a16aa447bd0d3ac7dc3",
+      "blake3": "7f3b4f35944d5b34f11d07c294b0841688dbb4fb5daf2e45542ff92703c9359f",
       "path": "crates/clankers-agent/src/context.rs"
     },
     {
-      "blake3": "c10a333c95ec5862bc309381e85c2a877dd879cd9f8d1b818400ec9940b3eadc",
+      "blake3": "cbf07efedd8f2bfe03a93720e61d262a9852879091855936f875b657502f51bf",
       "path": "crates/clankers-agent/src/events.rs"
     },
     {
-      "blake3": "b84f9d8e37bac2444ff8a21bf228507925313245c294e9ac61adeb5a2605fb7e",
+      "blake3": "3435a3fee184fe0ab33a99311a3de1034cbcc09e930e7c8179d50f74f39f2738",
       "path": "crates/clankers-agent/src/system_prompt.rs"
     },
     {
-      "blake3": "85c55fa09fbc751c82e68cff928bbf277cb130977b70e289841d91346098dd3d",
+      "blake3": "2ab4ff70c8394cb315b234eadf9c318d345e9d422f82318e86687992e189f4cc",
       "path": "crates/clankers-agent/src/tool.rs"
     },
     {
-      "blake3": "fc29946bb0231dabb193fdb1152f6f511b4308b39e8fff77676205cfa6202650",
+      "blake3": "54895671cae387e122e082d8f537cd8f3ebc5621ed4641f35de24214aa2e4071",
       "path": "crates/clankers-agent/src/turn/mod.rs"
     },
     {
@@ -81,39 +85,39 @@
       "path": "crates/clankers-agent/src/turn/adapters.rs"
     },
     {
-      "blake3": "1c024dfa091039a790e5084ec4424dbaf45d8e71aa6aba78fe1292a03024a406",
+      "blake3": "93847936c717cd823420d76e53dda2cda2744f9770933c5c15518f875d677273",
       "path": "crates/clankers-agent/src/turn/execution.rs"
     },
     {
-      "blake3": "fe32d0f97c949fa33f59015d03893e487a1c37e172a9abb6ed86654e36a4ab02",
+      "blake3": "c3573bcacfe6b87eaa57502df7c53c94def0dee53b5809f546a80c2efcab51ea",
       "path": "crates/clankers-agent/src/turn/message.rs"
     },
     {
-      "blake3": "6ed66f86eed875db2f764b5726634cbce5dcd30b54e9016671c3647d870bcb40",
+      "blake3": "2c951b8f2979650e3ecb742cf7b1886b94c4088349d62ee60888c80c9a13a537",
       "path": "crates/clankers-agent/src/turn/policy.rs"
     },
     {
-      "blake3": "44a93f8f27d06ad48df71f0d7ecfb96b3d4b0fb005eb918906b962a501cf2b0a",
+      "blake3": "16e87992c761d0c81d196f84d7ef82f45fae48605a497fc8cea68a5963ce9001",
       "path": "crates/clankers-agent/src/turn/ports.rs"
     },
     {
-      "blake3": "63ff22a0cef65b519c3e922db1373e3494b70846073ee1044f13a86bd160311a",
+      "blake3": "0a399803965f23679335a26700f78c009f95c0b0597ffdeb0b913f5a9efbb90a",
       "path": "crates/clankers-agent/src/turn/steel_planning.rs"
     },
     {
-      "blake3": "227de6561927389fbcb1fd5e9e91361ea3a82d57b838fb66a6ccb1dccb94b2e0",
+      "blake3": "a8bc54b7eb086c9a39b95e3b409dd745f41df751165aa6aeeded3386532a000e",
       "path": "crates/clankers-agent/src/turn/steel_tool_substrate.rs"
     },
     {
-      "blake3": "38eac67cda76927d72c77f9383619aa18481bcb25b1456c0ad358c4a848a9655",
+      "blake3": "fd346dbe134b652f54acf8225ecdc61a32b8aa048b5657cc89616a0d329161f1",
       "path": "crates/clankers-agent/src/turn/transcript.rs"
     },
     {
-      "blake3": "3be08542c53acaceffefa5e401a1ba2dde31deaf7926aea07bfa3fbea1280d50",
+      "blake3": "c9d08442812c062450087513b0571fe0c05c5fb8a892bd318b730c0a2a2ba39e",
       "path": "crates/clankers-agent/src/turn/usage.rs"
     },
     {
-      "blake3": "b4493814a47bc67503f800394617f079c71b5f147ed0aeeb3e40f4ea9baff34a",
+      "blake3": "5bfd7906930bedc35d68556dec43decf4a6775a7ae8b3cebdb4b5f9c20788e2d",
       "path": "crates/clankers-tool-host/src/lib.rs"
     },
     {
@@ -121,7 +125,7 @@
       "path": "crates/clankers-controller/src/core_effects.rs"
     },
     {
-      "blake3": "fb1f0b03109402a0fe72a0fb6da0ee2e8db229395b5d6941c61bf2c9d045eb44",
+      "blake3": "6b0b642a3b25f41a52fdd5dda4dbdefb5742869812be8f7dded8951cd22eb78d",
       "path": "crates/clankers-controller/src/convert.rs"
     },
     {
@@ -133,23 +137,23 @@
       "path": "crates/clankers-controller/src/effect_interpretation.rs"
     },
     {
-      "blake3": "3a56c40bf506cea2cf09c8569469a91c8690b7b125527fc95c00a2e7c26ccffa",
+      "blake3": "a8c66928a9dfea71dfb12836d70ec29344dca6c9791efb5df81ce5b77fb090bf",
       "path": "crates/clankers-provider/src/router_request_bridge.rs"
     },
     {
-      "blake3": "8a37b82f3d34b8816003b202e4954def363efe894a2e2ddbf6d769fa534a42d4",
+      "blake3": "317632c4592e0df475c27e76cf80ae0fb042d1accddd11f13708a6bcee7c9cd0",
       "path": "crates/clankers-provider/src/provider_router_responsibility.rs"
     },
     {
-      "blake3": "26853e96fce1826d6c1f4bb009b9e1723289944c11091605c55bd22e07badd60",
+      "blake3": "5ec2251ef7ea365171a327fffdc31a5ddd740c13b222751eda248e447657b4c8",
       "path": "crates/clankers-provider/src/router.rs"
     },
     {
-      "blake3": "7e617e5545a509383f95797b002b425e82315f5a549240aefbe3df9dbe2dd78c",
+      "blake3": "6980609c0468689b316e720913d30e5bc55ec8cc812e1f3b5d75d656bd676071",
       "path": "crates/clankers-provider/src/rpc_provider.rs"
     },
     {
-      "blake3": "79de3ffdd904607fc8069d0fb9be85fdb7dca7f4e74b553439534edd85e67300",
+      "blake3": "b5d3bb496ebac6ae9b00c4158360617a05226da41fd97d4c96eaf3209e7a0536",
       "path": "crates/clankers-controller/src/command.rs"
     },
     {
@@ -165,7 +169,7 @@
       "path": "crates/clankers-controller/src/auto_test.rs"
     },
     {
-      "blake3": "92ee96327e6793b7533b4a4d07400a6fd995039232315c44cc728abb261e28df",
+      "blake3": "54245b5cf23349b0266dc0e63cf10d83a6c00352827bae3180c826e06dd08fbc",
       "path": "src/modes/session_command_policy.rs"
     },
     {
@@ -173,23 +177,23 @@
       "path": "src/modes/attach/commands.rs"
     },
     {
-      "blake3": "38a69351541cb06aade45be7790a4dc388377c1ce8620cb0c719df618a68b7cc",
+      "blake3": "6250c9886332b489ccb35e237831bc1dc6c173dfca415e2e10dc559a81d2f524",
       "path": "src/slash_commands/effects.rs"
     },
     {
-      "blake3": "f2a43f36761803b1b77728220f7cc37fb30006ed3bd7271cc1890576fe165249",
+      "blake3": "4a1bd158b235c6a3c9f196e7e77235e6b9d9d04079e3c90c71592f278e158859",
       "path": "src/modes/agent_task.rs"
     },
     {
-      "blake3": "79669430603735adaf9906a51b7a0ee7c9815f81ad73a1c4ddb433b700699173",
+      "blake3": "fc9b7ee66fcab783f118cadbff30d42451c981589420e40d4d853563828b07e1",
       "path": "src/modes/daemon/agent_process.rs"
     },
     {
-      "blake3": "9ce4546b0124c6b0a0e06ba552ee16469a940103c6849193a0b5cb41c3230b3a",
+      "blake3": "31c34f9aa2d8d191d0d193cca14ac814476e9cf6048ffb1a0ce1e196c6d27b44",
       "path": "src/modes/daemon/session_builder.rs"
     },
     {
-      "blake3": "f69e15c26b4edc6198f84b90ac6bc1ec958cb83ac1da8b09edbf08a846216681",
+      "blake3": "617c3c15b18556ed0634fb43c86054dc240619e483a0f22e9d3e84ba73220582",
       "path": "src/modes/daemon/session_plugins.rs"
     }
   ],
@@ -197,15 +201,9 @@
   "change": "lego-decoupling-boundaries",
   "inventory_signature": {
     "agent_crate": {
-      "concrete_dependencies": [
-        "clankers-db",
-        "clankers-hooks",
-        "clankers-prompts",
-        "clankers-provider",
-        "clankers-skills"
-      ],
-      "concrete_dependency_count": 5,
-      "internal_dependency_count": 13,
+      "concrete_dependencies": [],
+      "concrete_dependency_count": 0,
+      "internal_dependency_count": 6,
       "owner": "turn orchestration shell; concrete systems should migrate behind model/tool/config/storage/hook/prompt/skill/cost ports",
       "package": "clankers-agent"
     },
@@ -401,10 +399,10 @@
     },
     "controller_domain_event": {
       "compatibility_alias": "ControllerDomainEvent",
+      "display_projection_owner": "src/modes/attach/event_projection.rs",
       "domain_event_module": "crates/clankers-controller/src/domain_event.rs",
       "neutral_event_contract": "clanker_message::SemanticEvent",
       "neutral_receipt_dto": "SemanticImage",
-      "display_projection_owner": "src/modes/attach/event_projection.rs",
       "protocol_projection_module": "crates/clankers-controller/src/convert.rs",
       "protocol_projection_owner": "convert::semantic_event_to_daemon_event",
       "protocol_references_in_domain_module": 0,

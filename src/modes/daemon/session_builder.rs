@@ -153,8 +153,11 @@ fn assemble_session_runtime_in_dir(
         factory.provider.models(),
         pricing_config_dir.as_deref(),
     );
+    let model_service: Arc<dyn clankers_agent::AgentModelService> = Arc::new(
+        crate::agent_runtime_adapters::ProviderModelServiceAdapter::new(Arc::clone(&factory.provider)),
+    );
     let mut builder = clankers_agent::builder::AgentBuilder::new(
-        Arc::clone(&factory.provider),
+        model_service,
         builder_config,
         model.clone(),
         system_prompt.clone(),
@@ -169,10 +172,21 @@ fn assemble_session_runtime_in_dir(
         builder = builder.with_capability_gate(gate);
     }
 
-    let agent = builder.build();
+    let hook_pipeline = build_session_hook_pipeline(&factory.settings, factory.plugin_manager.as_ref());
+    let mut agent = builder.build();
+    if let Some(ref pipeline) = hook_pipeline {
+        agent = agent
+            .with_hook_service(Arc::new(crate::agent_runtime_adapters::HookPipelineAgentHookService::new(Arc::clone(
+                pipeline,
+            ))))
+            .with_tool_hook_service(Arc::new(crate::agent_runtime_adapters::HookPipelineToolHookService::new(
+                Arc::clone(pipeline),
+                session_id.clone(),
+            )))
+            .with_tool_context_service(Arc::clone(pipeline));
+    }
     let tool_patterns = effective_caps.as_deref().and_then(crate::capability_gate::extract_tool_patterns);
     let (session_manager, automerge_path) = build_session_manager(&sessions_dir, &session_id, &model);
-    let hook_pipeline = build_session_hook_pipeline(&factory.settings, factory.plugin_manager.as_ref());
 
     let config = ControllerConfig {
         session_id: session_id.clone(),

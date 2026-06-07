@@ -17,6 +17,7 @@ clanker-message = { workspace = true, features = ["transcript-compat"] }
 clankers-provider = { version = "0.1.0", path = "../clankers-provider" }
 clankers-config = { version = "0.1.0", path = "../clankers-config" }
 clankers-db = { version = "0.1.0", path = "../clankers-db" }
+async-trait = "0.1"
 serde = { workspace = true }
 serde_json = { workspace = true }
 tokio = { workspace = true }
@@ -26,7 +27,6 @@ chrono = { workspace = true }
 libc = "0.2"
 
 [dev-dependencies]
-async-trait = "0.1"
 syn = { version = "2", features = ["full", "visit"] }
 tempfile = "3.8"
 

@@ -2046,9 +2046,9 @@ async fn capability_gate_blocks_stdio_tool_calls_in_turn_loop() {
             tool_pattern: "read,bash".to_string(),
         }]));
     let mut agent = clankers_agent::Agent::new_with_agent_settings(
-        Arc::new(ToolUseProvider {
+        Arc::new(crate::agent_runtime_adapters::ProviderModelServiceAdapter::new(Arc::new(ToolUseProvider {
             calls: AtomicUsize::new(0),
-        }),
+        }))),
         tools,
         crate::agent_config::agent_settings_from_config(&settings),
         "test-model".to_string(),
@@ -2202,9 +2202,9 @@ async fn capability_gate_allows_stdio_tool_calls_in_turn_loop() {
             tool_pattern: "stdio_capability_tool".to_string(),
         }]));
     let mut agent = clankers_agent::Agent::new_with_agent_settings(
-        Arc::new(ToolUseProvider {
+        Arc::new(crate::agent_runtime_adapters::ProviderModelServiceAdapter::new(Arc::new(ToolUseProvider {
             calls: AtomicUsize::new(0),
-        }),
+        }))),
         tools,
         crate::agent_config::agent_settings_from_config(&settings),
         "test-model".to_string(),

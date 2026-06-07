@@ -180,9 +180,17 @@ pub async fn run_interactive(
         Some(schedule_engine.clone()),
     );
 
-    // Attach hook pipeline to the agent
+    // Attach hook pipeline to the agent through neutral lifecycle/tool services.
     if let Some(ref pipeline) = hook_pipeline {
-        agent = agent.with_hook_pipeline(Arc::clone(pipeline));
+        agent = agent
+            .with_hook_service(Arc::new(crate::agent_runtime_adapters::HookPipelineAgentHookService::new(Arc::clone(
+                pipeline,
+            ))))
+            .with_tool_hook_service(Arc::new(crate::agent_runtime_adapters::HookPipelineToolHookService::new(
+                Arc::clone(pipeline),
+                app.session_id.clone(),
+            )))
+            .with_tool_context_service(Arc::clone(pipeline));
     }
     agent.set_session_id(app.session_id.clone());
 

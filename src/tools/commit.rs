@@ -229,7 +229,7 @@ impl CommitTool {
         }
 
         // Fire pre-commit hook (can deny the commit)
-        if let Some(pipeline) = ctx.hook_pipeline() {
+        if let Some(pipeline) = ctx.service::<clankers_hooks::HookPipeline>() {
             let payload = clankers_hooks::HookPayload::git(
                 "pre-commit",
                 ctx.session_id(),
@@ -250,7 +250,7 @@ impl CommitTool {
         match git_ops::commit(msg.clone()).await {
             Ok(result) => {
                 // Fire post-commit hook (async, fire-and-forget)
-                if let Some(pipeline) = ctx.hook_pipeline() {
+                if let Some(pipeline) = ctx.service::<clankers_hooks::HookPipeline>() {
                     let payload = clankers_hooks::HookPayload::git(
                         "post-commit",
                         ctx.session_id(),

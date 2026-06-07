@@ -4,8 +4,8 @@ use std::sync::Arc;
 use async_trait::async_trait;
 use clanker_message::Usage;
 use clanker_message::transcript::ToolResultMessage;
-use clankers_provider::CompletionRequest;
-use clankers_provider::Provider;
+use crate::model::AgentCompletionRequest;
+use crate::model::AgentModelService;
 use clankers_tool_host::ToolCancellationService;
 use clankers_tool_host::ToolCapabilityService;
 use clankers_tool_host::ToolHookService;
@@ -178,31 +178,18 @@ pub(crate) const AGENT_CONCRETE_DEPENDENCY_BUDGET: &[AgentConcreteDependencyBudg
     AgentConcreteDependencyBudgetEntry {
         family: AgentConcreteDependencyFamily::Provider,
         crate_name: "clankers-provider",
-        owner: AgentConcreteDependencyOwner::ModelAdapter,
-        production_modules: &[
-            "crates/clankers-agent/src/lib.rs",
-            "crates/clankers-agent/src/builder.rs",
-            "crates/clankers-agent/src/error.rs",
-            "crates/clankers-agent/src/compaction.rs",
-            "crates/clankers-agent/src/turn/execution.rs",
-            "crates/clankers-agent/src/turn/ports.rs",
-        ],
-        selected_slice_status: "remaining",
-        convergence: "replace provider-native CompletionRequest/Provider with agent model request/stream ports at reusable policy seams",
+        owner: AgentConcreteDependencyOwner::NoProductionEdge,
+        production_modules: &[],
+        selected_slice_status: "agent model requests stream through AgentModelService; concrete providers adapt at root/controller/test edges",
+        convergence: "keep provider-native request/error translation outside clankers-agent production code",
     },
     AgentConcreteDependencyBudgetEntry {
         family: AgentConcreteDependencyFamily::StorageSearch,
-        crate_name: "clankers-db",
-        owner: AgentConcreteDependencyOwner::LegacyToolAdapter,
-        production_modules: &[
-            "crates/clankers-agent/src/lib.rs",
-            "crates/clankers-agent/src/builder.rs",
-            "crates/clankers-agent/src/tool.rs",
-            "crates/clankers-agent/src/turn/execution.rs",
-            "crates/clankers-agent/src/turn/mod.rs",
-        ],
-        selected_slice_status: "remaining",
-        convergence: "complete tool storage/search migration to clankers-tool-host services and remove legacy Db/SearchIndex context fields",
+        crate_name: "clankers-db/clankers-hooks/clankers-prompts/clankers-skills",
+        owner: AgentConcreteDependencyOwner::NoProductionEdge,
+        production_modules: &[],
+        selected_slice_status: "database, hook, prompt, and skill concrete crates are drained from clankers-agent production dependencies",
+        convergence: "root/controller adapters own database memory/search, hook pipeline, prompt template, and skill discovery projection",
     },
     AgentConcreteDependencyBudgetEntry {
         family: AgentConcreteDependencyFamily::Config,
@@ -384,28 +371,12 @@ pub(crate) const LEGACY_TOOL_CONTEXT_SERVICE_INVENTORY: &[AgentToolServiceInvent
         convergence: "pass cancellation through ToolInvocationContext",
     },
     AgentToolServiceInventoryEntry {
-        kind: AgentToolServiceKind::Hooks,
-        owner: AgentToolServiceOwner::LegacyToolContext,
-        field: "hook_pipeline",
-        concrete_type: "clankers_hooks::HookPipeline",
-        replacement: "neutral hook decision service",
-        convergence: "remove hook pipeline from legacy ToolContext once hook service owns decisions",
-    },
-    AgentToolServiceInventoryEntry {
         kind: AgentToolServiceKind::Storage,
         owner: AgentToolServiceOwner::LegacyToolContext,
-        field: "db",
-        concrete_type: "clankers_db::Db",
-        replacement: "neutral storage service",
-        convergence: "tools request storage from neutral services and fail closed when missing",
-    },
-    AgentToolServiceInventoryEntry {
-        kind: AgentToolServiceKind::SearchIndex,
-        owner: AgentToolServiceOwner::LegacyToolContext,
-        field: "search_index",
-        concrete_type: "clankers_db::search_index::SearchIndex",
-        replacement: "neutral search service",
-        convergence: "search-capable tools depend on neutral search DTOs instead of concrete index handles",
+        field: "services",
+        concrete_type: "Arc<dyn Any + Send + Sync>",
+        replacement: "neutral typed service slots",
+        convergence: "legacy tools request concrete services through explicit adapter-owned slots until each tool has neutral service ports",
     },
 ];
 
@@ -413,18 +384,18 @@ pub(crate) const LEGACY_TOOL_CONTEXT_SERVICE_INVENTORY: &[AgentToolServiceInvent
 pub(crate) trait AgentModelPort: Send + Sync {
     async fn stream_model_request(
         &self,
-        request: CompletionRequest,
+        request: AgentCompletionRequest,
         event_tx: &broadcast::Sender<AgentEvent>,
         cancel: &CancellationToken,
     ) -> Result<CollectedResponse>;
 }
 
 pub(crate) struct ProviderModelPort<'a> {
-    provider: &'a dyn Provider,
+    provider: &'a dyn AgentModelService,
 }
 
 impl<'a> ProviderModelPort<'a> {
-    pub(crate) fn new(provider: &'a dyn Provider) -> Self {
+    pub(crate) fn new(provider: &'a dyn AgentModelService) -> Self {
         Self { provider }
     }
 }
@@ -433,7 +404,7 @@ impl<'a> ProviderModelPort<'a> {
 impl AgentModelPort for ProviderModelPort<'_> {
     async fn stream_model_request(
         &self,
-        request: CompletionRequest,
+        request: AgentCompletionRequest,
         event_tx: &broadcast::Sender<AgentEvent>,
         cancel: &CancellationToken,
     ) -> Result<CollectedResponse> {
@@ -662,11 +633,12 @@ mod tests {
     #[test]
     fn controller_tool_services_build_neutral_invocation_context() {
         let (event_tx, _rx) = tokio::sync::broadcast::channel(16);
-        let services = ControllerToolServices::from_concrete(
+        let services = ControllerToolServices::from_agent_services(
             event_tx,
             CancellationToken::new(),
-            None,
             "session".to_string(),
+            Vec::new(),
+            None,
             None,
             None,
             Some(vec!["read".to_string()]),

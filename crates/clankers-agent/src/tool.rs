@@ -1,5 +1,6 @@
 //! Tool trait and execution context
 
+use std::any::Any;
 use std::sync::Arc;
 use std::time::Duration;
 use std::time::Instant;
@@ -172,14 +173,10 @@ pub struct ToolContext {
     event_tx: Option<broadcast::Sender<AgentEvent>>,
     /// Throttle state for structured progress updates
     throttle_state: Arc<Mutex<ThrottleState>>,
-    /// Optional hook pipeline for pre/post tool hooks
-    hook_pipeline: Option<Arc<clankers_hooks::HookPipeline>>,
     /// Session ID for hook payloads
     session_id: String,
-    /// Optional database handle for tools that need persistent storage
-    db: Option<clankers_db::Db>,
-    /// Optional full-text search index for session content
-    search_index: Option<Arc<clankers_db::search_index::SearchIndex>>,
+    /// Concrete application-edge services carried for legacy tools.
+    services: Vec<Arc<dyn Any + Send + Sync>>,
 }
 
 impl ToolContext {
@@ -190,10 +187,8 @@ impl ToolContext {
             signal,
             event_tx,
             throttle_state: Arc::new(Mutex::new(ThrottleState::default())),
-            hook_pipeline: None,
             session_id: String::new(),
-            db: None,
-            search_index: None,
+            services: Vec::new(),
         }
     }
 
@@ -203,38 +198,35 @@ impl ToolContext {
         self
     }
 
-    /// Attach a hook pipeline to this context.
-    pub fn with_hooks(mut self, pipeline: Arc<clankers_hooks::HookPipeline>, session_id: String) -> Self {
-        self.hook_pipeline = Some(pipeline);
-        self.session_id = session_id;
+    /// Attach an application-edge legacy service to this context.
+    pub fn with_service<T>(mut self, service: Arc<T>) -> Self
+    where
+        T: Any + Send + Sync + 'static,
+    {
+        self.services.push(service);
         self
     }
 
-    /// Attach a database handle to this context.
-    pub fn with_db(mut self, db: clankers_db::Db) -> Self {
-        self.db = Some(db);
+    /// Attach multiple application-edge legacy services to this context.
+    pub fn with_services(mut self, services: &[Arc<dyn Any + Send + Sync>]) -> Self {
+        self.services.extend(services.iter().cloned());
         self
     }
 
-    /// Access the database handle (if set).
-    pub fn db(&self) -> Option<&clankers_db::Db> {
-        self.db.as_ref()
+    /// Access an application-edge legacy service by concrete type.
+    pub fn service<T>(&self) -> Option<&T>
+    where
+        T: Any + Send + Sync + 'static,
+    {
+        self.services.iter().find_map(|service| service.as_ref().downcast_ref::<T>())
     }
 
-    /// Attach a search index to this context.
-    pub fn with_search_index(mut self, index: Arc<clankers_db::search_index::SearchIndex>) -> Self {
-        self.search_index = Some(index);
-        self
-    }
-
-    /// Access the search index (if set).
-    pub fn search_index(&self) -> Option<&clankers_db::search_index::SearchIndex> {
-        self.search_index.as_deref()
-    }
-
-    /// Access the hook pipeline (if set).
-    pub fn hook_pipeline(&self) -> Option<&Arc<clankers_hooks::HookPipeline>> {
-        self.hook_pipeline.as_ref()
+    /// Clone an application-edge legacy service by concrete type.
+    pub fn service_arc<T>(&self) -> Option<Arc<T>>
+    where
+        T: Any + Send + Sync + 'static,
+    {
+        self.services.iter().find_map(|service| Arc::clone(service).downcast::<T>().ok())
     }
 
     /// Session ID for hook payloads.
