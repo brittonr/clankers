@@ -1,0 +1,74 @@
+{
+  "schema": "clankers.workspace_layering.v1",
+  "layers": [
+    {
+      "id": "green-contracts",
+      "rank": 0,
+      "description": "Shell-free DTOs, no_std/reusable cores, wire contracts, and public SDK contracts that must not depend on host orchestration or app shells.",
+      "packages": [
+        "clanker-auth",
+        "clanker-message",
+        "clanker-plugin-sdk",
+        "clanker-tui-types",
+        "clankers-artifacts",
+        "clankers-core",
+        "clankers-engine",
+        "clankers-protocol"
+      ]
+    },
+    {
+      "id": "host-facades",
+      "rank": 1,
+      "description": "Reusable host-injection contracts and embeddable adapter facades that may depend on green contracts but not desktop shells.",
+      "packages": [
+        "clankers-adapters",
+        "clankers-engine-host",
+        "clankers-runtime",
+        "clankers-tool-host"
+      ]
+    },
+    {
+      "id": "orchestration",
+      "rank": 2,
+      "description": "Agent/controller/provider/config/session orchestration and services that wire reusable facades into product policy.",
+      "packages": [
+        "clanker-router",
+        "clankers-agent",
+        "clankers-agent-defs",
+        "clankers-autoresearch",
+        "clankers-config",
+        "clankers-controller",
+        "clankers-db",
+        "clankers-hooks",
+        "clankers-model-selection",
+        "clankers-nix",
+        "clankers-procmon",
+        "clankers-prompts",
+        "clankers-provider",
+        "clankers-session",
+        "clankers-skills",
+        "clankers-ucan",
+        "clankers-util"
+      ]
+    },
+    {
+      "id": "application-shells",
+      "rank": 3,
+      "description": "CLI/TUI/daemon/plugin/runtime bridges and developer tooling that may depend downward but should not be imported by lower layers.",
+      "packages": [
+        "clankers",
+        "clankers-matrix",
+        "clankers-plugin",
+        "clankers-tts",
+        "clankers-tui",
+        "clankers-zellij",
+        "xtask"
+      ]
+    }
+  ],
+  "allowed_upward_edges": [],
+  "ast_constructor_guard": {
+    "max_source_rank": 1,
+    "description": "Green contracts and host facades must not import or construct orchestration/application-shell crate paths; use an owning adapter or add a reviewed exception."
+  }
+}

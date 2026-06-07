@@ -119,21 +119,6 @@ Provider-native request shaping, model/account discovery, auth refresh/probing, 
 - WHEN a new backend or request field is added
 - THEN constructor-count and projection parity rails MUST prove the adapters stay in sync or the duplicate abstraction must be collapsed
 
-### Requirement: Architecture rails become typed or behavioral [r[remaining-coupling-drain.architecture-rail-hardening]]
-
-Architecture boundary verification MUST replace brittle string-presence anchors with typed Cargo metadata, Rust AST/module inventories, deterministic behavior fixtures, or generated ownership manifests whenever practical.
-
-#### Scenario: brittle source anchors are drained [r[remaining-coupling-drain.architecture-rail-hardening.source-anchors]]
-- GIVEN a rail currently asserts exact source snippets
-- WHEN the rail is touched for a drain slice
-- THEN it MUST either become a typed/behavioral check or document why exact-string matching remains necessary
-- THEN refactors that preserve ownership should not fail only because code moved to a new owner file
-
-#### Scenario: rail diagnostics identify owners [r[remaining-coupling-drain.architecture-rail-hardening.owner-diagnostics]]
-- GIVEN a boundary rail fails
-- WHEN a developer reads the diagnostic
-- THEN the diagnostic MUST name the source, target owner, and expected replacement path rather than requiring manual grep archaeology
-
 ### Requirement: Drain closeout preserves behavior and traceability [r[remaining-coupling-drain.closeout-validation]]
 
 Every drain slice MUST preserve existing user-visible behavior and update traceability, evidence, and architecture rails before closeout.
@@ -232,3 +217,13 @@ Clankers MUST introduce new trait seams only for coupling hotspots with multiple
 - WHEN process-job shell behavior is tested or shared
 - THEN command execution and clock access SHOULD move behind narrow shell-port traits
 - AND backend capability, retention, notification, redaction, and durable-storage policy MUST remain owned by the existing typed process-job service/backend boundaries
+
+### Requirement: Architecture rails become typed or behavioral [r[remaining-coupling-drain.architecture-rail-hardening]]
+
+Architecture boundary verification MUST replace brittle string-presence anchors with typed Cargo metadata, Rust AST/module inventories, deterministic behavior fixtures, or generated ownership manifests whenever practical.
+
+#### Scenario: workspace layer direction is generated [r[remaining-coupling-drain.architecture-rail-hardening.workspace-layer-map]]
+- GIVEN Clankers crates are assigned to green contract, host/facade, orchestration, and application-shell layers
+- WHEN workspace dependency and constructor inventories are generated
+- THEN lower layers MUST NOT depend on or construct higher-layer types except through documented adapter seams
+- AND rail diagnostics MUST name the source owner, forbidden target layer, and expected replacement path

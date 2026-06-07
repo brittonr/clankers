@@ -19,6 +19,8 @@ const SESSION_STORE_PACKAGE: &str = "embedded-session-store-example";
 const PRODUCT_WORKBENCH_MANIFEST: &str = "examples/embedded-product-workbench/Cargo.toml";
 const PRODUCT_WORKBENCH_PACKAGE: &str = "embedded-product-workbench-example";
 const GUIDE_PATH: &str = "docs/src/tutorials/embedded-agent-sdk.md";
+const WORKSPACE_LAYER_POLICY: &str = "policy/workspace-layering/layers.json";
+const EMBEDDABLE_MAX_LAYER_RANK: u64 = 1;
 const SUCCESS_EXIT: i32 = 0;
 const ERROR_EXIT: i32 = 1;
 
@@ -53,26 +55,7 @@ const PRODUCT_WORKBENCH_REQUIRED_DIRECT_DEPS: &[&str] = &[
 
 const PRODUCT_WORKBENCH_ALLOWED_DIRECT_DEPS: &[&str] = PRODUCT_WORKBENCH_REQUIRED_DIRECT_DEPS;
 
-const FORBIDDEN_GRAPH_CRATES: &[&str] = &[
-    "clankers-agent",
-    "clankers-controller",
-    "clankers-provider",
-    "clanker-router",
-    "clankers-db",
-    "clankers-session",
-    "clankers-protocol",
-    "clankers-tui",
-    "clankers-prompts",
-    "clankers-skills",
-    "clankers-config",
-    "clankers-agent-defs",
-    "chrono",
-    "hex",
-    "rand",
-    "ratatui",
-    "crossterm",
-    "iroh",
-];
+const EXTERNAL_FORBIDDEN_GRAPH_CRATES: &[&str] = &["chrono", "hex", "rand", "ratatui", "crossterm", "iroh"];
 
 const SDK_MANIFESTS_WITHOUT_FEATURES: &[(&str, &str)] = &[
     ("clankers-engine", "crates/clankers-engine/Cargo.toml"),
@@ -203,10 +186,51 @@ fn validate_direct_deps(
     }
 }
 
-fn validate_forbidden_graph(errors: &mut Vec<String>, package_names: &BTreeSet<String>) {
-    for forbidden in FORBIDDEN_GRAPH_CRATES {
+fn workspace_forbidden_graph_crates() -> Result<BTreeSet<String>, String> {
+    let policy_text = read_text(WORKSPACE_LAYER_POLICY)?;
+    let policy: Value = serde_json::from_str(&policy_text)
+        .map_err(|error| format!("failed to parse {WORKSPACE_LAYER_POLICY}: {error}"))?;
+    let layers = policy
+        .get("layers")
+        .and_then(Value::as_array)
+        .ok_or_else(|| format!("{WORKSPACE_LAYER_POLICY} missing layers array"))?;
+    let mut forbidden = BTreeSet::new();
+    for layer in layers {
+        let rank = layer
+            .get("rank")
+            .and_then(Value::as_u64)
+            .ok_or_else(|| format!("{WORKSPACE_LAYER_POLICY} layer missing rank"))?;
+        if rank <= EMBEDDABLE_MAX_LAYER_RANK {
+            continue;
+        }
+        let packages = layer
+            .get("packages")
+            .and_then(Value::as_array)
+            .ok_or_else(|| format!("{WORKSPACE_LAYER_POLICY} layer missing packages"))?;
+        for package in packages {
+            let package =
+                package.as_str().ok_or_else(|| format!("{WORKSPACE_LAYER_POLICY} package entry must be a string"))?;
+            forbidden.insert(package.to_string());
+        }
+    }
+    Ok(forbidden)
+}
+
+fn validate_forbidden_graph(
+    errors: &mut Vec<String>,
+    package_names: &BTreeSet<String>,
+    workspace_forbidden: &BTreeSet<String>,
+) {
+    for forbidden in workspace_forbidden {
+        if package_names.contains(forbidden) {
+            errors.push(format!(
+                "example dependency graph includes workspace crate `{forbidden}` above embeddable layer rank {EMBEDDABLE_MAX_LAYER_RANK}; update {WORKSPACE_LAYER_POLICY} or the example dependency boundary"
+            ));
+        }
+    }
+    for forbidden in EXTERNAL_FORBIDDEN_GRAPH_CRATES {
         if package_names.contains(*forbidden) {
-            errors.push(format!("example dependency graph includes forbidden crate `{forbidden}`"));
+            errors.push(format!("example dependency graph includes forbidden external crate `{forbidden}`"));
         }
     }
 }
@@ -258,10 +282,11 @@ fn run() -> Result<CheckReport, String> {
     let session_direct_deps = example_direct_deps(&session_metadata, SESSION_STORE_PACKAGE)?;
     let product_workbench_names = package_names(&product_workbench_metadata)?;
     let product_workbench_direct_deps = example_direct_deps(&product_workbench_metadata, PRODUCT_WORKBENCH_PACKAGE)?;
+    let workspace_forbidden = workspace_forbidden_graph_crates()?;
     let mut errors = Vec::new();
     validate_standalone_manifest(&mut errors, EXAMPLE_MANIFEST);
     validate_direct_deps(&mut errors, &direct_deps, REQUIRED_DIRECT_DEPS, ALLOWED_DIRECT_DEPS, EXAMPLE_PACKAGE);
-    validate_forbidden_graph(&mut errors, &names);
+    validate_forbidden_graph(&mut errors, &names, &workspace_forbidden);
     validate_standalone_manifest(&mut errors, SESSION_STORE_MANIFEST);
     validate_direct_deps(
         &mut errors,
@@ -270,7 +295,7 @@ fn run() -> Result<CheckReport, String> {
         SESSION_STORE_ALLOWED_DIRECT_DEPS,
         SESSION_STORE_PACKAGE,
     );
-    validate_forbidden_graph(&mut errors, &session_names);
+    validate_forbidden_graph(&mut errors, &session_names, &workspace_forbidden);
     validate_standalone_manifest(&mut errors, PRODUCT_WORKBENCH_MANIFEST);
     validate_direct_deps(
         &mut errors,
@@ -279,7 +304,7 @@ fn run() -> Result<CheckReport, String> {
         PRODUCT_WORKBENCH_ALLOWED_DIRECT_DEPS,
         PRODUCT_WORKBENCH_PACKAGE,
     );
-    validate_forbidden_graph(&mut errors, &product_workbench_names);
+    validate_forbidden_graph(&mut errors, &product_workbench_names, &workspace_forbidden);
     validate_feature_policy(&mut errors);
 
     Ok(CheckReport {
