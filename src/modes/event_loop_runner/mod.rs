@@ -17,7 +17,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use clankers_agent::events::AgentEvent;
-use clankers_config::keybindings::InputMode;
+use clanker_tui_types::InputMode;
 use clankers_controller::SessionController;
 use clankers_controller::auto_test::ControllerLoopStatus;
 use clankers_tui::app::App;

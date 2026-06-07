@@ -4,7 +4,6 @@ use std::collections::BTreeMap;
 use std::path::Path;
 
 use clanker_message::ThinkingLevel;
-use clanker_tui_types::MenuPlacement;
 use clankers_agent_defs::definition::AgentScope;
 use serde::Deserialize;
 use serde::Serialize;
@@ -1129,45 +1128,6 @@ pub struct LeaderMenuHideConfig {
     /// Submenu name. If omitted, hides from root.
     #[serde(default)]
     pub submenu: Option<String>,
-}
-
-impl clanker_tui_types::MenuContributor for LeaderMenuConfig {
-    fn menu_items(&self) -> Vec<clanker_tui_types::MenuContribution> {
-        use clanker_tui_types::LeaderAction;
-        use clanker_tui_types::MenuContribution;
-        use clanker_tui_types::PRIORITY_USER;
-
-        self.items
-            .iter()
-            .map(|item| MenuContribution {
-                key: item.key,
-                label: item.label.clone(),
-                action: LeaderAction::Command(item.command.clone()),
-                placement: match &item.submenu {
-                    Some(name) => MenuPlacement::Submenu(name.clone()),
-                    None => MenuPlacement::Root,
-                },
-                priority: PRIORITY_USER,
-                source: "config".into(),
-            })
-            .collect()
-    }
-}
-
-impl LeaderMenuConfig {
-    /// Convert hide rules to a set of (key, placement) pairs for the builder.
-    pub fn hidden_set(&self) -> std::collections::HashSet<(char, MenuPlacement)> {
-        self.hide
-            .iter()
-            .map(|h| {
-                let placement = match &h.submenu {
-                    Some(name) => MenuPlacement::Submenu(name.clone()),
-                    None => MenuPlacement::Root,
-                };
-                (h.key, placement)
-            })
-            .collect()
-    }
 }
 
 // ---------------------------------------------------------------------------

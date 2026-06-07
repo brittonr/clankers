@@ -468,10 +468,9 @@
         "package": "clanker-message"
       },
       {
-        "dependent_count": 3,
+        "dependent_count": 2,
         "dependents": [
           "clankers",
-          "clankers-config",
           "clankers-tui"
         ],
         "owner": "shared DTO/display/protocol type; inward dependencies require explicit edge justification",

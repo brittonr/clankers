@@ -7,9 +7,9 @@
 
 use std::sync::Arc;
 
-use clankers_config::keybindings::Action;
-use clankers_config::keybindings::ExtendedAction;
-use clankers_config::keybindings::InputMode;
+use clanker_tui_types::Action;
+use clanker_tui_types::ExtendedAction;
+use clanker_tui_types::InputMode;
 use clankers_tui::app::App;
 use clankers_tui::keymap::Keymap;
 use crossterm::event::KeyCode;
@@ -64,7 +64,7 @@ fn handle_panel_focused_action(
     action: &Action,
     cmd_tx: &tokio::sync::mpsc::UnboundedSender<super::interactive::AgentCommand>,
 ) -> bool {
-    use clankers_config::keybindings::CoreAction;
+    use clanker_tui_types::CoreAction;
     use ratatui::layout::Direction;
     use ratatui_hypertile::HypertileAction;
     use ratatui_hypertile::Towards;
@@ -259,7 +259,7 @@ pub(crate) fn handle_slash_menu_key(
     session_manager: &mut Option<clankers_session::SessionManager>,
     slash_registry: &crate::slash_commands::SlashRegistry,
 ) -> bool {
-    use clankers_config::keybindings::CoreAction;
+    use clanker_tui_types::CoreAction;
 
     if let Some(action) = keymap.resolve(InputMode::Insert, key) {
         match action {
@@ -327,7 +327,7 @@ pub(crate) fn handle_slash_menu_key(
 // ---------------------------------------------------------------------------
 
 pub(crate) fn handle_session_popup_key(app: &mut App, key: &crossterm::event::KeyEvent, keymap: &Keymap) -> bool {
-    use clankers_config::keybindings::CoreAction;
+    use clanker_tui_types::CoreAction;
 
     let action = keymap.resolve(app.input_mode, key);
 

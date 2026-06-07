@@ -4,8 +4,8 @@
 
 use clanker_tui_types::AppState;
 use clanker_tui_types::BlockEntry;
-use clankers_config::keybindings::ExtendedAction;
-use clankers_config::keybindings::InputMode;
+use clanker_tui_types::ExtendedAction;
+use clanker_tui_types::InputMode;
 use clankers_tui::app::App;
 
 /// Handle a resolved `ExtendedAction`.

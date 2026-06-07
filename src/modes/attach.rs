@@ -8,7 +8,7 @@
 use std::io;
 use std::time::Duration;
 
-use clankers_config::keybindings::InputMode;
+use clanker_tui_types::InputMode;
 use clankers_config::settings::Settings;
 use clankers_controller::client::ClientAdapter;
 use clankers_protocol::DaemonEvent;
@@ -218,9 +218,9 @@ fn handle_key_event(
     slash_registry: &slash_commands::SlashRegistry,
     parity_tracker: &mut AttachParityTracker,
 ) {
-    use clankers_config::keybindings::Action;
-    use clankers_config::keybindings::CoreAction;
-    use clankers_config::keybindings::ExtendedAction;
+    use clanker_tui_types::Action;
+    use clanker_tui_types::CoreAction;
+    use clanker_tui_types::ExtendedAction;
     use clankers_tui::selectors;
     use crossterm::event::KeyCode;
     use crossterm::event::KeyModifiers;
@@ -429,8 +429,8 @@ fn handle_slash_menu_key_attach(
     slash_registry: &slash_commands::SlashRegistry,
     parity_tracker: &mut AttachParityTracker,
 ) -> bool {
-    use clankers_config::keybindings::Action;
-    use clankers_config::keybindings::CoreAction;
+    use clanker_tui_types::Action;
+    use clanker_tui_types::CoreAction;
     use crossterm::event::KeyCode;
 
     // Menu navigation keys
@@ -495,15 +495,15 @@ fn handle_slash_menu_key_attach(
 fn handle_local_action(
     app: &mut App,
     client: &ClientAdapter,
-    action: &clankers_config::keybindings::Action,
+    action: &clanker_tui_types::Action,
     _key: &crossterm::event::KeyEvent,
     parity_tracker: &mut AttachParityTracker,
 ) {
+    use clanker_tui_types::Action;
     use clanker_tui_types::AppState;
     use clanker_tui_types::BlockEntry;
-    use clankers_config::keybindings::Action;
-    use clankers_config::keybindings::CoreAction;
-    use clankers_config::keybindings::ExtendedAction;
+    use clanker_tui_types::CoreAction;
+    use clanker_tui_types::ExtendedAction;
     use ratatui::layout::Direction;
     use ratatui_hypertile::HypertileAction;
     use ratatui_hypertile::Towards;

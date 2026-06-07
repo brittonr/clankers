@@ -559,6 +559,51 @@ fn find_git_root(start: &std::path::Path) -> Option<std::path::PathBuf> {
 
 // ── Leader menu + slash registry builders ───────────────────────────
 
+struct ConfigLeaderMenuContributor<'a>(&'a clankers_config::settings::LeaderMenuConfig);
+
+impl clankers_tui::components::leader_menu::MenuContributor for ConfigLeaderMenuContributor<'_> {
+    fn menu_items(&self) -> Vec<clankers_tui::components::leader_menu::MenuContribution> {
+        use clankers_tui::components::leader_menu::LeaderAction;
+        use clankers_tui::components::leader_menu::MenuContribution;
+        use clankers_tui::components::leader_menu::MenuPlacement;
+        use clanker_tui_types::PRIORITY_USER;
+
+        self.0
+            .items
+            .iter()
+            .map(|item| MenuContribution {
+                key: item.key,
+                label: item.label.clone(),
+                action: LeaderAction::Command(item.command.clone()),
+                placement: match &item.submenu {
+                    Some(name) => MenuPlacement::Submenu(name.clone()),
+                    None => MenuPlacement::Root,
+                },
+                priority: PRIORITY_USER,
+                source: "config".into(),
+            })
+            .collect()
+    }
+}
+
+fn leader_menu_hidden_set(
+    config: &clankers_config::settings::LeaderMenuConfig,
+) -> clankers_tui::components::leader_menu::HiddenSet {
+    use clankers_tui::components::leader_menu::MenuPlacement;
+
+    config
+        .hide
+        .iter()
+        .map(|hide| {
+            let placement = match &hide.submenu {
+                Some(name) => MenuPlacement::Submenu(name.clone()),
+                None => MenuPlacement::Root,
+            };
+            (hide.key, placement)
+        })
+        .collect()
+}
+
 /// Build the leader menu from builtins + slash commands + plugins + user config.
 pub(crate) fn rebuild_leader_menu(
     app: &mut App,
@@ -569,7 +614,8 @@ pub(crate) fn rebuild_leader_menu(
     use clankers_tui::components::leader_menu::MenuContributor;
 
     let builtin = BuiltinKeymapContributor;
-    let hidden = settings.leader_menu.hidden_set();
+    let config_contrib = ConfigLeaderMenuContributor(&settings.leader_menu);
+    let hidden = leader_menu_hidden_set(&settings.leader_menu);
 
     let pm_guard;
     let pm_menu_contrib;
@@ -588,7 +634,7 @@ pub(crate) fn rebuild_leader_menu(
             }
         }
     }
-    contributors.push(&settings.leader_menu);
+    contributors.push(&config_contrib);
 
     app.rebuild_leader_menu(&contributors, &hidden);
 }

@@ -3,8 +3,8 @@
 //! This module contains all keyboard input handling logic, extracted from
 //! the main event loop runner for better organization.
 
-use clankers_config::keybindings::Action;
-use clankers_config::keybindings::InputMode;
+use clanker_tui_types::Action;
+use clanker_tui_types::InputMode;
 use clankers_tui::clipboard;
 use clankers_tui::selectors;
 use crossterm::event::KeyCode;
@@ -158,7 +158,7 @@ impl<'a> EventLoopRunner<'a> {
         // Resolve through keymap
         let action = self.keymap.resolve(self.app.input_mode, &key);
         if let Some(action) = action {
-            if matches!(&action, Action::Extended(clankers_config::keybindings::ExtendedAction::OpenEditor)) {
+            if matches!(&action, Action::Extended(clanker_tui_types::ExtendedAction::OpenEditor)) {
                 clipboard::open_external_editor(self.terminal, self.app);
                 return;
             }

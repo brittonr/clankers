@@ -8,16 +8,6 @@ use std::collections::HashMap;
 use std::fmt;
 use std::path::Path;
 
-// Re-export action types (canonical home is clanker-tui-types) for existing
-// settings and action parsing call sites. The concrete `Keymap` engine remains
-// in `clankers-tui` and is projected by the product shell/TUI adapter.
-pub use clanker_tui_types::Action;
-pub use clanker_tui_types::ActionRegistry;
-pub use clanker_tui_types::CoreAction;
-pub use clanker_tui_types::ExtendedAction;
-pub use clanker_tui_types::ExtendedActionDef;
-pub use clanker_tui_types::InputMode;
-pub use clanker_tui_types::parse_action;
 use serde::Deserialize;
 use serde::Serialize;
 
