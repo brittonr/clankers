@@ -108,7 +108,7 @@ pub(crate) fn build_agent_with_tools(
 
     // Extract cost tracker reference for the app UI
     if settings.cost_tracking.is_some() {
-        app.cost_tracker = agent.cost_tracker().map(|ct| ct.clone() as Arc<dyn clanker_tui_types::CostProvider>);
+        app.cost_tracker = agent.cost_tracker().cloned();
     }
 
     let event_rx = agent.subscribe();

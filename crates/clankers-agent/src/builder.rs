@@ -5,12 +5,12 @@ use std::sync::Arc;
 use clanker_message::ThinkingConfig;
 use clanker_message::ThinkingLevel;
 use clankers_db::Db;
-use clankers_model_selection::cost_tracker::CostTracker;
-use clankers_model_selection::policy::RoutingPolicy;
 use clankers_provider::Provider;
 
 use crate::Agent;
+use crate::AgentCostRecorder;
 use crate::AgentModelRoles;
+use crate::AgentRoutingPolicy;
 use crate::AgentSettings;
 use crate::tool::Tool;
 
@@ -35,8 +35,9 @@ pub struct AgentBuilder {
 pub struct AgentBuilderConfig {
     pub agent_settings: AgentSettings,
     pub model_roles: AgentModelRoles,
-    pub routing_policy: Option<RoutingPolicy>,
-    pub cost_tracker: Option<Arc<CostTracker>>,
+    pub routing_policy: Option<Arc<dyn AgentRoutingPolicy>>,
+    pub cost_recorder: Option<Arc<dyn AgentCostRecorder>>,
+    pub cost_provider: Option<Arc<dyn clanker_message::CostProvider>>,
     pub thinking_level: ThinkingLevel,
 }
 
@@ -46,7 +47,8 @@ impl Default for AgentBuilderConfig {
             agent_settings: AgentSettings::default(),
             model_roles: AgentModelRoles::default(),
             routing_policy: None,
-            cost_tracker: None,
+            cost_recorder: None,
+            cost_provider: None,
             thinking_level: ThinkingLevel::Max,
         }
     }
@@ -113,8 +115,11 @@ impl AgentBuilder {
         }
 
         // Wire cost tracking from the app-edge adapter.
-        if let Some(tracker) = self.config.cost_tracker {
-            agent = agent.with_cost_tracker(tracker);
+        if let Some(recorder) = self.config.cost_recorder {
+            agent = agent.with_cost_recorder(recorder);
+        }
+        if let Some(provider) = self.config.cost_provider {
+            agent = agent.with_cost_provider(provider);
         }
 
         // Enable extended thinking from settings by default, with explicit

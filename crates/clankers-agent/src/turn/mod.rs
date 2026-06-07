@@ -68,8 +68,6 @@ use clankers_engine_host::run_engine_turn;
 #[cfg(test)]
 use clankers_engine_host::runtime::cancel_turn_input;
 #[cfg(test)]
-use clankers_model_selection::cost_tracker::CostTracker;
-#[cfg(test)]
 use clankers_provider::CompletionRequest;
 #[cfg(test)]
 use clankers_provider::Provider;
@@ -351,7 +349,7 @@ mod tests {
         config: &TurnConfig,
         event_tx: &broadcast::Sender<AgentEvent>,
         cancel: CancellationToken,
-        cost_tracker: Option<&Arc<CostTracker>>,
+        cost_tracker: Option<&Arc<dyn crate::routing::AgentCostRecorder>>,
         model_switch_slot: Option<&ModelSwitchSlot>,
         hook_pipeline: Option<Arc<clankers_hooks::HookPipeline>>,
         session_id: &str,

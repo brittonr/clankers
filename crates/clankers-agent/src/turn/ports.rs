@@ -4,7 +4,6 @@ use std::sync::Arc;
 use async_trait::async_trait;
 use clanker_message::Usage;
 use clanker_message::transcript::ToolResultMessage;
-use clankers_model_selection::cost_tracker::CostTracker;
 use clankers_provider::CompletionRequest;
 use clankers_provider::Provider;
 use clankers_tool_host::ToolCancellationService;
@@ -29,6 +28,7 @@ use super::tool_definitions_from_tool_catalog;
 use super::update_usage_tracking;
 use crate::error::Result;
 use crate::events::AgentEvent;
+use crate::routing::AgentCostRecorder;
 use crate::tool::ModelSwitchSlot;
 use crate::tool::Tool;
 use crate::tool::ToolDefinition;
@@ -543,12 +543,12 @@ pub(crate) trait AgentCostPort: Send + Sync {
 }
 
 pub(crate) struct CostTrackerPort<'a> {
-    cost_tracker: Option<&'a Arc<CostTracker>>,
+    cost_recorder: Option<&'a Arc<dyn AgentCostRecorder>>,
 }
 
 impl<'a> CostTrackerPort<'a> {
-    pub(crate) fn new(cost_tracker: Option<&'a Arc<CostTracker>>) -> Self {
-        Self { cost_tracker }
+    pub(crate) fn new(cost_recorder: Option<&'a Arc<dyn AgentCostRecorder>>) -> Self {
+        Self { cost_recorder }
     }
 }
 
@@ -560,7 +560,13 @@ impl AgentCostPort for CostTrackerPort<'_> {
         active_model: &str,
         event_tx: &broadcast::Sender<AgentEvent>,
     ) {
-        update_usage_tracking(cumulative_usage, turn_usage, active_model, self.cost_tracker, event_tx);
+        update_usage_tracking(
+            cumulative_usage,
+            turn_usage,
+            active_model,
+            self.cost_recorder.map(|recorder| recorder.as_ref()),
+            event_tx,
+        );
     }
 }
 

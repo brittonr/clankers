@@ -30,6 +30,7 @@ pub use contracts::ThinkingConfig;
 pub use contracts::ThinkingLevel;
 pub use contracts::ToolDefinition;
 pub use contracts::Usage;
+pub use cost::BudgetEvent;
 pub use cost::BudgetStatus;
 pub use cost::CostProvider;
 pub use cost::CostSummary;

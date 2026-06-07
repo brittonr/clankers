@@ -26,6 +26,7 @@ pub mod compaction;
 pub mod context;
 pub mod error;
 pub mod events;
+pub mod routing;
 pub mod system_prompt;
 pub mod tool;
 pub mod ttsr;
@@ -42,11 +43,6 @@ use clanker_message::ThinkingConfig;
 use clanker_message::ThinkingLevel;
 use clanker_message::transcript::*;
 use clankers_db::Db;
-use clankers_model_selection::cost_tracker::CostTracker;
-use clankers_model_selection::orchestration;
-use clankers_model_selection::policy::RoutingPolicy;
-use clankers_model_selection::signals::ComplexitySignals;
-use clankers_model_selection::signals::ToolCallSummary;
 use clankers_provider::Provider;
 use clankers_runtime::SteelRepoEvolutionActivationStatus;
 use clankers_runtime::load_repo_evolution_pack;
@@ -64,6 +60,13 @@ pub use self::tool::ToolDefinition;
 pub use self::tool::ToolResult;
 pub use self::tool::ToolResultContent;
 pub use self::tool::model_switch_slot;
+pub use routing::AgentCostRecorder;
+pub use routing::AgentModelSelection;
+pub use routing::AgentOrchestrationPhase;
+pub use routing::AgentOrchestrationPlan;
+pub use routing::AgentRoutingPolicy;
+pub use routing::AgentRoutingSignals;
+pub use routing::AgentRoutingToolUse;
 use self::turn::TurnConfig;
 use self::turn::steel_tool_substrate_config_from_settings;
 use self::turn::steel_turn_planning_config_from_settings;
@@ -280,11 +283,13 @@ pub struct Agent {
     /// Persistent database handle (memory, usage, history, etc.)
     db: Option<Db>,
     /// Routing policy for multi-model conversations
-    routing_policy: Option<RoutingPolicy>,
+    routing_policy: Option<Arc<dyn AgentRoutingPolicy>>,
     /// Model roles for resolving role names to model IDs.
     model_roles: AgentModelRoles,
-    /// Cost tracker for budget enforcement
-    cost_tracker: Option<Arc<CostTracker>>,
+    /// Cost recorder for budget enforcement
+    cost_recorder: Option<Arc<dyn AgentCostRecorder>>,
+    /// Cost provider for display/reporting edges.
+    cost_provider: Option<Arc<dyn clanker_message::CostProvider>>,
     /// Shared slot for agent-initiated model switching
     model_switch_slot: Option<ModelSwitchSlot>,
     /// Hook pipeline for lifecycle/tool/git hooks
@@ -330,7 +335,8 @@ impl Agent {
             db: None,
             routing_policy: None,
             model_roles: AgentModelRoles::default(),
-            cost_tracker: None,
+            cost_recorder: None,
+            cost_provider: None,
             model_switch_slot: None,
             hook_pipeline: None,
             session_id: String::new(),
@@ -352,7 +358,7 @@ impl Agent {
     }
 
     /// Set the routing policy for multi-model conversations
-    pub fn with_routing_policy(mut self, policy: RoutingPolicy) -> Self {
+    pub fn with_routing_policy(mut self, policy: Arc<dyn AgentRoutingPolicy>) -> Self {
         self.routing_policy = Some(policy);
         self
     }
@@ -363,15 +369,21 @@ impl Agent {
         self
     }
 
-    /// Set the cost tracker for budget enforcement
-    pub fn with_cost_tracker(mut self, tracker: Arc<CostTracker>) -> Self {
-        self.cost_tracker = Some(tracker);
+    /// Set the cost recorder for budget enforcement.
+    pub fn with_cost_recorder(mut self, recorder: Arc<dyn AgentCostRecorder>) -> Self {
+        self.cost_recorder = Some(recorder);
         self
     }
 
-    /// Get the cost tracker, if attached.
-    pub fn cost_tracker(&self) -> Option<&Arc<CostTracker>> {
-        self.cost_tracker.as_ref()
+    /// Set the cost provider for display/reporting edges.
+    pub fn with_cost_provider(mut self, provider: Arc<dyn clanker_message::CostProvider>) -> Self {
+        self.cost_provider = Some(provider);
+        self
+    }
+
+    /// Get the cost provider, if attached.
+    pub fn cost_tracker(&self) -> Option<&Arc<dyn clanker_message::CostProvider>> {
+        self.cost_provider.as_ref()
     }
 
     /// Set the model switch slot for agent-initiated switching
@@ -580,7 +592,7 @@ impl Agent {
                 config.steel_tool_substrate.clone(),
             ),
         };
-        let cost_port = turn::CostTrackerPort::new(self.cost_tracker.as_ref());
+        let cost_port = turn::CostTrackerPort::new(self.cost_recorder.as_ref());
         let cancellation = turn::TokenCancellationPort::new(self.cancel.clone());
         let result = turn::run_turn_loop(
             &config,
@@ -801,27 +813,23 @@ impl Agent {
     }
 
     /// Select model based on complexity signals, returning orchestration plan if needed
-    fn select_model_for_turn(&mut self, text: &str) -> Result<Option<orchestration::OrchestrationPlan>> {
+    fn select_model_for_turn(&mut self, text: &str) -> Result<Option<AgentOrchestrationPlan>> {
         let Some(policy) = &self.routing_policy else {
             return Ok(None);
         };
 
-        let signals = ComplexitySignals {
-            token_count: text.len() / 4, // rough token estimate
+        let signals = AgentRoutingSignals {
+            token_count: text.len() / 4,
             recent_tools: self.recent_tool_summaries(),
-            keywords: policy.extract_keywords(text),
-            user_hint: policy.parse_user_hint(text),
-            current_cost: self.cost_tracker.as_ref().map_or(0.0, |ct| ct.total_cost()),
+            current_cost: self.cost_recorder.as_ref().map_or(0.0, |recorder| recorder.total_cost()),
             prompt_text: Some(text.to_string()),
         };
         let selection = policy.select_model(&signals);
 
-        // If orchestration is planned, return it
         if let Some(plan) = selection.orchestration {
             return Ok(Some(plan));
         }
 
-        // Switch model if needed
         if selection.role != "default" {
             let new_model = self.model_roles.resolve(&selection.role, &self.model);
             if new_model != self.model {
@@ -831,7 +839,7 @@ impl Agent {
                     .send(AgentEvent::ModelChange {
                         from: old,
                         to: new_model,
-                        reason: selection.reason.to_string(),
+                        reason: selection.reason,
                     })
                     .ok();
             }
@@ -1042,7 +1050,7 @@ impl Agent {
         &mut self,
         prompt_id: &str,
         user_text: &str,
-        plan: orchestration::OrchestrationPlan,
+        plan: AgentOrchestrationPlan,
     ) -> Result<()> {
         let total_phases = plan.phases.len();
         tracing::info!("Starting orchestrated turn: {} ({} phases)", plan.pattern, total_phases,);
@@ -1133,7 +1141,7 @@ impl Agent {
                         config.steel_tool_substrate.clone(),
                     ),
                 };
-                let cost_port = turn::CostTrackerPort::new(self.cost_tracker.as_ref());
+                let cost_port = turn::CostTrackerPort::new(self.cost_recorder.as_ref());
                 let cancellation = turn::TokenCancellationPort::new(self.cancel.clone());
                 let result = turn::run_turn_loop(
                     &config,
@@ -1308,28 +1316,22 @@ impl Agent {
     }
 
     /// Extract recent tool call summaries from conversation history
-    fn recent_tool_summaries(&self) -> Vec<ToolCallSummary> {
+    fn recent_tool_summaries(&self) -> Vec<AgentRoutingToolUse> {
         let mut summaries = Vec::new();
         let start_index = self.messages.len().saturating_sub(5);
 
         for msg in &self.messages[start_index..] {
             if let AgentMessage::Assistant(asst) = msg {
                 for content in &asst.content {
-                    if let Content::ToolUse { name, .. } = content
-                        && let Some(policy) = &self.routing_policy
-                    {
-                        summaries.push(ToolCallSummary {
+                    if let Content::ToolUse { name, .. } = content {
+                        summaries.push(AgentRoutingToolUse {
                             tool_name: name.clone(),
-                            complexity: policy.classify_tool(name),
                         });
                     }
                 }
-            } else if let AgentMessage::ToolResult(tool_result) = msg
-                && let Some(policy) = &self.routing_policy
-            {
-                summaries.push(ToolCallSummary {
+            } else if let AgentMessage::ToolResult(tool_result) = msg {
+                summaries.push(AgentRoutingToolUse {
                     tool_name: tool_result.tool_name.clone(),
-                    complexity: policy.classify_tool(&tool_result.tool_name),
                 });
             }
         }

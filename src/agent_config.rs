@@ -4,8 +4,15 @@ use std::collections::HashMap;
 use std::path::Path;
 use std::sync::Arc;
 
+use clanker_message::BudgetEvent;
+use clankers_agent::AgentCostRecorder;
 use clankers_agent::AgentMemorySettings;
 use clankers_agent::AgentModelRoles;
+use clankers_agent::AgentModelSelection;
+use clankers_agent::AgentOrchestrationPhase;
+use clankers_agent::AgentOrchestrationPlan;
+use clankers_agent::AgentRoutingPolicy;
+use clankers_agent::AgentRoutingSignals;
 use clankers_agent::AgentSettings;
 use clankers_agent::AgentSkillSettings;
 use clankers_agent::builder::AgentBuilderConfig;
@@ -16,6 +23,8 @@ use clankers_config::settings::Settings;
 use clankers_model_selection::cost_tracker::CostTracker;
 use clankers_model_selection::cost_tracker::pricing_from_models;
 use clankers_model_selection::policy::RoutingPolicy;
+use clankers_model_selection::signals::ComplexitySignals;
+use clankers_model_selection::signals::ToolCallSummary;
 use clankers_provider::Model;
 
 /// Convert desktop Clankers settings into agent-owned builder configuration.
@@ -25,15 +34,94 @@ pub fn agent_builder_config_from_settings(
     provider_models: &[Model],
     pricing_config_dir: Option<&Path>,
 ) -> AgentBuilderConfig {
+    let cost_tracker = settings.cost_tracking.as_ref().map(|cost_config| {
+        let pricing = pricing_from_models(provider_models, pricing_config_dir);
+        Arc::new(CostTracker::new(pricing, cost_config.clone()))
+    });
+
     AgentBuilderConfig {
         agent_settings: agent_settings_from_config(settings),
         model_roles: agent_model_roles_from_config(&settings.model_roles),
-        routing_policy: settings.routing.as_ref().filter(|routing| routing.enabled).cloned().map(RoutingPolicy::new),
-        cost_tracker: settings.cost_tracking.as_ref().map(|cost_config| {
-            let pricing = pricing_from_models(provider_models, pricing_config_dir);
-            Arc::new(CostTracker::new(pricing, cost_config.clone()))
-        }),
+        routing_policy: settings
+            .routing
+            .as_ref()
+            .filter(|routing| routing.enabled)
+            .cloned()
+            .map(RoutingPolicy::new)
+            .map(|policy| Arc::new(ModelSelectionRoutingPolicyAdapter { policy }) as Arc<dyn AgentRoutingPolicy>),
+        cost_recorder: cost_tracker
+            .as_ref()
+            .map(|tracker| Arc::new(ModelSelectionCostRecorder::new(Arc::clone(tracker))) as Arc<dyn AgentCostRecorder>),
+        cost_provider: cost_tracker.map(|tracker| tracker as Arc<dyn clanker_message::CostProvider>),
         thinking_level: settings.parsed_thinking_level(),
+    }
+}
+
+struct ModelSelectionRoutingPolicyAdapter {
+    policy: RoutingPolicy,
+}
+
+impl AgentRoutingPolicy for ModelSelectionRoutingPolicyAdapter {
+    fn select_model(&self, signals: &AgentRoutingSignals) -> AgentModelSelection {
+        let prompt_text = signals.prompt_text.clone().unwrap_or_default();
+        let selection = self.policy.select_model(&ComplexitySignals {
+            token_count: signals.token_count,
+            recent_tools: signals
+                .recent_tools
+                .iter()
+                .map(|tool| ToolCallSummary {
+                    tool_name: tool.tool_name.clone(),
+                    complexity: self.policy.classify_tool(&tool.tool_name),
+                })
+                .collect(),
+            keywords: self.policy.extract_keywords(&prompt_text),
+            user_hint: self.policy.parse_user_hint(&prompt_text),
+            current_cost: signals.current_cost,
+            prompt_text: Some(prompt_text),
+        });
+
+        AgentModelSelection {
+            role: selection.role,
+            reason: selection.reason.to_string(),
+            orchestration: selection.orchestration.map(agent_orchestration_plan_from_model_selection),
+        }
+    }
+}
+
+fn agent_orchestration_plan_from_model_selection(
+    plan: clankers_model_selection::orchestration::OrchestrationPlan,
+) -> AgentOrchestrationPlan {
+    AgentOrchestrationPlan {
+        pattern: plan.pattern.to_string(),
+        phases: plan
+            .phases
+            .into_iter()
+            .map(|phase| AgentOrchestrationPhase {
+                role: phase.role,
+                label: phase.label,
+                system_suffix: phase.system_suffix,
+            })
+            .collect(),
+    }
+}
+
+struct ModelSelectionCostRecorder {
+    tracker: Arc<CostTracker>,
+}
+
+impl ModelSelectionCostRecorder {
+    fn new(tracker: Arc<CostTracker>) -> Self {
+        Self { tracker }
+    }
+}
+
+impl AgentCostRecorder for ModelSelectionCostRecorder {
+    fn record_usage(&self, model_id: &str, input_tokens: u64, output_tokens: u64) -> (f64, Vec<BudgetEvent>) {
+        self.tracker.record_usage(model_id, input_tokens, output_tokens)
+    }
+
+    fn total_cost(&self) -> f64 {
+        self.tracker.total_cost()
     }
 }
 
@@ -292,6 +380,7 @@ mod tests {
         let config = agent_builder_config_from_settings(&settings, &[], None);
 
         assert!(config.routing_policy.is_some());
-        assert!(config.cost_tracker.is_some());
+        assert!(config.cost_recorder.is_some());
+        assert!(config.cost_provider.is_some());
     }
 }

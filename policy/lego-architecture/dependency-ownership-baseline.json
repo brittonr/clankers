@@ -200,13 +200,12 @@
       "concrete_dependencies": [
         "clankers-db",
         "clankers-hooks",
-        "clankers-model-selection",
         "clankers-prompts",
         "clankers-provider",
         "clankers-skills"
       ],
-      "concrete_dependency_count": 6,
-      "internal_dependency_count": 14,
+      "concrete_dependency_count": 5,
+      "internal_dependency_count": 13,
       "owner": "turn orchestration shell; concrete systems should migrate behind model/tool/config/storage/hook/prompt/skill/cost ports",
       "package": "clankers-agent"
     },

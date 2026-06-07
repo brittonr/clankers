@@ -688,13 +688,18 @@ fn agent_turn_ports_signature() -> Result<Value, String> {
     )?;
     require_contains(
         builder,
-        "pub cost_tracker: Option<Arc<CostTracker>>",
-        "agent builder receives app-edge cost tracker service",
+        "pub cost_recorder: Option<Arc<dyn AgentCostRecorder>>",
+        "agent builder receives app-edge neutral cost recorder service",
     )?;
     require_contains(
         builder,
-        "pub routing_policy: Option<RoutingPolicy>",
-        "agent builder receives app-edge routing policy service",
+        "pub cost_provider: Option<Arc<dyn clanker_message::CostProvider>>",
+        "agent builder receives app-edge cost display provider service",
+    )?;
+    require_contains(
+        builder,
+        "pub routing_policy: Option<Arc<dyn AgentRoutingPolicy>>",
+        "agent builder receives app-edge neutral routing policy service",
     )?;
     require_contains(
         agent_config,
@@ -726,6 +731,14 @@ fn agent_turn_ports_signature() -> Result<Value, String> {
         "ClankersPaths",
         "agent builder must not resolve global clankers paths for pricing",
     )?;
+    for (source, label) in [
+        (agent_lib, "agent runtime lib"),
+        (builder, "agent builder"),
+        (ports, "agent turn ports"),
+        (turn_mod, "agent turn module"),
+    ] {
+        forbid_contains(source, "clankers_model_selection", &format!("{label} must not import concrete model-selection after routing/cost port drain"))?;
+    }
     require_contains(
         &agent_lib,
         "pub fn new_with_agent_settings",

@@ -23,6 +23,17 @@ pub enum BudgetStatus {
     Exceeded { over_hard_by: f64 },
 }
 
+/// Budget events emitted after recording usage.
+#[derive(Debug, Clone, PartialEq)]
+pub enum BudgetEvent {
+    /// Soft budget threshold reached.
+    Warning { threshold: f64, current: f64 },
+    /// Hard budget limit exceeded.
+    Exceeded { limit: f64, current: f64 },
+    /// Cost milestone hit (for example every $1).
+    Milestone { milestone: f64, total: f64 },
+}
+
 /// Aggregate cost summary for display and receipts.
 #[derive(Debug, Clone)]
 pub struct CostSummary {
