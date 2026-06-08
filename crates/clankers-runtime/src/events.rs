@@ -5,6 +5,8 @@ use std::collections::BTreeMap;
 pub use clanker_message::ErrorClass;
 use clanker_message::SemanticConfirmationRequest;
 use clanker_message::SemanticErrorClass;
+pub use clanker_message::SemanticStopReason as StopReason;
+pub use clanker_message::SemanticToolStatus as ToolStatus;
 use clanker_message::SemanticEvent;
 use clanker_message::SemanticEventMetadata;
 use clanker_message::SemanticStopReason;
@@ -346,20 +348,4 @@ pub(crate) fn contains_secret_marker(value: &str) -> bool {
     ]
     .iter()
     .any(|marker| lower.contains(marker))
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum StopReason {
-    Complete,
-    Interrupted,
-    Cancelled,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum ToolStatus {
-    Succeeded,
-    Failed,
-    Denied,
 }
