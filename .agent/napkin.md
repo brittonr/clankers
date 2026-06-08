@@ -3,6 +3,7 @@
 ## Corrections
 | Date | Source | What Went Wrong | What To Do Instead |
 |------|--------|----------------|-------------------|
+| 2026-06-07 | self | Ran `cargo test -p clankers-runtime --lib runtime_usage` after moving runtime usage DTOs; Cargo ran 0 tests because no test name matched that substring | Grep exact runtime test names before using focused filters; rerun with a real test like `runtime_facade_invokes_event_and_usage_adapter_slots` before recording evidence. |
 | 2026-06-07 | self | Auto-test reported `No space left on device` while writing a root test rlib; this was an environmental ENOSPC build artifact issue, not a source failure | Check `df -h .` / target size, free space if needed, then rerun `cargo test -p clankers --no-run` before making source changes for ENOSPC output. |
 | 2026-06-07 | self | Ran `cargo test -p clanker-message --lib image_data` immediately after adding `ImageData`, but the crate had no matching focused test yet, so Cargo ran 0 tests | Add or grep a real focused test before using a new DTO filter; check the test count and rerun before recording evidence. |
 | 2026-06-07 | self | Ran `cargo test -p clankers-protocol --lib tool_list` while validating ToolInfo DTO relocation; Cargo ran 0 tests because no test name contained that substring | Grep exact protocol/frame test names before using focused filters, and rerun with a real matching test before recording evidence. |

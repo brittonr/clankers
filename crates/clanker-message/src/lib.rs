@@ -31,6 +31,8 @@ pub use content::ImageData;
 pub use content::ImageSource;
 pub use content::StopReason;
 pub use contracts::DaemonStatus;
+pub use contracts::RuntimeUsageObservation;
+pub use contracts::RuntimeUsageObservationKind;
 pub use contracts::SerializedMessage;
 pub use contracts::SessionKey;
 pub use contracts::SessionSummary;

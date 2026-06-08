@@ -197,6 +197,21 @@ pub struct ThinkingConfig {
     pub budget_tokens: Option<usize>,
 }
 
+/// Runtime usage observation emitted by model/streaming adapters.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RuntimeUsageObservation {
+    pub kind: RuntimeUsageObservationKind,
+    pub usage: Usage,
+}
+
+/// Kind of runtime usage observation.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum RuntimeUsageObservationKind {
+    StreamDelta,
+    FinalSummary,
+}
+
 /// Token usage statistics for a completion.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct Usage {
@@ -288,5 +303,26 @@ mod tests {
         let json = serde_json::to_string(&status).expect("status should serialize");
         let parsed: DaemonStatus = serde_json::from_str(&json).expect("status should deserialize");
         assert_eq!(parsed, status);
+    }
+
+    #[test]
+    fn runtime_usage_observation_roundtrip_preserves_kind_and_usage() {
+        let observation = RuntimeUsageObservation {
+            kind: RuntimeUsageObservationKind::FinalSummary,
+            usage: Usage {
+                input_tokens: 3,
+                output_tokens: 5,
+                cache_creation_input_tokens: 7,
+                cache_read_input_tokens: 11,
+            },
+        };
+        let json = serde_json::to_string(&observation).expect("observation should serialize");
+        assert!(json.contains("final_summary"));
+        let parsed: RuntimeUsageObservation = serde_json::from_str(&json).expect("observation should deserialize");
+        assert_eq!(parsed.kind, RuntimeUsageObservationKind::FinalSummary);
+        assert_eq!(parsed.usage.input_tokens, 3);
+        assert_eq!(parsed.usage.output_tokens, 5);
+        assert_eq!(parsed.usage.cache_creation_input_tokens, 7);
+        assert_eq!(parsed.usage.cache_read_input_tokens, 11);
     }
 }

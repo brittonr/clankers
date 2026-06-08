@@ -6,7 +6,8 @@
 use std::time::Duration;
 
 use clanker_message::Content;
-use clanker_message::Usage;
+pub use clanker_message::RuntimeUsageObservation;
+pub use clanker_message::RuntimeUsageObservationKind;
 use clankers_engine::EngineEvent;
 use serde::Deserialize;
 use serde::Serialize;
@@ -153,19 +154,6 @@ impl RuntimeCancellationAdapter for NoopRuntimeCancellationAdapter {
     fn is_cancelled(&self) -> bool {
         false
     }
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct RuntimeUsageObservation {
-    pub kind: RuntimeUsageObservationKind,
-    pub usage: Usage,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum RuntimeUsageObservationKind {
-    StreamDelta,
-    FinalSummary,
 }
 
 pub trait RuntimeUsageAdapter: Send + Sync {
