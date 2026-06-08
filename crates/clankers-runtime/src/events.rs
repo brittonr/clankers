@@ -2,6 +2,7 @@
 
 use std::collections::BTreeMap;
 
+pub use clanker_message::ErrorClass;
 use clanker_message::SemanticConfirmationRequest;
 use clanker_message::SemanticErrorClass;
 use clanker_message::SemanticEvent;
@@ -361,18 +362,4 @@ pub enum ToolStatus {
     Succeeded,
     Failed,
     Denied,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum ErrorClass {
-    InvalidInput,
-    Session,
-    Policy,
-    Tooling,
-    Storage,
-    Confirmation,
-    Extension,
-    Boundary,
-    Model,
 }

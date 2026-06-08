@@ -32,6 +32,7 @@ pub use content::ImageSource;
 pub use content::StopReason;
 pub use contracts::AuthStoreOperation;
 pub use contracts::DaemonStatus;
+pub use contracts::ErrorClass;
 pub use contracts::ExtensionRuntimeKind;
 pub use contracts::ExtensionStatus;
 pub use contracts::ProviderMessage;

@@ -371,6 +371,21 @@ fn sanitize_short_public_value(value: String) -> String {
     }
 }
 
+/// Safe runtime error class for event and receipt projection.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ErrorClass {
+    InvalidInput,
+    Session,
+    Policy,
+    Tooling,
+    Storage,
+    Confirmation,
+    Extension,
+    Boundary,
+    Model,
+}
+
 /// Operation requested from a host-owned auth store.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -635,6 +650,14 @@ mod tests {
         assert_eq!(json, r#""retryable_failure""#);
         let parsed: ProviderModelStatus = serde_json::from_str(&json).expect("status should deserialize");
         assert_eq!(parsed, ProviderModelStatus::RetryableFailure);
+    }
+
+    #[test]
+    fn error_class_roundtrip_preserves_snake_case() {
+        let json = serde_json::to_string(&ErrorClass::InvalidInput).expect("class should serialize");
+        assert_eq!(json, r#""invalid_input""#);
+        let parsed: ErrorClass = serde_json::from_str(&json).expect("class should deserialize");
+        assert_eq!(parsed, ErrorClass::InvalidInput);
     }
 
     #[test]
