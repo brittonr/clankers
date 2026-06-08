@@ -10,6 +10,7 @@ use std::sync::Arc;
 use std::time::Instant;
 
 use clanker_message::DaemonStatus;
+use clanker_message::SessionKey;
 use clanker_message::SessionSummary;
 use clankers_protocol::SessionCommand;
 use clankers_protocol::control::ControlCommand;
@@ -188,7 +189,7 @@ pub struct DaemonState {
     /// Active sessions: session_id → session handle
     pub sessions: HashMap<String, SessionHandle>,
     /// Secondary index: SessionKey → session_id for transport lookups.
-    pub key_index: HashMap<clankers_protocol::SessionKey, String>,
+    pub key_index: HashMap<SessionKey, String>,
     /// Daemon start time
     pub started_at: Instant,
 }
@@ -230,13 +231,13 @@ impl DaemonState {
     }
 
     /// Look up a session by transport key (iroh peer, Matrix user+room).
-    pub fn session_by_key(&self, key: &clankers_protocol::SessionKey) -> Option<&SessionHandle> {
+    pub fn session_by_key(&self, key: &SessionKey) -> Option<&SessionHandle> {
         let session_id = self.key_index.get(key)?;
         self.sessions.get(session_id)
     }
 
     /// Register a session key → session_id mapping.
-    pub fn register_key(&mut self, key: clankers_protocol::SessionKey, session_id: String) {
+    pub fn register_key(&mut self, key: SessionKey, session_id: String) {
         self.key_index.insert(key, session_id);
     }
 
@@ -247,10 +248,10 @@ impl DaemonState {
     }
 
     /// List all keys associated with Matrix sessions.
-    pub fn matrix_keys(&self) -> Vec<(clankers_protocol::SessionKey, String)> {
+    pub fn matrix_keys(&self) -> Vec<(SessionKey, String)> {
         self.key_index
             .iter()
-            .filter(|(k, _)| matches!(k, clankers_protocol::SessionKey::Matrix { .. }))
+            .filter(|(k, _)| matches!(k, SessionKey::Matrix { .. }))
             .map(|(k, v)| (k.clone(), v.clone()))
             .collect()
     }

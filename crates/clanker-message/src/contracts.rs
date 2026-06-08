@@ -34,6 +34,46 @@ pub struct SerializedMessage {
     pub timestamp: Option<String>,
 }
 
+/// Identifies a daemon session by transport and sender.
+#[derive(Debug, Clone, Hash, Eq, PartialEq, Serialize, Deserialize)]
+pub enum SessionKey {
+    /// iroh peer identified by public key.
+    Iroh(String),
+    /// Matrix user in a room.
+    Matrix { user_id: String, room_id: String },
+}
+
+impl std::fmt::Display for SessionKey {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Iroh(id) => write!(f, "iroh:{}", &id[..12.min(id.len())]),
+            Self::Matrix { user_id, room_id } => write!(f, "matrix:{}@{}", user_id, room_id),
+        }
+    }
+}
+
+impl SessionKey {
+    /// Deterministic directory name for this session's working files.
+    pub fn dir_name(&self) -> String {
+        match self {
+            Self::Iroh(id) => format!("daemon_iroh_{}", &id[..12.min(id.len())]),
+            Self::Matrix { user_id, room_id } => {
+                let user = user_id.replace(':', "_").replace('@', "");
+                let room = room_id.replace(':', "_").replace('!', "");
+                format!("daemon_matrix_{}_{}", user, room)
+            }
+        }
+    }
+
+    /// Extract the Matrix room_id if this is a Matrix session.
+    pub fn matrix_room_id(&self) -> Option<&str> {
+        match self {
+            Self::Matrix { room_id, .. } => Some(room_id),
+            _ => None,
+        }
+    }
+}
+
 /// Summary of an active daemon session.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct SessionSummary {
@@ -201,6 +241,31 @@ mod tests {
         let json = serde_json::to_string(&message).expect("message should serialize");
         let parsed: SerializedMessage = serde_json::from_str(&json).expect("message should deserialize");
         assert_eq!(parsed, message);
+    }
+
+    #[test]
+    fn session_key_matrix_dir_name_sanitizes() {
+        let key = SessionKey::Matrix {
+            user_id: "@alice:matrix.org".to_string(),
+            room_id: "!room123:matrix.org".to_string(),
+        };
+        let dir = key.dir_name();
+        assert!(!dir.contains('@'));
+        assert!(!dir.contains(':'));
+        assert!(!dir.contains('!'));
+        assert!(dir.starts_with("daemon_matrix_"));
+    }
+
+    #[test]
+    fn session_key_roundtrip_preserves_matrix_identity() {
+        let key = SessionKey::Matrix {
+            user_id: "@user:host".to_string(),
+            room_id: "!room:host".to_string(),
+        };
+        let json = serde_json::to_string(&key).expect("key should serialize");
+        let parsed: SessionKey = serde_json::from_str(&json).expect("key should deserialize");
+        assert_eq!(parsed, key);
+        assert_eq!(parsed.matrix_room_id(), Some("!room:host"));
     }
 
     #[test]
