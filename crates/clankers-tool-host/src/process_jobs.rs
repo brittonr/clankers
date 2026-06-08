@@ -710,6 +710,98 @@ impl ProcessJobToolRequest {
 /// Alias used by config/profile parsing code that resolves named jobs before dispatch.
 pub type ProcessJobSpec = StartProcessJobRequest;
 
+/// Restart/crash reconciliation state for a persisted process/job record.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ProcessJobReconciliationState {
+    Running,
+    Reattached,
+    ReattachedLogIncomplete,
+    Exited,
+    LostAfterRestart,
+    BackendUnavailable,
+    Orphaned,
+    IdentityMismatch,
+}
+
+impl ProcessJobReconciliationState {
+    #[must_use]
+    pub const fn is_adopted(self) -> bool {
+        matches!(self, Self::Running | Self::Reattached | Self::ReattachedLogIncomplete)
+    }
+
+    #[must_use]
+    pub const fn is_fail_closed(self) -> bool {
+        matches!(self, Self::BackendUnavailable | Self::Orphaned | Self::IdentityMismatch)
+    }
+}
+
+/// Log continuity after reconciliation. Status and log ownership can degrade independently.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ProcessJobLogReconciliationState {
+    Complete,
+    Incomplete,
+    Unavailable { reason: String },
+    BackendReferenced,
+}
+
+/// Native process identity facts persisted at start time.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct NativeProcessJobIdentity {
+    pub pid: u32,
+    pub process_group: Option<i32>,
+    pub start_time_ticks: Option<u64>,
+    pub command_fingerprint: Option<String>,
+    pub cwd_fingerprint: Option<String>,
+}
+
+/// Host-observed native process facts used during conservative restart reconciliation.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct NativeProcessJobObservation {
+    pub pid: u32,
+    pub process_group: Option<i32>,
+    pub start_time_ticks: Option<u64>,
+    pub command_fingerprint: Option<String>,
+    pub cwd_fingerprint: Option<String>,
+}
+
+impl NativeProcessJobIdentity {
+    #[must_use]
+    pub fn verify_observation(
+        &self,
+        observation: Option<&NativeProcessJobObservation>,
+    ) -> ProcessJobReconciliationState {
+        let Some(observation) = observation else {
+            return ProcessJobReconciliationState::LostAfterRestart;
+        };
+        if self.pid != observation.pid || self.process_group != observation.process_group {
+            return ProcessJobReconciliationState::IdentityMismatch;
+        }
+        let comparable_facts = [
+            (
+                self.start_time_ticks.map(|value| value.to_string()),
+                observation.start_time_ticks.map(|value| value.to_string()),
+            ),
+            (self.command_fingerprint.clone(), observation.command_fingerprint.clone()),
+            (self.cwd_fingerprint.clone(), observation.cwd_fingerprint.clone()),
+        ];
+        let mut matched_any = false;
+        for (expected, actual) in comparable_facts {
+            match (expected, actual) {
+                (Some(left), Some(right)) if left == right => matched_any = true,
+                (Some(_), Some(_)) => return ProcessJobReconciliationState::IdentityMismatch,
+                _ => {}
+            }
+        }
+        if matched_any {
+            ProcessJobReconciliationState::ReattachedLogIncomplete
+        } else {
+            ProcessJobReconciliationState::IdentityMismatch
+        }
+    }
+}
+
 /// Service-level process/job summary safe for list/status surfaces.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ProcessJobSummary {
@@ -1977,6 +2069,48 @@ mod tests {
         assert_eq!(projection.completed.len(), 1);
         assert_eq!(projection.completed[0].lifecycle, ProcessJobLifecycleBucket::Completed);
         assert!(!projection.truncated_completed);
+    }
+
+    #[test]
+    fn process_job_reconciliation_state_classifies_adopted_and_fail_closed() {
+        assert!(ProcessJobReconciliationState::Running.is_adopted());
+        assert!(ProcessJobReconciliationState::ReattachedLogIncomplete.is_adopted());
+        assert!(!ProcessJobReconciliationState::LostAfterRestart.is_adopted());
+        assert!(ProcessJobReconciliationState::IdentityMismatch.is_fail_closed());
+        assert!(ProcessJobReconciliationState::BackendUnavailable.is_fail_closed());
+    }
+
+    #[test]
+    fn native_process_identity_conservatively_verifies_observations() {
+        let identity = NativeProcessJobIdentity {
+            pid: 42,
+            process_group: Some(42),
+            start_time_ticks: Some(1000),
+            command_fingerprint: Some("cmd".to_string()),
+            cwd_fingerprint: Some("cwd".to_string()),
+        };
+        let matching = NativeProcessJobObservation {
+            pid: 42,
+            process_group: Some(42),
+            start_time_ticks: Some(1000),
+            command_fingerprint: Some("cmd".to_string()),
+            cwd_fingerprint: Some("cwd".to_string()),
+        };
+        let reused_pid = NativeProcessJobObservation {
+            start_time_ticks: Some(2000),
+            ..matching.clone()
+        };
+        let ambiguous = NativeProcessJobIdentity {
+            start_time_ticks: None,
+            command_fingerprint: None,
+            cwd_fingerprint: None,
+            ..identity.clone()
+        };
+
+        assert_eq!(identity.verify_observation(Some(&matching)), ProcessJobReconciliationState::ReattachedLogIncomplete);
+        assert_eq!(identity.verify_observation(Some(&reused_pid)), ProcessJobReconciliationState::IdentityMismatch);
+        assert_eq!(ambiguous.verify_observation(Some(&matching)), ProcessJobReconciliationState::IdentityMismatch);
+        assert_eq!(identity.verify_observation(None), ProcessJobReconciliationState::LostAfterRestart);
     }
 
     #[test]

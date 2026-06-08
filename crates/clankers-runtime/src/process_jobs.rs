@@ -21,6 +21,8 @@ pub use clankers_tool_host::process_jobs::ListProcessJobsRequest;
 pub use clankers_tool_host::process_jobs::MAX_PROCESS_JOB_WATCH_PATTERN_LEN;
 pub use clankers_tool_host::process_jobs::MAX_PROCESS_JOB_WATCH_PATTERNS;
 pub use clankers_tool_host::process_jobs::MutateProcessJobRequest;
+pub use clankers_tool_host::process_jobs::NativeProcessJobIdentity;
+pub use clankers_tool_host::process_jobs::NativeProcessJobObservation;
 pub use clankers_tool_host::process_jobs::PROCESS_JOB_ID_PREFIX;
 pub use clankers_tool_host::process_jobs::PROCESS_JOB_IDENTITY_DOMAIN;
 pub use clankers_tool_host::process_jobs::PROCESS_JOB_IDENTITY_VERSION;
@@ -55,6 +57,7 @@ pub use clankers_tool_host::process_jobs::ProcessJobLogRange;
 pub use clankers_tool_host::process_jobs::ProcessJobLogRef;
 pub use clankers_tool_host::process_jobs::ProcessJobLifecycleBucket;
 pub use clankers_tool_host::process_jobs::ProcessJobListProjection;
+pub use clankers_tool_host::process_jobs::ProcessJobLogReconciliationState;
 pub use clankers_tool_host::process_jobs::ProcessJobLogWriteDisposition;
 pub use clankers_tool_host::process_jobs::ProcessJobNativeAdmissionDecision;
 pub use clankers_tool_host::process_jobs::ProcessJobNativeAdmissionInput;
@@ -72,6 +75,7 @@ pub use clankers_tool_host::process_jobs::ProcessJobProjectionItem;
 pub use clankers_tool_host::process_jobs::ProcessJobReceipt;
 pub use clankers_tool_host::process_jobs::ProcessJobReceiptCommon;
 pub use clankers_tool_host::process_jobs::ProcessJobReceiptPayload;
+pub use clankers_tool_host::process_jobs::ProcessJobReconciliationState;
 pub use clankers_tool_host::process_jobs::ProcessJobRedactionPolicy;
 pub use clankers_tool_host::process_jobs::ProcessJobReleasedLogRef;
 pub use clankers_tool_host::process_jobs::ProcessJobResourcePolicy;
@@ -124,98 +128,6 @@ const PROCESS_JOB_SENSITIVE_MARKERS: &[&str] = &[
     "access_key",
     "credential",
 ];
-
-/// Restart/crash reconciliation state for a persisted process/job record.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum ProcessJobReconciliationState {
-    Running,
-    Reattached,
-    ReattachedLogIncomplete,
-    Exited,
-    LostAfterRestart,
-    BackendUnavailable,
-    Orphaned,
-    IdentityMismatch,
-}
-
-impl ProcessJobReconciliationState {
-    #[must_use]
-    pub const fn is_adopted(self) -> bool {
-        matches!(self, Self::Running | Self::Reattached | Self::ReattachedLogIncomplete)
-    }
-
-    #[must_use]
-    pub const fn is_fail_closed(self) -> bool {
-        matches!(self, Self::BackendUnavailable | Self::Orphaned | Self::IdentityMismatch)
-    }
-}
-
-/// Log continuity after reconciliation. Status and log ownership can degrade independently.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum ProcessJobLogReconciliationState {
-    Complete,
-    Incomplete,
-    Unavailable { reason: String },
-    BackendReferenced,
-}
-
-/// Native process identity facts persisted at start time.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct NativeProcessJobIdentity {
-    pub pid: u32,
-    pub process_group: Option<i32>,
-    pub start_time_ticks: Option<u64>,
-    pub command_fingerprint: Option<String>,
-    pub cwd_fingerprint: Option<String>,
-}
-
-/// Host-observed native process facts used during conservative restart reconciliation.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct NativeProcessJobObservation {
-    pub pid: u32,
-    pub process_group: Option<i32>,
-    pub start_time_ticks: Option<u64>,
-    pub command_fingerprint: Option<String>,
-    pub cwd_fingerprint: Option<String>,
-}
-
-impl NativeProcessJobIdentity {
-    #[must_use]
-    pub fn verify_observation(
-        &self,
-        observation: Option<&NativeProcessJobObservation>,
-    ) -> ProcessJobReconciliationState {
-        let Some(observation) = observation else {
-            return ProcessJobReconciliationState::LostAfterRestart;
-        };
-        if self.pid != observation.pid || self.process_group != observation.process_group {
-            return ProcessJobReconciliationState::IdentityMismatch;
-        }
-        let comparable_facts = [
-            (
-                self.start_time_ticks.map(|value| value.to_string()),
-                observation.start_time_ticks.map(|value| value.to_string()),
-            ),
-            (self.command_fingerprint.clone(), observation.command_fingerprint.clone()),
-            (self.cwd_fingerprint.clone(), observation.cwd_fingerprint.clone()),
-        ];
-        let mut matched_any = false;
-        for (expected, actual) in comparable_facts {
-            match (expected, actual) {
-                (Some(left), Some(right)) if left == right => matched_any = true,
-                (Some(_), Some(_)) => return ProcessJobReconciliationState::IdentityMismatch,
-                _ => {}
-            }
-        }
-        if matched_any {
-            ProcessJobReconciliationState::ReattachedLogIncomplete
-        } else {
-            ProcessJobReconciliationState::IdentityMismatch
-        }
-    }
-}
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ProcessJobReconciliationOutcome {
