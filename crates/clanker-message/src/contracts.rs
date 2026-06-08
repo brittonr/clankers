@@ -204,6 +204,115 @@ pub struct ThinkingConfig {
 
 const RUNTIME_RETRY_DELAY_MS_MAX: u64 = 365 * 24 * 60 * 60 * 1000;
 
+/// Role for provider messages exchanged with host model adapters.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ProviderMessageRole {
+    User,
+    Assistant,
+    Tool,
+    System,
+}
+
+/// Provider message exchanged with host model adapters.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ProviderMessage {
+    pub role: ProviderMessageRole,
+    pub content: Vec<Content>,
+    pub id: Option<String>,
+    pub model: Option<String>,
+    pub call_id: Option<String>,
+    pub tool_name: Option<String>,
+    pub is_error: bool,
+}
+
+impl ProviderMessage {
+    #[must_use]
+    pub fn user_text(prompt: impl Into<String>) -> Self {
+        Self {
+            role: ProviderMessageRole::User,
+            content: vec![Content::Text { text: prompt.into() }],
+            id: None,
+            model: None,
+            call_id: None,
+            tool_name: None,
+            is_error: false,
+        }
+    }
+
+    #[must_use]
+    pub fn assistant(content: Vec<Content>, model: Option<String>) -> Self {
+        Self {
+            role: ProviderMessageRole::Assistant,
+            content,
+            id: None,
+            model,
+            call_id: None,
+            tool_name: None,
+            is_error: false,
+        }
+    }
+
+    #[must_use]
+    pub fn tool_result(
+        call_id: impl Into<String>,
+        tool_name: impl Into<String>,
+        content: Vec<Content>,
+        is_error: bool,
+    ) -> Self {
+        Self {
+            role: ProviderMessageRole::Tool,
+            content,
+            id: None,
+            model: None,
+            call_id: Some(call_id.into()),
+            tool_name: Some(tool_name.into()),
+            is_error,
+        }
+    }
+}
+
+/// Provider stream event exchanged with host model adapters.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(tag = "type", rename_all = "snake_case")]
+pub enum ProviderStreamEvent {
+    MessageStart {
+        model: String,
+        role: String,
+    },
+    ContentBlockStart {
+        index: usize,
+        content: Content,
+    },
+    TextDelta {
+        index: usize,
+        text: String,
+    },
+    ThinkingDelta {
+        index: usize,
+        thinking: String,
+    },
+    ToolInputJsonDelta {
+        index: usize,
+        partial_json: String,
+    },
+    SignatureDelta {
+        index: usize,
+        signature: String,
+    },
+    ContentBlockStop {
+        index: usize,
+    },
+    Usage {
+        stop_reason: Option<crate::content::StopReason>,
+        usage: Usage,
+    },
+    MessageStop,
+    Error {
+        message: String,
+    },
+}
+
 /// Runtime tool execution status returned by host tool adapters.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -385,6 +494,39 @@ mod tests {
         let json = serde_json::to_string(&status).expect("status should serialize");
         let parsed: DaemonStatus = serde_json::from_str(&json).expect("status should deserialize");
         assert_eq!(parsed, status);
+    }
+
+    #[test]
+    fn provider_message_tool_result_preserves_call_metadata() {
+        let message = ProviderMessage::tool_result(
+            "call-1",
+            "read",
+            vec![Content::Text {
+                text: "result".to_string(),
+            }],
+            true,
+        );
+        assert_eq!(message.role, ProviderMessageRole::Tool);
+        assert_eq!(message.call_id.as_deref(), Some("call-1"));
+        assert_eq!(message.tool_name.as_deref(), Some("read"));
+        assert!(message.is_error);
+    }
+
+    #[test]
+    fn provider_stream_event_usage_roundtrip_preserves_snake_case_type() {
+        let event = ProviderStreamEvent::Usage {
+            stop_reason: Some(crate::content::StopReason::Stop),
+            usage: Usage {
+                input_tokens: 1,
+                output_tokens: 2,
+                cache_creation_input_tokens: 3,
+                cache_read_input_tokens: 4,
+            },
+        };
+        let json = serde_json::to_string(&event).expect("event should serialize");
+        assert!(json.contains(r#""type":"usage""#));
+        let parsed: ProviderStreamEvent = serde_json::from_str(&json).expect("event should deserialize");
+        assert!(matches!(parsed, ProviderStreamEvent::Usage { stop_reason: Some(crate::content::StopReason::Stop), .. }));
     }
 
     #[test]

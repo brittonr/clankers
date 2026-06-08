@@ -6,6 +6,9 @@ use std::sync::Arc;
 use chrono::DateTime;
 use chrono::Utc;
 use clanker_message::Content;
+pub use clanker_message::ProviderMessage;
+pub use clanker_message::ProviderMessageRole;
+pub use clanker_message::ProviderStreamEvent;
 use clanker_message::StopReason;
 use clanker_message::ThinkingConfig;
 use clanker_message::ToolDefinition;
@@ -240,112 +243,6 @@ impl ProviderModelRequest {
             metadata: EventMetadata::empty(),
         }
     }
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum ProviderMessageRole {
-    User,
-    Assistant,
-    Tool,
-    System,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ProviderMessage {
-    pub role: ProviderMessageRole,
-    pub content: Vec<Content>,
-    pub id: Option<String>,
-    pub model: Option<String>,
-    pub call_id: Option<String>,
-    pub tool_name: Option<String>,
-    pub is_error: bool,
-}
-
-impl ProviderMessage {
-    #[must_use]
-    pub fn user_text(prompt: impl Into<String>) -> Self {
-        Self {
-            role: ProviderMessageRole::User,
-            content: vec![Content::Text { text: prompt.into() }],
-            id: None,
-            model: None,
-            call_id: None,
-            tool_name: None,
-            is_error: false,
-        }
-    }
-
-    #[must_use]
-    pub fn assistant(content: Vec<Content>, model: Option<String>) -> Self {
-        Self {
-            role: ProviderMessageRole::Assistant,
-            content,
-            id: None,
-            model,
-            call_id: None,
-            tool_name: None,
-            is_error: false,
-        }
-    }
-
-    #[must_use]
-    pub fn tool_result(
-        call_id: impl Into<String>,
-        tool_name: impl Into<String>,
-        content: Vec<Content>,
-        is_error: bool,
-    ) -> Self {
-        Self {
-            role: ProviderMessageRole::Tool,
-            content,
-            id: None,
-            model: None,
-            call_id: Some(call_id.into()),
-            tool_name: Some(tool_name.into()),
-            is_error,
-        }
-    }
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(tag = "type", rename_all = "snake_case")]
-pub enum ProviderStreamEvent {
-    MessageStart {
-        model: String,
-        role: String,
-    },
-    ContentBlockStart {
-        index: usize,
-        content: Content,
-    },
-    TextDelta {
-        index: usize,
-        text: String,
-    },
-    ThinkingDelta {
-        index: usize,
-        thinking: String,
-    },
-    ToolInputJsonDelta {
-        index: usize,
-        partial_json: String,
-    },
-    SignatureDelta {
-        index: usize,
-        signature: String,
-    },
-    ContentBlockStop {
-        index: usize,
-    },
-    Usage {
-        stop_reason: Option<StopReason>,
-        usage: Usage,
-    },
-    MessageStop,
-    Error {
-        message: String,
-    },
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
