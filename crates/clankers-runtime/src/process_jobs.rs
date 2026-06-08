@@ -42,6 +42,8 @@ pub use clankers_tool_host::process_jobs::PROCESS_JOB_WATCH_SUPPRESSION_LIMIT;
 pub use clankers_tool_host::process_jobs::PollProcessJobRequest;
 pub use clankers_tool_host::process_jobs::ProcessJobBackendCapabilities;
 pub use clankers_tool_host::process_jobs::ProcessJobBackendKind;
+pub use clankers_tool_host::process_jobs::ProcessJobBackendStart;
+pub use clankers_tool_host::process_jobs::ProcessJobBackendStatus;
 pub use clankers_tool_host::process_jobs::ProcessJobCallerScope;
 pub use clankers_tool_host::process_jobs::ProcessJobCapabilitySet;
 pub use clankers_tool_host::process_jobs::ProcessJobCwd;
@@ -796,23 +798,6 @@ impl ProcessJobBackendCapabilitiesReceiptExt for ProcessJobBackendCapabilities {
             message: message.into(),
         })
     }
-}
-
-/// Backend result after accepting a start request.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct ProcessJobBackendStart {
-    pub backend_ref: BackendRef,
-    pub status: ProcessJobStatus,
-    pub log_refs: Vec<ProcessJobLogRef>,
-}
-
-/// Backend-observed status payload.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct ProcessJobBackendStatus {
-    pub backend_ref: BackendRef,
-    pub status: ProcessJobStatus,
-    pub updated_at: DateTime<Utc>,
-    pub log_refs: Vec<ProcessJobLogRef>,
 }
 
 /// Tool-facing service boundary. Implementations own policy orchestration and storage wiring.

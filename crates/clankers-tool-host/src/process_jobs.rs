@@ -8,6 +8,8 @@ use std::collections::BTreeMap;
 use std::path::PathBuf;
 use std::time::Duration;
 
+use chrono::DateTime;
+use chrono::Utc;
 use serde::Deserialize;
 use serde::Serialize;
 
@@ -564,6 +566,23 @@ pub struct ProcessJobLogRef {
     pub reference: String,
     pub retained_until: Option<ProcessJobTimestamp>,
     pub max_bytes: Option<u64>,
+}
+
+/// Backend result after accepting a start request.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ProcessJobBackendStart {
+    pub backend_ref: BackendRef,
+    pub status: ProcessJobStatus,
+    pub log_refs: Vec<ProcessJobLogRef>,
+}
+
+/// Backend-observed status payload.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ProcessJobBackendStatus {
+    pub backend_ref: BackendRef,
+    pub status: ProcessJobStatus,
+    pub updated_at: DateTime<Utc>,
+    pub log_refs: Vec<ProcessJobLogRef>,
 }
 
 /// Native append-only log file naming/layout policy.
@@ -2382,6 +2401,28 @@ mod tests {
         });
         assert_eq!(overflow.classify_write(8, 19, 31), ProcessJobLogWriteDisposition::DegradeDiskFull);
         assert_eq!(overflow.classify_write(8, 19, 41), ProcessJobLogWriteDisposition::DegradeDiskFull);
+    }
+
+    #[test]
+    fn backend_status_contract_preserves_backend_ref_status_and_logs() {
+        let updated_at = DateTime::parse_from_rfc3339("2026-05-18T00:00:00Z")
+            .expect("timestamp parses")
+            .with_timezone(&Utc);
+        let status = ProcessJobBackendStatus {
+            backend_ref: BackendRef("native:42".to_string()),
+            status: ProcessJobStatus::Running,
+            updated_at,
+            log_refs: vec![ProcessJobLogRef {
+                stream: ProcessJobStream::Stdout,
+                reference: "native:job/stdout.log".to_string(),
+                retained_until: None,
+                max_bytes: Some(1024),
+            }],
+        };
+        let json = serde_json::to_string(&status).expect("backend status should serialize");
+        assert!(json.contains("native:42"));
+        let parsed: ProcessJobBackendStatus = serde_json::from_str(&json).expect("backend status should deserialize");
+        assert_eq!(parsed, status);
     }
 
     #[test]
