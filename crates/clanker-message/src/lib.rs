@@ -46,6 +46,8 @@ pub use contracts::ExtensionRuntimeKind;
 pub use contracts::ExtensionRuntimeRequest;
 pub use contracts::ExtensionStatus;
 pub use contracts::HostContext;
+pub use contracts::ModelFailure;
+pub use contracts::ModelRequestMetadata;
 pub use contracts::PromptAssemblyPolicy;
 pub use contracts::PromptProvenance;
 pub use contracts::PromptSection;

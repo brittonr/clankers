@@ -7,6 +7,8 @@ pub use clanker_message::ContextReferenceKind;
 pub use clanker_message::ContextReferenceRequest;
 use clanker_message::Content;
 pub use clanker_message::HostContext;
+pub use clanker_message::ModelFailure;
+pub use clanker_message::ModelRequestMetadata;
 pub use clanker_message::PromptAssemblyPolicy;
 pub use clanker_message::PromptProvenance;
 pub use clanker_message::PromptSection;
@@ -91,45 +93,6 @@ pub struct ModelRequest {
     pub history: Vec<SessionLedgerMessage>,
     #[serde(default)]
     pub metadata: ModelRequestMetadata,
-}
-
-#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
-pub struct ModelRequestMetadata {
-    pub request_id: String,
-    pub message_count: usize,
-    pub system_prompt: String,
-    pub max_tokens: Option<usize>,
-    pub temperature: Option<f64>,
-    pub tool_names: Vec<String>,
-    pub no_cache: bool,
-    pub cache_ttl: Option<String>,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct ModelFailure {
-    pub message: String,
-    pub status: Option<u16>,
-    pub retryable: bool,
-}
-
-impl ModelFailure {
-    #[must_use]
-    pub fn retryable(message: impl Into<String>, status: Option<u16>) -> Self {
-        Self {
-            message: message.into(),
-            status,
-            retryable: true,
-        }
-    }
-
-    #[must_use]
-    pub fn terminal(message: impl Into<String>, status: Option<u16>) -> Self {
-        Self {
-            message: message.into(),
-            status,
-            retryable: false,
-        }
-    }
 }
 
 /// Semantic events returned by a model adapter.

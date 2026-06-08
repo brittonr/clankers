@@ -505,6 +505,47 @@ pub struct SkillSnippet {
     pub source: String,
 }
 
+/// Prompt model request metadata supplied by a host runtime adapter.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+pub struct ModelRequestMetadata {
+    pub request_id: String,
+    pub message_count: usize,
+    pub system_prompt: String,
+    pub max_tokens: Option<usize>,
+    pub temperature: Option<f64>,
+    pub tool_names: Vec<String>,
+    pub no_cache: bool,
+    pub cache_ttl: Option<String>,
+}
+
+/// Model adapter failure returned by prompt execution.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ModelFailure {
+    pub message: String,
+    pub status: Option<u16>,
+    pub retryable: bool,
+}
+
+impl ModelFailure {
+    #[must_use]
+    pub fn retryable(message: impl Into<String>, status: Option<u16>) -> Self {
+        Self {
+            message: message.into(),
+            status,
+            retryable: true,
+        }
+    }
+
+    #[must_use]
+    pub fn terminal(message: impl Into<String>, status: Option<u16>) -> Self {
+        Self {
+            message: message.into(),
+            status,
+            retryable: false,
+        }
+    }
+}
+
 /// Prompt assembled from host sources and user input.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct AssembledPrompt {
@@ -1010,6 +1051,34 @@ mod tests {
         let json = serde_json::to_string(&snippet).expect("snippet should serialize");
         let parsed: ResolvedSkillSnippet = serde_json::from_str(&json).expect("snippet should deserialize");
         assert_eq!(parsed, snippet);
+    }
+
+    #[test]
+    fn model_request_metadata_roundtrip_preserves_generation_settings() {
+        let metadata = ModelRequestMetadata {
+            request_id: "req-1".to_string(),
+            message_count: 3,
+            system_prompt: "system".to_string(),
+            max_tokens: Some(1024),
+            temperature: Some(0.2),
+            tool_names: vec!["read".to_string(), "write".to_string()],
+            no_cache: true,
+            cache_ttl: Some("30m".to_string()),
+        };
+        let json = serde_json::to_string(&metadata).expect("metadata should serialize");
+        let parsed: ModelRequestMetadata = serde_json::from_str(&json).expect("metadata should deserialize");
+        assert_eq!(parsed, metadata);
+    }
+
+    #[test]
+    fn model_failure_helpers_preserve_retryability() {
+        let retryable = ModelFailure::retryable("rate limited", Some(429));
+        assert!(retryable.retryable);
+        assert_eq!(retryable.status, Some(429));
+
+        let terminal = ModelFailure::terminal("bad request", Some(400));
+        assert!(!terminal.retryable);
+        assert_eq!(terminal.message, "bad request");
     }
 
     #[test]
