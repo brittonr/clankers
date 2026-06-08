@@ -53,6 +53,8 @@ pub use clankers_tool_host::process_jobs::ProcessJobLogCursor;
 pub use clankers_tool_host::process_jobs::ProcessJobLogOverflowPolicy;
 pub use clankers_tool_host::process_jobs::ProcessJobLogRange;
 pub use clankers_tool_host::process_jobs::ProcessJobLogRef;
+pub use clankers_tool_host::process_jobs::ProcessJobLifecycleBucket;
+pub use clankers_tool_host::process_jobs::ProcessJobListProjection;
 pub use clankers_tool_host::process_jobs::ProcessJobLogWriteDisposition;
 pub use clankers_tool_host::process_jobs::ProcessJobNativeAdmissionDecision;
 pub use clankers_tool_host::process_jobs::ProcessJobNativeAdmissionInput;
@@ -65,6 +67,8 @@ pub use clankers_tool_host::process_jobs::ProcessJobNotificationRedactionTarget;
 pub use clankers_tool_host::process_jobs::ProcessJobOperation;
 pub use clankers_tool_host::process_jobs::ProcessJobOwnerScope;
 pub use clankers_tool_host::process_jobs::ProcessJobProfileReceiptMetadata;
+pub use clankers_tool_host::process_jobs::ProcessJobProjectionBounds;
+pub use clankers_tool_host::process_jobs::ProcessJobProjectionItem;
 pub use clankers_tool_host::process_jobs::ProcessJobReceipt;
 pub use clankers_tool_host::process_jobs::ProcessJobReceiptCommon;
 pub use clankers_tool_host::process_jobs::ProcessJobReceiptPayload;
@@ -91,6 +95,7 @@ pub use clankers_tool_host::process_jobs::StartProcessJobRequest;
 pub use clankers_tool_host::process_jobs::WaitProcessJobRequest;
 pub use clankers_tool_host::process_jobs::WriteProcessJobStdinRequest;
 pub use clankers_tool_host::process_jobs::native_process_job_admission_decision;
+pub use clankers_tool_host::process_jobs::project_process_job_list;
 use serde::Deserialize;
 use serde::Serialize;
 
@@ -953,109 +958,6 @@ fn validate_profile_paths(
 
 fn path_allowed(path: &std::path::Path, allowed_prefixes: &[PathBuf]) -> bool {
     allowed_prefixes.is_empty() || allowed_prefixes.iter().any(|prefix| path.starts_with(prefix))
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum ProcessJobLifecycleBucket {
-    Active,
-    Completed,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct ProcessJobProjectionBounds {
-    pub max_active: usize,
-    pub max_completed: usize,
-}
-
-impl Default for ProcessJobProjectionBounds {
-    fn default() -> Self {
-        Self {
-            max_active: 32,
-            max_completed: 32,
-        }
-    }
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct ProcessJobProjectionItem {
-    pub id: ProcessJobId,
-    pub backend: ProcessJobBackendKind,
-    pub backend_label: String,
-    pub backend_ref: Option<BackendRef>,
-    pub capability_hints: ProcessJobSafeCapabilityHints,
-    pub lifecycle: ProcessJobLifecycleBucket,
-    pub status: ProcessJobStatus,
-    pub status_label: String,
-    pub command_preview: String,
-    pub cwd: ProcessJobCwd,
-    pub started_at: Option<ProcessJobTimestamp>,
-    pub updated_at: ProcessJobTimestamp,
-    pub completed_at: Option<ProcessJobTimestamp>,
-    pub log_refs: Vec<ProcessJobLogRef>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub profile: Option<ProcessJobProfileReceiptMetadata>,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct ProcessJobListProjection {
-    pub active: Vec<ProcessJobProjectionItem>,
-    pub completed: Vec<ProcessJobProjectionItem>,
-    pub total_active: usize,
-    pub total_completed: usize,
-    pub truncated_active: bool,
-    pub truncated_completed: bool,
-}
-
-#[must_use]
-pub fn project_process_job_list(
-    summaries: impl IntoIterator<Item = ProcessJobSummary>,
-    bounds: ProcessJobProjectionBounds,
-) -> ProcessJobListProjection {
-    let mut active = Vec::new();
-    let mut completed = Vec::new();
-    for summary in summaries {
-        let lifecycle = if summary.status.is_terminal() {
-            ProcessJobLifecycleBucket::Completed
-        } else {
-            ProcessJobLifecycleBucket::Active
-        };
-        let item = ProcessJobProjectionItem {
-            id: summary.id,
-            backend: summary.backend,
-            backend_label: summary.backend.label().to_string(),
-            backend_ref: summary.backend_ref,
-            capability_hints: ProcessJobSafeCapabilityHints::for_backend(summary.backend),
-            lifecycle: lifecycle.clone(),
-            status_label: summary.status.label(),
-            status: summary.status,
-            command_preview: summary.command_preview,
-            cwd: summary.cwd,
-            started_at: summary.started_at,
-            updated_at: summary.updated_at,
-            completed_at: summary.completed_at,
-            log_refs: summary.log_refs,
-            profile: summary.profile,
-        };
-        match lifecycle {
-            ProcessJobLifecycleBucket::Active => active.push(item),
-            ProcessJobLifecycleBucket::Completed => completed.push(item),
-        }
-    }
-    active.sort_by(|left, right| right.updated_at.cmp(&left.updated_at).then_with(|| left.id.0.cmp(&right.id.0)));
-    completed.sort_by(|left, right| right.updated_at.cmp(&left.updated_at).then_with(|| left.id.0.cmp(&right.id.0)));
-    let total_active = active.len();
-    let total_completed = completed.len();
-    active.truncate(bounds.max_active);
-    completed.truncate(bounds.max_completed);
-    ProcessJobListProjection {
-        active,
-        completed,
-        total_active,
-        total_completed,
-        truncated_active: total_active > bounds.max_active,
-        truncated_completed: total_completed > bounds.max_completed,
-    }
 }
 
 /// Runtime receipt projection retained as a compatibility extension over backend capability DTOs.

@@ -731,6 +731,109 @@ pub struct ProcessJobSummary {
     pub profile: Option<ProcessJobProfileReceiptMetadata>,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ProcessJobLifecycleBucket {
+    Active,
+    Completed,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ProcessJobProjectionBounds {
+    pub max_active: usize,
+    pub max_completed: usize,
+}
+
+impl Default for ProcessJobProjectionBounds {
+    fn default() -> Self {
+        Self {
+            max_active: 32,
+            max_completed: 32,
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ProcessJobProjectionItem {
+    pub id: ProcessJobId,
+    pub backend: ProcessJobBackendKind,
+    pub backend_label: String,
+    pub backend_ref: Option<BackendRef>,
+    pub capability_hints: ProcessJobSafeCapabilityHints,
+    pub lifecycle: ProcessJobLifecycleBucket,
+    pub status: ProcessJobStatus,
+    pub status_label: String,
+    pub command_preview: String,
+    pub cwd: ProcessJobCwd,
+    pub started_at: Option<ProcessJobTimestamp>,
+    pub updated_at: ProcessJobTimestamp,
+    pub completed_at: Option<ProcessJobTimestamp>,
+    pub log_refs: Vec<ProcessJobLogRef>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub profile: Option<ProcessJobProfileReceiptMetadata>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ProcessJobListProjection {
+    pub active: Vec<ProcessJobProjectionItem>,
+    pub completed: Vec<ProcessJobProjectionItem>,
+    pub total_active: usize,
+    pub total_completed: usize,
+    pub truncated_active: bool,
+    pub truncated_completed: bool,
+}
+
+#[must_use]
+pub fn project_process_job_list(
+    summaries: impl IntoIterator<Item = ProcessJobSummary>,
+    bounds: ProcessJobProjectionBounds,
+) -> ProcessJobListProjection {
+    let mut active = Vec::new();
+    let mut completed = Vec::new();
+    for summary in summaries {
+        let lifecycle = if summary.status.is_terminal() {
+            ProcessJobLifecycleBucket::Completed
+        } else {
+            ProcessJobLifecycleBucket::Active
+        };
+        let item = ProcessJobProjectionItem {
+            id: summary.id,
+            backend: summary.backend,
+            backend_label: summary.backend.label().to_string(),
+            backend_ref: summary.backend_ref,
+            capability_hints: ProcessJobSafeCapabilityHints::for_backend(summary.backend),
+            lifecycle: lifecycle.clone(),
+            status_label: summary.status.label(),
+            status: summary.status,
+            command_preview: summary.command_preview,
+            cwd: summary.cwd,
+            started_at: summary.started_at,
+            updated_at: summary.updated_at,
+            completed_at: summary.completed_at,
+            log_refs: summary.log_refs,
+            profile: summary.profile,
+        };
+        match lifecycle {
+            ProcessJobLifecycleBucket::Active => active.push(item),
+            ProcessJobLifecycleBucket::Completed => completed.push(item),
+        }
+    }
+    active.sort_by(|left, right| right.updated_at.cmp(&left.updated_at).then_with(|| left.id.0.cmp(&right.id.0)));
+    completed.sort_by(|left, right| right.updated_at.cmp(&left.updated_at).then_with(|| left.id.0.cmp(&right.id.0)));
+    let total_active = active.len();
+    let total_completed = completed.len();
+    active.truncate(bounds.max_active);
+    completed.truncate(bounds.max_completed);
+    ProcessJobListProjection {
+        active,
+        completed,
+        total_active,
+        total_completed,
+        truncated_active: total_active > bounds.max_active,
+        truncated_completed: total_completed > bounds.max_completed,
+    }
+}
+
 /// Completed-job retention policy shared by daemon automation and explicit GC requests.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ProcessJobRetentionPolicy {
@@ -1835,6 +1938,45 @@ mod tests {
         assert_eq!(ProcessJobBackendKind::Unknown.label(), "unknown");
         assert_eq!(ProcessJobOperation::Start.action_name(), "start");
         assert_eq!(ProcessJobOperation::GarbageCollect.action_name(), "garbage_collect");
+    }
+
+    #[test]
+    fn process_job_list_projection_splits_sorts_and_truncates_lifecycles() {
+        let summary = |id: &str, status: ProcessJobStatus, updated_at: i64| ProcessJobSummary {
+            id: ProcessJobId(id.to_string()),
+            backend: ProcessJobBackendKind::Native,
+            backend_ref: None,
+            owner: ProcessJobOwnerScope::DaemonGlobal,
+            status,
+            command_preview: format!("cmd {id}"),
+            cwd: ProcessJobCwd::Inherited,
+            started_at: Some(ProcessJobTimestamp::from_unix_seconds(updated_at - 1)),
+            updated_at: ProcessJobTimestamp::from_unix_seconds(updated_at),
+            completed_at: None,
+            log_refs: Vec::new(),
+            profile: None,
+        };
+        let projection = project_process_job_list(
+            vec![
+                summary("active-old", ProcessJobStatus::Running, 10),
+                summary("active-new", ProcessJobStatus::Waiting, 20),
+                summary("done", ProcessJobStatus::Succeeded { exit_code: Some(0) }, 30),
+            ],
+            ProcessJobProjectionBounds {
+                max_active: 1,
+                max_completed: 4,
+            },
+        );
+
+        assert_eq!(projection.total_active, 2);
+        assert_eq!(projection.active.len(), 1);
+        assert!(projection.truncated_active);
+        assert_eq!(projection.active[0].id.0, "active-new");
+        assert_eq!(projection.active[0].lifecycle, ProcessJobLifecycleBucket::Active);
+        assert_eq!(projection.active[0].backend_label, "native");
+        assert_eq!(projection.completed.len(), 1);
+        assert_eq!(projection.completed[0].lifecycle, ProcessJobLifecycleBucket::Completed);
+        assert!(!projection.truncated_completed);
     }
 
     #[test]
