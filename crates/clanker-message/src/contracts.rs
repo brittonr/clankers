@@ -371,6 +371,24 @@ fn sanitize_short_public_value(value: String) -> String {
     }
 }
 
+/// Operation requested from a host-owned auth store.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum AuthStoreOperation {
+    Lookup,
+    RefreshPersist,
+    PendingLoginVerifier,
+}
+
+/// Kind of host extension runtime.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ExtensionRuntimeKind {
+    Plugin,
+    Mcp,
+    Gateway,
+}
+
 /// Extension execution status returned by host extension adapters.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -617,6 +635,23 @@ mod tests {
         assert_eq!(json, r#""retryable_failure""#);
         let parsed: ProviderModelStatus = serde_json::from_str(&json).expect("status should deserialize");
         assert_eq!(parsed, ProviderModelStatus::RetryableFailure);
+    }
+
+    #[test]
+    fn auth_store_operation_roundtrip_preserves_snake_case() {
+        let json = serde_json::to_string(&AuthStoreOperation::PendingLoginVerifier)
+            .expect("operation should serialize");
+        assert_eq!(json, r#""pending_login_verifier""#);
+        let parsed: AuthStoreOperation = serde_json::from_str(&json).expect("operation should deserialize");
+        assert_eq!(parsed, AuthStoreOperation::PendingLoginVerifier);
+    }
+
+    #[test]
+    fn extension_runtime_kind_roundtrip_preserves_snake_case() {
+        let json = serde_json::to_string(&ExtensionRuntimeKind::Mcp).expect("kind should serialize");
+        assert_eq!(json, r#""mcp""#);
+        let parsed: ExtensionRuntimeKind = serde_json::from_str(&json).expect("kind should deserialize");
+        assert_eq!(parsed, ExtensionRuntimeKind::Mcp);
     }
 
     #[test]

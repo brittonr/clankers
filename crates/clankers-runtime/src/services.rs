@@ -5,7 +5,9 @@ use std::sync::Arc;
 
 use chrono::DateTime;
 use chrono::Utc;
+pub use clanker_message::AuthStoreOperation;
 use clanker_message::Content;
+pub use clanker_message::ExtensionRuntimeKind;
 pub use clanker_message::ExtensionStatus;
 pub use clanker_message::ProviderMessage;
 pub use clanker_message::ProviderMessageRole;
@@ -307,14 +309,6 @@ impl ProviderModelResponse {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum AuthStoreOperation {
-    Lookup,
-    RefreshPersist,
-    PendingLoginVerifier,
-}
-
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct AuthStoreAccessRequest {
     pub provider: String,
@@ -327,14 +321,6 @@ pub struct CredentialPoolRequest {
     pub provider: String,
     pub strategy: String,
     pub account_label: Option<String>,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum ExtensionRuntimeKind {
-    Plugin,
-    Mcp,
-    Gateway,
 }
 
 pub(crate) fn extension_kind_label(kind: ExtensionRuntimeKind) -> &'static str {
