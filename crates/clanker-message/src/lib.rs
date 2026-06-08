@@ -50,8 +50,10 @@ pub use plugin::Widget;
 pub use process::ProcessDataSource;
 pub use process::ProcessDisplayState;
 pub use process::ProcessEvent;
+pub use process::ProcessInfo;
 pub use process::ProcessMeta;
 pub use process::ProcessSnapshot;
+pub use process::ProcessState;
 // Re-export result streaming types at crate root
 pub use result_streaming::ResultChunk;
 pub use result_streaming::ToolResultAccumulator;

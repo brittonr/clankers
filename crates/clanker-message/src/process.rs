@@ -5,6 +5,25 @@ use std::time::Duration;
 use serde::Deserialize;
 use serde::Serialize;
 
+/// Information about a process in an actor/process tree.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct ProcessInfo {
+    pub id: u64,
+    pub name: Option<String>,
+    pub parent: Option<u64>,
+    pub children: Vec<u64>,
+    pub state: ProcessState,
+    pub uptime_secs: f64,
+}
+
+/// State of a process in an actor/process tree.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+pub enum ProcessState {
+    Running,
+    ShuttingDown,
+    Dead,
+}
+
 /// Events emitted by a process monitor.
 #[derive(Debug, Clone)]
 pub enum ProcessEvent {
@@ -67,4 +86,33 @@ pub trait ProcessDataSource: Send + Sync {
     fn active_processes(&self) -> Vec<ProcessSnapshot>;
     /// Get completed/historical processes.
     fn completed_processes(&self) -> Vec<ProcessSnapshot>;
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn process_state_roundtrip() {
+        for state in [ProcessState::Running, ProcessState::ShuttingDown, ProcessState::Dead] {
+            let json = serde_json::to_string(&state).expect("state should serialize");
+            let decoded: ProcessState = serde_json::from_str(&json).expect("state should deserialize");
+            assert_eq!(state, decoded);
+        }
+    }
+
+    #[test]
+    fn process_info_roundtrip_preserves_tree_fields() {
+        let info = ProcessInfo {
+            id: 1,
+            name: Some("agent".to_string()),
+            parent: None,
+            children: vec![2, 3],
+            state: ProcessState::Running,
+            uptime_secs: 1.5,
+        };
+        let json = serde_json::to_string(&info).expect("info should serialize");
+        let decoded: ProcessInfo = serde_json::from_str(&json).expect("info should deserialize");
+        assert_eq!(decoded, info);
+    }
 }

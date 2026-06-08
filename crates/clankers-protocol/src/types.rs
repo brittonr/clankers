@@ -4,6 +4,8 @@ use serde::Deserialize;
 use serde::Serialize;
 
 pub use clanker_message::ImageData;
+pub use clanker_message::ProcessInfo;
+pub use clanker_message::ProcessState;
 pub use clanker_message::SerializedMessage;
 
 use crate::control::ControlCommand;
@@ -19,25 +21,6 @@ pub struct Handshake {
     pub token: Option<String>,
     /// Optional session ID to attach to an existing session.
     pub session_id: Option<String>,
-}
-
-/// Information about a process in the actor tree.
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
-pub struct ProcessInfo {
-    pub id: u64,
-    pub name: Option<String>,
-    pub parent: Option<u64>,
-    pub children: Vec<u64>,
-    pub state: ProcessState,
-    pub uptime_secs: f64,
-}
-
-/// State of a process in the actor tree.
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
-pub enum ProcessState {
-    Running,
-    ShuttingDown,
-    Dead,
 }
 
 /// Identifies a session by transport + sender.
