@@ -4,6 +4,8 @@
 //! not depend on provider implementations, router runtime services, async runtimes,
 //! databases, network clients, daemon protocols, or UI crates.
 
+use std::time::Duration;
+
 use serde::Deserialize;
 use serde::Serialize;
 
@@ -197,6 +199,37 @@ pub struct ThinkingConfig {
     pub budget_tokens: Option<usize>,
 }
 
+const RUNTIME_RETRY_DELAY_MS_MAX: u64 = 365 * 24 * 60 * 60 * 1000;
+
+/// Runtime retry request passed to host retry adapters.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RuntimeRetryRequest {
+    pub request_id: String,
+    pub delay_ms: u64,
+}
+
+impl RuntimeRetryRequest {
+    #[must_use]
+    pub fn new(request_id: impl Into<String>, delay: Duration) -> Self {
+        Self {
+            request_id: request_id.into(),
+            delay_ms: runtime_retry_delay_ms(delay),
+        }
+    }
+}
+
+fn runtime_retry_delay_ms(delay: Duration) -> u64 {
+    let delay_ms = delay.as_millis();
+    let delay_ms_max = u128::from(RUNTIME_RETRY_DELAY_MS_MAX);
+    if delay_ms > delay_ms_max {
+        return RUNTIME_RETRY_DELAY_MS_MAX;
+    }
+    match u64::try_from(delay_ms) {
+        Ok(value) => value,
+        Err(_) => RUNTIME_RETRY_DELAY_MS_MAX,
+    }
+}
+
 /// Runtime usage observation emitted by model/streaming adapters.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RuntimeUsageObservation {
@@ -303,6 +336,22 @@ mod tests {
         let json = serde_json::to_string(&status).expect("status should serialize");
         let parsed: DaemonStatus = serde_json::from_str(&json).expect("status should deserialize");
         assert_eq!(parsed, status);
+    }
+
+    #[test]
+    fn runtime_retry_request_clamps_large_delays() {
+        let request = RuntimeRetryRequest::new("retry-1", Duration::from_secs(u64::MAX));
+        assert_eq!(request.request_id, "retry-1");
+        assert_eq!(request.delay_ms, 365 * 24 * 60 * 60 * 1000);
+    }
+
+    #[test]
+    fn runtime_retry_request_roundtrip_preserves_delay() {
+        let request = RuntimeRetryRequest::new("retry-2", Duration::from_millis(42));
+        let json = serde_json::to_string(&request).expect("request should serialize");
+        let parsed: RuntimeRetryRequest = serde_json::from_str(&json).expect("request should deserialize");
+        assert_eq!(parsed.request_id, "retry-2");
+        assert_eq!(parsed.delay_ms, 42);
     }
 
     #[test]

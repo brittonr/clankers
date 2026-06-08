@@ -3,9 +3,8 @@
 //! These traits are object-safe shims used by `RuntimeBuilder` so embedded hosts can
 //! replace model-adjacent effects without depending on Clankers desktop shells.
 
-use std::time::Duration;
-
 use clanker_message::Content;
+pub use clanker_message::RuntimeRetryRequest;
 pub use clanker_message::RuntimeUsageObservation;
 pub use clanker_message::RuntimeUsageObservationKind;
 use clankers_engine::EngineEvent;
@@ -81,36 +80,6 @@ impl RuntimeToolAdapter for UnavailableRuntimeToolAdapter {
     fn execute_tool(&self, request: RuntimeToolRequest) -> Result<RuntimeToolResponse, RuntimeError> {
         let _ = request;
         Err(RuntimeError::ExtensionUnavailable("runtime tool adapter unavailable".to_string()))
-    }
-}
-
-const RUNTIME_RETRY_DELAY_MS_MAX: u64 = 365 * 24 * 60 * 60 * 1000;
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct RuntimeRetryRequest {
-    pub request_id: String,
-    pub delay_ms: u64,
-}
-
-impl RuntimeRetryRequest {
-    #[must_use]
-    pub fn new(request_id: impl Into<String>, delay: Duration) -> Self {
-        Self {
-            request_id: request_id.into(),
-            delay_ms: runtime_retry_delay_ms(delay),
-        }
-    }
-}
-
-fn runtime_retry_delay_ms(delay: Duration) -> u64 {
-    let delay_ms = delay.as_millis();
-    let delay_ms_max = u128::from(RUNTIME_RETRY_DELAY_MS_MAX);
-    if delay_ms > delay_ms_max {
-        return RUNTIME_RETRY_DELAY_MS_MAX;
-    }
-    match u64::try_from(delay_ms) {
-        Ok(value) => value,
-        Err(_) => RUNTIME_RETRY_DELAY_MS_MAX,
     }
 }
 

@@ -31,6 +31,7 @@ pub use content::ImageData;
 pub use content::ImageSource;
 pub use content::StopReason;
 pub use contracts::DaemonStatus;
+pub use contracts::RuntimeRetryRequest;
 pub use contracts::RuntimeUsageObservation;
 pub use contracts::RuntimeUsageObservationKind;
 pub use contracts::SerializedMessage;
