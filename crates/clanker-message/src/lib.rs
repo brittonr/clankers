@@ -31,6 +31,7 @@ pub use content::ImageData;
 pub use content::ImageSource;
 pub use content::StopReason;
 pub use contracts::DaemonStatus;
+pub use contracts::ExtensionStatus;
 pub use contracts::ProviderMessage;
 pub use contracts::ProviderMessageRole;
 pub use contracts::ProviderModelFailure;

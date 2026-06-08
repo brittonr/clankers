@@ -371,6 +371,16 @@ fn sanitize_short_public_value(value: String) -> String {
     }
 }
 
+/// Extension execution status returned by host extension adapters.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ExtensionStatus {
+    Succeeded,
+    Failed,
+    Disabled,
+    Unavailable,
+}
+
 /// Runtime tool execution status returned by host tool adapters.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -607,6 +617,14 @@ mod tests {
         assert_eq!(json, r#""retryable_failure""#);
         let parsed: ProviderModelStatus = serde_json::from_str(&json).expect("status should deserialize");
         assert_eq!(parsed, ProviderModelStatus::RetryableFailure);
+    }
+
+    #[test]
+    fn extension_status_roundtrip_preserves_snake_case() {
+        let json = serde_json::to_string(&ExtensionStatus::Unavailable).expect("status should serialize");
+        assert_eq!(json, r#""unavailable""#);
+        let parsed: ExtensionStatus = serde_json::from_str(&json).expect("status should deserialize");
+        assert_eq!(parsed, ExtensionStatus::Unavailable);
     }
 
     #[test]

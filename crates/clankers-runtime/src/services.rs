@@ -6,6 +6,7 @@ use std::sync::Arc;
 use chrono::DateTime;
 use chrono::Utc;
 use clanker_message::Content;
+pub use clanker_message::ExtensionStatus;
 pub use clanker_message::ProviderMessage;
 pub use clanker_message::ProviderMessageRole;
 pub use clanker_message::ProviderModelFailure;
@@ -389,15 +390,6 @@ impl ExtensionToolDescriptor {
         self.metadata = self.metadata.with(key, value);
         self
     }
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum ExtensionStatus {
-    Succeeded,
-    Failed,
-    Disabled,
-    Unavailable,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

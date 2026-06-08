@@ -3,6 +3,7 @@
 ## Corrections
 | Date | Source | What Went Wrong | What To Do Instead |
 |------|--------|----------------|-------------------|
+| 2026-06-07 | self | Ran `cargo test -p clankers-runtime extension_services_default_to_disabled_capabilities --lib` after moving `ExtensionStatus`; Cargo ran 0 tests because no such test exists | Grep exact runtime test names before focused filters; rerun with a real name such as `disabled_extension_services_fail_closed_without_startup_side_effects` before recording evidence. |
 | 2026-06-07 | self | Ran `cargo test -p clankers-runtime runtime_facade_invokes_tool_adapter --lib` after moving runtime tool response DTOs; Cargo ran 0 tests because the actual test is `runtime_facade_tool_feedback_uses_engine_host_turn_loop` | Grep exact runtime test names before using focused filters; rerun with the real name before recording evidence. |
 | 2026-06-07 | self | Ran `cargo test -p clankers-runtime --lib runtime_usage` after moving runtime usage DTOs; Cargo ran 0 tests because no test name matched that substring | Grep exact runtime test names before using focused filters; rerun with a real test like `runtime_facade_invokes_event_and_usage_adapter_slots` before recording evidence. |
 | 2026-06-07 | self | Auto-test reported `No space left on device` while writing a root test rlib; this was an environmental ENOSPC build artifact issue, not a source failure | Check `df -h .` / target size, free space if needed, then rerun `cargo test -p clankers --no-run` before making source changes for ENOSPC output. |
