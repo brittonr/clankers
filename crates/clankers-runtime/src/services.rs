@@ -5,9 +5,12 @@ use std::sync::Arc;
 
 use chrono::DateTime;
 use chrono::Utc;
+pub use clanker_message::AuthStoreAccessRequest;
 pub use clanker_message::AuthStoreOperation;
 use clanker_message::Content;
+pub use clanker_message::CredentialPoolRequest;
 pub use clanker_message::ExtensionRuntimeKind;
+pub use clanker_message::ExtensionRuntimeRequest;
 pub use clanker_message::ExtensionStatus;
 pub use clanker_message::ProviderMessage;
 pub use clanker_message::ProviderMessageRole;
@@ -20,7 +23,6 @@ use clanker_message::ToolDefinition;
 use clanker_message::Usage;
 use serde::Deserialize;
 use serde::Serialize;
-use serde_json::Value;
 
 use crate::AssembledPrompt;
 use crate::ErrorClass;
@@ -309,38 +311,12 @@ impl ProviderModelResponse {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct AuthStoreAccessRequest {
-    pub provider: String,
-    pub account_label: Option<String>,
-    pub operation: AuthStoreOperation,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct CredentialPoolRequest {
-    pub provider: String,
-    pub strategy: String,
-    pub account_label: Option<String>,
-}
-
 pub(crate) fn extension_kind_label(kind: ExtensionRuntimeKind) -> &'static str {
     match kind {
         ExtensionRuntimeKind::Plugin => "plugin",
         ExtensionRuntimeKind::Mcp => "mcp",
         ExtensionRuntimeKind::Gateway => "gateway",
     }
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct ExtensionRuntimeRequest {
-    pub kind: ExtensionRuntimeKind,
-    pub action: String,
-    pub extension_name: Option<String>,
-    pub visible_tool_name: Option<String>,
-    pub original_tool_name: Option<String>,
-    pub runtime_entrypoint: Option<String>,
-    #[serde(default)]
-    pub arguments: Value,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

@@ -404,6 +404,35 @@ pub enum ExtensionRuntimeKind {
     Gateway,
 }
 
+/// Request for host-owned auth store access.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct AuthStoreAccessRequest {
+    pub provider: String,
+    pub account_label: Option<String>,
+    pub operation: AuthStoreOperation,
+}
+
+/// Request for host credential-pool policy selection.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct CredentialPoolRequest {
+    pub provider: String,
+    pub strategy: String,
+    pub account_label: Option<String>,
+}
+
+/// Request for host extension runtime execution.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ExtensionRuntimeRequest {
+    pub kind: ExtensionRuntimeKind,
+    pub action: String,
+    pub extension_name: Option<String>,
+    pub visible_tool_name: Option<String>,
+    pub original_tool_name: Option<String>,
+    pub runtime_entrypoint: Option<String>,
+    #[serde(default)]
+    pub arguments: Value,
+}
+
 /// Effectful capability class requested by runtime/tool code.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
@@ -767,6 +796,42 @@ mod tests {
         assert_eq!(json, r#""mcp""#);
         let parsed: ExtensionRuntimeKind = serde_json::from_str(&json).expect("kind should deserialize");
         assert_eq!(parsed, ExtensionRuntimeKind::Mcp);
+    }
+
+    #[test]
+    fn auth_store_access_request_roundtrip_preserves_operation() {
+        let request = AuthStoreAccessRequest {
+            provider: "openai-codex".to_string(),
+            account_label: Some("work".to_string()),
+            operation: AuthStoreOperation::RefreshPersist,
+        };
+        let json = serde_json::to_string(&request).expect("request should serialize");
+        assert!(json.contains("refresh_persist"));
+        let parsed: AuthStoreAccessRequest = serde_json::from_str(&json).expect("request should deserialize");
+        assert_eq!(parsed, request);
+    }
+
+    #[test]
+    fn credential_pool_request_roundtrip_preserves_strategy() {
+        let request = CredentialPoolRequest {
+            provider: "anthropic".to_string(),
+            strategy: "least_recently_used".to_string(),
+            account_label: None,
+        };
+        let json = serde_json::to_string(&request).expect("request should serialize");
+        let parsed: CredentialPoolRequest = serde_json::from_str(&json).expect("request should deserialize");
+        assert_eq!(parsed.strategy, "least_recently_used");
+        assert_eq!(parsed, request);
+    }
+
+    #[test]
+    fn extension_runtime_request_defaults_missing_arguments_to_null() {
+        let parsed: ExtensionRuntimeRequest = serde_json::from_str(
+            r#"{"kind":"plugin","action":"call","extension_name":null,"visible_tool_name":"demo","original_tool_name":null,"runtime_entrypoint":null}"#,
+        )
+        .expect("request should deserialize");
+        assert_eq!(parsed.kind, ExtensionRuntimeKind::Plugin);
+        assert!(parsed.arguments.is_null());
     }
 
     #[test]
