@@ -20,7 +20,7 @@ The controller is transport-agnostic but not dependency-light. Its current owner
 
 ### 3. Persistence becomes a session service port
 
-**Choice:** Session store/search operations used by controller logic move behind a typed session persistence service. `persistence.rs` may adapt to `clankers-session` and `clankers-db`, but command and event modules should consume neutral results.
+**Choice:** Session store/search operations used by controller logic move behind typed persistence services. `persistence.rs` keeps the current `clankers-session` ledger edge while DB/search side effects flow through `ControllerPersistenceService` and concrete `clankers-db` adapters live at the root shell edge.
 
 **Rationale:** Storage format and search indexing are shell services. Controller policy should not know whether JSONL, Automerge, redb, or another store backs a session.
 

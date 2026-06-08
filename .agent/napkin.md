@@ -3,6 +3,7 @@
 ## Corrections
 | Date | Source | What Went Wrong | What To Do Instead |
 |------|--------|----------------|-------------------|
+| 2026-06-07 | self | After compaction, I again started editing before re-reading the always-on napkin despite the handoff warning | Stop and read `.agent/napkin.md` as the first live action after every compaction/resume; summaries that say it was read earlier do not count. |
 | 2026-06-07 | self | Used Steel `(ormap ...)` in a validation bundle; this runtime did not expose `ormap`, so the bundle failed before running | Define a small recursive predicate (or use explicit status checks) instead of assuming Scheme collection helpers exist in pi's Steel runtime. |
 | 2026-06-07 | self | Ran the FCIS boundary rail after a config display-dependency commit and found stale boundary anchors/global-singleton leakage that should have been caught before push | Include the focused FCIS rail in dependency-drain validation before committing when touching agent/runtime boundary seams. |
 | 2026-06-07 | self | Typed `status_result` instead of `status-result` in a reused Steel process helper, causing a FreeIdentifier failure before the Cairn gate ran | Copy the known-good process helper exactly; avoid hand-editing variable names inside validation snippets. |

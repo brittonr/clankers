@@ -1678,7 +1678,6 @@ dependencies = [
  "clanker-message",
  "clankers-agent",
  "clankers-core",
- "clankers-db",
  "clankers-engine",
  "clankers-hooks",
  "clankers-protocol",
@@ -1705,6 +1704,7 @@ version = "0.1.0"
 dependencies = [
  "blake3",
  "chrono",
+ "clanker-message",
  "redb 2.6.3",
  "serde",
  "serde_json",

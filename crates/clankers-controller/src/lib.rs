@@ -50,6 +50,7 @@ pub mod hooks;
 pub mod loop_mode;
 pub mod metrics_capture;
 pub mod persistence;
+pub mod persistence_service;
 pub mod runtime_adapter;
 pub mod transport;
 pub mod transport_convert;
@@ -72,6 +73,7 @@ pub use hooks::ControllerHookService;
 pub use hooks::ControllerHookStatus;
 pub use hooks::ControllerHookUsage;
 pub use hooks::ControllerHookVerdict;
+pub use persistence_service::ControllerPersistenceService;
 pub use runtime_adapter::AgentBackedRuntimeAdapter;
 pub use runtime_adapter::AgentRuntimePromptRequest;
 pub use runtime_adapter::ControllerRuntimeAdapter;
@@ -256,8 +258,8 @@ pub struct SessionController {
     pub(crate) tool_rebuilder: Option<Arc<dyn ToolRebuilder>>,
     /// Metrics collector (aggregates session metrics from agent events).
     pub(crate) metrics: metrics_capture::MetricsCollector,
-    /// Full-text search index for session content (optional).
-    pub(crate) search_index: Option<Arc<clankers_db::search_index::SearchIndex>>,
+    /// Optional host persistence side effects such as search indexing.
+    pub(crate) persistence_service: Option<Arc<dyn ControllerPersistenceService>>,
 }
 
 /// Trait for rebuilding the filtered tool set when disabled tools change.
@@ -428,7 +430,7 @@ impl SessionController {
             disabled_tools: Vec::new(),
             tool_rebuilder: None,
             metrics,
-            search_index: None,
+            persistence_service: config.persistence_service,
         }
     }
 
@@ -472,17 +474,13 @@ impl SessionController {
             disabled_tools: Vec::new(),
             tool_rebuilder: None,
             metrics,
-            search_index: None,
+            persistence_service: config.persistence_service,
         }
     }
 
     /// Set the tool rebuilder for hot-reloading tools on toggle.
     pub fn set_tool_rebuilder(&mut self, rebuilder: Arc<dyn ToolRebuilder>) {
         self.tool_rebuilder = Some(rebuilder);
-    }
-
-    pub fn set_search_index(&mut self, index: Arc<clankers_db::search_index::SearchIndex>) {
-        self.search_index = Some(index);
     }
 
     /// Snapshot the current tool list as protocol metadata.
@@ -615,7 +613,7 @@ impl SessionController {
     }
 
     /// Read access to the current session metrics summary.
-    pub fn metrics_summary(&self) -> &clankers_db::metrics::types::SessionMetricsSummary {
+    pub fn metrics_summary(&self) -> &clanker_message::metrics::SessionMetricsSummary {
         self.metrics.summary()
     }
 

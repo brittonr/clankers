@@ -6,6 +6,7 @@ use clankers_core::CoreThinkingLevel;
 use clankers_session::SessionManager;
 
 use crate::ControllerHookService;
+use crate::ControllerPersistenceService;
 
 /// Configuration needed to create a SessionController.
 #[derive(Default)]
@@ -28,6 +29,8 @@ pub struct ControllerConfig {
     pub session_manager: Option<SessionManager>,
     /// Hook service for lifecycle events.
     pub hook_service: Option<Arc<dyn ControllerHookService>>,
+    /// Optional host persistence side effects.
+    pub persistence_service: Option<Arc<dyn ControllerPersistenceService>>,
     /// Auto-test command from settings.
     pub auto_test_command: Option<String>,
     /// Whether auto-test is enabled on startup.

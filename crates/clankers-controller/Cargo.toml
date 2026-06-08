@@ -11,8 +11,7 @@ clankers-agent = { version = "0.1.0", path = "../clankers-agent" }
 clankers-core = { version = "0.1.0", path = "../clankers-core" }
 clankers-session = { version = "0.1.0", path = "../clankers-session" }
 clanker-loop = { workspace = true }
-clanker-message = { workspace = true, features = ["transcript-compat"] }
-clankers-db = { version = "0.1.0", path = "../clankers-db" }
+clanker-message = { workspace = true, features = ["metrics", "transcript-compat"] }
 async-trait = "0.1"
 serde = { workspace = true }
 serde_json = { workspace = true }

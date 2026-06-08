@@ -7,6 +7,7 @@ description = "Embedded redb database for persistent storage (audit, memory, ses
 
 [dependencies]
 blake3 = { workspace = true }
+clanker-message = { workspace = true, features = ["metrics"] }
 chrono = { workspace = true }
 redb = "2.6"
 serde = { workspace = true }

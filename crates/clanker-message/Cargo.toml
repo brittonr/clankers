@@ -11,6 +11,7 @@ categories = ["command-line-utilities", "development-tools"]
 
 [features]
 default = []
+metrics = ["dep:chrono"]
 transcript-compat = ["dep:chrono", "dep:hex", "dep:rand"]
 
 [dependencies]

@@ -1,7 +1,7 @@
 {
   "artifact_hashes": [
     {
-      "blake3": "38f1ccf754c47634af17cf6f60e89c1dc7e78eef3dcc73e4c039b0b20a63dc35",
+      "blake3": "b409d08914601915f980f8489a7301229551376fce5db7aaa02d08bf24e02e30",
       "path": "policy/lego-architecture/dependency-ownership-baseline.json"
     },
     {
@@ -153,7 +153,7 @@
       "path": "crates/clankers-provider/src/rpc_provider.rs"
     },
     {
-      "blake3": "b5d3bb496ebac6ae9b00c4158360617a05226da41fd97d4c96eaf3209e7a0536",
+      "blake3": "529659193ebf11ea45ee0def8ae3ecd0eb73806ee182c15955e2ff6f98e9c865",
       "path": "crates/clankers-controller/src/command.rs"
     },
     {
@@ -181,7 +181,7 @@
       "path": "src/slash_commands/effects.rs"
     },
     {
-      "blake3": "4a1bd158b235c6a3c9f196e7e77235e6b9d9d04079e3c90c71592f278e158859",
+      "blake3": "c7fff44badcc2690802b1c44ff5f6ce804d2c3740f404a7e0f6950443755c289",
       "path": "src/modes/agent_task.rs"
     },
     {
@@ -189,11 +189,11 @@
       "path": "src/modes/daemon/agent_process.rs"
     },
     {
-      "blake3": "31c34f9aa2d8d191d0d193cca14ac814476e9cf6048ffb1a0ce1e196c6d27b44",
+      "blake3": "cf0169ba1d930cd348b5f12d9d9a07aa04542a6109b325d0f0911435d20384ef",
       "path": "src/modes/daemon/session_builder.rs"
     },
     {
-      "blake3": "617c3c15b18556ed0634fb43c86054dc240619e483a0f22e9d3e84ba73220582",
+      "blake3": "443123601a67ebd29be0a62def59924a14246d60105879feecb5e3b770b6e109",
       "path": "src/modes/daemon/session_plugins.rs"
     }
   ],
@@ -291,12 +291,11 @@
     "controller_crate": {
       "concrete_dependencies": [
         "clankers-agent",
-        "clankers-db",
         "clankers-protocol",
         "clankers-session"
       ],
-      "concrete_dependency_count": 4,
-      "internal_dependency_count": 6,
+      "concrete_dependency_count": 3,
+      "internal_dependency_count": 5,
       "owner": "session orchestration shell; translation, effect, continuation, persistence, and projection seams stay separately testable",
       "owner_receipts": [
         {
@@ -319,13 +318,6 @@
           "owner_category": "pure control reducer",
           "source_crate": "clankers-controller",
           "target_crate": "clankers-core"
-        },
-        {
-          "adapter_module": "crates/clankers-controller/src/persistence.rs",
-          "convergence_condition": "storage/search moves behind session service interface",
-          "owner_category": "optional search index shell",
-          "source_crate": "clankers-controller",
-          "target_crate": "clankers-db"
         },
         {
           "adapter_module": "crates/clankers-controller/src/transport_convert.rs",
@@ -429,7 +421,7 @@
     },
     "most_shared_dto_crates": [
       {
-        "dependent_count": 17,
+        "dependent_count": 18,
         "dependents": [
           "clanker-router",
           "clanker-tui-types",
@@ -438,6 +430,7 @@
           "clankers-agent",
           "clankers-config",
           "clankers-controller",
+          "clankers-db",
           "clankers-engine",
           "clankers-engine-host",
           "clankers-model-selection",

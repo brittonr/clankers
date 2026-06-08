@@ -4,13 +4,11 @@ use std::collections::HashMap;
 use std::time::Instant;
 
 use chrono::Utc;
+use clanker_message::metrics::MetricEvent;
+use clanker_message::metrics::MetricEventRecord;
+use clanker_message::metrics::MetricsReducer;
+use clanker_message::metrics::SessionMetricsSummary;
 use clankers_agent::events::AgentEvent;
-use clankers_db::Db;
-use clankers_db::metrics::reducer::MetricEvent;
-use clankers_db::metrics::reducer::MetricsReducer;
-use clankers_db::metrics::types::DailyMetricsRollup;
-use clankers_db::metrics::types::MetricEventRecord;
-use clankers_db::metrics::types::SessionMetricsSummary;
 
 const MAX_PENDING_EVENTS: usize = 200;
 
@@ -69,46 +67,6 @@ impl MetricsCollector {
 
     pub fn events_dropped(&self) -> u64 {
         self.events_dropped
-    }
-
-    /// Flush pending events and current summary to the database.
-    /// Best-effort: errors are logged but never propagated.
-    pub fn flush_to_db(&mut self, db: &Db) {
-        let store = db.metrics();
-
-        // Flush pending events
-        let events = self.take_pending();
-        let mut stored = 0u32;
-        for event in &events {
-            if let Err(e) = store.append_recent_event(event) {
-                tracing::warn!("metrics flush: failed to write event: {e}");
-                self.events_dropped += 1;
-                continue;
-            }
-            stored += 1;
-        }
-
-        // Update stored count on summary
-        let summary = self.reducer.summary();
-        let mut s = summary.clone();
-        s.recent_events_stored += stored;
-        s.recent_events_dropped = self.events_dropped as u32;
-
-        if let Err(e) = store.save_session_summary(&s) {
-            tracing::warn!("metrics flush: failed to save session summary: {e}");
-        }
-
-        // Update daily rollup
-        let date = Utc::now().format("%Y-%m-%d").to_string();
-        let mut rollup = store
-            .get_daily_rollup(&date)
-            .ok()
-            .flatten()
-            .unwrap_or_else(|| DailyMetricsRollup::new(date.clone()));
-        rollup.merge_session(summary);
-        if let Err(e) = store.save_daily_rollup(&rollup) {
-            tracing::warn!("metrics flush: failed to save daily rollup: {e}");
-        }
     }
 
     // ── Direct plugin metric recording (no AgentEvent needed) ───
@@ -330,20 +288,15 @@ mod tests {
     }
 
     #[test]
-    fn flush_to_db_persists() {
-        let db = Db::in_memory().unwrap();
+    fn collector_exposes_pending_records_and_summary_without_storage() {
         let mut c = MetricsCollector::new("s1".into());
         c.process(&AgentEvent::SessionStart {
             session_id: "s1".into(),
         });
         c.process(&AgentEvent::TurnStart { index: 0 });
-        c.flush_to_db(&db);
 
-        let store = db.metrics();
-        let summary = store.get_session_summary("s1").unwrap();
-        assert!(summary.is_some());
-        let events = store.recent_events_for_session("s1", 10).unwrap();
-        assert_eq!(events.len(), 2);
+        assert_eq!(c.summary().session_id, "s1");
+        assert_eq!(c.take_pending().len(), 2);
     }
 
     #[test]

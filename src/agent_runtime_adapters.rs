@@ -4,6 +4,7 @@ use std::collections::BTreeMap;
 use std::sync::Arc;
 
 use async_trait::async_trait;
+use clanker_message::transcript::AgentMessage;
 use clankers_agent::AgentCompletionRequest;
 use clankers_agent::AgentHookPayload;
 use clankers_agent::AgentModelError;
@@ -275,6 +276,108 @@ impl ToolHookService for HookPipelineToolHookService {
             })
         })
     }
+}
+
+#[derive(Clone)]
+pub struct DbControllerPersistenceService {
+    db: clankers_db::Db,
+    search_index: Option<Arc<clankers_db::search_index::SearchIndex>>,
+}
+
+impl DbControllerPersistenceService {
+    #[must_use]
+    pub fn new(db: clankers_db::Db) -> Self {
+        Self { db, search_index: None }
+    }
+
+    #[must_use]
+    pub fn with_search_index(mut self, search_index: Arc<clankers_db::search_index::SearchIndex>) -> Self {
+        self.search_index = Some(search_index);
+        self
+    }
+}
+
+impl clankers_controller::ControllerPersistenceService for DbControllerPersistenceService {
+    fn index_messages(&self, session_id: &str, messages: &[AgentMessage]) {
+        let Some(search_index) = &self.search_index else {
+            return;
+        };
+        index_messages_for_search(search_index, session_id, messages);
+    }
+
+    fn store_compaction_summary_tool_result(&self, session_id: &str, summary: &str) {
+        if let Err(error) = persist_compaction_summary_tool_result(&self.db, session_id, summary) {
+            tracing::warn!("failed to persist compaction summary tool result: {error}");
+        }
+    }
+}
+
+fn index_messages_for_search(
+    search_index: &clankers_db::search_index::SearchIndex,
+    session_id: &str,
+    messages: &[AgentMessage],
+) {
+    let mut batch: Vec<(&str, String, &str, String, i64)> = Vec::new();
+
+    for msg in messages {
+        let id = msg.id().to_string();
+        let role = msg.role();
+        let timestamp = msg.timestamp().timestamp();
+
+        let text = match msg {
+            AgentMessage::User(m) => extract_text(&m.content),
+            AgentMessage::Assistant(m) => extract_text(&m.content),
+            AgentMessage::ToolResult(m) => extract_text(&m.content),
+            AgentMessage::BashExecution(m) => format!("{} {} {}", m.command, m.stdout, m.stderr),
+            _ => continue,
+        };
+
+        if !text.trim().is_empty() {
+            batch.push((session_id, id, role, text, timestamp));
+        }
+    }
+
+    if batch.is_empty() {
+        return;
+    }
+
+    let refs: Vec<(&str, &str, &str, &str, i64)> = batch
+        .iter()
+        .map(|(sid, id, role, text, ts)| (*sid, id.as_str(), *role, text.as_str(), *ts))
+        .collect();
+
+    if let Err(error) = search_index.index_messages_batch(&refs) {
+        tracing::warn!("failed to index messages for search: {error}");
+    }
+}
+
+fn extract_text(content: &[clanker_message::Content]) -> String {
+    content
+        .iter()
+        .filter_map(|content| match content {
+            clanker_message::Content::Text { text } => Some(text.as_str()),
+            _ => None,
+        })
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
+fn persist_compaction_summary_tool_result(
+    db: &clankers_db::Db,
+    session_id: &str,
+    summary: &str,
+) -> clankers_db::error::Result<()> {
+    let entry = clankers_db::tool_results::StoredToolResult {
+        session_id: session_id.to_string(),
+        call_id: "compaction-summary".to_string(),
+        tool_name: "compaction-summary".to_string(),
+        content_text: summary.to_string(),
+        has_image: false,
+        is_error: false,
+        byte_count: summary.len(),
+        line_count: summary.lines().count(),
+    };
+    db.tool_results().store(&entry)
 }
 
 fn controller_hook_point_to_hooks(point: clankers_controller::ControllerHookPoint) -> clankers_hooks::HookPoint {

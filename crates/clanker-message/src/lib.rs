@@ -13,6 +13,8 @@ pub mod contracts;
 pub mod cost;
 #[cfg(feature = "transcript-compat")]
 pub mod message;
+#[cfg(feature = "metrics")]
+pub mod metrics;
 pub mod plugin;
 pub mod process;
 pub mod result_streaming;

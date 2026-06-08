@@ -209,6 +209,10 @@ pub async fn run_interactive(
                 Arc::new(crate::agent_runtime_adapters::HookPipelineControllerHookService::new(Arc::clone(pipeline)))
                     as Arc<dyn clankers_controller::ControllerHookService>
             }),
+            persistence_service: db.clone().map(|db| {
+                Arc::new(crate::agent_runtime_adapters::DbControllerPersistenceService::new(db))
+                    as Arc<dyn clankers_controller::ControllerPersistenceService>
+            }),
             initial_thinking_level: super::common::core_thinking_level(settings.parsed_thinking_level()),
             ..Default::default()
         };
