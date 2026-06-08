@@ -6,13 +6,13 @@
 
 use std::path::Path;
 
+use clanker_message::DaemonStatus;
+use clanker_message::PluginSummary;
+use clanker_message::ProcessInfo;
+use clanker_message::SessionSummary;
 use clankers_protocol::AttachResponse;
 use clankers_protocol::ControlResponse;
 use clankers_protocol::DaemonEvent;
-use clankers_protocol::DaemonStatus;
-use clankers_protocol::PluginSummary;
-use clankers_protocol::ProcessInfo;
-use clankers_protocol::SessionSummary;
 use clankers_protocol::types::Handshake;
 use clankers_protocol::types::PROTOCOL_VERSION;
 

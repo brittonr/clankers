@@ -3,6 +3,7 @@
 ## Corrections
 | Date | Source | What Went Wrong | What To Do Instead |
 |------|--------|----------------|-------------------|
+| 2026-06-07 | self | Auto-test reported `No space left on device` while writing a root test rlib; this was an environmental ENOSPC build artifact issue, not a source failure | Check `df -h .` / target size, free space if needed, then rerun `cargo test -p clankers --no-run` before making source changes for ENOSPC output. |
 | 2026-06-07 | self | Ran `cargo test -p clanker-message --lib image_data` immediately after adding `ImageData`, but the crate had no matching focused test yet, so Cargo ran 0 tests | Add or grep a real focused test before using a new DTO filter; check the test count and rerun before recording evidence. |
 | 2026-06-07 | self | Ran `cargo test -p clankers-protocol --lib tool_list` while validating ToolInfo DTO relocation; Cargo ran 0 tests because no test name contained that substring | Grep exact protocol/frame test names before using focused filters, and rerun with a real matching test before recording evidence. |
 | 2026-06-07 | self | Ran `cargo fmt --check` during a narrow controller session-ledger slice and hit broad pre-existing rustfmt drift across unrelated files | Do not use broad fmt as evidence in Clankers architecture slices unless intentionally accepting repo-wide formatting churn; keep to focused tests plus `git diff --check`, and manually inspect touched hunks. |

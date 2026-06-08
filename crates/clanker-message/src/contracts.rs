@@ -34,6 +34,33 @@ pub struct SerializedMessage {
     pub timestamp: Option<String>,
 }
 
+/// Summary of an active daemon session.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct SessionSummary {
+    pub session_id: String,
+    pub model: String,
+    pub turn_count: usize,
+    pub last_active: String,
+    pub client_count: usize,
+    pub socket_path: String,
+    /// Lifecycle state: "active", "suspended", or "recovering".
+    #[serde(default = "default_session_state")]
+    pub state: String,
+}
+
+fn default_session_state() -> String {
+    "active".to_string()
+}
+
+/// Daemon runtime status.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct DaemonStatus {
+    pub uptime_secs: f64,
+    pub session_count: usize,
+    pub total_clients: usize,
+    pub pid: u32,
+}
+
 /// Named thinking budget levels shared by provider, controller, and display edges.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum ThinkingLevel {
@@ -174,5 +201,27 @@ mod tests {
         let json = serde_json::to_string(&message).expect("message should serialize");
         let parsed: SerializedMessage = serde_json::from_str(&json).expect("message should deserialize");
         assert_eq!(parsed, message);
+    }
+
+    #[test]
+    fn session_summary_defaults_missing_state_for_legacy_wire_events() {
+        let summary: SessionSummary = serde_json::from_str(
+            r#"{"session_id":"s1","model":"model","turn_count":2,"last_active":"now","client_count":1,"socket_path":"/tmp/sock"}"#,
+        )
+        .expect("summary should deserialize");
+        assert_eq!(summary.state, "active");
+    }
+
+    #[test]
+    fn daemon_status_roundtrip_preserves_counters() {
+        let status = DaemonStatus {
+            uptime_secs: 4.5,
+            session_count: 2,
+            total_clients: 3,
+            pid: 42,
+        };
+        let json = serde_json::to_string(&status).expect("status should serialize");
+        let parsed: DaemonStatus = serde_json::from_str(&json).expect("status should deserialize");
+        assert_eq!(parsed, status);
     }
 }

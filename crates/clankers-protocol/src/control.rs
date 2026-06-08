@@ -3,6 +3,9 @@
 use serde::Deserialize;
 use serde::Serialize;
 
+pub use clanker_message::DaemonStatus;
+pub use clanker_message::SessionSummary;
+
 use crate::types::ProcessInfo;
 
 fn default_none_string() -> Option<String> {
@@ -75,31 +78,4 @@ pub enum ControlResponse {
     Plugins(Vec<crate::event::PluginSummary>),
     /// Error response.
     Error { message: String },
-}
-
-/// Summary of an active session.
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
-pub struct SessionSummary {
-    pub session_id: String,
-    pub model: String,
-    pub turn_count: usize,
-    pub last_active: String,
-    pub client_count: usize,
-    pub socket_path: String,
-    /// Lifecycle state: "active", "suspended", or "recovering".
-    #[serde(default = "default_session_state")]
-    pub state: String,
-}
-
-fn default_session_state() -> String {
-    "active".to_string()
-}
-
-/// Daemon runtime status.
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
-pub struct DaemonStatus {
-    pub uptime_secs: f64,
-    pub session_count: usize,
-    pub total_clients: usize,
-    pub pid: u32,
 }

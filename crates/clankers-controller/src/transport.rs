@@ -9,10 +9,10 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Instant;
 
+use clanker_message::DaemonStatus;
+use clanker_message::SessionSummary;
 use clankers_protocol::SessionCommand;
 use clankers_protocol::control::ControlCommand;
-use clankers_protocol::control::DaemonStatus;
-use clankers_protocol::control::SessionSummary;
 use clankers_protocol::event::DaemonEvent;
 use clankers_protocol::frame::FrameError;
 use clankers_protocol::frame::{self};
