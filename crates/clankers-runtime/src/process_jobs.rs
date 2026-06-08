@@ -74,6 +74,7 @@ pub use clankers_tool_host::process_jobs::ProcessJobOperation;
 pub use clankers_tool_host::process_jobs::ProcessJobOwnerScope;
 pub use clankers_tool_host::process_jobs::ProcessJobProfileReceiptMetadata;
 pub use clankers_tool_host::process_jobs::ProjectProcessJobProfilePolicy;
+pub use clankers_tool_host::process_jobs::ProjectProcessJobProfileSourcePrecedence;
 pub use clankers_tool_host::process_jobs::ProcessJobProjectionBounds;
 pub use clankers_tool_host::process_jobs::ProcessJobProjectionItem;
 pub use clankers_tool_host::process_jobs::ProcessJobReceipt;
@@ -407,25 +408,6 @@ pub struct ProjectProcessJobProfileResolutionEvidence {
     pub manifest_schema_version: u32,
     pub profile_source: String,
     pub policy_source: String,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum ProjectProcessJobProfileSourcePrecedence {
-    Global,
-    Workspace,
-    Explicit,
-}
-
-impl ProjectProcessJobProfileSourcePrecedence {
-    #[must_use]
-    pub const fn label(self) -> &'static str {
-        match self {
-            Self::Global => "global",
-            Self::Workspace => "workspace",
-            Self::Explicit => "explicit",
-        }
-    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

@@ -1861,6 +1861,25 @@ impl Default for ProjectProcessJobProfilePolicy {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ProjectProcessJobProfileSourcePrecedence {
+    Global,
+    Workspace,
+    Explicit,
+}
+
+impl ProjectProcessJobProfileSourcePrecedence {
+    #[must_use]
+    pub const fn label(self) -> &'static str {
+        match self {
+            Self::Global => "global",
+            Self::Workspace => "workspace",
+            Self::Explicit => "explicit",
+        }
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum ProcessJobRetentionClass {
@@ -2447,6 +2466,16 @@ mod tests {
         assert_eq!(policy.memory_max_bytes, Some(1024));
         assert_eq!(policy.cpu_quota_percent, Some(50));
         assert_eq!(policy.max_log_bytes, Some(4096));
+    }
+
+    #[test]
+    fn project_process_job_profile_source_precedence_orders_by_specificity() {
+        assert!(ProjectProcessJobProfileSourcePrecedence::Global < ProjectProcessJobProfileSourcePrecedence::Workspace);
+        assert!(ProjectProcessJobProfileSourcePrecedence::Workspace < ProjectProcessJobProfileSourcePrecedence::Explicit);
+        assert_eq!(ProjectProcessJobProfileSourcePrecedence::Explicit.label(), "explicit");
+        let json = serde_json::to_string(&ProjectProcessJobProfileSourcePrecedence::Workspace)
+            .expect("precedence should serialize");
+        assert_eq!(json, r#""workspace""#);
     }
 
     #[test]
