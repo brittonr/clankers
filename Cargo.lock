@@ -1682,7 +1682,6 @@ dependencies = [
  "clankers-hooks",
  "clankers-protocol",
  "clankers-provider",
- "clankers-session",
  "clankers-tool-host",
  "libc",
  "serde",

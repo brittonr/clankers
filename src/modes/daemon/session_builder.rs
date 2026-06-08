@@ -194,7 +194,10 @@ fn assemble_session_runtime_in_dir(
         system_prompt: Some(system_prompt),
         capabilities: tool_patterns.clone(),
         capability_ceiling: tool_patterns,
-        session_manager,
+        session_ledger: session_manager.map(|manager| {
+            Box::new(crate::agent_runtime_adapters::SessionManagerControllerSessionLedger::new(manager))
+                as Box<dyn clankers_controller::ControllerSessionLedger>
+        }),
         hook_service: hook_pipeline.as_ref().map(|pipeline| {
             Arc::new(crate::agent_runtime_adapters::HookPipelineControllerHookService::new(Arc::clone(pipeline)))
                 as Arc<dyn clankers_controller::ControllerHookService>

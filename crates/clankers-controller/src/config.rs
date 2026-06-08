@@ -3,10 +3,10 @@
 use std::sync::Arc;
 
 use clankers_core::CoreThinkingLevel;
-use clankers_session::SessionManager;
 
 use crate::ControllerHookService;
 use crate::ControllerPersistenceService;
+use crate::ControllerSessionLedger;
 
 /// Configuration needed to create a SessionController.
 #[derive(Default)]
@@ -25,8 +25,8 @@ pub struct ControllerConfig {
     /// Set from the UCAN token + settings at creation time. Immutable.
     /// `None` = no ceiling (local owner, full access).
     pub capability_ceiling: Option<Vec<String>>,
-    /// Session persistence manager.
-    pub session_manager: Option<SessionManager>,
+    /// Session persistence ledger.
+    pub session_ledger: Option<Box<dyn ControllerSessionLedger>>,
     /// Hook service for lifecycle events.
     pub hook_service: Option<Arc<dyn ControllerHookService>>,
     /// Optional host persistence side effects.

@@ -1,7 +1,7 @@
 {
   "artifact_hashes": [
     {
-      "blake3": "b409d08914601915f980f8489a7301229551376fce5db7aaa02d08bf24e02e30",
+      "blake3": "cee261d8889c229331eb106c8405eb3d46db7307cdeab7573df482370bef92f1",
       "path": "policy/lego-architecture/dependency-ownership-baseline.json"
     },
     {
@@ -189,7 +189,7 @@
       "path": "src/modes/daemon/agent_process.rs"
     },
     {
-      "blake3": "cf0169ba1d930cd348b5f12d9d9a07aa04542a6109b325d0f0911435d20384ef",
+      "blake3": "ebe8012621f262713bdf9954fed53264156439d265ee140c71047a7784017e79",
       "path": "src/modes/daemon/session_builder.rs"
     },
     {
@@ -291,11 +291,10 @@
     "controller_crate": {
       "concrete_dependencies": [
         "clankers-agent",
-        "clankers-protocol",
-        "clankers-session"
+        "clankers-protocol"
       ],
-      "concrete_dependency_count": 3,
-      "internal_dependency_count": 5,
+      "concrete_dependency_count": 2,
+      "internal_dependency_count": 4,
       "owner": "session orchestration shell; translation, effect, continuation, persistence, and projection seams stay separately testable",
       "owner_receipts": [
         {
@@ -325,13 +324,6 @@
           "owner_category": "transport protocol edge",
           "source_crate": "clankers-controller",
           "target_crate": "clankers-protocol"
-        },
-        {
-          "adapter_module": "crates/clankers-controller/src/persistence.rs",
-          "convergence_condition": "persistence migrates behind SessionStore/ledger service",
-          "owner_category": "session persistence shell",
-          "source_crate": "clankers-controller",
-          "target_crate": "clankers-session"
         }
       ],
       "package": "clankers-controller"

@@ -180,7 +180,9 @@ async fn run_resume_replay_once() -> Value {
     let mut initial_controller = SessionController::new(initial_agent, ControllerConfig {
         session_id: session_id.clone(),
         model: MODEL.to_string(),
-        session_manager: Some(session_manager),
+        session_ledger: Some(Box::new(
+            clankers::agent_runtime_adapters::SessionManagerControllerSessionLedger::new(session_manager),
+        )),
         ..Default::default()
     });
 
@@ -193,7 +195,7 @@ async fn run_resume_replay_once() -> Value {
     let initial_events = initial_controller.take_outgoing();
     initial_controller.shutdown().await;
 
-    let mut resumed_manager = SessionManager::open(session_file).expect("persisted session should reopen");
+    let mut resumed_manager = SessionManager::open(session_file.clone()).expect("persisted session should reopen");
     assert_eq!(resumed_manager.session_id(), session_id);
     let resume_from = resumed_manager.active_leaf_id().cloned().expect("persisted session has active leaf");
     resumed_manager.record_resume(resume_from).expect("resume annotation persists");
@@ -214,7 +216,9 @@ async fn run_resume_replay_once() -> Value {
     let mut follow_controller = SessionController::new(follow_agent, ControllerConfig {
         session_id: session_id.clone(),
         model: MODEL.to_string(),
-        session_manager: Some(resumed_manager),
+        session_ledger: Some(Box::new(
+            clankers::agent_runtime_adapters::SessionManagerControllerSessionLedger::new(resumed_manager),
+        )),
         ..Default::default()
     });
 
@@ -227,9 +231,7 @@ async fn run_resume_replay_once() -> Value {
     let follow_events = follow_controller.take_outgoing();
     follow_controller.shutdown().await;
 
-    let final_manager =
-        SessionManager::open(follow_controller.session_manager().expect("session manager").file_path().to_path_buf())
-            .expect("final persisted session should reopen");
+    let final_manager = SessionManager::open(session_file).expect("final persisted session should reopen");
     let final_context = final_manager.build_context().expect("final context builds");
 
     json!({

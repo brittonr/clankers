@@ -22,13 +22,10 @@ fn resume_selected_session(
     file_path: std::path::PathBuf,
     session_id: &str,
 ) {
-    super::super::interactive::resume_session_from_file(
-        app,
-        file_path,
-        session_id,
-        cmd_tx,
-        &mut controller.session_manager,
-    );
+    let mut fallback_session_manager = None;
+    let session_manager = crate::agent_runtime_adapters::controller_session_manager_slot_mut(controller)
+        .unwrap_or(&mut fallback_session_manager);
+    super::super::interactive::resume_session_from_file(app, file_path, session_id, cmd_tx, session_manager);
     super::sync_controller_session_id(app, controller);
 }
 
@@ -116,7 +113,8 @@ impl<'a> EventLoopRunner<'a> {
                     self.plugin_manager.as_ref(),
                     &self.panel_tx,
                     &self.db,
-                    &mut self.controller.session_manager,
+                    crate::agent_runtime_adapters::controller_session_manager_slot_mut(&mut self.controller)
+                        .unwrap_or(&mut self.empty_session_manager),
                     &self.slash_registry,
                 );
                 self.sync_controller_session_id_from_app();
@@ -141,7 +139,8 @@ impl<'a> EventLoopRunner<'a> {
                 self.plugin_manager.as_ref(),
                 &self.panel_tx,
                 &self.db,
-                &mut self.controller.session_manager,
+                crate::agent_runtime_adapters::controller_session_manager_slot_mut(&mut self.controller)
+                    .unwrap_or(&mut self.empty_session_manager),
                 &self.slash_registry,
             )
         {
@@ -171,14 +170,17 @@ impl<'a> EventLoopRunner<'a> {
                 self.plugin_manager.as_ref(),
                 &self.panel_tx,
                 &self.db,
-                &mut self.controller.session_manager,
+                crate::agent_runtime_adapters::controller_session_manager_slot_mut(&mut self.controller)
+                    .unwrap_or(&mut self.empty_session_manager),
                 &self.slash_registry,
             );
             self.sync_controller_session_id_from_app();
 
             // Record branch in session if one was initiated
+            let session_manager = crate::agent_runtime_adapters::controller_session_manager_slot_mut(&mut self.controller)
+                .unwrap_or(&mut self.empty_session_manager);
             if let Some(checkpoint) = self.app.branching.last_branch_checkpoint.take()
-                && let Some(ref mut sm) = self.controller.session_manager
+                && let Some(sm) = session_manager
                 && let Ok(tree) = sm.load_tree()
             {
                 let active_leaf = sm.active_leaf_id().cloned();
@@ -571,8 +573,10 @@ impl<'a> EventLoopRunner<'a> {
         let target: Option<MessageId> =
             self.app.branching.merge_interactive.target_leaf().map(|s| MessageId::from(s.to_owned()));
         self.app.branching.merge_interactive.close();
+        let session_manager = crate::agent_runtime_adapters::controller_session_manager_slot_mut(&mut self.controller)
+            .unwrap_or(&mut self.empty_session_manager);
         if let (Some(src), Some(tgt)) = (source, target)
-            && let Some(sm) = self.controller.session_manager.as_mut()
+            && let Some(sm) = session_manager.as_mut()
         {
             match sm.merge_selective(src, tgt, &selected) {
                 Ok((count, _new_leaf)) => {
@@ -719,10 +723,15 @@ mod tests {
         let mut app = clankers_tui::app::App::new("test-model".to_string(), cwd, clankers_tui::theme::Theme::dark());
         app.session_id = "stale-app-session".to_string();
 
+        let session_manager = clankers_session::SessionManager::open(file_path.clone())
+            .expect("session manager should open for controller adapter");
         let mut controller =
             clankers_controller::SessionController::new_embedded(clankers_controller::config::ControllerConfig {
                 session_id: "stale-controller-session".to_string(),
                 model: "test-model".to_string(),
+                session_ledger: Some(Box::new(
+                    crate::agent_runtime_adapters::SessionManagerControllerSessionLedger::new(session_manager),
+                )),
                 ..Default::default()
             });
 
@@ -730,7 +739,11 @@ mod tests {
         assert_eq!(app.session_id, session_id);
         assert_eq!(controller.session_id(), session_id);
         assert_eq!(
-            controller.session_manager.as_ref().expect("session manager should be resumed").session_id(),
+            crate::agent_runtime_adapters::controller_session_manager_slot_mut(&mut controller)
+                .expect("session manager adapter should exist")
+                .as_ref()
+                .expect("session manager should be resumed")
+                .session_id(),
             session_id
         );
 

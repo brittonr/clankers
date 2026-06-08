@@ -26,7 +26,7 @@ const CHECKS: &[SourceCheck] = &[
         required: &[
             "pub struct SessionController",
             "pub(crate) agent: Option<Agent>",
-            "pub session_manager: Option<SessionManager>",
+            "pub session_ledger: Option<Box<dyn ControllerSessionLedger>>",
             "hook_service: Option<Arc<dyn ControllerHookService>>",
             "persistence_service: Option<Arc<dyn ControllerPersistenceService>>",
             "outgoing: Vec<DaemonEvent>",
@@ -71,7 +71,7 @@ const CHECKS: &[SourceCheck] = &[
         path: "crates/clankers-controller/src/persistence.rs",
         owner: "controller persistence service port adapter",
         required: &[
-            "use clankers_session::SessionManager",
+            "use crate::ControllerSessionLedger",
             "fn persist_messages",
             "service.index_messages",
             "service.store_compaction_summary_tool_result",

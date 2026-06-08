@@ -1,9 +1,10 @@
-//! Session persistence — write messages to the session on turn boundaries.
+//! Session persistence — write messages to the session ledger on turn boundaries.
 
+use clanker_message::transcript::AgentMessage;
 use clankers_agent::events::AgentEvent;
-use clankers_session::SessionManager;
 use tracing::warn;
 
+use crate::ControllerSessionLedger;
 use crate::SessionController;
 
 impl SessionController {
@@ -12,47 +13,74 @@ impl SessionController {
     /// Called from `process_agent_event` for each event. Only AgentEnd
     /// carries the messages that need persisting.
     pub(crate) fn persist_event(&mut self, event: &AgentEvent) {
-        let Some(ref mut sm) = self.session_manager else {
+        let Some(ref mut ledger) = self.session_ledger else {
             return;
         };
 
         if let AgentEvent::AgentEnd { messages } = event {
-            persist_messages(sm, messages);
+            let session_id = ledger.session_id().to_string();
+            persist_messages(ledger.as_mut(), messages);
             if let Some(service) = &self.persistence_service {
-                service.index_messages(sm.session_id(), messages);
+                service.index_messages(&session_id, messages);
             }
             return;
         }
 
         if let AgentEvent::SessionCompactionSummary { summary } = event {
-            if let Err(error) = sm.record_compaction_summary(summary.clone()) {
+            let session_id = ledger.session_id().to_string();
+            if let Err(error) = ledger.record_compaction_summary(summary.clone()) {
                 warn!("failed to persist compaction summary: {error}");
             }
             if let Some(service) = &self.persistence_service {
-                service.store_compaction_summary_tool_result(sm.session_id(), summary);
+                service.store_compaction_summary_tool_result(&session_id, summary);
             }
+        }
+    }
+
+    pub(crate) fn flush_agent_messages_on_shutdown(&mut self) -> usize {
+        let Some(ref mut agent) = self.agent else {
+            return 0;
+        };
+        let Some(ref mut ledger) = self.session_ledger else {
+            return 0;
+        };
+        flush_unpersisted_messages(ledger.as_mut(), &agent.messages().to_vec())
+    }
+}
+
+/// Persist a batch of agent messages to the session ledger.
+fn persist_messages(ledger: &mut dyn ControllerSessionLedger, messages: &[AgentMessage]) {
+    for msg in messages {
+        if let Err(error) = ledger.append_message_to_active_leaf(msg.clone()) {
+            warn!("failed to persist message: {error}");
         }
     }
 }
 
-/// Persist a batch of agent messages to the session manager.
-fn persist_messages(sm: &mut SessionManager, messages: &[clanker_message::transcript::AgentMessage]) {
+fn flush_unpersisted_messages(ledger: &mut dyn ControllerSessionLedger, messages: &[AgentMessage]) -> usize {
+    let mut flushed = 0;
     for msg in messages {
-        let parent = sm.active_leaf_id().cloned();
-        if let Err(e) = sm.append_message(msg.clone(), parent) {
-            warn!("failed to persist message: {e}");
+        if ledger.is_persisted(msg.id()) {
+            continue;
+        }
+        if let Err(error) = ledger.append_message_to_active_leaf(msg.clone()) {
+            warn!("shutdown flush failed: {error}");
+        } else {
+            flushed += 1;
         }
     }
+    flushed
 }
 
 #[cfg(test)]
 mod tests {
+    use std::any::Any;
+    use std::collections::HashSet;
     use std::sync::Arc;
     use std::sync::Mutex;
 
     use chrono::Utc;
     use clanker_message::Content;
-    use clanker_message::transcript::AgentMessage;
     use clanker_message::transcript::MessageId;
     use clanker_message::transcript::UserMessage;
     use tempfile::TempDir;
@@ -69,7 +97,7 @@ mod tests {
     }
 
     impl crate::ControllerPersistenceService for RecordingPersistenceService {
-        fn index_messages(&self, session_id: &str, messages: &[clanker_message::transcript::AgentMessage]) {
+        fn index_messages(&self, session_id: &str, messages: &[AgentMessage]) {
             self.indexed
                 .lock()
                 .expect("indexed lock")
@@ -84,12 +112,52 @@ mod tests {
         }
     }
 
+    #[derive(Default)]
+    struct RecordingSessionLedger {
+        session_id: String,
+        messages: Vec<MessageId>,
+        persisted: HashSet<MessageId>,
+        summaries: Vec<String>,
+    }
+
+    impl RecordingSessionLedger {
+        fn new(session_id: &str) -> Self {
+            Self {
+                session_id: session_id.to_string(),
+                ..Self::default()
+            }
+        }
+    }
+
+    impl crate::ControllerSessionLedger for RecordingSessionLedger {
+        fn as_any_mut(&mut self) -> &mut dyn Any {
+            self
+        }
+
+        fn session_id(&self) -> &str {
+            &self.session_id
+        }
+
+        fn is_persisted(&self, id: &MessageId) -> bool {
+            self.persisted.contains(id)
+        }
+
+        fn append_message_to_active_leaf(&mut self, message: AgentMessage) -> Result<(), String> {
+            let id = message.id().clone();
+            self.persisted.insert(id.clone());
+            self.messages.push(id);
+            Ok(())
+        }
+
+        fn record_compaction_summary(&mut self, summary: String) -> Result<(), String> {
+            self.summaries.push(summary);
+            Ok(())
+        }
+    }
+
     fn make_controller_with_persistence() -> (SessionController, TempDir, Arc<RecordingPersistenceService>) {
         let tmp = TempDir::new().expect("tempdir should exist");
-        let cwd = tmp.path().to_string_lossy().to_string();
-        let session_manager =
-            clankers_session::SessionManager::create(tmp.path(), &cwd, "test-model", None, None, None)
-                .expect("session manager should create");
+        let session_id = "session".to_string();
         let persistence_service = Arc::new(RecordingPersistenceService::default());
         let agent = clankers_agent::Agent::new_with_agent_settings(
             model_service(Arc::new(MockProvider)),
@@ -99,9 +167,9 @@ mod tests {
             "test system prompt".to_string(),
         );
         let controller = SessionController::new(agent, ControllerConfig {
-            session_id: session_manager.session_id().to_string(),
+            session_id: session_id.clone(),
             model: "test-model".to_string(),
-            session_manager: Some(session_manager),
+            session_ledger: Some(Box::new(RecordingSessionLedger::new(&session_id))),
             persistence_service: Some(persistence_service.clone()),
             ..Default::default()
         });
@@ -134,8 +202,6 @@ mod tests {
             summary: summary.clone(),
         });
 
-        let session_summary = controller.session_manager().expect("session manager").latest_compaction_summary();
-        assert_eq!(session_summary, Some(summary.as_str()));
         let recorded = persistence_service.summaries.lock().expect("summaries lock");
         assert_eq!(recorded.as_slice(), &[(controller.session_id().to_string(), summary)]);
     }

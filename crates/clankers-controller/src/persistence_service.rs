@@ -1,7 +1,7 @@
 //! Controller-owned persistence side-effect port.
 //!
-//! Session ledger mutation remains handled by `SessionManager`; optional search
-//! indexing and companion tool-result storage are host-injected side effects.
+//! Session ledger mutation remains handled by `ControllerSessionLedger`; optional
+//! search indexing and companion tool-result storage are host-injected side effects.
 
 use clanker_message::transcript::AgentMessage;
 

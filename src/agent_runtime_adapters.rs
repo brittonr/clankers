@@ -1,10 +1,12 @@
 //! Root-shell adapters from concrete desktop services to agent-owned ports.
 
+use std::any::Any;
 use std::collections::BTreeMap;
 use std::sync::Arc;
 
 use async_trait::async_trait;
 use clanker_message::transcript::AgentMessage;
+use clanker_message::transcript::MessageId;
 use clankers_agent::AgentCompletionRequest;
 use clankers_agent::AgentHookPayload;
 use clankers_agent::AgentModelError;
@@ -276,6 +278,60 @@ impl ToolHookService for HookPipelineToolHookService {
             })
         })
     }
+}
+
+pub struct SessionManagerControllerSessionLedger {
+    manager: Option<clankers_session::SessionManager>,
+}
+
+impl SessionManagerControllerSessionLedger {
+    #[must_use]
+    pub fn new(manager: clankers_session::SessionManager) -> Self {
+        Self { manager: Some(manager) }
+    }
+
+    pub fn manager_slot_mut(&mut self) -> &mut Option<clankers_session::SessionManager> {
+        &mut self.manager
+    }
+}
+
+impl clankers_controller::ControllerSessionLedger for SessionManagerControllerSessionLedger {
+    fn as_any_mut(&mut self) -> &mut dyn Any {
+        self
+    }
+
+    fn session_id(&self) -> &str {
+        self.manager.as_ref().map(clankers_session::SessionManager::session_id).unwrap_or("")
+    }
+
+    fn is_persisted(&self, id: &MessageId) -> bool {
+        self.manager.as_ref().is_some_and(|manager| manager.is_persisted(id))
+    }
+
+    fn append_message_to_active_leaf(&mut self, message: AgentMessage) -> Result<(), String> {
+        let Some(manager) = self.manager.as_mut() else {
+            return Err("session manager unavailable".to_string());
+        };
+        let parent = manager.active_leaf_id().cloned();
+        manager.append_message(message, parent).map_err(|error| error.to_string())
+    }
+
+    fn record_compaction_summary(&mut self, summary: String) -> Result<(), String> {
+        let Some(manager) = self.manager.as_mut() else {
+            return Err("session manager unavailable".to_string());
+        };
+        manager.record_compaction_summary(summary).map_err(|error| error.to_string())
+    }
+}
+
+pub fn controller_session_manager_slot_mut(
+    controller: &mut clankers_controller::SessionController,
+) -> Option<&mut Option<clankers_session::SessionManager>> {
+    controller
+        .session_ledger
+        .as_mut()
+        .and_then(|ledger| ledger.as_any_mut().downcast_mut::<SessionManagerControllerSessionLedger>())
+        .map(SessionManagerControllerSessionLedger::manager_slot_mut)
 }
 
 #[derive(Clone)]

@@ -198,13 +198,16 @@ pub async fn run_interactive(
     let _rpc_cancel = maybe_start_rpc(&mut app, paths).await;
 
     // Build the embedded-mode SessionController for audit, hooks, loop, auto-test.
-    // The controller owns the SessionManager for persistence; slash commands
-    // and branch/merge operations access it via controller.session_manager.
+    // The controller owns session persistence through a neutral ledger port; root
+    // downcasts the root adapter only for standalone branch/merge interactions.
     let controller = {
         let mut ctrl_config = clankers_controller::config::ControllerConfig {
             session_id: app.session_id.clone(),
             model: model.clone(),
-            session_manager,
+            session_ledger: session_manager.map(|manager| {
+                Box::new(crate::agent_runtime_adapters::SessionManagerControllerSessionLedger::new(manager))
+                    as Box<dyn clankers_controller::ControllerSessionLedger>
+            }),
             hook_service: hook_pipeline.as_ref().map(|pipeline| {
                 Arc::new(crate::agent_runtime_adapters::HookPipelineControllerHookService::new(Arc::clone(pipeline)))
                     as Arc<dyn clankers_controller::ControllerHookService>

@@ -66,9 +66,10 @@ pub(crate) struct EventLoopRunner<'a> {
     // Slash command dispatch
     pub(crate) slash_registry: crate::slash_commands::SlashRegistry,
     // Session controller (handles audit, persistence, hooks, loop, auto-test).
-    // Also owns the SessionManager for session persistence and branch/merge
-    // operations. Slash commands access it via controller.session_manager.
     controller: SessionController,
+    // Empty fallback slot for root slash paths when a controller has no
+    // concrete session-manager adapter (mostly tests and socketless fixtures).
+    empty_session_manager: Option<clankers_session::SessionManager>,
     // Schedule event receiver — fired when cron/interval/once schedules trigger.
     schedule_rx: tokio::sync::broadcast::Receiver<clanker_scheduler::ScheduleEvent>,
 }
@@ -122,6 +123,7 @@ impl<'a> EventLoopRunner<'a> {
             settings,
             slash_registry,
             controller,
+            empty_session_manager: None,
             schedule_rx,
         }
     }
@@ -548,7 +550,8 @@ impl<'a> EventLoopRunner<'a> {
                                 self.plugin_manager.as_ref(),
                                 &self.panel_tx,
                                 &self.db,
-                                &mut self.controller.session_manager,
+                                crate::agent_runtime_adapters::controller_session_manager_slot_mut(&mut self.controller)
+                                    .unwrap_or(&mut self.empty_session_manager),
                                 &self.slash_registry,
                             );
                             self.sync_controller_session_id_from_app();
@@ -604,7 +607,8 @@ impl<'a> EventLoopRunner<'a> {
                                     self.plugin_manager.as_ref(),
                                     &self.panel_tx,
                                     &self.db,
-                                    &mut self.controller.session_manager,
+                                    crate::agent_runtime_adapters::controller_session_manager_slot_mut(&mut self.controller)
+                                        .unwrap_or(&mut self.empty_session_manager),
                                     &self.slash_registry,
                                 );
                                 self.sync_controller_session_id_from_app();

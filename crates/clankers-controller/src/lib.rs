@@ -52,6 +52,7 @@ pub mod metrics_capture;
 pub mod persistence;
 pub mod persistence_service;
 pub mod runtime_adapter;
+pub mod session_ledger;
 pub mod transport;
 pub mod transport_convert;
 
@@ -64,7 +65,6 @@ use clankers_agent::Agent;
 use clankers_agent::events::AgentEvent;
 use clankers_core::CoreState;
 use clankers_protocol::DaemonEvent;
-use clankers_session::SessionManager;
 pub use hooks::ControllerHookData;
 pub use hooks::ControllerHookPayload;
 pub use hooks::ControllerHookPoint;
@@ -83,10 +83,10 @@ pub use runtime_adapter::RuntimeControlResult;
 pub use runtime_adapter::RuntimePromptCompletion;
 pub use runtime_adapter::RuntimePromptRequest;
 pub use runtime_adapter::RuntimePromptResult;
+pub use session_ledger::ControllerSessionLedger;
 use tokio::sync::broadcast;
 use tracing::debug;
 use tracing::info;
-use tracing::warn;
 
 use self::audit::AuditTracker;
 use self::config::ControllerConfig;
@@ -213,7 +213,7 @@ pub struct SessionController {
     /// Receiver for agent events (None in embedded mode).
     pub(crate) event_rx: Option<broadcast::Receiver<AgentEvent>>,
     /// Session persistence.
-    pub session_manager: Option<SessionManager>,
+    pub session_ledger: Option<Box<dyn ControllerSessionLedger>>,
     /// Authoritative reducer state for the migrated no_std slice.
     pub(crate) core_state: CoreState,
     /// Loop engine for loop/retry iteration.
@@ -403,7 +403,7 @@ impl SessionController {
         Self {
             agent: Some(agent),
             event_rx: Some(event_rx),
-            session_manager: config.session_manager,
+            session_ledger: config.session_ledger,
             core_state: CoreState {
                 thinking_level: config.initial_thinking_level,
                 auto_test_enabled: config.auto_test_enabled,
@@ -447,7 +447,7 @@ impl SessionController {
         Self {
             agent: None,
             event_rx: None,
-            session_manager: config.session_manager,
+            session_ledger: config.session_ledger,
             core_state: CoreState {
                 thinking_level: config.initial_thinking_level,
                 auto_test_enabled: config.auto_test_enabled,
@@ -565,26 +565,11 @@ impl SessionController {
         {
             agent.abort();
         }
-        // Flush any unsaved messages to the session file before shutting down.
+        // Flush any unsaved messages to the session ledger before shutting down.
         // This catches in-progress turns that haven't hit AgentEnd yet.
-        if let Some(ref mut agent) = self.agent
-            && let Some(ref mut sm) = self.session_manager
-        {
-            let messages = agent.messages().to_vec();
-            let mut flushed = 0;
-            for msg in &messages {
-                if !sm.is_persisted(msg.id()) {
-                    let parent = sm.active_leaf_id().cloned();
-                    if let Err(e) = sm.append_message(msg.clone(), parent) {
-                        warn!("shutdown flush failed: {e}");
-                    } else {
-                        flushed += 1;
-                    }
-                }
-            }
-            if flushed > 0 {
-                info!("session {}: flushed {flushed} unsaved messages on shutdown", self.session_id);
-            }
+        let flushed = self.flush_agent_messages_on_shutdown();
+        if flushed > 0 {
+            info!("session {}: flushed {flushed} unsaved messages on shutdown", self.session_id);
         }
         if let Some(ref service) = self.hook_service {
             debug!("firing SessionEnd hook");
@@ -632,16 +617,6 @@ impl SessionController {
     /// responds with `ConfirmBash`, the receiver resolves.
     pub fn register_bash_confirm(&mut self) -> (String, tokio::sync::oneshot::Receiver<bool>) {
         self.bash_confirms.register()
-    }
-
-    /// Access the session manager (for branch/merge operations).
-    pub fn session_manager(&self) -> Option<&SessionManager> {
-        self.session_manager.as_ref()
-    }
-
-    /// Mutably access the session manager (for branch/merge operations).
-    pub fn session_manager_mut(&mut self) -> Option<&mut SessionManager> {
-        self.session_manager.as_mut()
     }
 
     /// Apply the authoritative core-state snapshot back onto controller mirrors.
