@@ -9,34 +9,18 @@
 
 use std::collections::BTreeSet;
 
+pub use clanker_message::DynamicRuntimeActionKind;
+pub use clanker_message::DynamicRuntimeActionReason;
+pub use clanker_message::DynamicRuntimeActionStatus;
+pub use clanker_message::DynamicRuntimeKind;
+pub use clanker_message::DynamicRuntimeRedactionClass;
+pub use clanker_message::WasmToolExecutionStatus;
 use clankers_artifacts::ArtifactHash;
 use serde::Deserialize;
 use serde::Serialize;
 
 pub const DYNAMIC_RUNTIME_ACTION_SCHEMA: &str = "clankers.dynamic_runtime.action.v1";
 pub const DYNAMIC_RUNTIME_RECEIPT_SCHEMA: &str = "clankers.dynamic_runtime.action_receipt.v1";
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum DynamicRuntimeKind {
-    SteelScheme,
-    Wasm,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum DynamicRuntimeActionKind {
-    HostFunction,
-    Tool,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum DynamicRuntimeRedactionClass {
-    PublicSummary,
-    MetadataOnly,
-    SecretBearing,
-}
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct DynamicRuntimeActionEnvelope {
@@ -198,13 +182,6 @@ pub struct WasmToolExecutionRequest {
     pub input_schema: String,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum WasmToolExecutionStatus {
-    Completed,
-    Blocked,
-}
-
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct WasmToolExecutionReceipt {
     pub status: WasmToolExecutionStatus,
@@ -221,33 +198,6 @@ pub struct CrossLayerFixtureReceipt {
     pub nickel_profile_validated: bool,
     pub steel_route_receipt: FakeSteelOrchestrationReceipt,
     pub wasm_execution_receipt: WasmToolExecutionReceipt,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum DynamicRuntimeActionStatus {
-    Allowed,
-    PolicyDenied,
-    UcanDenied,
-    Disabled,
-    InvalidEnvelope,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum DynamicRuntimeActionReason {
-    Ready,
-    InvalidSchema,
-    MissingRequiredField,
-    UnsupportedRuntimeProfile,
-    UnsupportedAction,
-    DisabledAction,
-    MissingSessionCapability,
-    MissingUcanAbility,
-    SecretBearingInput,
-    InputTooLarge,
-    UnsafeReceiptDestination,
-    UnsafeTargetResource,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

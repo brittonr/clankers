@@ -710,6 +710,68 @@ pub enum RemoteExecutionTarget {
     RemoteDaemon,
 }
 
+/// Dynamic runtime implementation kind.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum DynamicRuntimeKind {
+    SteelScheme,
+    Wasm,
+}
+
+/// Dynamic runtime action kind.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum DynamicRuntimeActionKind {
+    HostFunction,
+    Tool,
+}
+
+/// Dynamic runtime redaction policy for input material.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum DynamicRuntimeRedactionClass {
+    PublicSummary,
+    MetadataOnly,
+    SecretBearing,
+}
+
+/// Dynamic runtime authorization result status.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum DynamicRuntimeActionStatus {
+    Allowed,
+    PolicyDenied,
+    UcanDenied,
+    Disabled,
+    InvalidEnvelope,
+}
+
+/// Dynamic runtime authorization reason code.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum DynamicRuntimeActionReason {
+    Ready,
+    InvalidSchema,
+    MissingRequiredField,
+    UnsupportedRuntimeProfile,
+    UnsupportedAction,
+    DisabledAction,
+    MissingSessionCapability,
+    MissingUcanAbility,
+    SecretBearingInput,
+    InputTooLarge,
+    UnsafeReceiptDestination,
+    UnsafeTargetResource,
+}
+
+/// Wasm tool execution result status.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum WasmToolExecutionStatus {
+    Completed,
+    Blocked,
+}
+
 /// Policy for handling tool-name collisions while building a tool catalog.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -1224,6 +1286,51 @@ mod tests {
         let parsed_target: RemoteExecutionTarget = serde_json::from_str(&target)
             .expect("target should deserialize");
         assert_eq!(parsed_target, RemoteExecutionTarget::RemoteDaemon);
+    }
+
+    #[test]
+    fn dynamic_runtime_selector_status_dtos_roundtrip_preserve_snake_case() {
+        let runtime = serde_json::to_string(&DynamicRuntimeKind::SteelScheme)
+            .expect("runtime kind should serialize");
+        assert_eq!(runtime, r#""steel_scheme""#);
+        let parsed_runtime: DynamicRuntimeKind = serde_json::from_str(&runtime)
+            .expect("runtime kind should deserialize");
+        assert_eq!(parsed_runtime, DynamicRuntimeKind::SteelScheme);
+
+        let action = serde_json::to_string(&DynamicRuntimeActionKind::HostFunction)
+            .expect("action kind should serialize");
+        assert_eq!(action, r#""host_function""#);
+        let parsed_action: DynamicRuntimeActionKind = serde_json::from_str(&action)
+            .expect("action kind should deserialize");
+        assert_eq!(parsed_action, DynamicRuntimeActionKind::HostFunction);
+
+        let redaction = serde_json::to_string(&DynamicRuntimeRedactionClass::MetadataOnly)
+            .expect("redaction class should serialize");
+        assert_eq!(redaction, r#""metadata_only""#);
+        let parsed_redaction: DynamicRuntimeRedactionClass = serde_json::from_str(&redaction)
+            .expect("redaction class should deserialize");
+        assert_eq!(parsed_redaction, DynamicRuntimeRedactionClass::MetadataOnly);
+
+        let status = serde_json::to_string(&DynamicRuntimeActionStatus::UcanDenied)
+            .expect("status should serialize");
+        assert_eq!(status, r#""ucan_denied""#);
+        let parsed_status: DynamicRuntimeActionStatus = serde_json::from_str(&status)
+            .expect("status should deserialize");
+        assert_eq!(parsed_status, DynamicRuntimeActionStatus::UcanDenied);
+
+        let reason = serde_json::to_string(&DynamicRuntimeActionReason::UnsafeTargetResource)
+            .expect("reason should serialize");
+        assert_eq!(reason, r#""unsafe_target_resource""#);
+        let parsed_reason: DynamicRuntimeActionReason = serde_json::from_str(&reason)
+            .expect("reason should deserialize");
+        assert_eq!(parsed_reason, DynamicRuntimeActionReason::UnsafeTargetResource);
+
+        let wasm = serde_json::to_string(&WasmToolExecutionStatus::Completed)
+            .expect("wasm status should serialize");
+        assert_eq!(wasm, r#""completed""#);
+        let parsed_wasm: WasmToolExecutionStatus = serde_json::from_str(&wasm)
+            .expect("wasm status should deserialize");
+        assert_eq!(parsed_wasm, WasmToolExecutionStatus::Completed);
     }
 
     #[test]
