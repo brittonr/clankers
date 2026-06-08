@@ -3,6 +3,7 @@
 use serde::Deserialize;
 use serde::Serialize;
 
+pub use clanker_message::PluginSummary;
 pub use clanker_message::ToolInfo;
 
 fn default_empty_string_vec() -> Vec<String> {
@@ -219,18 +220,4 @@ pub enum DaemonEvent {
     HistoryBlock { block: serde_json::Value },
     /// History replay is complete.
     HistoryEnd,
-}
-
-/// Summary of a loaded plugin.
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
-pub struct PluginSummary {
-    pub name: String,
-    pub version: String,
-    pub state: String,
-    pub tools: Vec<String>,
-    pub permissions: Vec<String>,
-    #[serde(default = "default_none_string")]
-    pub kind: Option<String>,
-    #[serde(default = "default_none_string")]
-    pub last_error: Option<String>,
 }
