@@ -33,6 +33,8 @@ pub use content::StopReason;
 pub use contracts::DaemonStatus;
 pub use contracts::ProviderMessage;
 pub use contracts::ProviderMessageRole;
+pub use contracts::ProviderModelFailure;
+pub use contracts::ProviderModelStatus;
 pub use contracts::ProviderStreamEvent;
 pub use contracts::RuntimeRetryRequest;
 pub use contracts::RuntimeToolResponse;

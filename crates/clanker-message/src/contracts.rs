@@ -313,6 +313,64 @@ pub enum ProviderStreamEvent {
     },
 }
 
+/// Provider model call status exchanged with host model adapters.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ProviderModelStatus {
+    Completed,
+    RetryableFailure,
+    TerminalFailure,
+    Cancelled,
+}
+
+/// Provider model failure details exchanged with host model adapters.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ProviderModelFailure {
+    pub message: String,
+    pub status: Option<u16>,
+    pub retryable: bool,
+}
+
+impl ProviderModelFailure {
+    #[must_use]
+    pub fn retryable(message: impl Into<String>, status: Option<u16>) -> Self {
+        Self {
+            message: sanitize_short_public_value(message.into()),
+            status,
+            retryable: true,
+        }
+    }
+
+    #[must_use]
+    pub fn terminal(message: impl Into<String>, status: Option<u16>) -> Self {
+        Self {
+            message: sanitize_short_public_value(message.into()),
+            status,
+            retryable: false,
+        }
+    }
+}
+
+fn sanitize_short_public_value(value: String) -> String {
+    let lower = value.to_ascii_lowercase();
+    let contains_secret = [
+        "token",
+        "secret",
+        "password",
+        "api_key",
+        "authorization",
+        "bearer",
+        "cookie",
+    ]
+    .iter()
+    .any(|marker| lower.contains(marker));
+    if contains_secret {
+        "[REDACTED]".to_string()
+    } else {
+        value.chars().take(160).collect()
+    }
+}
+
 /// Runtime tool execution status returned by host tool adapters.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -527,6 +585,28 @@ mod tests {
         assert!(json.contains(r#""type":"usage""#));
         let parsed: ProviderStreamEvent = serde_json::from_str(&json).expect("event should deserialize");
         assert!(matches!(parsed, ProviderStreamEvent::Usage { stop_reason: Some(crate::content::StopReason::Stop), .. }));
+    }
+
+    #[test]
+    fn provider_model_failure_helpers_sanitize_and_mark_retryability() {
+        let retryable = ProviderModelFailure::retryable("bearer token leaked", Some(429));
+        assert_eq!(retryable.message, "[REDACTED]");
+        assert_eq!(retryable.status, Some(429));
+        assert!(retryable.retryable);
+
+        let terminal = ProviderModelFailure::terminal("permanent failure", Some(400));
+        assert_eq!(terminal.message, "permanent failure");
+        assert_eq!(terminal.status, Some(400));
+        assert!(!terminal.retryable);
+    }
+
+    #[test]
+    fn provider_model_status_roundtrip_preserves_snake_case() {
+        let json = serde_json::to_string(&ProviderModelStatus::RetryableFailure)
+            .expect("status should serialize");
+        assert_eq!(json, r#""retryable_failure""#);
+        let parsed: ProviderModelStatus = serde_json::from_str(&json).expect("status should deserialize");
+        assert_eq!(parsed, ProviderModelStatus::RetryableFailure);
     }
 
     #[test]

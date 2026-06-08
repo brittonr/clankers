@@ -8,6 +8,8 @@ use chrono::Utc;
 use clanker_message::Content;
 pub use clanker_message::ProviderMessage;
 pub use clanker_message::ProviderMessageRole;
+pub use clanker_message::ProviderModelFailure;
+pub use clanker_message::ProviderModelStatus;
 pub use clanker_message::ProviderStreamEvent;
 use clanker_message::StopReason;
 use clanker_message::ThinkingConfig;
@@ -241,42 +243,6 @@ impl ProviderModelRequest {
             no_cache: false,
             cache_ttl: None,
             metadata: EventMetadata::empty(),
-        }
-    }
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum ProviderModelStatus {
-    Completed,
-    RetryableFailure,
-    TerminalFailure,
-    Cancelled,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct ProviderModelFailure {
-    pub message: String,
-    pub status: Option<u16>,
-    pub retryable: bool,
-}
-
-impl ProviderModelFailure {
-    #[must_use]
-    pub fn retryable(message: impl Into<String>, status: Option<u16>) -> Self {
-        Self {
-            message: sanitize_metadata_value(message.into()),
-            status,
-            retryable: true,
-        }
-    }
-
-    #[must_use]
-    pub fn terminal(message: impl Into<String>, status: Option<u16>) -> Self {
-        Self {
-            message: sanitize_metadata_value(message.into()),
-            status,
-            retryable: false,
         }
     }
 }
