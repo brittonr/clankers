@@ -2,11 +2,23 @@
 
 use std::sync::Arc;
 
-use clankers_core::CoreThinkingLevel;
+pub use clankers_core::CoreThinkingLevel;
 
 use crate::ControllerHookService;
 use crate::ControllerPersistenceService;
 use crate::ControllerSessionLedger;
+
+/// Convert public message-layer thinking settings to the controller's reducer level.
+#[must_use]
+pub fn thinking_level_from_message(level: clanker_message::ThinkingLevel) -> CoreThinkingLevel {
+    match level {
+        clanker_message::ThinkingLevel::Off => CoreThinkingLevel::Off,
+        clanker_message::ThinkingLevel::Low => CoreThinkingLevel::Low,
+        clanker_message::ThinkingLevel::Medium => CoreThinkingLevel::Medium,
+        clanker_message::ThinkingLevel::High => CoreThinkingLevel::High,
+        clanker_message::ThinkingLevel::Max => CoreThinkingLevel::Max,
+    }
+}
 
 /// Configuration needed to create a SessionController.
 #[derive(Default)]
@@ -35,4 +47,33 @@ pub struct ControllerConfig {
     pub auto_test_command: Option<String>,
     /// Whether auto-test is enabled on startup.
     pub auto_test_enabled: bool,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn thinking_level_from_message_matches_core_reducer_levels() {
+        assert_eq!(
+            thinking_level_from_message(clanker_message::ThinkingLevel::Off),
+            CoreThinkingLevel::Off
+        );
+        assert_eq!(
+            thinking_level_from_message(clanker_message::ThinkingLevel::Low),
+            CoreThinkingLevel::Low
+        );
+        assert_eq!(
+            thinking_level_from_message(clanker_message::ThinkingLevel::Medium),
+            CoreThinkingLevel::Medium
+        );
+        assert_eq!(
+            thinking_level_from_message(clanker_message::ThinkingLevel::High),
+            CoreThinkingLevel::High
+        );
+        assert_eq!(
+            thinking_level_from_message(clanker_message::ThinkingLevel::Max),
+            CoreThinkingLevel::Max
+        );
+    }
 }

@@ -31,14 +31,10 @@ use crate::tools::Tool;
 
 // ── Thinking setup ──────────────────────────────────────────────────────────
 
-pub(crate) fn core_thinking_level(level: clanker_message::ThinkingLevel) -> clankers_core::CoreThinkingLevel {
-    match level {
-        clanker_message::ThinkingLevel::Off => clankers_core::CoreThinkingLevel::Off,
-        clanker_message::ThinkingLevel::Low => clankers_core::CoreThinkingLevel::Low,
-        clanker_message::ThinkingLevel::Medium => clankers_core::CoreThinkingLevel::Medium,
-        clanker_message::ThinkingLevel::High => clankers_core::CoreThinkingLevel::High,
-        clanker_message::ThinkingLevel::Max => clankers_core::CoreThinkingLevel::Max,
-    }
+pub(crate) fn core_thinking_level(
+    level: clanker_message::ThinkingLevel,
+) -> clankers_controller::config::CoreThinkingLevel {
+    clankers_controller::config::thinking_level_from_message(level)
 }
 
 pub(crate) fn apply_thinking_settings(

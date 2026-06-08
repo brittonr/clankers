@@ -1497,7 +1497,6 @@ dependencies = [
  "clankers-autoresearch",
  "clankers-config",
  "clankers-controller",
- "clankers-core",
  "clankers-db",
  "clankers-hooks",
  "clankers-matrix",

@@ -1,7 +1,7 @@
 {
   "artifact_hashes": [
     {
-      "blake3": "cee261d8889c229331eb106c8405eb3d46db7307cdeab7573df482370bef92f1",
+      "blake3": "32c03d01959541f7abf984b1bf39ca67248e336e9965f1872ea3c37bad50ca64",
       "path": "policy/lego-architecture/dependency-ownership-baseline.json"
     },
     {
@@ -541,7 +541,6 @@
         "clankers-autoresearch",
         "clankers-config",
         "clankers-controller",
-        "clankers-core",
         "clankers-db",
         "clankers-hooks",
         "clankers-matrix",
@@ -562,7 +561,7 @@
         "clankers-util",
         "clankers-zellij"
       ],
-      "internal_dependency_count": 29,
+      "internal_dependency_count": 28,
       "owner": "product-shell wiring only; reusable behavior must move behind workspace brick APIs",
       "owner_receipts": [
         {
@@ -627,13 +626,6 @@
           "owner_category": "session orchestration adapter",
           "source_crate": "clankers",
           "target_crate": "clankers-controller"
-        },
-        {
-          "adapter_module": "src/modes/session_command_policy.rs",
-          "convergence_condition": "core reducer policy remains in clankers-core",
-          "owner_category": "control-state bridge",
-          "source_crate": "clankers",
-          "target_crate": "clankers-core"
         },
         {
           "adapter_module": "src/runtime_services.rs",

@@ -99,7 +99,6 @@ clankers-ucan = { version = "0.1.0", path = "crates/clankers-ucan" }
 basalt = { workspace = true }
 ucan = { workspace = true }
 clankers-config = { version = "0.1.0", path = "crates/clankers-config" }
-clankers-core = { version = "0.1.0", path = "crates/clankers-core" }
 clankers-db = { version = "0.1.0", path = "crates/clankers-db" }
 clankers-hooks = { version = "0.1.0", path = "crates/clankers-hooks" }
 clanker-loop = { workspace = true }
