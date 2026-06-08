@@ -32,6 +32,8 @@ pub use content::ImageSource;
 pub use content::StopReason;
 pub use contracts::AuthStoreAccessRequest;
 pub use contracts::AuthStoreOperation;
+pub use contracts::ConfirmationAction;
+pub use contracts::ConfirmationDecision;
 pub use contracts::CredentialPoolRequest;
 pub use contracts::DaemonStatus;
 pub use contracts::EffectAbilityClass;

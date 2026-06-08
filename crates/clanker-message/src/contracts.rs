@@ -371,6 +371,41 @@ fn sanitize_short_public_value(value: String) -> String {
     }
 }
 
+/// Host confirmation action requested before side effects.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ConfirmationAction {
+    RunCommand,
+    MutateWorkspace,
+    UseNetwork,
+    Custom(String),
+}
+
+/// Host confirmation decision.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ConfirmationDecision {
+    pub approved: bool,
+    pub reason: String,
+}
+
+impl ConfirmationDecision {
+    #[must_use]
+    pub fn approve(reason: impl Into<String>) -> Self {
+        Self {
+            approved: true,
+            reason: sanitize_short_public_value(reason.into()),
+        }
+    }
+
+    #[must_use]
+    pub fn deny(reason: impl Into<String>) -> Self {
+        Self {
+            approved: false,
+            reason: sanitize_short_public_value(reason.into()),
+        }
+    }
+}
+
 /// Safe runtime error class for event and receipt projection.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -786,6 +821,25 @@ mod tests {
         assert_eq!(json, r#""retryable_failure""#);
         let parsed: ProviderModelStatus = serde_json::from_str(&json).expect("status should deserialize");
         assert_eq!(parsed, ProviderModelStatus::RetryableFailure);
+    }
+
+    #[test]
+    fn confirmation_action_custom_roundtrip_preserves_payload() {
+        let action = ConfirmationAction::Custom("deploy".to_string());
+        let json = serde_json::to_string(&action).expect("action should serialize");
+        let parsed: ConfirmationAction = serde_json::from_str(&json).expect("action should deserialize");
+        assert_eq!(parsed, action);
+    }
+
+    #[test]
+    fn confirmation_decision_helpers_sanitize_secret_reasons() {
+        let approved = ConfirmationDecision::approve("visible");
+        assert!(approved.approved);
+        assert_eq!(approved.reason, "visible");
+
+        let denied = ConfirmationDecision::deny("bearer token leaked");
+        assert!(!denied.approved);
+        assert_eq!(denied.reason, "[REDACTED]");
     }
 
     #[test]

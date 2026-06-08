@@ -3,6 +3,8 @@
 use std::future::Future;
 use std::pin::Pin;
 
+pub use clanker_message::ConfirmationAction;
+pub use clanker_message::ConfirmationDecision;
 use serde::Deserialize;
 use serde::Serialize;
 use uuid::Uuid;
@@ -30,39 +32,6 @@ impl ConfirmationRequest {
             summary: sanitize_metadata_value(summary.into()),
             metadata: EventMetadata::empty(),
             timeout_ms: None,
-        }
-    }
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum ConfirmationAction {
-    RunCommand,
-    MutateWorkspace,
-    UseNetwork,
-    Custom(String),
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct ConfirmationDecision {
-    pub approved: bool,
-    pub reason: String,
-}
-
-impl ConfirmationDecision {
-    #[must_use]
-    pub fn approve(reason: impl Into<String>) -> Self {
-        Self {
-            approved: true,
-            reason: sanitize_metadata_value(reason.into()),
-        }
-    }
-
-    #[must_use]
-    pub fn deny(reason: impl Into<String>) -> Self {
-        Self {
-            approved: false,
-            reason: sanitize_metadata_value(reason.into()),
         }
     }
 }
