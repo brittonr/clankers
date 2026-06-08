@@ -17,6 +17,8 @@ pub use clanker_message::ProviderMessageRole;
 pub use clanker_message::ProviderModelFailure;
 pub use clanker_message::ProviderModelStatus;
 pub use clanker_message::ProviderStreamEvent;
+pub use clanker_message::ResolvedSkillSnippet;
+pub use clanker_message::SkillResolutionRequest;
 use clanker_message::StopReason;
 use clanker_message::ThinkingConfig;
 use clanker_message::ToolDefinition;
@@ -166,23 +168,10 @@ pub trait SkillStore: Send + Sync {
     }
 }
 
-#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
-pub struct SkillResolutionRequest {
-    pub requested: Vec<String>,
-}
-
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SkillResolution {
     pub snippets: Vec<ResolvedSkillSnippet>,
     pub receipt: ExtensionReceipt,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct ResolvedSkillSnippet {
-    pub name: String,
-    pub description: String,
-    pub content: String,
-    pub source: String,
 }
 pub trait PluginStore: Send + Sync {
     fn capability(&self) -> &'static str;

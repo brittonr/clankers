@@ -395,6 +395,21 @@ pub enum AuthStoreOperation {
     PendingLoginVerifier,
 }
 
+/// Request to resolve named skills from a host skill service.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SkillResolutionRequest {
+    pub requested: Vec<String>,
+}
+
+/// Resolved skill snippet returned by a host skill service.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ResolvedSkillSnippet {
+    pub name: String,
+    pub description: String,
+    pub content: String,
+    pub source: String,
+}
+
 /// Kind of host extension runtime.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -788,6 +803,29 @@ mod tests {
         assert_eq!(json, r#""pending_login_verifier""#);
         let parsed: AuthStoreOperation = serde_json::from_str(&json).expect("operation should deserialize");
         assert_eq!(parsed, AuthStoreOperation::PendingLoginVerifier);
+    }
+
+    #[test]
+    fn skill_resolution_request_roundtrip_preserves_requested_order() {
+        let request = SkillResolutionRequest {
+            requested: vec!["rust".to_string(), "review".to_string()],
+        };
+        let json = serde_json::to_string(&request).expect("request should serialize");
+        let parsed: SkillResolutionRequest = serde_json::from_str(&json).expect("request should deserialize");
+        assert_eq!(parsed.requested, vec!["rust", "review"]);
+    }
+
+    #[test]
+    fn resolved_skill_snippet_roundtrip_preserves_source() {
+        let snippet = ResolvedSkillSnippet {
+            name: "rust".to_string(),
+            description: "Rust instructions".to_string(),
+            content: "Prefer focused tests".to_string(),
+            source: "host".to_string(),
+        };
+        let json = serde_json::to_string(&snippet).expect("snippet should serialize");
+        let parsed: ResolvedSkillSnippet = serde_json::from_str(&json).expect("snippet should deserialize");
+        assert_eq!(parsed, snippet);
     }
 
     #[test]
