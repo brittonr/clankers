@@ -16,6 +16,8 @@ use chrono::Utc;
 pub use clankers_tool_host::process_jobs::AdoptProcessJobRequest;
 pub use clankers_tool_host::process_jobs::BackendCapabilities;
 pub use clankers_tool_host::process_jobs::BackendRef;
+pub use clankers_tool_host::process_jobs::ExternalProcessJobBackendState;
+pub use clankers_tool_host::process_jobs::ExternalProcessJobReconciliationFacts;
 pub use clankers_tool_host::process_jobs::GarbageCollectProcessJobsRequest;
 pub use clankers_tool_host::process_jobs::ListProcessJobsRequest;
 pub use clankers_tool_host::process_jobs::MAX_PROCESS_JOB_WATCH_PATTERN_LEN;
@@ -139,27 +141,6 @@ pub struct ProcessJobReconciliationOutcome {
     pub status: ProcessJobStatus,
     pub log_refs: Vec<ProcessJobLogRef>,
     pub reason: Option<String>,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case", tag = "state")]
-pub enum ExternalProcessJobBackendState {
-    Running,
-    Succeeded { exit_code: Option<i32> },
-    Failed { exit_code: Option<i32>, reason: String },
-    Missing,
-    BackendUnavailable { reason: String },
-    Ambiguous { reason: String },
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct ExternalProcessJobReconciliationFacts {
-    pub id: ProcessJobId,
-    pub backend: ProcessJobBackendKind,
-    pub expected_backend_ref: BackendRef,
-    pub observed_backend_ref: Option<BackendRef>,
-    pub state: ExternalProcessJobBackendState,
-    pub log_refs: Vec<ProcessJobLogRef>,
 }
 
 #[must_use]

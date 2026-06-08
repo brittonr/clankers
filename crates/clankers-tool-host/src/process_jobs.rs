@@ -802,6 +802,27 @@ impl NativeProcessJobIdentity {
     }
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case", tag = "state")]
+pub enum ExternalProcessJobBackendState {
+    Running,
+    Succeeded { exit_code: Option<i32> },
+    Failed { exit_code: Option<i32>, reason: String },
+    Missing,
+    BackendUnavailable { reason: String },
+    Ambiguous { reason: String },
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ExternalProcessJobReconciliationFacts {
+    pub id: ProcessJobId,
+    pub backend: ProcessJobBackendKind,
+    pub expected_backend_ref: BackendRef,
+    pub observed_backend_ref: Option<BackendRef>,
+    pub state: ExternalProcessJobBackendState,
+    pub log_refs: Vec<ProcessJobLogRef>,
+}
+
 /// Service-level process/job summary safe for list/status surfaces.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ProcessJobSummary {
@@ -2078,6 +2099,23 @@ mod tests {
         assert!(!ProcessJobReconciliationState::LostAfterRestart.is_adopted());
         assert!(ProcessJobReconciliationState::IdentityMismatch.is_fail_closed());
         assert!(ProcessJobReconciliationState::BackendUnavailable.is_fail_closed());
+    }
+
+    #[test]
+    fn external_reconciliation_facts_roundtrip_preserves_backend_state() {
+        let facts = ExternalProcessJobReconciliationFacts {
+            id: ProcessJobId("proc".to_string()),
+            backend: ProcessJobBackendKind::Pueue,
+            expected_backend_ref: BackendRef("pueue:7".to_string()),
+            observed_backend_ref: Some(BackendRef("pueue:7".to_string())),
+            state: ExternalProcessJobBackendState::Succeeded { exit_code: Some(0) },
+            log_refs: Vec::new(),
+        };
+        let json = serde_json::to_string(&facts).expect("facts should serialize");
+        assert!(json.contains("succeeded"));
+        let parsed: ExternalProcessJobReconciliationFacts = serde_json::from_str(&json)
+            .expect("facts should deserialize");
+        assert_eq!(parsed, facts);
     }
 
     #[test]
