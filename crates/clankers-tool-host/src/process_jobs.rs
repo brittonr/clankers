@@ -788,6 +788,25 @@ impl ProcessJobReconciliationState {
     }
 }
 
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ProcessJobReconciliationReport {
+    pub checked: usize,
+    pub updated: usize,
+    pub unavailable: usize,
+    pub skipped_terminal: usize,
+}
+
+impl ProcessJobReconciliationReport {
+    pub fn record_observation(&mut self, state: ProcessJobReconciliationState) {
+        self.checked += 1;
+        if matches!(state, ProcessJobReconciliationState::BackendUnavailable) {
+            self.unavailable += 1;
+        } else {
+            self.updated += 1;
+        }
+    }
+}
+
 /// Log continuity after reconciliation. Status and log ownership can degrade independently.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -2193,6 +2212,19 @@ mod tests {
         assert_eq!(projection.completed.len(), 1);
         assert_eq!(projection.completed[0].lifecycle, ProcessJobLifecycleBucket::Completed);
         assert!(!projection.truncated_completed);
+    }
+
+    #[test]
+    fn reconciliation_report_counts_observations_and_backend_unavailability() {
+        let mut report = ProcessJobReconciliationReport::default();
+        report.record_observation(ProcessJobReconciliationState::Running);
+        report.record_observation(ProcessJobReconciliationState::BackendUnavailable);
+        report.skipped_terminal += 1;
+
+        assert_eq!(report.checked, 2);
+        assert_eq!(report.updated, 1);
+        assert_eq!(report.unavailable, 1);
+        assert_eq!(report.skipped_terminal, 1);
     }
 
     #[test]

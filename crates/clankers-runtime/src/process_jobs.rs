@@ -80,6 +80,7 @@ pub use clankers_tool_host::process_jobs::ProcessJobProjectionItem;
 pub use clankers_tool_host::process_jobs::ProcessJobReceipt;
 pub use clankers_tool_host::process_jobs::ProcessJobReceiptCommon;
 pub use clankers_tool_host::process_jobs::ProcessJobReceiptPayload;
+pub use clankers_tool_host::process_jobs::ProcessJobReconciliationReport;
 pub use clankers_tool_host::process_jobs::ProcessJobReconciliationState;
 pub use clankers_tool_host::process_jobs::ProcessJobRedactionPolicy;
 pub use clankers_tool_host::process_jobs::ProcessJobReleasedLogRef;
@@ -881,25 +882,6 @@ pub trait ProcessJobStore: Send + Sync {
     ) -> Result<Vec<ProcessJobNotificationEvent>, RuntimeError>;
 }
 
-#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
-pub struct ProcessJobReconciliationReport {
-    pub checked: usize,
-    pub updated: usize,
-    pub unavailable: usize,
-    pub skipped_terminal: usize,
-}
-
-impl ProcessJobReconciliationReport {
-    fn record(&mut self, state: ProcessJobReconciliationState) {
-        self.checked += 1;
-        if matches!(state, ProcessJobReconciliationState::BackendUnavailable) {
-            self.unavailable += 1;
-        } else {
-            self.updated += 1;
-        }
-    }
-}
-
 pub async fn reconcile_persisted_process_jobs(
     store: &dyn ProcessJobStore,
     backends: &[&dyn ProcessJobBackend],
@@ -931,13 +913,13 @@ pub async fn reconcile_persisted_process_jobs(
             }
             .into_summary_update(summary, Utc::now());
             store.upsert(updated).await?;
-            report.record(ProcessJobReconciliationState::BackendUnavailable);
+            report.record_observation(ProcessJobReconciliationState::BackendUnavailable);
             continue;
         };
         let outcome = backend.reconcile(summary.clone()).await?;
         let state = outcome.state;
         store.upsert(outcome.into_summary_update(summary, Utc::now())).await?;
-        report.record(state);
+        report.record_observation(state);
     }
     Ok(report)
 }
