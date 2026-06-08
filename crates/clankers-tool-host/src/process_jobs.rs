@@ -1829,6 +1829,38 @@ pub struct ProcessJobResourcePolicy {
     pub max_log_bytes: Option<u64>,
 }
 
+/// Policy bounds for resolving project-defined process/job profiles.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ProjectProcessJobProfilePolicy {
+    pub default_backend: ProcessJobBackendKind,
+    pub allowed_backends: Vec<ProcessJobBackendKind>,
+    pub max_timeout: Option<Duration>,
+    pub max_memory_bytes: Option<u64>,
+    pub max_cpu_quota_percent: Option<u32>,
+    pub max_log_bytes: Option<u64>,
+    pub allowed_env_prefixes: Vec<String>,
+    pub allowed_cwd_prefixes: Vec<PathBuf>,
+    pub allowed_writable_path_prefixes: Vec<PathBuf>,
+    pub policy_source: String,
+}
+
+impl Default for ProjectProcessJobProfilePolicy {
+    fn default() -> Self {
+        Self {
+            default_backend: ProcessJobBackendKind::Native,
+            allowed_backends: vec![ProcessJobBackendKind::Native],
+            max_timeout: None,
+            max_memory_bytes: None,
+            max_cpu_quota_percent: None,
+            max_log_bytes: None,
+            allowed_env_prefixes: Vec::new(),
+            allowed_cwd_prefixes: Vec::new(),
+            allowed_writable_path_prefixes: Vec::new(),
+            policy_source: "default".to_string(),
+        }
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum ProcessJobRetentionClass {
@@ -2415,6 +2447,15 @@ mod tests {
         assert_eq!(policy.memory_max_bytes, Some(1024));
         assert_eq!(policy.cpu_quota_percent, Some(50));
         assert_eq!(policy.max_log_bytes, Some(4096));
+    }
+
+    #[test]
+    fn project_process_job_profile_policy_defaults_to_native_only() {
+        let policy = ProjectProcessJobProfilePolicy::default();
+        assert_eq!(policy.default_backend, ProcessJobBackendKind::Native);
+        assert_eq!(policy.allowed_backends, vec![ProcessJobBackendKind::Native]);
+        assert_eq!(policy.policy_source, "default");
+        assert!(policy.allowed_env_prefixes.is_empty());
     }
 
     #[test]

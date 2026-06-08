@@ -73,6 +73,7 @@ pub use clankers_tool_host::process_jobs::ProcessJobNotificationRedactionTarget;
 pub use clankers_tool_host::process_jobs::ProcessJobOperation;
 pub use clankers_tool_host::process_jobs::ProcessJobOwnerScope;
 pub use clankers_tool_host::process_jobs::ProcessJobProfileReceiptMetadata;
+pub use clankers_tool_host::process_jobs::ProjectProcessJobProfilePolicy;
 pub use clankers_tool_host::process_jobs::ProcessJobProjectionBounds;
 pub use clankers_tool_host::process_jobs::ProcessJobProjectionItem;
 pub use clankers_tool_host::process_jobs::ProcessJobReceipt;
@@ -352,38 +353,6 @@ pub const PROCESS_JOB_PROFILE_SCHEMA_VERSION: u32 = 1;
 
 fn default_process_job_profile_schema_version() -> u32 {
     PROCESS_JOB_PROFILE_SCHEMA_VERSION
-}
-
-/// Policy bounds for resolving project-defined process/job profiles.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct ProjectProcessJobProfilePolicy {
-    pub default_backend: ProcessJobBackendKind,
-    pub allowed_backends: Vec<ProcessJobBackendKind>,
-    pub max_timeout: Option<Duration>,
-    pub max_memory_bytes: Option<u64>,
-    pub max_cpu_quota_percent: Option<u32>,
-    pub max_log_bytes: Option<u64>,
-    pub allowed_env_prefixes: Vec<String>,
-    pub allowed_cwd_prefixes: Vec<PathBuf>,
-    pub allowed_writable_path_prefixes: Vec<PathBuf>,
-    pub policy_source: String,
-}
-
-impl Default for ProjectProcessJobProfilePolicy {
-    fn default() -> Self {
-        Self {
-            default_backend: ProcessJobBackendKind::Native,
-            allowed_backends: vec![ProcessJobBackendKind::Native],
-            max_timeout: None,
-            max_memory_bytes: None,
-            max_cpu_quota_percent: None,
-            max_log_bytes: None,
-            allowed_env_prefixes: Vec::new(),
-            allowed_cwd_prefixes: Vec::new(),
-            allowed_writable_path_prefixes: Vec::new(),
-            policy_source: "default".to_string(),
-        }
-    }
 }
 
 /// Named project process/job profile collection. Parsing this type is pure and
