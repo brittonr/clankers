@@ -2,7 +2,19 @@
 
 use std::collections::BTreeSet;
 
+pub use clanker_message::AssembledPrompt;
+pub use clanker_message::ContextReferenceKind;
+pub use clanker_message::ContextReferenceRequest;
 use clanker_message::Content;
+pub use clanker_message::HostContext;
+pub use clanker_message::PromptAssemblyPolicy;
+pub use clanker_message::PromptProvenance;
+pub use clanker_message::PromptSection;
+pub use clanker_message::PromptSourceKind;
+pub use clanker_message::PromptSourceRequest;
+pub use clanker_message::PromptSources;
+pub use clanker_message::SkillSnippet;
+pub use clanker_message::UnsupportedContextReference;
 use clanker_message::Usage;
 use serde::Deserialize;
 use serde::Serialize;
@@ -268,12 +280,6 @@ pub trait PromptSourceService: Send + Sync + 'static {
     fn resolve_sources(&self, request: PromptSourceRequest) -> Result<PromptSources, RuntimeError>;
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct PromptSourceRequest {
-    pub user_prompt: String,
-    pub policy: PromptAssemblyPolicy,
-}
-
 #[derive(Debug, Clone)]
 pub struct StaticPromptSourceService {
     sources: PromptSources,
@@ -318,116 +324,4 @@ impl PromptSourceService for DisabledPromptSourceService {
         let _ = request;
         Ok(PromptSources::default())
     }
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct PromptAssemblyPolicy {
-    pub allow_filesystem_discovery: bool,
-    pub context_references_enabled: bool,
-}
-
-impl PromptAssemblyPolicy {
-    #[must_use]
-    pub fn host_context_only() -> Self {
-        Self {
-            allow_filesystem_discovery: false,
-            context_references_enabled: false,
-        }
-    }
-
-    #[must_use]
-    pub fn desktop_default() -> Self {
-        Self {
-            allow_filesystem_discovery: true,
-            context_references_enabled: true,
-        }
-    }
-}
-
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
-pub struct PromptSources {
-    pub system_prompt: Option<String>,
-    pub host_context: Vec<HostContext>,
-    #[serde(default)]
-    pub filesystem_context: Vec<HostContext>,
-    pub filesystem_context_requested: bool,
-    pub context_references: Vec<ContextReferenceRequest>,
-    #[serde(default)]
-    pub skill_snippets: Vec<SkillSnippet>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct HostContext {
-    pub label: String,
-    pub content: String,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct SkillSnippet {
-    pub name: String,
-    pub content: String,
-    pub source: String,
-}
-
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct AssembledPrompt {
-    pub user_prompt: String,
-    pub sections: Vec<PromptSection>,
-    pub provenance: Vec<PromptProvenance>,
-    pub context_references_enabled: bool,
-    pub unsupported_context_references: Vec<UnsupportedContextReference>,
-}
-
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct PromptSection {
-    pub label: String,
-    pub content: String,
-}
-
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct PromptProvenance {
-    pub label: String,
-    pub source: PromptSourceKind,
-    pub safe_summary: String,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum PromptSourceKind {
-    Host,
-    Filesystem,
-    Skill,
-    Generated,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct ContextReferenceRequest {
-    pub label: String,
-    pub kind: ContextReferenceKind,
-}
-
-impl ContextReferenceRequest {
-    #[must_use]
-    pub fn new(label: impl Into<String>, kind: ContextReferenceKind) -> Self {
-        Self {
-            label: label.into(),
-            kind,
-        }
-    }
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum ContextReferenceKind {
-    File,
-    Directory,
-    Url,
-    Custom,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct UnsupportedContextReference {
-    pub label: String,
-    pub kind: ContextReferenceKind,
-    pub reason: String,
 }

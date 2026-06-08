@@ -445,6 +445,136 @@ pub struct ResolvedSkillSnippet {
     pub source: String,
 }
 
+/// Request to collect host prompt sources before prompt assembly.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PromptSourceRequest {
+    pub user_prompt: String,
+    pub policy: PromptAssemblyPolicy,
+}
+
+/// Prompt assembly feature policy supplied by the host.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PromptAssemblyPolicy {
+    pub allow_filesystem_discovery: bool,
+    pub context_references_enabled: bool,
+}
+
+impl PromptAssemblyPolicy {
+    #[must_use]
+    pub fn host_context_only() -> Self {
+        Self {
+            allow_filesystem_discovery: false,
+            context_references_enabled: false,
+        }
+    }
+
+    #[must_use]
+    pub fn desktop_default() -> Self {
+        Self {
+            allow_filesystem_discovery: true,
+            context_references_enabled: true,
+        }
+    }
+}
+
+/// Prompt source material returned by the host.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct PromptSources {
+    pub system_prompt: Option<String>,
+    pub host_context: Vec<HostContext>,
+    #[serde(default)]
+    pub filesystem_context: Vec<HostContext>,
+    pub filesystem_context_requested: bool,
+    pub context_references: Vec<ContextReferenceRequest>,
+    #[serde(default)]
+    pub skill_snippets: Vec<SkillSnippet>,
+}
+
+/// Host-supplied context block for prompt assembly.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct HostContext {
+    pub label: String,
+    pub content: String,
+}
+
+/// Skill snippet included in an assembled prompt.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SkillSnippet {
+    pub name: String,
+    pub content: String,
+    pub source: String,
+}
+
+/// Prompt assembled from host sources and user input.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct AssembledPrompt {
+    pub user_prompt: String,
+    pub sections: Vec<PromptSection>,
+    pub provenance: Vec<PromptProvenance>,
+    pub context_references_enabled: bool,
+    pub unsupported_context_references: Vec<UnsupportedContextReference>,
+}
+
+/// Named prompt section.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct PromptSection {
+    pub label: String,
+    pub content: String,
+}
+
+/// Provenance entry for an assembled prompt section.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct PromptProvenance {
+    pub label: String,
+    pub source: PromptSourceKind,
+    pub safe_summary: String,
+}
+
+/// Prompt source kind for provenance.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum PromptSourceKind {
+    Host,
+    Filesystem,
+    Skill,
+    Generated,
+}
+
+/// Request to resolve a context reference.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ContextReferenceRequest {
+    pub label: String,
+    pub kind: ContextReferenceKind,
+}
+
+impl ContextReferenceRequest {
+    #[must_use]
+    pub fn new(label: impl Into<String>, kind: ContextReferenceKind) -> Self {
+        Self {
+            label: label.into(),
+            kind,
+        }
+    }
+}
+
+/// Kind of context reference requested by prompt assembly.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ContextReferenceKind {
+    File,
+    Directory,
+    Url,
+    Custom,
+}
+
+/// Context reference rejected by host policy.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct UnsupportedContextReference {
+    pub label: String,
+    pub kind: ContextReferenceKind,
+    pub reason: String,
+}
+
 /// Kind of host extension runtime.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -880,6 +1010,74 @@ mod tests {
         let json = serde_json::to_string(&snippet).expect("snippet should serialize");
         let parsed: ResolvedSkillSnippet = serde_json::from_str(&json).expect("snippet should deserialize");
         assert_eq!(parsed, snippet);
+    }
+
+    #[test]
+    fn prompt_assembly_policy_preserves_host_defaults() {
+        let host_only = PromptAssemblyPolicy::host_context_only();
+        assert!(!host_only.allow_filesystem_discovery);
+        assert!(!host_only.context_references_enabled);
+
+        let desktop = PromptAssemblyPolicy::desktop_default();
+        assert!(desktop.allow_filesystem_discovery);
+        assert!(desktop.context_references_enabled);
+    }
+
+    #[test]
+    fn prompt_sources_roundtrip_preserves_context_references_and_defaults() {
+        let sources = PromptSources {
+            system_prompt: Some("system".to_string()),
+            host_context: vec![HostContext {
+                label: "host".to_string(),
+                content: "context".to_string(),
+            }],
+            filesystem_context_requested: true,
+            context_references: vec![ContextReferenceRequest::new("README.md", ContextReferenceKind::File)],
+            skill_snippets: vec![SkillSnippet {
+                name: "rust".to_string(),
+                content: "Prefer focused tests".to_string(),
+                source: "host".to_string(),
+            }],
+            ..PromptSources::default()
+        };
+        let json = serde_json::to_string(&sources).expect("sources should serialize");
+        let parsed: PromptSources = serde_json::from_str(&json).expect("sources should deserialize");
+        assert_eq!(parsed.context_references[0].kind, ContextReferenceKind::File);
+        assert_eq!(parsed.skill_snippets[0].source, "host");
+        assert!(parsed.filesystem_context.is_empty());
+    }
+
+    #[test]
+    fn assembled_prompt_roundtrip_preserves_provenance_and_unsupported_refs() {
+        let prompt = AssembledPrompt {
+            user_prompt: "hello".to_string(),
+            sections: vec![PromptSection {
+                label: "Host".to_string(),
+                content: "context".to_string(),
+            }],
+            provenance: vec![PromptProvenance {
+                label: "Host".to_string(),
+                source: PromptSourceKind::Host,
+                safe_summary: "1 block".to_string(),
+            }],
+            context_references_enabled: false,
+            unsupported_context_references: vec![UnsupportedContextReference {
+                label: "README.md".to_string(),
+                kind: ContextReferenceKind::File,
+                reason: "disabled".to_string(),
+            }],
+        };
+        let json = serde_json::to_string(&prompt).expect("assembled prompt should serialize");
+        let parsed: AssembledPrompt = serde_json::from_str(&json).expect("assembled prompt should deserialize");
+        assert_eq!(parsed, prompt);
+    }
+
+    #[test]
+    fn prompt_source_kind_roundtrip_preserves_snake_case() {
+        let json = serde_json::to_string(&PromptSourceKind::Filesystem).expect("source should serialize");
+        assert_eq!(json, r#""filesystem""#);
+        let parsed: PromptSourceKind = serde_json::from_str(&json).expect("source should deserialize");
+        assert_eq!(parsed, PromptSourceKind::Filesystem);
     }
 
     #[test]
