@@ -8,6 +8,9 @@ use std::time::Duration;
 
 use serde::Deserialize;
 use serde::Serialize;
+use serde_json::Value;
+
+use crate::content::Content;
 
 /// Tool definition for function calling.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -201,6 +204,52 @@ pub struct ThinkingConfig {
 
 const RUNTIME_RETRY_DELAY_MS_MAX: u64 = 365 * 24 * 60 * 60 * 1000;
 
+/// Runtime tool execution status returned by host tool adapters.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum RuntimeToolStatus {
+    Succeeded,
+    Failed,
+    Missing,
+    Denied,
+    Cancelled,
+}
+
+/// Runtime tool response returned by host tool adapters.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RuntimeToolResponse {
+    pub status: RuntimeToolStatus,
+    #[serde(default)]
+    pub content: Vec<Content>,
+    #[serde(default)]
+    pub details: Value,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub message: Option<String>,
+}
+
+impl RuntimeToolResponse {
+    #[must_use]
+    pub fn succeeded(content: Vec<Content>, details: Value) -> Self {
+        Self {
+            status: RuntimeToolStatus::Succeeded,
+            content,
+            details,
+            message: None,
+        }
+    }
+
+    #[must_use]
+    pub fn failed(message: impl Into<String>) -> Self {
+        let message = message.into();
+        Self {
+            status: RuntimeToolStatus::Failed,
+            content: vec![Content::Text { text: message.clone() }],
+            details: Value::Null,
+            message: Some(message),
+        }
+    }
+}
+
 /// Runtime retry request passed to host retry adapters.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RuntimeRetryRequest {
@@ -336,6 +385,30 @@ mod tests {
         let json = serde_json::to_string(&status).expect("status should serialize");
         let parsed: DaemonStatus = serde_json::from_str(&json).expect("status should deserialize");
         assert_eq!(parsed, status);
+    }
+
+    #[test]
+    fn runtime_tool_response_failed_helper_preserves_message() {
+        let response = RuntimeToolResponse::failed("tool unavailable");
+        assert_eq!(response.status, RuntimeToolStatus::Failed);
+        assert_eq!(response.message.as_deref(), Some("tool unavailable"));
+        assert!(matches!(response.content.first(), Some(Content::Text { text }) if text == "tool unavailable"));
+    }
+
+    #[test]
+    fn runtime_tool_response_roundtrip_preserves_status_and_details() {
+        let response = RuntimeToolResponse::succeeded(
+            vec![Content::Text {
+                text: "done".to_string(),
+            }],
+            serde_json::json!({"exit_code":0}),
+        );
+        let json = serde_json::to_string(&response).expect("response should serialize");
+        assert!(json.contains("succeeded"));
+        let parsed: RuntimeToolResponse = serde_json::from_str(&json).expect("response should deserialize");
+        assert_eq!(parsed.status, RuntimeToolStatus::Succeeded);
+        assert_eq!(parsed.details["exit_code"], 0);
+        assert!(matches!(parsed.content.first(), Some(Content::Text { text }) if text == "done"));
     }
 
     #[test]

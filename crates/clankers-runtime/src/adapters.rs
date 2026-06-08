@@ -3,8 +3,9 @@
 //! These traits are object-safe shims used by `RuntimeBuilder` so embedded hosts can
 //! replace model-adjacent effects without depending on Clankers desktop shells.
 
-use clanker_message::Content;
 pub use clanker_message::RuntimeRetryRequest;
+pub use clanker_message::RuntimeToolResponse;
+pub use clanker_message::RuntimeToolStatus;
 pub use clanker_message::RuntimeUsageObservation;
 pub use clanker_message::RuntimeUsageObservationKind;
 use clankers_engine::EngineEvent;
@@ -24,50 +25,6 @@ pub struct RuntimeToolRequest {
     pub tool_name: String,
     #[serde(default)]
     pub input: Value,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum RuntimeToolStatus {
-    Succeeded,
-    Failed,
-    Missing,
-    Denied,
-    Cancelled,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct RuntimeToolResponse {
-    pub status: RuntimeToolStatus,
-    #[serde(default)]
-    pub content: Vec<Content>,
-    #[serde(default)]
-    pub details: Value,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub message: Option<String>,
-}
-
-impl RuntimeToolResponse {
-    #[must_use]
-    pub fn succeeded(content: Vec<Content>, details: Value) -> Self {
-        Self {
-            status: RuntimeToolStatus::Succeeded,
-            content,
-            details,
-            message: None,
-        }
-    }
-
-    #[must_use]
-    pub fn failed(message: impl Into<String>) -> Self {
-        let message = message.into();
-        Self {
-            status: RuntimeToolStatus::Failed,
-            content: vec![Content::Text { text: message.clone() }],
-            details: Value::Null,
-            message: Some(message),
-        }
-    }
 }
 
 pub trait RuntimeToolAdapter: Send + Sync {
