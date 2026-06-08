@@ -566,6 +566,58 @@ pub struct ProcessJobLogRef {
     pub max_bytes: Option<u64>,
 }
 
+/// Native append-only log file naming/layout policy.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct NativeProcessJobLogLayout {
+    pub job_id: ProcessJobId,
+    pub stream: ProcessJobStream,
+    pub relative_path: PathBuf,
+    pub reference: String,
+}
+
+impl NativeProcessJobLogLayout {
+    #[must_use]
+    pub fn for_stream(job_id: ProcessJobId, stream: ProcessJobStream) -> Self {
+        let suffix = match stream {
+            ProcessJobStream::Stdout => "stdout.log",
+            ProcessJobStream::Stderr => "stderr.log",
+            ProcessJobStream::Combined => "combined.log",
+        };
+        let safe_id = sanitize_log_path_component(&job_id.0);
+        let relative_path = PathBuf::from(&safe_id).join(suffix);
+        let reference = format!("native:{safe_id}/{suffix}");
+        Self {
+            job_id,
+            stream,
+            relative_path,
+            reference,
+        }
+    }
+
+    #[must_use]
+    pub fn into_log_ref(self, max_bytes: u64) -> ProcessJobLogRef {
+        ProcessJobLogRef {
+            stream: self.stream,
+            reference: self.reference,
+            retained_until: None,
+            max_bytes: Some(max_bytes),
+        }
+    }
+}
+
+fn sanitize_log_path_component(input: &str) -> String {
+    input
+        .chars()
+        .map(|ch| {
+            if ch.is_ascii_alphanumeric() || matches!(ch, '-' | '_' | '.') {
+                ch
+            } else {
+                '_'
+            }
+        })
+        .collect()
+}
+
 /// Cursor for incremental log reads.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ProcessJobLogCursor {
@@ -2247,6 +2299,20 @@ mod tests {
         });
         assert_eq!(overflow.classify_write(8, 19, 31), ProcessJobLogWriteDisposition::DegradeDiskFull);
         assert_eq!(overflow.classify_write(8, 19, 41), ProcessJobLogWriteDisposition::DegradeDiskFull);
+    }
+
+    #[test]
+    fn native_log_layout_sanitizes_references_without_host_io() {
+        let layout = NativeProcessJobLogLayout::for_stream(
+            ProcessJobId("../job with spaces".to_string()),
+            ProcessJobStream::Combined,
+        );
+        assert_eq!(layout.reference, "native:.._job_with_spaces/combined.log");
+        assert_eq!(layout.relative_path, PathBuf::from(".._job_with_spaces").join("combined.log"));
+
+        let log_ref = layout.into_log_ref(1024);
+        assert_eq!(log_ref.reference, "native:.._job_with_spaces/combined.log");
+        assert_eq!(log_ref.max_bytes, Some(1024));
     }
 
     #[test]

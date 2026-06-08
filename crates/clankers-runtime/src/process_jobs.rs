@@ -24,6 +24,7 @@ pub use clankers_tool_host::process_jobs::MAX_PROCESS_JOB_WATCH_PATTERN_LEN;
 pub use clankers_tool_host::process_jobs::MAX_PROCESS_JOB_WATCH_PATTERNS;
 pub use clankers_tool_host::process_jobs::MutateProcessJobRequest;
 pub use clankers_tool_host::process_jobs::NativeProcessJobIdentity;
+pub use clankers_tool_host::process_jobs::NativeProcessJobLogLayout;
 pub use clankers_tool_host::process_jobs::NativeProcessJobObservation;
 pub use clankers_tool_host::process_jobs::PROCESS_JOB_ID_PREFIX;
 pub use clankers_tool_host::process_jobs::PROCESS_JOB_IDENTITY_DOMAIN;
@@ -229,35 +230,6 @@ impl ProcessJobReconciliationOutcome {
     }
 }
 
-/// Native append-only log file naming/layout policy.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct NativeProcessJobLogLayout {
-    pub job_id: ProcessJobId,
-    pub stream: ProcessJobStream,
-    pub relative_path: PathBuf,
-    pub reference: String,
-}
-
-impl NativeProcessJobLogLayout {
-    #[must_use]
-    pub fn for_stream(job_id: ProcessJobId, stream: ProcessJobStream) -> Self {
-        let suffix = match stream {
-            ProcessJobStream::Stdout => "stdout.log",
-            ProcessJobStream::Stderr => "stderr.log",
-            ProcessJobStream::Combined => "combined.log",
-        };
-        let safe_id = sanitize_log_path_component(&job_id.0);
-        let relative_path = PathBuf::from(&safe_id).join(suffix);
-        let reference = format!("native:{safe_id}/{suffix}");
-        Self {
-            job_id,
-            stream,
-            relative_path,
-            reference,
-        }
-    }
-}
-
 /// Log retention policy applied by native append-only log stores.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ProcessJobLogRetentionPolicy {
@@ -286,19 +258,6 @@ impl ProcessJobLogRetentionPolicy {
             max_bytes: Some(self.max_bytes_per_job),
         }
     }
-}
-
-fn sanitize_log_path_component(input: &str) -> String {
-    input
-        .chars()
-        .map(|ch| {
-            if ch.is_ascii_alphanumeric() || matches!(ch, '-' | '_' | '.') {
-                ch
-            } else {
-                '_'
-            }
-        })
-        .collect()
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
@@ -1804,17 +1763,6 @@ mod tests {
 
         async fn references(&self, id: ProcessJobId) -> Result<Vec<ProcessJobLogRef>, RuntimeError> {
             Ok(vec![NativeProcessJobLogLayout::for_stream(id, ProcessJobStream::Combined).into_log_ref(1024)])
-        }
-    }
-
-    impl NativeProcessJobLogLayout {
-        fn into_log_ref(self, max_bytes: u64) -> ProcessJobLogRef {
-            ProcessJobLogRef {
-                stream: self.stream,
-                reference: self.reference,
-                retained_until: None,
-                max_bytes: Some(max_bytes),
-            }
         }
     }
 
