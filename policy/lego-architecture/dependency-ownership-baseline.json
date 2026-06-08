@@ -1,7 +1,7 @@
 {
   "artifact_hashes": [
     {
-      "blake3": "32c03d01959541f7abf984b1bf39ca67248e336e9965f1872ea3c37bad50ca64",
+      "blake3": "b4dec66ff600fcfa3097d8c7bb5fe63126a349ac8a0d0653a391608e117c81ad",
       "path": "policy/lego-architecture/dependency-ownership-baseline.json"
     },
     {
@@ -413,7 +413,7 @@
     },
     "most_shared_dto_crates": [
       {
-        "dependent_count": 18,
+        "dependent_count": 19,
         "dependents": [
           "clanker-router",
           "clanker-tui-types",
@@ -428,6 +428,7 @@
           "clankers-model-selection",
           "clankers-plugin",
           "clankers-procmon",
+          "clankers-protocol",
           "clankers-provider",
           "clankers-runtime",
           "clankers-session",

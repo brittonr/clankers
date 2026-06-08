@@ -15,6 +15,16 @@ pub struct ToolDefinition {
     pub input_schema: serde_json::Value,
 }
 
+/// Metadata about an available tool for inventory/projection surfaces.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct ToolInfo {
+    pub name: String,
+    pub description: String,
+    /// Source of the tool: "built-in" or plugin name.
+    #[serde(default)]
+    pub source: String,
+}
+
 /// Named thinking budget levels shared by provider, controller, and display edges.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum ThinkingLevel {
@@ -130,5 +140,17 @@ impl Usage {
     )]
     pub fn total_tokens(&self) -> usize {
         self.input_tokens.saturating_add(self.output_tokens)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn tool_info_defaults_missing_source_for_legacy_wire_events() {
+        let info: ToolInfo = serde_json::from_str(r#"{"name":"read","description":"Read files"}"#)
+            .expect("tool info should deserialize");
+        assert_eq!(info.source, "");
     }
 }

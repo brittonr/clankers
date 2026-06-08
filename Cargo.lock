@@ -1840,6 +1840,7 @@ dependencies = [
 name = "clankers-protocol"
 version = "0.1.0"
 dependencies = [
+ "clanker-message",
  "serde",
  "serde_json",
  "tempfile",

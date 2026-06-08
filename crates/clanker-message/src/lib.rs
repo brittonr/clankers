@@ -32,6 +32,7 @@ pub use content::StopReason;
 pub use contracts::ThinkingConfig;
 pub use contracts::ThinkingLevel;
 pub use contracts::ToolDefinition;
+pub use contracts::ToolInfo;
 pub use contracts::Usage;
 pub use cost::BudgetEvent;
 pub use cost::BudgetStatus;

@@ -6,6 +6,7 @@ license.workspace = true
 description = "Wire protocol types for daemon-client communication"
 
 [dependencies]
+clanker-message = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 tokio = { workspace = true }

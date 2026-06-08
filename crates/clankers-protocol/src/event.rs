@@ -3,6 +3,8 @@
 use serde::Deserialize;
 use serde::Serialize;
 
+pub use clanker_message::ToolInfo;
+
 fn default_empty_string_vec() -> Vec<String> {
     Vec::new()
 }
@@ -217,16 +219,6 @@ pub enum DaemonEvent {
     HistoryBlock { block: serde_json::Value },
     /// History replay is complete.
     HistoryEnd,
-}
-
-/// Metadata about a single tool.
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
-pub struct ToolInfo {
-    pub name: String,
-    pub description: String,
-    /// Source of the tool: "built-in" or plugin name.
-    #[serde(default = "default_empty_string")]
-    pub source: String,
 }
 
 /// Summary of a loaded plugin.

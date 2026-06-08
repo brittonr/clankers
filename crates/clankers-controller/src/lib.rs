@@ -483,8 +483,8 @@ impl SessionController {
         self.tool_rebuilder = Some(rebuilder);
     }
 
-    /// Snapshot the current tool list as protocol metadata.
-    pub fn current_tool_infos(&self) -> Vec<clankers_protocol::ToolInfo> {
+    /// Snapshot the current tool list as neutral inventory metadata.
+    pub fn current_tool_infos(&self) -> Vec<clanker_message::ToolInfo> {
         self.agent
             .as_ref()
             .map(|agent| {
@@ -493,7 +493,7 @@ impl SessionController {
                     .iter()
                     .map(|tool| {
                         let def = tool.definition();
-                        clankers_protocol::ToolInfo {
+                        clanker_message::ToolInfo {
                             name: def.name.clone(),
                             description: def.description.clone(),
                             source: tool.source().to_string(),
@@ -517,11 +517,11 @@ impl SessionController {
 
         let before = self.current_tool_infos();
         let rebuilt = rebuilder.rebuild_filtered(&self.disabled_tools);
-        let after: Vec<clankers_protocol::ToolInfo> = rebuilt
+        let after: Vec<clanker_message::ToolInfo> = rebuilt
             .iter()
             .map(|tool| {
                 let def = tool.definition();
-                clankers_protocol::ToolInfo {
+                clanker_message::ToolInfo {
                     name: def.name.clone(),
                     description: def.description.clone(),
                     source: tool.source().to_string(),
@@ -856,7 +856,7 @@ mod tests {
         }));
 
         assert!(ctrl.refresh_tools());
-        assert_eq!(ctrl.current_tool_infos(), vec![clankers_protocol::ToolInfo {
+        assert_eq!(ctrl.current_tool_infos(), vec![clanker_message::ToolInfo {
             name: "stdio_echo".to_string(),
             description: "stub stdio_echo".to_string(),
             source: "stdio-plugin".to_string(),
