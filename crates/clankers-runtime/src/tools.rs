@@ -4,6 +4,7 @@ use std::collections::BTreeMap;
 use std::collections::BTreeSet;
 
 use clankers_artifacts::RedactionClass;
+pub use clanker_message::SideEffectLevel;
 use serde::Deserialize;
 use serde::Serialize;
 
@@ -324,31 +325,6 @@ impl CapabilityPack {
     #[must_use]
     pub fn effect_classes(self) -> BTreeSet<EffectAbilityClass> {
         self.descriptors().into_iter().map(|descriptor| descriptor.effect_class()).collect()
-    }
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum SideEffectLevel {
-    ReadOnly,
-    WorkspaceMutation,
-    ExternalIo,
-    Dangerous,
-}
-
-impl SideEffectLevel {
-    #[must_use]
-    pub fn requires_confirmation(self) -> bool {
-        !matches!(self, Self::ReadOnly)
-    }
-
-    #[must_use]
-    pub fn default_effect_class(self) -> EffectAbilityClass {
-        match self {
-            Self::ReadOnly | Self::WorkspaceMutation => EffectAbilityClass::Filesystem,
-            Self::ExternalIo => EffectAbilityClass::Network,
-            Self::Dangerous => EffectAbilityClass::Tool,
-        }
     }
 }
 

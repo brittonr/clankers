@@ -4,38 +4,13 @@ use std::collections::BTreeMap;
 
 use clankers_artifacts::ArtifactHash;
 use clankers_artifacts::RedactionClass;
+pub use clanker_message::EffectAbilityClass;
 use serde::Deserialize;
 use serde::Serialize;
 use uuid::Uuid;
 
 use crate::events::contains_secret_marker;
 use crate::events::sanitize_metadata_value;
-
-/// Effectful capability class requested by runtime/tool code.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
-#[serde(rename_all = "kebab-case")]
-pub enum EffectAbilityClass {
-    /// Host-selected filesystem reads or writes.
-    Filesystem,
-    /// Shell command execution.
-    Shell,
-    /// Network socket or HTTP access.
-    Network,
-    /// Credential, token, or secret lookup.
-    Secret,
-    /// Browser automation or browser state access.
-    Browser,
-    /// Scheduler, timer, or delayed execution.
-    Scheduler,
-    /// Model/provider API access.
-    Provider,
-    /// Plugin or extension runtime execution.
-    Plugin,
-    /// Built-in or external tool invocation.
-    Tool,
-    /// User-visible delivery channel such as Matrix, ACP, or TTS.
-    Delivery,
-}
 
 /// Stable correlation identifier carried through requests, results, and receipts.
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]

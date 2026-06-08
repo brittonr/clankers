@@ -404,6 +404,48 @@ pub enum ExtensionRuntimeKind {
     Gateway,
 }
 
+/// Effectful capability class requested by runtime/tool code.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum EffectAbilityClass {
+    Filesystem,
+    Shell,
+    Network,
+    Secret,
+    Browser,
+    Scheduler,
+    Provider,
+    Plugin,
+    Tool,
+    Delivery,
+}
+
+/// High-level side-effect class for tool descriptors.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum SideEffectLevel {
+    ReadOnly,
+    WorkspaceMutation,
+    ExternalIo,
+    Dangerous,
+}
+
+impl SideEffectLevel {
+    #[must_use]
+    pub fn requires_confirmation(self) -> bool {
+        !matches!(self, Self::ReadOnly)
+    }
+
+    #[must_use]
+    pub fn default_effect_class(self) -> EffectAbilityClass {
+        match self {
+            Self::ReadOnly | Self::WorkspaceMutation => EffectAbilityClass::Filesystem,
+            Self::ExternalIo => EffectAbilityClass::Network,
+            Self::Dangerous => EffectAbilityClass::Tool,
+        }
+    }
+}
+
 /// Extension execution status returned by host extension adapters.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -675,6 +717,23 @@ mod tests {
         assert_eq!(json, r#""mcp""#);
         let parsed: ExtensionRuntimeKind = serde_json::from_str(&json).expect("kind should deserialize");
         assert_eq!(parsed, ExtensionRuntimeKind::Mcp);
+    }
+
+    #[test]
+    fn effect_ability_class_roundtrip_preserves_kebab_case() {
+        let json = serde_json::to_string(&EffectAbilityClass::Filesystem).expect("class should serialize");
+        assert_eq!(json, r#""filesystem""#);
+        let parsed: EffectAbilityClass = serde_json::from_str(&json).expect("class should deserialize");
+        assert_eq!(parsed, EffectAbilityClass::Filesystem);
+    }
+
+    #[test]
+    fn side_effect_level_maps_default_confirmation_and_effect_classes() {
+        assert!(!SideEffectLevel::ReadOnly.requires_confirmation());
+        assert!(SideEffectLevel::WorkspaceMutation.requires_confirmation());
+        assert_eq!(SideEffectLevel::ReadOnly.default_effect_class(), EffectAbilityClass::Filesystem);
+        assert_eq!(SideEffectLevel::ExternalIo.default_effect_class(), EffectAbilityClass::Network);
+        assert_eq!(SideEffectLevel::Dangerous.default_effect_class(), EffectAbilityClass::Tool);
     }
 
     #[test]
