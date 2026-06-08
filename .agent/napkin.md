@@ -3,6 +3,7 @@
 ## Corrections
 | Date | Source | What Went Wrong | What To Do Instead |
 |------|--------|----------------|-------------------|
+| 2026-06-07 | self | Ran `cargo test -p clanker-message --lib image_data` immediately after adding `ImageData`, but the crate had no matching focused test yet, so Cargo ran 0 tests | Add or grep a real focused test before using a new DTO filter; check the test count and rerun before recording evidence. |
 | 2026-06-07 | self | Ran `cargo test -p clankers-protocol --lib tool_list` while validating ToolInfo DTO relocation; Cargo ran 0 tests because no test name contained that substring | Grep exact protocol/frame test names before using focused filters, and rerun with a real matching test before recording evidence. |
 | 2026-06-07 | self | Ran `cargo fmt --check` during a narrow controller session-ledger slice and hit broad pre-existing rustfmt drift across unrelated files | Do not use broad fmt as evidence in Clankers architecture slices unless intentionally accepting repo-wide formatting churn; keep to focused tests plus `git diff --check`, and manually inspect touched hunks. |
 | 2026-06-07 | self | A resume-path test failed because I constructed a `SessionController` without the new root `SessionManagerControllerSessionLedger` adapter, so helper downcasting found no session-manager slot | When adding controller service ports, update both real assembly and runtime-seam tests to install the same root adapter; tests that assert root helper behavior must not use bare `Default::default()` config. |

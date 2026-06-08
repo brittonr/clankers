@@ -3,16 +3,10 @@
 use serde::Deserialize;
 use serde::Serialize;
 
-use crate::control::ControlCommand;
+pub use clanker_message::ImageData;
+pub use clanker_message::SerializedMessage;
 
-/// Image payload as base64-encoded data with a media type.
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-pub struct ImageData {
-    /// Base64-encoded image data.
-    pub data: String,
-    /// MIME type (e.g., "image/png").
-    pub media_type: String,
-}
+use crate::control::ControlCommand;
 
 /// Initial handshake sent by client on connection.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -25,15 +19,6 @@ pub struct Handshake {
     pub token: Option<String>,
     /// Optional session ID to attach to an existing session.
     pub session_id: Option<String>,
-}
-
-/// A serialized agent message for seeding / history replay.
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
-pub struct SerializedMessage {
-    pub role: String,
-    pub content: String,
-    pub model: Option<String>,
-    pub timestamp: Option<String>,
 }
 
 /// Information about a process in the actor tree.

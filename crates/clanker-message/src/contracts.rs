@@ -25,6 +25,15 @@ pub struct ToolInfo {
     pub source: String,
 }
 
+/// Minimal serialized message used for seeding and replaying session history.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct SerializedMessage {
+    pub role: String,
+    pub content: String,
+    pub model: Option<String>,
+    pub timestamp: Option<String>,
+}
+
 /// Named thinking budget levels shared by provider, controller, and display edges.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum ThinkingLevel {
@@ -152,5 +161,18 @@ mod tests {
         let info: ToolInfo = serde_json::from_str(r#"{"name":"read","description":"Read files"}"#)
             .expect("tool info should deserialize");
         assert_eq!(info.source, "");
+    }
+
+    #[test]
+    fn serialized_message_roundtrip_preserves_optional_fields() {
+        let message = SerializedMessage {
+            role: "assistant".to_string(),
+            content: "hello".to_string(),
+            model: Some("model".to_string()),
+            timestamp: None,
+        };
+        let json = serde_json::to_string(&message).expect("message should serialize");
+        let parsed: SerializedMessage = serde_json::from_str(&json).expect("message should deserialize");
+        assert_eq!(parsed, message);
     }
 }

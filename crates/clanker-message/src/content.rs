@@ -8,6 +8,15 @@ use serde::Deserialize;
 use serde::Serialize;
 use serde_json::Value;
 
+/// Base64 image payload with a media type, used by prompt/tool protocol edges.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct ImageData {
+    /// Base64-encoded image data.
+    pub data: String,
+    /// MIME type (e.g., "image/png").
+    pub media_type: String,
+}
+
 /// A content block within a model, tool, or host message.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "type")]
@@ -68,6 +77,17 @@ mod tests {
     use serde_json::json;
 
     use super::*;
+
+    #[test]
+    fn image_data_roundtrip() {
+        let image = ImageData {
+            data: "iVBORw0KGgo=".to_string(),
+            media_type: "image/png".to_string(),
+        };
+        let json = serde_json::to_string(&image).expect("image should serialize");
+        let parsed: ImageData = serde_json::from_str(&json).expect("image should deserialize");
+        assert_eq!(parsed, image);
+    }
 
     #[test]
     fn content_text_roundtrip() {

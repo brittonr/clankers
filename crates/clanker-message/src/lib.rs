@@ -27,8 +27,10 @@ pub mod transcript;
 
 // Re-export core types at crate root for convenience
 pub use content::Content;
+pub use content::ImageData;
 pub use content::ImageSource;
 pub use content::StopReason;
+pub use contracts::SerializedMessage;
 pub use contracts::ThinkingConfig;
 pub use contracts::ThinkingLevel;
 pub use contracts::ToolDefinition;
