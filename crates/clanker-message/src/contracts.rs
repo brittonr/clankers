@@ -420,6 +420,17 @@ pub enum EffectAbilityClass {
     Delivery,
 }
 
+/// Handler outcome kind for a typed effect.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum EffectResultStatus {
+    Allowed,
+    Denied,
+    Simulated,
+    Replayed,
+    Unavailable,
+}
+
 /// Safe content-addressed artifact kind declared by remote/subagent execution.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
@@ -431,12 +442,32 @@ pub enum RemoteExecutionArtifactKind {
     Policy,
 }
 
+/// Fail-closed remote dependency sync failure kind.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum RemoteDependencyFailureKind {
+    MissingSafeArtifact,
+    UnsupportedVersion,
+    HashMismatch,
+    SecretDependencyDenied,
+}
+
 /// Remote/subagent execution target shape.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum RemoteExecutionTarget {
     Subagent,
     RemoteDaemon,
+}
+
+/// Policy for handling tool-name collisions while building a tool catalog.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ToolCollisionPolicy {
+    #[default]
+    Reject,
+    KeepExisting,
+    HostOverrides,
 }
 
 /// High-level side-effect class for tool descriptors.
@@ -747,6 +778,14 @@ mod tests {
     }
 
     #[test]
+    fn effect_result_status_roundtrip_preserves_kebab_case() {
+        let json = serde_json::to_string(&EffectResultStatus::Unavailable).expect("status should serialize");
+        assert_eq!(json, r#""unavailable""#);
+        let parsed: EffectResultStatus = serde_json::from_str(&json).expect("status should deserialize");
+        assert_eq!(parsed, EffectResultStatus::Unavailable);
+    }
+
+    #[test]
     fn remote_execution_selectors_roundtrip_preserve_kebab_case() {
         let artifact = serde_json::to_string(&RemoteExecutionArtifactKind::ToolSchema)
             .expect("artifact kind should serialize");
@@ -761,6 +800,26 @@ mod tests {
         let parsed_target: RemoteExecutionTarget = serde_json::from_str(&target)
             .expect("target should deserialize");
         assert_eq!(parsed_target, RemoteExecutionTarget::RemoteDaemon);
+    }
+
+    #[test]
+    fn remote_dependency_failure_kind_roundtrip_preserves_kebab_case() {
+        let json = serde_json::to_string(&RemoteDependencyFailureKind::MissingSafeArtifact)
+            .expect("failure kind should serialize");
+        assert_eq!(json, r#""missing-safe-artifact""#);
+        let parsed: RemoteDependencyFailureKind = serde_json::from_str(&json)
+            .expect("failure kind should deserialize");
+        assert_eq!(parsed, RemoteDependencyFailureKind::MissingSafeArtifact);
+    }
+
+    #[test]
+    fn tool_collision_policy_default_and_roundtrip_preserve_snake_case() {
+        assert_eq!(ToolCollisionPolicy::default(), ToolCollisionPolicy::Reject);
+        let json = serde_json::to_string(&ToolCollisionPolicy::HostOverrides)
+            .expect("policy should serialize");
+        assert_eq!(json, r#""host_overrides""#);
+        let parsed: ToolCollisionPolicy = serde_json::from_str(&json).expect("policy should deserialize");
+        assert_eq!(parsed, ToolCollisionPolicy::HostOverrides);
     }
 
     #[test]

@@ -5,6 +5,7 @@ use std::collections::BTreeSet;
 
 use clankers_artifacts::RedactionClass;
 pub use clanker_message::SideEffectLevel;
+pub use clanker_message::ToolCollisionPolicy;
 use serde::Deserialize;
 use serde::Serialize;
 
@@ -202,15 +203,6 @@ impl ToolCatalogOmission {
             reason: sanitize_metadata_value(reason.into()),
         }
     }
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum ToolCollisionPolicy {
-    #[default]
-    Reject,
-    KeepExisting,
-    HostOverrides,
 }
 
 impl ToolDescriptor {

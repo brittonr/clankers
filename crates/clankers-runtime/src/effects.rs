@@ -5,6 +5,8 @@ use std::collections::BTreeMap;
 use clankers_artifacts::ArtifactHash;
 use clankers_artifacts::RedactionClass;
 pub use clanker_message::EffectAbilityClass;
+pub use clanker_message::EffectResultStatus;
+pub use clanker_message::RemoteDependencyFailureKind;
 pub use clanker_message::RemoteExecutionArtifactKind;
 pub use clanker_message::RemoteExecutionTarget;
 use serde::Deserialize;
@@ -343,20 +345,6 @@ fn looks_like_compact_token(value: &str) -> bool {
     value.matches('.').count() == 2 && value.starts_with("ey") && value.len() > 80
 }
 
-/// Fail-closed remote dependency sync failure kind.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "kebab-case")]
-pub enum RemoteDependencyFailureKind {
-    /// A safe requested artifact is absent and should be requested by hash.
-    MissingSafeArtifact,
-    /// The peer returned an envelope version this runtime does not support.
-    UnsupportedVersion,
-    /// The returned envelope canonical hash did not match the requested hash.
-    HashMismatch,
-    /// The dependency would require secret material that must not be synced.
-    SecretDependencyDenied,
-}
-
 /// Redacted remote dependency failure receipt.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct RemoteDependencyFailure {
@@ -485,22 +473,6 @@ impl From<&EffectRequest> for EffectRequestRef {
             redaction_class: request.redaction_class,
         }
     }
-}
-
-/// Handler outcome kind for a typed effect.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "kebab-case")]
-pub enum EffectResultStatus {
-    /// Real side effect was allowed by host policy.
-    Allowed,
-    /// Request was denied before side effects.
-    Denied,
-    /// Handler returned a simulated result without touching the resource.
-    Simulated,
-    /// Handler returned a recorded replay result.
-    Replayed,
-    /// Required handler or dependency was absent.
-    Unavailable,
 }
 
 /// Redacted effect result/receipt envelope.
