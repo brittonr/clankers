@@ -5,6 +5,8 @@ use std::collections::BTreeMap;
 use clankers_artifacts::ArtifactHash;
 use clankers_artifacts::RedactionClass;
 pub use clanker_message::EffectAbilityClass;
+pub use clanker_message::RemoteExecutionArtifactKind;
+pub use clanker_message::RemoteExecutionTarget;
 use serde::Deserialize;
 use serde::Serialize;
 use uuid::Uuid;
@@ -111,22 +113,6 @@ impl EffectRequest {
     }
 }
 
-/// Safe content-addressed artifact kinds that remote/subagent execution can declare.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
-#[serde(rename_all = "kebab-case")]
-pub enum RemoteExecutionArtifactKind {
-    /// System/developer/user prompt material safe to sync by hash.
-    Prompt,
-    /// Skill instructions or support files safe to sync by hash.
-    Skill,
-    /// Tool schema or descriptor material safe to sync by hash.
-    ToolSchema,
-    /// Plugin/tool/extension manifest material safe to sync by hash.
-    Manifest,
-    /// Non-secret policy metadata safe to sync by hash.
-    Policy,
-}
-
 /// One declared remote/subagent dependency bound to a content hash.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct RemoteExecutionDependency {
@@ -186,16 +172,6 @@ impl RemoteExecutionRequest {
         hashes.dedup();
         hashes
     }
-}
-
-/// Remote execution target shape.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "kebab-case")]
-pub enum RemoteExecutionTarget {
-    /// In-process or subprocess subagent.
-    Subagent,
-    /// Remote daemon peer.
-    RemoteDaemon,
 }
 
 /// Supported schema version for safe remote artifact envelopes.

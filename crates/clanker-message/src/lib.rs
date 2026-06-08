@@ -41,6 +41,8 @@ pub use contracts::ProviderMessageRole;
 pub use contracts::ProviderModelFailure;
 pub use contracts::ProviderModelStatus;
 pub use contracts::ProviderStreamEvent;
+pub use contracts::RemoteExecutionArtifactKind;
+pub use contracts::RemoteExecutionTarget;
 pub use contracts::RuntimeRetryRequest;
 pub use contracts::RuntimeToolResponse;
 pub use contracts::RuntimeToolStatus;

@@ -420,6 +420,25 @@ pub enum EffectAbilityClass {
     Delivery,
 }
 
+/// Safe content-addressed artifact kind declared by remote/subagent execution.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum RemoteExecutionArtifactKind {
+    Prompt,
+    Skill,
+    ToolSchema,
+    Manifest,
+    Policy,
+}
+
+/// Remote/subagent execution target shape.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum RemoteExecutionTarget {
+    Subagent,
+    RemoteDaemon,
+}
+
 /// High-level side-effect class for tool descriptors.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -725,6 +744,23 @@ mod tests {
         assert_eq!(json, r#""filesystem""#);
         let parsed: EffectAbilityClass = serde_json::from_str(&json).expect("class should deserialize");
         assert_eq!(parsed, EffectAbilityClass::Filesystem);
+    }
+
+    #[test]
+    fn remote_execution_selectors_roundtrip_preserve_kebab_case() {
+        let artifact = serde_json::to_string(&RemoteExecutionArtifactKind::ToolSchema)
+            .expect("artifact kind should serialize");
+        assert_eq!(artifact, r#""tool-schema""#);
+        let parsed_artifact: RemoteExecutionArtifactKind = serde_json::from_str(&artifact)
+            .expect("artifact kind should deserialize");
+        assert_eq!(parsed_artifact, RemoteExecutionArtifactKind::ToolSchema);
+
+        let target = serde_json::to_string(&RemoteExecutionTarget::RemoteDaemon)
+            .expect("target should serialize");
+        assert_eq!(target, r#""remote-daemon""#);
+        let parsed_target: RemoteExecutionTarget = serde_json::from_str(&target)
+            .expect("target should deserialize");
+        assert_eq!(parsed_target, RemoteExecutionTarget::RemoteDaemon);
     }
 
     #[test]
