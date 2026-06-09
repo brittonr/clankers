@@ -403,11 +403,11 @@ fn register_subprocess(
         && let Some(pid) = child_pid
     {
         let full_preview: String = task.chars().take(200).collect();
-        monitor.register(pid, clankers_procmon::ProcessMeta {
+        monitor.register_at(pid, clankers_procmon::ProcessMeta {
             tool_name: "subagent".to_string(),
             command: format!("subagent: {}", full_preview),
             call_id: call_id.to_string(),
-        });
+        }, std::time::Instant::now());
     }
 
     if let Some(tx) = panel_tx {

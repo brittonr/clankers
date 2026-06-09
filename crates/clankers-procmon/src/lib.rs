@@ -125,7 +125,7 @@ impl ProcessMonitor {
     }
 
     /// Register a new process to track.
-    pub fn register(&self, pid: u32, meta: ProcessMeta) {
+    pub fn register_at(&self, pid: u32, meta: ProcessMeta, started_at: Instant) {
         let mut inner = self.inner.write();
 
         // Emit spawn event
@@ -143,7 +143,7 @@ impl ProcessMonitor {
             snapshots: Vec::new(),
             children: Vec::new(),
             peak_rss: 0,
-            start_time: process_monitor_instant_now(),
+            start_time: started_at,
         };
 
         inner.tracked.insert(pid, tracked);
@@ -213,21 +213,20 @@ impl ProcessMonitor {
                 () = cancel.cancelled() => {
                     break;
                 }
-                _ = poll_clock.tick() => {
-                    Self::poll_once(&inner);
+                tick = poll_clock.tick() => {
+                    Self::poll_once(&inner, tick.into_std());
                 }
             }
         }
     }
 
     /// Perform a single poll cycle.
-    fn poll_once(inner: &Arc<RwLock<ProcessMonitorInner>>) {
+    fn poll_once(inner: &Arc<RwLock<ProcessMonitorInner>>, now: Instant) {
         let mut guard = inner.write();
 
         // Refresh all processes to get both tracked PIDs and children
         guard.system.refresh_processes(ProcessesToUpdate::All, true);
 
-        let now = process_monitor_instant_now();
         let max_history = guard.config.max_history;
 
         // First pass: collect samples from sysinfo (immutable system access)
@@ -400,20 +399,13 @@ fn tracked_to_snapshot(pid: u32, t: &TrackedProcess) -> clanker_message::Process
     }
 }
 
-#[cfg_attr(
-    dylint_lib = "tigerstyle",
-    allow(
-        tigerstyle::ambient_clock,
-        reason = "process monitor is the shell boundary that samples wall-clock process lifetimes"
-    )
-)]
-fn process_monitor_instant_now() -> Instant {
-    Instant::now()
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn fixed_instant() -> Instant {
+        Instant::now() - Duration::from_secs(1)
+    }
 
     #[test]
     fn test_register_adds_process() {
@@ -425,7 +417,7 @@ mod tests {
             call_id: "test-123".to_string(),
         };
 
-        monitor.register(12345, meta.clone());
+        monitor.register_at(12345, meta.clone(), fixed_instant());
 
         let snapshot = monitor.snapshot();
         assert_eq!(snapshot.len(), 1);
@@ -449,8 +441,8 @@ mod tests {
             call_id: "call-2".to_string(),
         };
 
-        monitor.register(100, meta1);
-        monitor.register(200, meta2);
+        monitor.register_at(100, meta1, fixed_instant());
+        monitor.register_at(200, meta2, fixed_instant());
 
         let snapshot = monitor.snapshot();
         assert_eq!(snapshot.len(), 2);
@@ -470,7 +462,7 @@ mod tests {
             call_id: "test".to_string(),
         };
 
-        monitor.register(123, meta);
+        monitor.register_at(123, meta, fixed_instant());
 
         let stats = monitor.aggregate();
         assert_eq!(stats.active_count, 1);
@@ -502,7 +494,7 @@ mod tests {
             snapshots: Vec::new(),
             children: Vec::new(),
             peak_rss: 0,
-            start_time: Instant::now(),
+            start_time: fixed_instant(),
         };
 
         // Add 10 snapshots
@@ -510,7 +502,7 @@ mod tests {
             tracked.snapshots.push(ResourceSnapshot {
                 cpu_percent: i as f32,
                 rss_bytes: i * 1000,
-                timestamp: Instant::now(),
+                timestamp: fixed_instant(),
             });
 
             // Simulate trimming

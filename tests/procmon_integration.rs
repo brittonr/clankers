@@ -2,6 +2,7 @@
 
 use std::sync::Arc;
 use std::time::Duration;
+use std::time::Instant;
 
 use clankers_procmon::ProcessEvent;
 use clankers_procmon::ProcessMeta;
@@ -35,11 +36,11 @@ async fn test_monitor_tracks_real_process() {
     });
 
     // Register it
-    monitor.register(pid, ProcessMeta {
+    monitor.register_at(pid, ProcessMeta {
         tool_name: "bash".to_string(),
         command: "sleep 1".to_string(),
         call_id: "integration-test".to_string(),
-    });
+    }, Instant::now());
 
     // Should appear in snapshot
     let snapshot = monitor.snapshot();
@@ -112,11 +113,11 @@ async fn test_monitor_discovers_children() {
         .expect("failed to spawn bash");
 
     let pid = child.id().expect("no pid");
-    monitor.register(pid, ProcessMeta {
+    monitor.register_at(pid, ProcessMeta {
         tool_name: "bash".to_string(),
         command: "bash -c 'sleep 1 & wait'".to_string(),
         call_id: "child-test".to_string(),
-    });
+    }, Instant::now());
 
     // Wait for a poll cycle to discover children
     tokio::time::sleep(Duration::from_millis(500)).await;

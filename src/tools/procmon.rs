@@ -407,8 +407,8 @@ mod tests {
     #[tokio::test]
     async fn test_list_with_processes() {
         let (tool, monitor) = make_tool_with_monitor();
-        monitor.register(111, test_meta("cargo build"));
-        monitor.register(222, test_meta("npm test"));
+        monitor.register_at(111, test_meta("cargo build"), Instant::now());
+        monitor.register_at(222, test_meta("npm test"), Instant::now());
         monitor.inject_snapshot(111, ResourceSnapshot {
             cpu_percent: 42.5,
             rss_bytes: 100 * 1_048_576, // 100 MB
@@ -429,7 +429,7 @@ mod tests {
     #[tokio::test]
     async fn test_summary_with_processes() {
         let (tool, monitor) = make_tool_with_monitor();
-        monitor.register(111, test_meta("cargo build"));
+        monitor.register_at(111, test_meta("cargo build"), Instant::now());
         monitor.inject_snapshot(111, ResourceSnapshot {
             cpu_percent: 50.0,
             rss_bytes: 200 * 1_048_576,
@@ -459,7 +459,7 @@ mod tests {
     #[tokio::test]
     async fn test_history_with_finished() {
         let (tool, monitor) = make_tool_with_monitor();
-        monitor.register(333, test_meta("make test"));
+        monitor.register_at(333, test_meta("make test"), Instant::now());
         monitor.inject_snapshot(333, ResourceSnapshot {
             cpu_percent: 80.0,
             rss_bytes: 50 * 1_048_576,
@@ -504,11 +504,11 @@ mod tests {
     #[tokio::test]
     async fn test_inspect_active_process() {
         let (tool, monitor) = make_tool_with_monitor();
-        monitor.register(555, ProcessMeta {
+        monitor.register_at(555, ProcessMeta {
             tool_name: "bash".to_string(),
             command: "cargo build --release".to_string(),
             call_id: "call-555".to_string(),
-        });
+        }, Instant::now());
         for i in 0..5 {
             monitor.inject_snapshot(555, ResourceSnapshot {
                 cpu_percent: (i as f32) * 20.0,
@@ -540,7 +540,7 @@ mod tests {
     #[tokio::test]
     async fn test_inspect_finished_process() {
         let (tool, monitor) = make_tool_with_monitor();
-        monitor.register(777, test_meta("pytest"));
+        monitor.register_at(777, test_meta("pytest"), Instant::now());
         monitor.inject_snapshot(777, ResourceSnapshot {
             cpu_percent: 90.0,
             rss_bytes: 300 * 1_048_576,

@@ -760,11 +760,11 @@ pub(super) async fn start_native_process_job(
     if let Some(monitor) = process_monitor
         && let Some(pid) = pid
     {
-        monitor.register(pid, clankers_procmon::ProcessMeta {
+        monitor.register_at(pid, clankers_procmon::ProcessMeta {
             tool_name: "process".to_string(),
             command: ProcessJobRedactionPolicy::default().safe_command_preview(&entry.command),
             call_id: call_id.unwrap_or("process-start").to_string(),
-        });
+        }, std::time::Instant::now());
     }
     persist_entry(db.as_ref(), &entry).await;
     spawn_reader(entry.clone(), "stdout", stdout);
@@ -877,11 +877,11 @@ pub(super) async fn restart_native_process_job(
     if let Some(monitor) = process_monitor
         && let Some(pid) = pid
     {
-        monitor.register(pid, clankers_procmon::ProcessMeta {
+        monitor.register_at(pid, clankers_procmon::ProcessMeta {
             tool_name: "process".to_string(),
             command: ProcessJobRedactionPolicy::default().safe_command_preview(&new_entry.command),
             call_id: call_id.unwrap_or("process-restart").to_string(),
-        });
+        }, std::time::Instant::now());
     }
     persist_entry(db.as_ref(), &new_entry).await;
     spawn_reader(new_entry.clone(), "stdout", stdout);

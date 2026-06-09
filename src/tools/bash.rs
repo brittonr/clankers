@@ -364,11 +364,11 @@ impl Tool for BashTool {
             && let Some(pid) = child.id()
         {
             let command_preview: String = command.chars().take(COMMAND_PREVIEW_LEN).collect();
-            monitor.register(pid, clankers_procmon::ProcessMeta {
+            monitor.register_at(pid, clankers_procmon::ProcessMeta {
                 tool_name: "bash".to_string(),
                 command: command_preview,
                 call_id: ctx.call_id.clone(),
-            });
+            }, std::time::Instant::now());
         }
 
         // Stream output from the child process
