@@ -11,7 +11,6 @@ use super::SlashHandler;
 
 /// Get a mutable reference to the peers panel, panicking if not found.
 /// Centralizes the expect call to make it easier to audit and replace.
-#[cfg_attr(dylint_lib = "tigerstyle", allow(no_unwrap, reason = "panel registered at startup"))]
 fn peers_panel_mut<'a>(ctx: &'a mut SlashContext<'_>) -> &'a mut PeersPanel {
     ctx.app
         .panels
@@ -21,7 +20,6 @@ fn peers_panel_mut<'a>(ctx: &'a mut SlashContext<'_>) -> &'a mut PeersPanel {
 
 /// Get a mutable reference to the subagent panel, panicking if not found.
 /// Centralizes the expect call to make it easier to audit and replace.
-#[cfg_attr(dylint_lib = "tigerstyle", allow(no_unwrap, reason = "panel registered at startup"))]
 fn subagent_panel_mut<'a>(ctx: &'a mut SlashContext<'_>) -> &'a mut SubagentPanel {
     ctx.app
         .panels

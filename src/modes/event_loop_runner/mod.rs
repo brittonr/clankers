@@ -781,7 +781,6 @@ fn process_todo_action(
 
 // ── Panel accessor helpers ──────────────────────────────────────────
 
-#[cfg_attr(dylint_lib = "tigerstyle", allow(no_unwrap, reason = "panel registered at startup"))]
 pub(super) fn subagent_panel(app: &mut App) -> &mut clankers_tui::components::subagent_panel::SubagentPanel {
     app.panels
         .downcast_mut::<clankers_tui::components::subagent_panel::SubagentPanel>(
@@ -790,14 +789,12 @@ pub(super) fn subagent_panel(app: &mut App) -> &mut clankers_tui::components::su
         .expect("subagent panel registered at startup")
 }
 
-#[cfg_attr(dylint_lib = "tigerstyle", allow(no_unwrap, reason = "panel registered at startup"))]
 pub(super) fn todo_panel(app: &mut App) -> &mut clankers_tui::components::todo_panel::TodoPanel {
     app.panels
         .downcast_mut::<clankers_tui::components::todo_panel::TodoPanel>(clankers_tui::panel::PanelId::Todo)
         .expect("todo panel registered at startup")
 }
 
-#[cfg_attr(dylint_lib = "tigerstyle", allow(no_unwrap, reason = "panel registered at startup"))]
 pub(super) fn peers_panel(app: &mut App) -> &mut clankers_tui::components::peers_panel::PeersPanel {
     app.panels
         .downcast_mut::<clankers_tui::components::peers_panel::PeersPanel>(clankers_tui::panel::PanelId::Peers)

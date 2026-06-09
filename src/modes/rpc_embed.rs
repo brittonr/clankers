@@ -161,7 +161,6 @@ pub(super) async fn maybe_start_rpc(
 }
 
 /// Helper to access the PeersPanel.
-#[cfg_attr(dylint_lib = "tigerstyle", allow(no_unwrap, reason = "panel registered at startup"))]
 fn peers_panel(app: &mut App) -> &mut clankers_tui::components::peers_panel::PeersPanel {
     app.panels
         .downcast_mut::<clankers_tui::components::peers_panel::PeersPanel>(clankers_tui::panel::PanelId::Peers)

@@ -194,7 +194,6 @@ fn populate_tool_info(app: &mut App, tools: &[Arc<dyn crate::tools::Tool>]) {
 }
 
 /// Helper to access the ProcessPanel.
-#[cfg_attr(dylint_lib = "tigerstyle", allow(no_unwrap, reason = "panel registered at startup"))]
 fn process_panel(app: &mut App) -> &mut clankers_tui::components::process_panel::ProcessPanel {
     app.panels
         .downcast_mut::<clankers_tui::components::process_panel::ProcessPanel>(clankers_tui::panel::PanelId::Processes)

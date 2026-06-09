@@ -508,7 +508,6 @@ impl SlashHandler for ImproveHandler {
 // ── Panel accessor helpers ──────────────────────────────────────────
 
 /// Helper to access the TodoPanel immutably. Panics if panel not registered (should never happen).
-#[cfg_attr(dylint_lib = "tigerstyle", allow(no_unwrap, reason = "panel registered at startup"))]
 fn todo_panel_ref(app: &clankers_tui::app::App) -> &clankers_tui::components::todo_panel::TodoPanel {
     app.panels
         .downcast_ref::<clankers_tui::components::todo_panel::TodoPanel>(clankers_tui::panel::PanelId::Todo)
@@ -516,7 +515,6 @@ fn todo_panel_ref(app: &clankers_tui::app::App) -> &clankers_tui::components::to
 }
 
 /// Helper to access the TodoPanel mutably. Panics if panel not registered (should never happen).
-#[cfg_attr(dylint_lib = "tigerstyle", allow(no_unwrap, reason = "panel registered at startup"))]
 fn todo_panel_mut(app: &mut clankers_tui::app::App) -> &mut clankers_tui::components::todo_panel::TodoPanel {
     app.panels
         .downcast_mut::<clankers_tui::components::todo_panel::TodoPanel>(clankers_tui::panel::PanelId::Todo)
