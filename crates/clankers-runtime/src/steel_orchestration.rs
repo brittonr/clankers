@@ -25,6 +25,15 @@ use basalt::validate_steel_evaluation_receipt;
 use basalt::validate_steel_evaluation_request;
 use chrono::DateTime;
 use chrono::Utc;
+pub use clanker_message::OrchestrationFallbackMode;
+pub use clanker_message::OrchestrationIssueCode;
+pub use clanker_message::OrchestrationPlanStatus;
+pub use clanker_message::OrchestrationPlannerKind;
+pub use clanker_message::OrchestrationRolloutStage;
+pub use clanker_message::RustNativeFallbackStatus;
+pub use clanker_message::SteelTurnExecutionStatus;
+pub use clanker_message::SteelTurnPlanningAuthorityReason;
+pub use clanker_message::SteelTurnPlanningAuthorityStatus;
 use clankers_artifacts::ArtifactHash;
 use serde::Deserialize;
 use serde::Serialize;
@@ -117,21 +126,6 @@ impl SteelOrchestrationProfile {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum OrchestrationRolloutStage {
-    Disabled,
-    Comparison,
-    Default,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum OrchestrationFallbackMode {
-    RustNative,
-    Block,
-}
-
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct TurnPlanningInput {
     pub turn_id: String,
@@ -175,29 +169,6 @@ impl SteelTurnPlanningAuthorityGrant {
             caveats: Vec::new(),
         }
     }
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum SteelTurnPlanningAuthorityStatus {
-    Allowed,
-    Denied,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "kebab-case")]
-pub enum SteelTurnPlanningAuthorityReason {
-    Allowed,
-    MissingGrant,
-    ExpiredGrant,
-    RevokedGrant,
-    WrongAudience,
-    WrongResource,
-    WrongAbility,
-    UnknownCaveat,
-    OverbroadGrant,
-    BasaltDenied,
-    BasaltError,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -283,38 +254,6 @@ impl SteelTurnPlanHostCallPayload {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum OrchestrationPlannerKind {
-    SteelScheme,
-    RustNative,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum OrchestrationPlanStatus {
-    Authorized,
-    Denied,
-    FallbackUsed,
-    Blocked,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "kebab-case")]
-pub enum OrchestrationIssueCode {
-    Ok,
-    SteelDisabled,
-    UnsupportedSeam,
-    ScriptEvaluationFailed,
-    MalformedPlan,
-    FallbackDisabled,
-    NoCandidateActions,
-    UnauthorizedAction,
-    BasaltRequestInvalid,
-    BasaltReceiptInvalid,
-    UcanAuthorityDenied,
-}
-
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct OrchestrationPlanReceipt {
     pub schema: String,
@@ -342,15 +281,6 @@ pub struct OrchestrationPlanReceipt {
     pub safe_summary: String,
     pub redactions: Vec<String>,
     pub receipt_hash: ArtifactHash,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum RustNativeFallbackStatus {
-    NotNeeded,
-    Used,
-    Disabled,
-    Unavailable,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -393,13 +323,6 @@ impl SteelTurnExecutionHostCallPayload {
     pub fn to_json(&self) -> String {
         serde_json::to_string(self).expect("Steel execute-turn host-call payload serializes")
     }
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum SteelTurnExecutionStatus {
-    Authorized,
-    Denied,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

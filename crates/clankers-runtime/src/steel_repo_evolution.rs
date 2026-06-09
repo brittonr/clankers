@@ -8,6 +8,11 @@ use std::fs;
 use std::path::Path;
 use std::path::PathBuf;
 
+pub use clanker_message::SteelRepoEvolutionActivationReason;
+pub use clanker_message::SteelRepoEvolutionActivationStatus;
+pub use clanker_message::SteelRepoEvolutionFallbackMode;
+pub use clanker_message::SteelRepoEvolutionPlanReason;
+pub use clanker_message::SteelRepoEvolutionPlanStatus;
 use clankers_artifacts::ArtifactHash;
 use serde::Deserialize;
 use serde::Serialize;
@@ -84,13 +89,6 @@ pub struct SteelRepoEvolutionBudgets {
     pub max_host_calls: u64,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum SteelRepoEvolutionFallbackMode {
-    RustNative,
-    Block,
-}
-
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SteelRepoEvolutionActivationReceipt {
     pub schema: String,
@@ -118,38 +116,6 @@ pub struct SteelRepoEvolutionScriptReceipt {
     pub id: String,
     pub path: String,
     pub hash: ArtifactHash,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum SteelRepoEvolutionActivationStatus {
-    Inactive,
-    Active,
-    Denied,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "kebab-case")]
-pub enum SteelRepoEvolutionActivationReason {
-    AbsentPack,
-    Active,
-    InvalidProfileJson,
-    InvalidSchema,
-    InvalidAbiVersion,
-    MissingNickelProfile,
-    ReadNickelContract,
-    InvalidNickelContract,
-    MissingScript,
-    PathEscape,
-    ScriptHashMismatch,
-    ScriptTooLarge,
-    EmptyScripts,
-    EmptyHostCalls,
-    UnknownHostCall,
-    MissingHostContract,
-    InvalidHigherOrderContract,
-    ReceiptRootEscape,
-    BudgetTooSmall,
 }
 
 #[derive(Debug, Error, Clone, PartialEq, Eq)]
@@ -193,25 +159,6 @@ impl SteelRepoEvolutionPlanReceipt {
         let bytes = serde_json::to_vec(self).expect("repo evolution plan receipt serializes");
         ArtifactHash::digest(&bytes)
     }
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum SteelRepoEvolutionPlanStatus {
-    Accepted,
-    Blocked,
-    FallbackUsed,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "kebab-case")]
-pub enum SteelRepoEvolutionPlanReason {
-    Accepted,
-    InvalidSchema,
-    MalformedPayload,
-    UnknownHostCall,
-    UnknownGate,
-    EmptyActions,
 }
 
 #[must_use]

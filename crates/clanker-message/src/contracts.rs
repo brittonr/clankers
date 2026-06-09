@@ -1071,6 +1071,164 @@ pub enum SteelToolSubstrateIssue {
     MalformedPlan,
 }
 
+/// Steel turn orchestration rollout stage.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum OrchestrationRolloutStage {
+    Disabled,
+    Comparison,
+    Default,
+}
+
+/// Steel turn orchestration fallback behavior.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum OrchestrationFallbackMode {
+    RustNative,
+    Block,
+}
+
+/// Planner implementation selected for a turn orchestration receipt.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum OrchestrationPlannerKind {
+    SteelScheme,
+    RustNative,
+}
+
+/// Steel turn orchestration plan authorization status.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum OrchestrationPlanStatus {
+    Authorized,
+    Denied,
+    FallbackUsed,
+    Blocked,
+}
+
+/// Steel turn orchestration issue code.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum OrchestrationIssueCode {
+    Ok,
+    SteelDisabled,
+    UnsupportedSeam,
+    ScriptEvaluationFailed,
+    MalformedPlan,
+    FallbackDisabled,
+    NoCandidateActions,
+    UnauthorizedAction,
+    BasaltRequestInvalid,
+    BasaltReceiptInvalid,
+    UcanAuthorityDenied,
+}
+
+/// Rust-native fallback status for Steel turn orchestration.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum RustNativeFallbackStatus {
+    NotNeeded,
+    Used,
+    Disabled,
+    Unavailable,
+}
+
+/// UCAN/Basalt authority decision status for Steel turn planning.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum SteelTurnPlanningAuthorityStatus {
+    Allowed,
+    Denied,
+}
+
+/// UCAN/Basalt authority decision reason for Steel turn planning.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum SteelTurnPlanningAuthorityReason {
+    Allowed,
+    MissingGrant,
+    ExpiredGrant,
+    RevokedGrant,
+    WrongAudience,
+    WrongResource,
+    WrongAbility,
+    UnknownCaveat,
+    OverbroadGrant,
+    BasaltDenied,
+    BasaltError,
+}
+
+/// Steel-mediated turn execution authorization status.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum SteelTurnExecutionStatus {
+    Authorized,
+    Denied,
+}
+
+/// Repo-local Steel evolution fallback behavior.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum SteelRepoEvolutionFallbackMode {
+    RustNative,
+    Block,
+}
+
+/// Repo-local Steel evolution activation status.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum SteelRepoEvolutionActivationStatus {
+    Inactive,
+    Active,
+    Denied,
+}
+
+/// Repo-local Steel evolution activation reason code.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum SteelRepoEvolutionActivationReason {
+    AbsentPack,
+    Active,
+    InvalidProfileJson,
+    InvalidSchema,
+    InvalidAbiVersion,
+    MissingNickelProfile,
+    ReadNickelContract,
+    InvalidNickelContract,
+    MissingScript,
+    PathEscape,
+    ScriptHashMismatch,
+    ScriptTooLarge,
+    EmptyScripts,
+    EmptyHostCalls,
+    UnknownHostCall,
+    MissingHostContract,
+    InvalidHigherOrderContract,
+    ReceiptRootEscape,
+    BudgetTooSmall,
+}
+
+/// Repo-local Steel evolution plan status.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum SteelRepoEvolutionPlanStatus {
+    Accepted,
+    Blocked,
+    FallbackUsed,
+}
+
+/// Repo-local Steel evolution plan reason code.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum SteelRepoEvolutionPlanReason {
+    Accepted,
+    InvalidSchema,
+    MalformedPayload,
+    UnknownHostCall,
+    UnknownGate,
+    EmptyActions,
+}
+
 /// Policy for handling tool-name collisions while building a tool catalog.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -1743,6 +1901,103 @@ mod tests {
         let parsed_issue: SteelToolSubstrateIssue =
             serde_json::from_str(&issue).expect("substrate issue should deserialize");
         assert_eq!(parsed_issue, SteelToolSubstrateIssue::ExecutorKindDenied);
+
+        let orchestration_rollout =
+            serde_json::to_string(&OrchestrationRolloutStage::Default).expect("orchestration rollout should serialize");
+        assert_eq!(orchestration_rollout, r#""default""#);
+        let parsed_orchestration_rollout: OrchestrationRolloutStage =
+            serde_json::from_str(&orchestration_rollout).expect("orchestration rollout should deserialize");
+        assert_eq!(parsed_orchestration_rollout, OrchestrationRolloutStage::Default);
+
+        let orchestration_fallback = serde_json::to_string(&OrchestrationFallbackMode::RustNative)
+            .expect("orchestration fallback should serialize");
+        assert_eq!(orchestration_fallback, r#""rust_native""#);
+        let parsed_orchestration_fallback: OrchestrationFallbackMode =
+            serde_json::from_str(&orchestration_fallback).expect("orchestration fallback should deserialize");
+        assert_eq!(parsed_orchestration_fallback, OrchestrationFallbackMode::RustNative);
+
+        let planner = serde_json::to_string(&OrchestrationPlannerKind::SteelScheme).expect("planner should serialize");
+        assert_eq!(planner, r#""steel_scheme""#);
+        let parsed_planner: OrchestrationPlannerKind =
+            serde_json::from_str(&planner).expect("planner should deserialize");
+        assert_eq!(parsed_planner, OrchestrationPlannerKind::SteelScheme);
+
+        let plan_status =
+            serde_json::to_string(&OrchestrationPlanStatus::FallbackUsed).expect("plan status should serialize");
+        assert_eq!(plan_status, r#""fallback_used""#);
+        let parsed_plan_status: OrchestrationPlanStatus =
+            serde_json::from_str(&plan_status).expect("plan status should deserialize");
+        assert_eq!(parsed_plan_status, OrchestrationPlanStatus::FallbackUsed);
+
+        let issue_code =
+            serde_json::to_string(&OrchestrationIssueCode::UcanAuthorityDenied).expect("issue code should serialize");
+        assert_eq!(issue_code, r#""ucan-authority-denied""#);
+        let parsed_issue_code: OrchestrationIssueCode =
+            serde_json::from_str(&issue_code).expect("issue code should deserialize");
+        assert_eq!(parsed_issue_code, OrchestrationIssueCode::UcanAuthorityDenied);
+
+        let fallback_status =
+            serde_json::to_string(&RustNativeFallbackStatus::Unavailable).expect("fallback status should serialize");
+        assert_eq!(fallback_status, r#""unavailable""#);
+        let parsed_fallback_status: RustNativeFallbackStatus =
+            serde_json::from_str(&fallback_status).expect("fallback status should deserialize");
+        assert_eq!(parsed_fallback_status, RustNativeFallbackStatus::Unavailable);
+
+        let authority_status = serde_json::to_string(&SteelTurnPlanningAuthorityStatus::Denied)
+            .expect("authority status should serialize");
+        assert_eq!(authority_status, r#""denied""#);
+        let parsed_authority_status: SteelTurnPlanningAuthorityStatus =
+            serde_json::from_str(&authority_status).expect("authority status should deserialize");
+        assert_eq!(parsed_authority_status, SteelTurnPlanningAuthorityStatus::Denied);
+
+        let authority_reason = serde_json::to_string(&SteelTurnPlanningAuthorityReason::OverbroadGrant)
+            .expect("authority reason should serialize");
+        assert_eq!(authority_reason, r#""overbroad-grant""#);
+        let parsed_authority_reason: SteelTurnPlanningAuthorityReason =
+            serde_json::from_str(&authority_reason).expect("authority reason should deserialize");
+        assert_eq!(parsed_authority_reason, SteelTurnPlanningAuthorityReason::OverbroadGrant);
+
+        let execution_status =
+            serde_json::to_string(&SteelTurnExecutionStatus::Authorized).expect("execution status should serialize");
+        assert_eq!(execution_status, r#""authorized""#);
+        let parsed_execution_status: SteelTurnExecutionStatus =
+            serde_json::from_str(&execution_status).expect("execution status should deserialize");
+        assert_eq!(parsed_execution_status, SteelTurnExecutionStatus::Authorized);
+
+        let repo_fallback = serde_json::to_string(&SteelRepoEvolutionFallbackMode::RustNative)
+            .expect("repo evolution fallback should serialize");
+        assert_eq!(repo_fallback, r#""rust_native""#);
+        let parsed_repo_fallback: SteelRepoEvolutionFallbackMode =
+            serde_json::from_str(&repo_fallback).expect("repo evolution fallback should deserialize");
+        assert_eq!(parsed_repo_fallback, SteelRepoEvolutionFallbackMode::RustNative);
+
+        let activation_status = serde_json::to_string(&SteelRepoEvolutionActivationStatus::Denied)
+            .expect("activation status should serialize");
+        assert_eq!(activation_status, r#""denied""#);
+        let parsed_activation_status: SteelRepoEvolutionActivationStatus =
+            serde_json::from_str(&activation_status).expect("activation status should deserialize");
+        assert_eq!(parsed_activation_status, SteelRepoEvolutionActivationStatus::Denied);
+
+        let activation_reason = serde_json::to_string(&SteelRepoEvolutionActivationReason::InvalidHigherOrderContract)
+            .expect("activation reason should serialize");
+        assert_eq!(activation_reason, r#""invalid-higher-order-contract""#);
+        let parsed_activation_reason: SteelRepoEvolutionActivationReason =
+            serde_json::from_str(&activation_reason).expect("activation reason should deserialize");
+        assert_eq!(parsed_activation_reason, SteelRepoEvolutionActivationReason::InvalidHigherOrderContract);
+
+        let plan_status = serde_json::to_string(&SteelRepoEvolutionPlanStatus::FallbackUsed)
+            .expect("repo evolution plan status should serialize");
+        assert_eq!(plan_status, r#""fallback_used""#);
+        let parsed_plan_status: SteelRepoEvolutionPlanStatus =
+            serde_json::from_str(&plan_status).expect("repo evolution plan status should deserialize");
+        assert_eq!(parsed_plan_status, SteelRepoEvolutionPlanStatus::FallbackUsed);
+
+        let plan_reason = serde_json::to_string(&SteelRepoEvolutionPlanReason::MalformedPayload)
+            .expect("repo evolution plan reason should serialize");
+        assert_eq!(plan_reason, r#""malformed-payload""#);
+        let parsed_plan_reason: SteelRepoEvolutionPlanReason =
+            serde_json::from_str(&plan_reason).expect("repo evolution plan reason should deserialize");
+        assert_eq!(parsed_plan_reason, SteelRepoEvolutionPlanReason::MalformedPayload);
     }
 
     #[test]

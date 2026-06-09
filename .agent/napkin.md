@@ -3,6 +3,7 @@
 ## Corrections
 | Date | Source | What Went Wrong | What To Do Instead |
 |------|--------|----------------|-------------------|
+| 2026-06-09 | self | Repeated the Cargo multi-filter mistake during Steel orchestration DTO validation (`cargo test ... filter1 filter2`), so the command failed before tests ran | Cargo accepts only one positional TESTNAME; run focused runtime filters separately or use one broad shared substring. |
 | 2026-06-08 | self | Sent a Steel `git status` process helper with one extra closing parenthesis, causing a parse failure before the command ran | Use a shorter known-good process wrapper or count parentheses before sending ad-hoc Steel snippets; don't compose long nested `if` forms inline. |
 | 2026-06-08 | self | `scripts/check-message-contract-boundary.rs` failed because `clankers-tool-host` still exposed public `DateTime<Utc>` process-job APIs after prior DTO moves | Green SDK/tool-host process-job public APIs should use `ProcessJobTimestamp`; keep chrono conversion helpers private or at the runtime/root shell edge. |
 | 2026-06-08 | self | Ran rustfmt on `crates/clanker-message/src/lib.rs` while moving a re-export and it recursed into `metrics.rs`, causing unrelated formatting churn | Treat `clanker-message/src/lib.rs` like other module roots; manually edit/review root re-exports or immediately restore child-module churn. |
