@@ -93,7 +93,7 @@ pub fn handle_tool_call(input: String) -> FnResult<String> {
 
 #[plugin_fn]
 pub fn on_event(input: String) -> FnResult<String> {
-    dispatch_events(&input, "clankers-self-validate", &[
+    dispatch_events(&input, &[
         ("agent_start", |_| "Self-validate plugin ready".to_string()),
         ("agent_end", |_| "Self-validate plugin shutting down".to_string()),
         ("tool_call", |data| {

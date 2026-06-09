@@ -44,7 +44,7 @@ pub fn handle_tool_call(input: String) -> FnResult<String> {
 
 #[plugin_fn]
 pub fn on_event(input: String) -> FnResult<String> {
-    dispatch_events(&input, "clankers-email", &[
+    dispatch_events(&input, &[
         ("agent_start", |_| "clankers-email: Fastmail JMAP plugin ready".to_string()),
         ("schedule_fire", handle_schedule_fire_event),
     ])
@@ -114,7 +114,12 @@ fn get_session(token: &str) -> Result<Session, String> {
     let mut headers = BTreeMap::new();
     headers.insert("Authorization".into(), format!("Bearer {token}"));
 
-    let resp = http::request("GET", "https://api.fastmail.com/jmap/session", &headers, None)?;
+    let resp = http::request(http::RequestOptions {
+        method: "GET",
+        url: "https://api.fastmail.com/jmap/session",
+        headers: &headers,
+        body: None,
+    })?;
 
     if !resp.is_success() {
         return Err(format!(

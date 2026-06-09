@@ -44,7 +44,7 @@
 //!
 //! #[plugin_fn]
 //! pub fn on_event(input: String) -> FnResult<String> {
-//!     dispatch_events(&input, "my-plugin", &[
+//!     dispatch_events(&input, &[
 //!         ("agent_start", |_| "Plugin ready".to_string()),
 //!         ("agent_end",   |_| "Shutting down".to_string()),
 //!     ])

@@ -22,7 +22,7 @@ pub fn handle_tool_call(input: String) -> FnResult<String> {
 
 #[plugin_fn]
 pub fn on_event(input: String) -> FnResult<String> {
-    dispatch_events(&input, "clankers-text-stats", &[
+    dispatch_events(&input, &[
         ("agent_start", |_| "clankers-text-stats plugin initialized".to_string()),
         ("agent_end", |_| "clankers-text-stats plugin shutting down".to_string()),
     ])

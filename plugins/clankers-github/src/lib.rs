@@ -43,7 +43,7 @@ pub fn handle_tool_call(input: String) -> FnResult<String> {
 /// Handle a plugin lifecycle event.
 #[plugin_fn]
 pub fn on_event(input: String) -> FnResult<String> {
-    dispatch_events(&input, "clankers-github", &[
+    dispatch_events(&input, &[
         ("agent_start", |_| "clankers-github plugin ready".to_string()),
         ("agent_end", |_| "clankers-github plugin shutting down".to_string()),
     ])

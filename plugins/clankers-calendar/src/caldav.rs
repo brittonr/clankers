@@ -111,8 +111,13 @@ pub fn discover_calendars(config: &CalDavConfig) -> Result<Vec<CalendarInfo>, St
   </D:prop>
 </D:propfind>"#;
 
-    let resp = http::request("PROPFIND", &config.url, &headers, Some(body))
-        .map_err(|e| format!("Calendar discovery failed: {e}"))?;
+    let resp = http::request(http::RequestOptions {
+        method: "PROPFIND",
+        url: &config.url,
+        headers: &headers,
+        body: Some(body),
+    })
+    .map_err(|e| format!("Calendar discovery failed: {e}"))?;
 
     if !resp.is_success() && resp.status != 207 {
         return Err(http_status_to_error(resp.status, "Calendar discovery"));
@@ -148,8 +153,13 @@ pub fn query_events(
 </C:calendar-query>"#
     );
 
-    let resp = http::request("REPORT", calendar_url, &headers, Some(&body))
-        .map_err(|e| format!("Event query failed: {e}"))?;
+    let resp = http::request(http::RequestOptions {
+        method: "REPORT",
+        url: calendar_url,
+        headers: &headers,
+        body: Some(&body),
+    })
+    .map_err(|e| format!("Event query failed: {e}"))?;
 
     if !resp.is_success() && resp.status != 207 {
         return Err(http_status_to_error(resp.status, "Event query"));
@@ -195,8 +205,13 @@ pub fn create_event(
         uid
     );
 
-    let resp = http::request("PUT", &url, &headers, Some(ical_body))
-        .map_err(|e| format!("Create event failed: {e}"))?;
+    let resp = http::request(http::RequestOptions {
+        method: "PUT",
+        url: &url,
+        headers: &headers,
+        body: Some(ical_body),
+    })
+    .map_err(|e| format!("Create event failed: {e}"))?;
 
     if resp.status == 201 || resp.status == 204 {
         // Extract ETag from response — if available in body
@@ -225,8 +240,13 @@ pub fn update_event(
     );
     headers.insert("If-Match".to_string(), etag.to_string());
 
-    let resp = http::request("PUT", event_url, &headers, Some(ical_body))
-        .map_err(|e| format!("Update event failed: {e}"))?;
+    let resp = http::request(http::RequestOptions {
+        method: "PUT",
+        url: event_url,
+        headers: &headers,
+        body: Some(ical_body),
+    })
+    .map_err(|e| format!("Update event failed: {e}"))?;
 
     if resp.status == 204 || resp.status == 200 {
         Ok(String::new())
@@ -239,8 +259,13 @@ pub fn update_event(
 pub fn delete_event(config: &CalDavConfig, event_url: &str) -> Result<(), String> {
     let headers = make_headers(config);
 
-    let resp = http::request("DELETE", event_url, &headers, None)
-        .map_err(|e| format!("Delete event failed: {e}"))?;
+    let resp = http::request(http::RequestOptions {
+        method: "DELETE",
+        url: event_url,
+        headers: &headers,
+        body: None,
+    })
+    .map_err(|e| format!("Delete event failed: {e}"))?;
 
     if resp.status == 204 || resp.status == 200 {
         Ok(())
@@ -257,8 +282,13 @@ pub fn fetch_event(config: &CalDavConfig, event_url: &str) -> Result<(String, St
         "text/calendar; charset=utf-8".to_string(),
     );
 
-    let resp = http::request("GET", event_url, &headers, None)
-        .map_err(|e| format!("Fetch event failed: {e}"))?;
+    let resp = http::request(http::RequestOptions {
+        method: "GET",
+        url: event_url,
+        headers: &headers,
+        body: None,
+    })
+    .map_err(|e| format!("Fetch event failed: {e}"))?;
 
     if !resp.is_success() {
         return Err(http_status_to_error(resp.status, "Fetch event"));

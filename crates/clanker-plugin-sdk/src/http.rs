@@ -32,35 +32,42 @@ impl Response {
     }
 }
 
+/// Borrowed HTTP request parameters.
+pub struct RequestOptions<'a> {
+    pub method: &'a str,
+    pub url: &'a str,
+    pub headers: &'a BTreeMap<String, String>,
+    pub body: Option<&'a str>,
+}
+
 /// Perform an HTTP GET request.
 pub fn get(url: &str) -> Result<Response, String> {
-    request("GET", url, &BTreeMap::new(), None)
+    let headers = BTreeMap::new();
+    request(RequestOptions {
+        method: "GET",
+        url,
+        headers: &headers,
+        body: None,
+    })
 }
 
 /// Perform an HTTP POST request with headers and body.
 pub fn post(url: &str, headers: &BTreeMap<String, String>, body: &str) -> Result<Response, String> {
-    request("POST", url, headers, Some(body))
+    request(RequestOptions {
+        method: "POST",
+        url,
+        headers,
+        body: Some(body),
+    })
 }
 
 /// General HTTP request.
-#[cfg_attr(
-    dylint_lib = "tigerstyle",
-    allow(
-        tigerstyle::ambiguous_params,
-        reason = "plugin SDK HTTP helper mirrors conventional method/url request ordering for plugin authors"
-    )
-)]
-pub fn request(
-    method: &str,
-    url: &str,
-    headers: &BTreeMap<String, String>,
-    body: Option<&str>,
-) -> Result<Response, String> {
-    let mut req = HttpRequest::new(url);
-    req.method = Some(method.to_string());
-    req.headers = headers.clone();
+pub fn request(options: RequestOptions<'_>) -> Result<Response, String> {
+    let mut req = HttpRequest::new(options.url);
+    req.method = Some(options.method.to_string());
+    req.headers = options.headers.clone();
 
-    let resp = pdk_http::request::<String>(&req, body.map(|b| b.to_string()))
+    let resp = pdk_http::request::<String>(&req, options.body.map(|b| b.to_string()))
         .map_err(|e| format!("HTTP request failed: {e}"))?;
 
     Ok(Response {

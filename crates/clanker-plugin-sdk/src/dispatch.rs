@@ -25,7 +25,7 @@
 //! ```ignore
 //! #[plugin_fn]
 //! pub fn on_event(input: String) -> FnResult<String> {
-//!     dispatch_events(&input, "my-plugin", &[
+//!     dispatch_events(&input, &[
 //!         ("agent_start", |_| "Plugin ready".to_string()),
 //!         ("agent_end",   |_| "Plugin shutting down".to_string()),
 //!     ])
@@ -98,27 +98,19 @@ pub fn dispatch_tools(input: &str, handlers: &[(&str, ToolHandler)]) -> FnResult
 ///
 /// # Arguments
 /// - `input` — raw JSON string from the host (`{"event":"...","data":{...}}`)
-/// - `plugin_name` — plugin name (included in "unhandled" messages)
 /// - `handlers` — slice of `(event_name, handler_fn)` pairs
 ///
 /// # Example
 /// ```ignore
 /// #[plugin_fn]
 /// pub fn on_event(input: String) -> FnResult<String> {
-///     dispatch_events(&input, "my-plugin", &[
+///     dispatch_events(&input, &[
 ///         ("agent_start", |_| "Ready".to_string()),
 ///         ("agent_end",   |_| "Shutting down".to_string()),
 ///     ])
 /// }
 /// ```
-#[cfg_attr(
-    dylint_lib = "tigerstyle",
-    allow(
-        tigerstyle::ambiguous_params,
-        reason = "plugin SDK public helper keeps the documented (input, plugin_name, handlers) example shape"
-    )
-)]
-pub fn dispatch_events(input: &str, plugin_name: &str, handlers: &[(&str, EventHandler)]) -> FnResult<String> {
+pub fn dispatch_events(input: &str, handlers: &[(&str, EventHandler)]) -> FnResult<String> {
     let evt: crate::types::Event =
         serde_json::from_str(input).map_err(|e| Error::msg(format!("Invalid event JSON: {e}")))?;
 
@@ -131,7 +123,6 @@ pub fn dispatch_events(input: &str, plugin_name: &str, handlers: &[(&str, EventH
         }
     }
 
-    // No handler matched — return unhandled
-    let _ = plugin_name; // reserved for future use in unhandled messages
+    // No handler matched — return unhandled.
     Ok(serde_json::to_string(&EventResult::unhandled(&evt.event))?)
 }

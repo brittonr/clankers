@@ -57,7 +57,7 @@ pub fn handle_tool_call(input: String) -> FnResult<String> {
 /// Handle a plugin lifecycle event.
 #[plugin_fn]
 pub fn on_event(input: String) -> FnResult<String> {
-    dispatch_events(&input, "clankers-test-plugin", &[
+    dispatch_events(&input, &[
         ("agent_start", |_| "Test plugin initialized".to_string()),
         ("agent_end", |_| "Test plugin shutting down".to_string()),
         ("tool_call", |data| {
