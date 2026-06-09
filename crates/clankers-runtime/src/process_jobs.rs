@@ -77,6 +77,8 @@ pub use clankers_tool_host::process_jobs::ProcessJobOwnerScope;
 pub use clankers_tool_host::process_jobs::ProcessJobProfileReceiptMetadata;
 pub use clankers_tool_host::process_jobs::ProjectProcessJobProfilePolicy;
 pub use clankers_tool_host::process_jobs::ProjectProcessJobProfileSourcePrecedence;
+pub use clankers_tool_host::process_jobs::ProjectProcessJobProfileValidationCode;
+pub use clankers_tool_host::process_jobs::ProjectProcessJobProfileValidationError;
 pub use clankers_tool_host::process_jobs::ProcessJobProjectionBounds;
 pub use clankers_tool_host::process_jobs::ProcessJobProjectionItem;
 pub use clankers_tool_host::process_jobs::ProcessJobReconciliationOutcome;
@@ -328,49 +330,8 @@ impl ProjectProcessJobProfileManifestSource {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum ProjectProcessJobProfileValidationCode {
-    UnknownProfile,
-    UnsupportedManifestVersion,
-    AmbiguousManifestSource,
-    DisallowedBackend,
-    MalformedCommandShape,
-    DisallowedEnvironmentKey,
-    ResourceLimitExceeded,
-    DisallowedCwd,
-    DisallowedWritablePath,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct ProjectProcessJobProfileValidationError {
-    pub code: ProjectProcessJobProfileValidationCode,
-    pub profile: String,
-    pub reason: String,
-}
-
-impl std::fmt::Display for ProjectProcessJobProfileValidationError {
-    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(
-            formatter,
-            "process job profile {} validation failed ({:?}): {}",
-            self.profile, self.code, self.reason
-        )
-    }
-}
-
-impl ProjectProcessJobProfileValidationError {
-    fn new(code: ProjectProcessJobProfileValidationCode, profile: &str, reason: impl Into<String>) -> Self {
-        Self {
-            code,
-            profile: profile.to_string(),
-            reason: reason.into(),
-        }
-    }
-
-    fn into_runtime_error(self) -> RuntimeError {
-        RuntimeError::InvalidTool(self.to_string())
-    }
+fn profile_validation_runtime_error(error: ProjectProcessJobProfileValidationError) -> RuntimeError {
+    RuntimeError::InvalidTool(error.to_string())
 }
 
 impl ProjectProcessJobProfiles {
@@ -400,15 +361,13 @@ impl ProjectProcessJobProfiles {
         policy: &ProjectProcessJobProfilePolicy,
         evidence: ProjectProcessJobProfileResolutionEvidence,
     ) -> Result<ProjectProcessJobProfileResolution, RuntimeError> {
-        validate_profile_manifest_version(name, self.schema_version)
-            .map_err(ProjectProcessJobProfileValidationError::into_runtime_error)?;
+        validate_profile_manifest_version(name, self.schema_version).map_err(profile_validation_runtime_error)?;
         let profile = self.profiles.get(name).ok_or_else(|| {
-            ProjectProcessJobProfileValidationError::new(
+            profile_validation_runtime_error(ProjectProcessJobProfileValidationError::new(
                 ProjectProcessJobProfileValidationCode::UnknownProfile,
                 name,
                 format!("unknown process job profile: {name}"),
-            )
-            .into_runtime_error()
+            ))
         })?;
         profile.resolve_named(name, owner, policy, evidence)
     }
@@ -443,21 +402,19 @@ fn select_profile_manifest_source<'a>(
         }
     }
     let Some((_, selected_at_level)) = matches.iter().next_back() else {
-        return Err(ProjectProcessJobProfileValidationError::new(
+        return Err(profile_validation_runtime_error(ProjectProcessJobProfileValidationError::new(
             ProjectProcessJobProfileValidationCode::UnknownProfile,
             name,
             format!("unknown process job profile: {name}"),
-        )
-        .into_runtime_error());
+        )));
     };
     if selected_at_level.len() != 1 {
         let labels = selected_at_level.iter().map(|source| source.safe_label()).collect::<Vec<_>>().join(", ");
-        return Err(ProjectProcessJobProfileValidationError::new(
+        return Err(profile_validation_runtime_error(ProjectProcessJobProfileValidationError::new(
             ProjectProcessJobProfileValidationCode::AmbiguousManifestSource,
             name,
             format!("ambiguous duplicate profile at same precedence: {labels}"),
-        )
-        .into_runtime_error());
+        )));
     }
     Ok(selected_at_level[0])
 }
@@ -471,16 +428,11 @@ impl ProjectProcessJobProfile {
         evidence: ProjectProcessJobProfileResolutionEvidence,
     ) -> Result<ProjectProcessJobProfileResolution, RuntimeError> {
         let backend = self.backend.unwrap_or(policy.default_backend);
-        validate_profile_backend(name, backend, policy)
-            .map_err(ProjectProcessJobProfileValidationError::into_runtime_error)?;
-        validate_profile_command_shape(name, self)
-            .map_err(ProjectProcessJobProfileValidationError::into_runtime_error)?;
-        validate_profile_environment(name, &self.env, policy)
-            .map_err(ProjectProcessJobProfileValidationError::into_runtime_error)?;
-        validate_profile_resources(name, &self.resource_policy, policy)
-            .map_err(ProjectProcessJobProfileValidationError::into_runtime_error)?;
-        validate_profile_paths(name, self, policy)
-            .map_err(ProjectProcessJobProfileValidationError::into_runtime_error)?;
+        validate_profile_backend(name, backend, policy).map_err(profile_validation_runtime_error)?;
+        validate_profile_command_shape(name, self).map_err(profile_validation_runtime_error)?;
+        validate_profile_environment(name, &self.env, policy).map_err(profile_validation_runtime_error)?;
+        validate_profile_resources(name, &self.resource_policy, policy).map_err(profile_validation_runtime_error)?;
+        validate_profile_paths(name, self, policy).map_err(profile_validation_runtime_error)?;
 
         let cwd = self.cwd.clone().map_or(ProcessJobCwd::Inherited, ProcessJobCwd::Explicit);
         let mut metadata = self.metadata.clone();

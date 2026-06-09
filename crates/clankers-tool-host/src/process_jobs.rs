@@ -2023,6 +2023,52 @@ impl ProjectProcessJobProfileSourcePrecedence {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
+pub enum ProjectProcessJobProfileValidationCode {
+    UnknownProfile,
+    UnsupportedManifestVersion,
+    AmbiguousManifestSource,
+    DisallowedBackend,
+    MalformedCommandShape,
+    DisallowedEnvironmentKey,
+    ResourceLimitExceeded,
+    DisallowedCwd,
+    DisallowedWritablePath,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ProjectProcessJobProfileValidationError {
+    pub code: ProjectProcessJobProfileValidationCode,
+    pub profile: String,
+    pub reason: String,
+}
+
+impl std::fmt::Display for ProjectProcessJobProfileValidationError {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            formatter,
+            "process job profile {} validation failed ({:?}): {}",
+            self.profile, self.code, self.reason
+        )
+    }
+}
+
+impl ProjectProcessJobProfileValidationError {
+    #[must_use]
+    pub fn new(
+        code: ProjectProcessJobProfileValidationCode,
+        profile: impl Into<String>,
+        reason: impl Into<String>,
+    ) -> Self {
+        Self {
+            code,
+            profile: profile.into(),
+            reason: reason.into(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
 pub enum ProcessJobRetentionClass {
     Active,
     RecentCompleted,
@@ -2676,6 +2722,19 @@ mod tests {
         let json = serde_json::to_string(&ProjectProcessJobProfileSourcePrecedence::Workspace)
             .expect("precedence should serialize");
         assert_eq!(json, r#""workspace""#);
+    }
+
+    #[test]
+    fn project_profile_validation_error_message_is_stable() {
+        let error = ProjectProcessJobProfileValidationError::new(
+            ProjectProcessJobProfileValidationCode::DisallowedBackend,
+            "build",
+            "uses disallowed backend",
+        );
+        assert_eq!(
+            error.to_string(),
+            "process job profile build validation failed (DisallowedBackend): uses disallowed backend"
+        );
     }
 
     #[test]
