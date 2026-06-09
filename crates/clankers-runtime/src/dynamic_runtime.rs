@@ -7,144 +7,30 @@
 //! raw prompts, provider payloads, compact UCAN tokens, credentials, or large
 //! bodies.
 
+#[cfg(test)]
 use std::collections::BTreeSet;
 
+pub use clanker_message::CrossLayerFixtureReceipt;
+pub use clanker_message::DYNAMIC_RUNTIME_ACTION_SCHEMA;
+pub use clanker_message::DYNAMIC_RUNTIME_RECEIPT_SCHEMA;
+pub use clanker_message::DynamicRuntimeActionEnvelope;
 pub use clanker_message::DynamicRuntimeActionKind;
 pub use clanker_message::DynamicRuntimeActionReason;
+pub use clanker_message::DynamicRuntimeActionReceipt;
 pub use clanker_message::DynamicRuntimeActionStatus;
+pub use clanker_message::DynamicRuntimeAuthorizationContext;
 pub use clanker_message::DynamicRuntimeKind;
 pub use clanker_message::DynamicRuntimeRedactionClass;
+pub use clanker_message::FakeSteelOrchestrationProfile;
+pub use clanker_message::FakeSteelOrchestrationReceipt;
+pub use clanker_message::FakeSteelOrchestrationRequest;
 pub use clanker_message::SteelAmbientAccessKind;
+pub use clanker_message::WasmToolExecutionProfile;
+pub use clanker_message::WasmToolExecutionReceipt;
+pub use clanker_message::WasmToolExecutionRequest;
 pub use clanker_message::WasmToolExecutionStatus;
 use clankers_artifacts::ArtifactHash;
-use serde::Deserialize;
 use serde::Serialize;
-
-pub const DYNAMIC_RUNTIME_ACTION_SCHEMA: &str = "clankers.dynamic_runtime.action.v1";
-pub const DYNAMIC_RUNTIME_RECEIPT_SCHEMA: &str = "clankers.dynamic_runtime.action_receipt.v1";
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct DynamicRuntimeActionEnvelope {
-    pub schema: String,
-    pub action_id: String,
-    pub runtime: DynamicRuntimeKind,
-    pub runtime_profile: String,
-    pub action_kind: DynamicRuntimeActionKind,
-    pub action_name: String,
-    pub target_resource: String,
-    pub receipt_destination: String,
-    pub required_ucan_ability: String,
-    pub required_session_capabilities: Vec<String>,
-    pub input_hash: ArtifactHash,
-    pub input_bytes: u64,
-    pub redaction: DynamicRuntimeRedactionClass,
-}
-
-impl DynamicRuntimeActionEnvelope {
-    #[must_use]
-    pub fn stable_action_key(&self) -> String {
-        format!("{}:{}", action_kind_tag(self.action_kind), self.action_name)
-    }
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct DynamicRuntimeAuthorizationContext {
-    pub allowed_runtime_profiles: BTreeSet<String>,
-    pub allowed_actions: BTreeSet<String>,
-    pub granted_ucan_abilities: BTreeSet<String>,
-    pub session_capabilities: BTreeSet<String>,
-    pub disabled_actions: BTreeSet<String>,
-    pub max_input_bytes: u64,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct FakeSteelOrchestrationProfile {
-    pub runtime_profile: String,
-    pub allowed_host_functions: BTreeSet<String>,
-    pub required_session_capabilities: Vec<String>,
-    pub default_ucan_ability: String,
-    pub receipt_prefix: String,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct FakeSteelOrchestrationRequest {
-    pub script_id: String,
-    pub route_hint: String,
-    pub target_resource: String,
-    pub requested_host_function: String,
-    pub input_summary: String,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct FakeSteelOrchestrationReceipt {
-    pub selected_action: DynamicRuntimeActionEnvelope,
-    pub authorization_receipt: DynamicRuntimeActionReceipt,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct WasmToolExecutionProfile {
-    pub runtime_profile: String,
-    pub allowed_imports: BTreeSet<String>,
-    pub required_session_capabilities: Vec<String>,
-    pub required_ucan_ability: String,
-    pub max_memory_pages: u32,
-    pub max_fuel: u64,
-    pub max_time_ms: u64,
-    pub input_schema: String,
-    pub output_schema: String,
-    pub receipt_prefix: String,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct WasmToolExecutionRequest {
-    pub tool_name: String,
-    pub target_resource: String,
-    pub required_imports: Vec<String>,
-    pub input_summary: String,
-    pub requested_memory_pages: u32,
-    pub requested_fuel: u64,
-    pub requested_time_ms: u64,
-    pub input_schema: String,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct WasmToolExecutionReceipt {
-    pub status: WasmToolExecutionStatus,
-    pub authorization_receipt: DynamicRuntimeActionReceipt,
-    pub used_imports: Vec<String>,
-    pub memory_pages: u32,
-    pub fuel: u64,
-    pub time_ms: u64,
-    pub output_hash: Option<ArtifactHash>,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct CrossLayerFixtureReceipt {
-    pub nickel_profile_validated: bool,
-    pub steel_route_receipt: FakeSteelOrchestrationReceipt,
-    pub wasm_execution_receipt: WasmToolExecutionReceipt,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct DynamicRuntimeActionReceipt {
-    pub schema: String,
-    pub action_id: String,
-    pub runtime: DynamicRuntimeKind,
-    pub runtime_profile: String,
-    pub action_kind: DynamicRuntimeActionKind,
-    pub action_name: String,
-    pub target_resource: String,
-    pub receipt_destination: String,
-    pub status: DynamicRuntimeActionStatus,
-    pub reason: DynamicRuntimeActionReason,
-    pub safe_summary: String,
-    pub required_ucan_ability: String,
-    pub required_session_capabilities: Vec<String>,
-    pub input_hash: ArtifactHash,
-    pub input_bytes: u64,
-    pub writes_performed: bool,
-    pub receipt_hash: ArtifactHash,
-}
 
 #[derive(Serialize)]
 struct DynamicRuntimeReceiptHashMaterial<'a> {
@@ -518,13 +404,6 @@ fn sorted_unique(mut values: Vec<String>) -> Vec<String> {
     values.sort();
     values.dedup();
     values
-}
-
-fn action_kind_tag(kind: DynamicRuntimeActionKind) -> &'static str {
-    match kind {
-        DynamicRuntimeActionKind::HostFunction => "host_function",
-        DynamicRuntimeActionKind::Tool => "tool",
-    }
 }
 
 fn route_slug(value: &str) -> String {

@@ -5,6 +5,7 @@
 //! databases, network clients, daemon protocols, or UI crates.
 
 use std::collections::BTreeMap;
+use std::collections::BTreeSet;
 use std::time::Duration;
 
 use clankers_artifacts::ArtifactHash;
@@ -1244,6 +1245,139 @@ pub enum DynamicRuntimeActionReason {
     InputTooLarge,
     UnsafeReceiptDestination,
     UnsafeTargetResource,
+}
+
+pub const DYNAMIC_RUNTIME_ACTION_SCHEMA: &str = "clankers.dynamic_runtime.action.v1";
+pub const DYNAMIC_RUNTIME_RECEIPT_SCHEMA: &str = "clankers.dynamic_runtime.action_receipt.v1";
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct DynamicRuntimeActionEnvelope {
+    pub schema: String,
+    pub action_id: String,
+    pub runtime: DynamicRuntimeKind,
+    pub runtime_profile: String,
+    pub action_kind: DynamicRuntimeActionKind,
+    pub action_name: String,
+    pub target_resource: String,
+    pub receipt_destination: String,
+    pub required_ucan_ability: String,
+    pub required_session_capabilities: Vec<String>,
+    pub input_hash: ArtifactHash,
+    pub input_bytes: u64,
+    pub redaction: DynamicRuntimeRedactionClass,
+}
+
+impl DynamicRuntimeActionEnvelope {
+    #[must_use]
+    pub fn stable_action_key(&self) -> String {
+        format!("{}:{}", dynamic_runtime_action_kind_tag(self.action_kind), self.action_name)
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct DynamicRuntimeAuthorizationContext {
+    pub allowed_runtime_profiles: BTreeSet<String>,
+    pub allowed_actions: BTreeSet<String>,
+    pub granted_ucan_abilities: BTreeSet<String>,
+    pub session_capabilities: BTreeSet<String>,
+    pub disabled_actions: BTreeSet<String>,
+    pub max_input_bytes: u64,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct DynamicRuntimeActionReceipt {
+    pub schema: String,
+    pub action_id: String,
+    pub runtime: DynamicRuntimeKind,
+    pub runtime_profile: String,
+    pub action_kind: DynamicRuntimeActionKind,
+    pub action_name: String,
+    pub target_resource: String,
+    pub receipt_destination: String,
+    pub status: DynamicRuntimeActionStatus,
+    pub reason: DynamicRuntimeActionReason,
+    pub safe_summary: String,
+    pub required_ucan_ability: String,
+    pub required_session_capabilities: Vec<String>,
+    pub input_hash: ArtifactHash,
+    pub input_bytes: u64,
+    pub writes_performed: bool,
+    pub receipt_hash: ArtifactHash,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct FakeSteelOrchestrationProfile {
+    pub runtime_profile: String,
+    pub allowed_host_functions: BTreeSet<String>,
+    pub required_session_capabilities: Vec<String>,
+    pub default_ucan_ability: String,
+    pub receipt_prefix: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct FakeSteelOrchestrationRequest {
+    pub script_id: String,
+    pub route_hint: String,
+    pub target_resource: String,
+    pub requested_host_function: String,
+    pub input_summary: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct FakeSteelOrchestrationReceipt {
+    pub selected_action: DynamicRuntimeActionEnvelope,
+    pub authorization_receipt: DynamicRuntimeActionReceipt,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct WasmToolExecutionProfile {
+    pub runtime_profile: String,
+    pub allowed_imports: BTreeSet<String>,
+    pub required_session_capabilities: Vec<String>,
+    pub required_ucan_ability: String,
+    pub max_memory_pages: u32,
+    pub max_fuel: u64,
+    pub max_time_ms: u64,
+    pub input_schema: String,
+    pub output_schema: String,
+    pub receipt_prefix: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct WasmToolExecutionRequest {
+    pub tool_name: String,
+    pub target_resource: String,
+    pub required_imports: Vec<String>,
+    pub input_summary: String,
+    pub requested_memory_pages: u32,
+    pub requested_fuel: u64,
+    pub requested_time_ms: u64,
+    pub input_schema: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct WasmToolExecutionReceipt {
+    pub status: WasmToolExecutionStatus,
+    pub authorization_receipt: DynamicRuntimeActionReceipt,
+    pub used_imports: Vec<String>,
+    pub memory_pages: u32,
+    pub fuel: u64,
+    pub time_ms: u64,
+    pub output_hash: Option<ArtifactHash>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct CrossLayerFixtureReceipt {
+    pub nickel_profile_validated: bool,
+    pub steel_route_receipt: FakeSteelOrchestrationReceipt,
+    pub wasm_execution_receipt: WasmToolExecutionReceipt,
+}
+
+fn dynamic_runtime_action_kind_tag(kind: DynamicRuntimeActionKind) -> &'static str {
+    match kind {
+        DynamicRuntimeActionKind::HostFunction => "host_function",
+        DynamicRuntimeActionKind::Tool => "tool",
+    }
 }
 
 /// Ambient host access kind requested by dynamic runtime code.
@@ -2739,6 +2873,82 @@ mod tests {
         let parsed_plan_reason: SteelRepoEvolutionPlanReason =
             serde_json::from_str(&plan_reason).expect("repo evolution plan reason should deserialize");
         assert_eq!(parsed_plan_reason, SteelRepoEvolutionPlanReason::MalformedPayload);
+    }
+
+    #[test]
+    fn dynamic_runtime_action_and_wasm_contracts_roundtrip() {
+        let input_hash = ArtifactHash::digest(b"dynamic-input");
+        let receipt_hash = ArtifactHash::digest(b"dynamic-receipt");
+        let envelope = DynamicRuntimeActionEnvelope {
+            schema: DYNAMIC_RUNTIME_ACTION_SCHEMA.to_string(),
+            action_id: "steel:demo".to_string(),
+            runtime: DynamicRuntimeKind::SteelScheme,
+            runtime_profile: "default-deny".to_string(),
+            action_kind: DynamicRuntimeActionKind::HostFunction,
+            action_name: "steel.host.demo".to_string(),
+            target_resource: "host:demo".to_string(),
+            receipt_destination: "target/receipts/demo.json".to_string(),
+            required_ucan_ability: "host/call".to_string(),
+            required_session_capabilities: vec!["host-call".to_string()],
+            input_hash,
+            input_bytes: 13,
+            redaction: DynamicRuntimeRedactionClass::MetadataOnly,
+        };
+        assert_eq!(envelope.stable_action_key(), "host_function:steel.host.demo");
+
+        let context = DynamicRuntimeAuthorizationContext {
+            allowed_runtime_profiles: BTreeSet::from(["default-deny".to_string()]),
+            allowed_actions: BTreeSet::from([envelope.stable_action_key()]),
+            granted_ucan_abilities: BTreeSet::from(["host/call".to_string()]),
+            session_capabilities: BTreeSet::from(["host-call".to_string()]),
+            disabled_actions: BTreeSet::new(),
+            max_input_bytes: 4096,
+        };
+        let context_json = serde_json::to_string(&context).expect("dynamic runtime context should serialize");
+        let parsed_context: DynamicRuntimeAuthorizationContext =
+            serde_json::from_str(&context_json).expect("dynamic runtime context should deserialize");
+        assert_eq!(parsed_context, context);
+
+        let receipt = DynamicRuntimeActionReceipt {
+            schema: DYNAMIC_RUNTIME_RECEIPT_SCHEMA.to_string(),
+            action_id: envelope.action_id.clone(),
+            runtime: envelope.runtime,
+            runtime_profile: envelope.runtime_profile.clone(),
+            action_kind: envelope.action_kind,
+            action_name: envelope.action_name.clone(),
+            target_resource: envelope.target_resource.clone(),
+            receipt_destination: envelope.receipt_destination.clone(),
+            status: DynamicRuntimeActionStatus::Allowed,
+            reason: DynamicRuntimeActionReason::Ready,
+            safe_summary: "authorized".to_string(),
+            required_ucan_ability: envelope.required_ucan_ability.clone(),
+            required_session_capabilities: envelope.required_session_capabilities.clone(),
+            input_hash,
+            input_bytes: envelope.input_bytes,
+            writes_performed: false,
+            receipt_hash,
+        };
+        let wasm_receipt = WasmToolExecutionReceipt {
+            status: WasmToolExecutionStatus::Completed,
+            authorization_receipt: receipt.clone(),
+            used_imports: vec!["console.log".to_string()],
+            memory_pages: 1,
+            fuel: 10,
+            time_ms: 2,
+            output_hash: Some(ArtifactHash::digest(b"dynamic-output")),
+        };
+        let cross_layer = CrossLayerFixtureReceipt {
+            nickel_profile_validated: true,
+            steel_route_receipt: FakeSteelOrchestrationReceipt {
+                selected_action: envelope,
+                authorization_receipt: receipt,
+            },
+            wasm_execution_receipt: wasm_receipt,
+        };
+        let json = serde_json::to_string(&cross_layer).expect("dynamic runtime fixture should serialize");
+        let parsed: CrossLayerFixtureReceipt =
+            serde_json::from_str(&json).expect("dynamic runtime fixture should deserialize");
+        assert_eq!(parsed, cross_layer);
     }
 
     #[test]
