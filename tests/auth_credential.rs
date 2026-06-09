@@ -236,7 +236,7 @@ fn remote_auth_rejects_malformed_and_legacy_base64() {
     let legacy_key = iroh::SecretKey::from([31u8; 32]);
     let legacy_token = clankers_ucan::TokenBuilder::new(legacy_key)
         .with_capability(clankers_ucan::Capability::Prompt)
-        .build()
+        .build_at(test_unix_time_seconds())
         .expect("legacy token");
     let legacy = clankers_ucan::Credential::from_root(legacy_token).to_base64().expect("legacy base64");
     let legacy_error = auth.verify_credential_base64(legacy.as_str(), &request).expect_err("legacy rejected");

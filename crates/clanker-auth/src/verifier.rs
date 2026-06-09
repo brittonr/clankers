@@ -16,7 +16,6 @@ use crate::constants::TOKEN_CLOCK_SKEW_SECS;
 use crate::error::AuthError;
 use crate::token::Audience;
 use crate::token::CapabilityToken;
-use crate::utils::current_time_secs;
 
 /// Verifies capability tokens and checks authorization.
 pub struct TokenVerifier<C: Cap> {
@@ -26,16 +25,18 @@ pub struct TokenVerifier<C: Cap> {
     parent_cache: RwLock<HashMap<[u8; 32], CapabilityToken<C>>>,
     trusted_roots: Vec<PublicKey>,
     clock_skew_tolerance: u64,
+    verification_time_seconds: u64,
     _marker: PhantomData<C>,
 }
 
 impl<C: Cap> TokenVerifier<C> {
-    pub fn new() -> Self {
+    pub fn new_at(verification_time_seconds: u64) -> Self {
         Self {
             revoked: RwLock::new(HashSet::new()),
             parent_cache: RwLock::new(HashMap::new()),
             trusted_roots: Vec::new(),
             clock_skew_tolerance: TOKEN_CLOCK_SKEW_SECS,
+            verification_time_seconds,
             _marker: PhantomData,
         }
     }
@@ -100,7 +101,7 @@ impl<C: Cap> TokenVerifier<C> {
         token.issuer.verify(&sign_bytes, &signature).map_err(|_| AuthError::InvalidSignature)?;
 
         // Expiration
-        let now = current_time_secs();
+        let now = self.verification_time_seconds;
         if token.expires_at.saturating_add(self.clock_skew_tolerance) < now {
             return Err(AuthError::TokenExpired {
                 expired_at: token.expires_at,
@@ -200,7 +201,7 @@ impl<C: Cap> TokenVerifier<C> {
         let signature = iroh::Signature::from_bytes(&token.signature);
         token.issuer.verify(&sign_bytes, &signature).map_err(|_| AuthError::InvalidSignature)?;
 
-        let now = current_time_secs();
+        let now = self.verification_time_seconds;
         if token.expires_at.saturating_add(self.clock_skew_tolerance) < now {
             return Err(AuthError::TokenExpired {
                 expired_at: token.expires_at,
@@ -346,17 +347,12 @@ impl<C: Cap> TokenVerifier<C> {
     }
 }
 
-impl<C: Cap> Default for TokenVerifier<C> {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
 impl<C: Cap> std::fmt::Debug for TokenVerifier<C> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("TokenVerifier")
             .field("trusted_roots", &self.trusted_roots.len())
             .field("clock_skew_tolerance", &self.clock_skew_tolerance)
+            .field("verification_time_seconds", &self.verification_time_seconds)
             .finish()
     }
 }

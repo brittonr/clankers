@@ -8,6 +8,8 @@ use iroh::SecretKey;
 
 use super::*;
 
+const TEST_NOW_SECS: u64 = 1_700_000_000;
+
 /// Counter for generating unique secret keys.
 static KEY_COUNTER: AtomicU64 = AtomicU64::new(0);
 
@@ -407,7 +409,7 @@ fn test_token_builder_basic() {
     let token = TokenBuilder::new(key.clone())
         .with_capability(Capability::Prompt)
         .with_lifetime(Duration::from_secs(3600))
-        .build()
+        .build_at(TEST_NOW_SECS)
         .expect("should build token");
 
     assert_eq!(token.version, 1);
@@ -424,7 +426,7 @@ fn test_token_builder_with_audience() {
     let token = TokenBuilder::new(issuer)
         .for_key(audience_key)
         .with_capability(Capability::Prompt)
-        .build()
+        .build_at(TEST_NOW_SECS)
         .expect("should build token");
 
     assert_eq!(token.audience, Audience::Key(audience_key));
@@ -437,7 +439,7 @@ fn test_token_builder_with_nonce() {
     let token = TokenBuilder::new(key)
         .with_capability(Capability::Prompt)
         .with_random_nonce()
-        .build()
+        .build_at(TEST_NOW_SECS)
         .expect("should build token");
 
     assert!(token.nonce.is_some());
@@ -456,7 +458,7 @@ fn test_token_builder_too_many_capabilities() {
         });
     }
 
-    let result = builder.build();
+    let result = builder.build_at(TEST_NOW_SECS);
     assert!(matches!(result, Err(AuthError::TooManyCapabilities { .. })));
 }
 
@@ -472,7 +474,7 @@ fn test_token_builder_delegation() {
             read_only: false,
         })
         .with_capability(Capability::Delegate)
-        .build()
+        .build_at(TEST_NOW_SECS)
         .expect("should build root token");
 
     // Create child token with narrower scope
@@ -482,7 +484,7 @@ fn test_token_builder_delegation() {
             prefix: "/home/user/".into(),
             read_only: true,
         })
-        .build()
+        .build_at(TEST_NOW_SECS)
         .expect("should build child token");
 
     assert!(child.proof.is_some());
@@ -497,11 +499,11 @@ fn test_token_builder_delegation_without_delegate_cap() {
     // Create root token WITHOUT delegation capability
     let root = TokenBuilder::new(root_key)
         .with_capability(Capability::Prompt)
-        .build()
+        .build_at(TEST_NOW_SECS)
         .expect("should build root token");
 
     // Attempt to delegate should fail
-    let result = TokenBuilder::new(child_key).delegated_from(root).with_capability(Capability::Prompt).build();
+    let result = TokenBuilder::new(child_key).delegated_from(root).with_capability(Capability::Prompt).build_at(TEST_NOW_SECS);
 
     assert!(matches!(result, Err(AuthError::DelegationNotAllowed)));
 }
@@ -519,7 +521,7 @@ fn test_token_builder_capability_escalation() {
             read_only: true,
         })
         .with_capability(Capability::Delegate)
-        .build()
+        .build_at(TEST_NOW_SECS)
         .expect("should build root token");
 
     // Attempt to escalate to read-write should fail
@@ -529,7 +531,7 @@ fn test_token_builder_capability_escalation() {
             prefix: "/home/user/".into(),
             read_only: false,
         })
-        .build();
+        .build_at(TEST_NOW_SECS);
 
     assert!(matches!(result, Err(AuthError::CapabilityEscalation { .. })));
 }
@@ -548,7 +550,7 @@ fn test_token_encode_decode_roundtrip() {
             tool_pattern: "read,write".into(),
         })
         .with_random_nonce()
-        .build()
+        .build_at(TEST_NOW_SECS)
         .expect("should build token");
 
     let encoded = token.encode().expect("should encode");
@@ -563,7 +565,7 @@ fn test_token_encode_decode_roundtrip() {
 fn test_token_base64_roundtrip() {
     let key = test_secret_key();
 
-    let token = TokenBuilder::new(key).with_capability(Capability::Prompt).build().expect("should build token");
+    let token = TokenBuilder::new(key).with_capability(Capability::Prompt).build_at(TEST_NOW_SECS).expect("should build token");
 
     let b64 = token.to_base64().expect("should encode to base64");
     let decoded = CapabilityToken::from_base64(&b64).expect("should decode from base64");
@@ -582,10 +584,10 @@ fn test_verifier_accepts_valid_token() {
     let token = TokenBuilder::new(key)
         .with_capability(Capability::Prompt)
         .with_lifetime(Duration::from_secs(3600))
-        .build()
+        .build_at(TEST_NOW_SECS)
         .expect("should build token");
 
-    let verifier = TokenVerifier::new();
+    let verifier = TokenVerifier::new_at(TEST_NOW_SECS);
     verifier.verify(&token, None).expect("should verify");
 }
 
@@ -593,12 +595,12 @@ fn test_verifier_accepts_valid_token() {
 fn test_verifier_rejects_tampered_signature() {
     let key = test_secret_key();
 
-    let mut token = TokenBuilder::new(key).with_capability(Capability::Prompt).build().expect("should build token");
+    let mut token = TokenBuilder::new(key).with_capability(Capability::Prompt).build_at(TEST_NOW_SECS).expect("should build token");
 
     // Tamper with the signature
     token.signature[0] ^= 0xFF;
 
-    let verifier = TokenVerifier::new();
+    let verifier = TokenVerifier::new_at(TEST_NOW_SECS);
     let result = verifier.verify(&token, None);
     assert!(matches!(result, Err(AuthError::InvalidSignature)));
 }
@@ -612,10 +614,10 @@ fn test_verifier_checks_audience() {
     let token = TokenBuilder::new(issuer)
         .for_key(intended_audience.public())
         .with_capability(Capability::Prompt)
-        .build()
+        .build_at(TEST_NOW_SECS)
         .expect("should build token");
 
-    let verifier = TokenVerifier::new();
+    let verifier = TokenVerifier::new_at(TEST_NOW_SECS);
 
     // Correct presenter should pass
     verifier.verify(&token, Some(&intended_audience.public())).expect("should verify");
@@ -638,10 +640,10 @@ fn test_verifier_authorize() {
         .with_capability(Capability::ToolUse {
             tool_pattern: "read,grep".into(),
         })
-        .build()
+        .build_at(TEST_NOW_SECS)
         .expect("should build token");
 
-    let verifier = TokenVerifier::new();
+    let verifier = TokenVerifier::new_at(TEST_NOW_SECS);
 
     // Should authorize matching operations
     verifier
@@ -675,10 +677,10 @@ fn test_verifier_revocation() {
     let token = TokenBuilder::new(key)
         .with_capability(Capability::Prompt)
         .with_random_nonce()
-        .build()
+        .build_at(TEST_NOW_SECS)
         .expect("should build token");
 
-    let verifier = TokenVerifier::new();
+    let verifier = TokenVerifier::new_at(TEST_NOW_SECS);
 
     // Should verify before revocation
     verifier.verify(&token, None).expect("should verify before revocation");
@@ -698,15 +700,15 @@ fn test_verifier_trusted_roots() {
 
     let trusted_token = TokenBuilder::new(trusted.clone())
         .with_capability(Capability::Prompt)
-        .build()
+        .build_at(TEST_NOW_SECS)
         .expect("should build token");
 
     let untrusted_token = TokenBuilder::new(untrusted)
         .with_capability(Capability::Prompt)
-        .build()
+        .build_at(TEST_NOW_SECS)
         .expect("should build token");
 
-    let verifier = TokenVerifier::new().with_trusted_root(trusted.public());
+    let verifier = TokenVerifier::new_at(TEST_NOW_SECS).with_trusted_root(trusted.public());
 
     // Trusted issuer should pass
     verifier.verify(&trusted_token, None).expect("should verify trusted");
@@ -725,7 +727,7 @@ fn test_generate_root_token() {
     let secret = test_secret_key();
     let lifetime = Duration::from_secs(3600);
 
-    let token = generate_root_token(&secret, lifetime).expect("should generate root token");
+    let token = generate_root_token(&secret, lifetime, TEST_NOW_SECS).expect("should generate root token");
 
     // Should have correct issuer
     assert_eq!(token.issuer, secret.public());
@@ -757,7 +759,7 @@ fn test_generate_root_token() {
     assert!(token.nonce.is_some());
 
     // Should verify correctly
-    let verifier = TokenVerifier::new().with_trusted_root(secret.public());
+    let verifier = TokenVerifier::new_at(TEST_NOW_SECS).with_trusted_root(secret.public());
     verifier.verify(&token, None).expect("root token should verify");
 
     // Should authorize all operations
@@ -798,7 +800,7 @@ fn test_delegation_depth_tracking() {
     let root = TokenBuilder::new(root_key.clone())
         .with_capability(Capability::Prompt)
         .with_capability(Capability::Delegate)
-        .build()
+        .build_at(TEST_NOW_SECS)
         .expect("should build root token");
 
     assert_eq!(root.delegation_depth, 0);
@@ -810,7 +812,7 @@ fn test_delegation_depth_tracking() {
         .delegated_from(root.clone())
         .with_capability(Capability::Prompt)
         .with_capability(Capability::Delegate)
-        .build()
+        .build_at(TEST_NOW_SECS)
         .expect("should build child1 token");
 
     assert_eq!(child1.delegation_depth, 1);
@@ -822,7 +824,7 @@ fn test_delegation_depth_tracking() {
     let child2 = TokenBuilder::new(child2_key)
         .delegated_from(child1.clone())
         .with_capability(Capability::Prompt)
-        .build()
+        .build_at(TEST_NOW_SECS)
         .expect("should build child2 token");
 
     assert_eq!(child2.delegation_depth, 2);
@@ -845,7 +847,7 @@ fn test_delegation_too_deep() {
             builder = builder.delegated_from(parent);
         }
 
-        current_token = Some(builder.build().unwrap_or_else(|_| panic!("should build token at depth {}", i)));
+        current_token = Some(builder.build_at(TEST_NOW_SECS).unwrap_or_else(|_| panic!("should build token at depth {}", i)));
     }
 
     // Attempt to delegate beyond MAX_DELEGATION_DEPTH should fail
@@ -856,7 +858,7 @@ fn test_delegation_too_deep() {
     let result = TokenBuilder::new(one_more_key)
         .delegated_from(final_token)
         .with_capability(Capability::Prompt)
-        .build();
+        .build_at(TEST_NOW_SECS);
 
     assert!(
         matches!(result, Err(AuthError::DelegationTooDeep { depth, max }) if depth == MAX_DELEGATION_DEPTH + 1 && max == MAX_DELEGATION_DEPTH)
@@ -875,7 +877,7 @@ fn test_verify_with_chain() {
             tool_pattern: "*".into(),
         })
         .with_capability(Capability::Delegate)
-        .build()
+        .build_at(TEST_NOW_SECS)
         .expect("should build root token");
 
     let service = TokenBuilder::new(service_key.clone())
@@ -884,7 +886,7 @@ fn test_verify_with_chain() {
             tool_pattern: "read,grep,find".into(),
         })
         .with_capability(Capability::Delegate)
-        .build()
+        .build_at(TEST_NOW_SECS)
         .expect("should build service token");
 
     let client = TokenBuilder::new(client_key.clone())
@@ -893,10 +895,10 @@ fn test_verify_with_chain() {
         .with_capability(Capability::ToolUse {
             tool_pattern: "read,grep".into(),
         })
-        .build()
+        .build_at(TEST_NOW_SECS)
         .expect("should build client token");
 
-    let verifier = TokenVerifier::new().with_trusted_root(trusted_key.public());
+    let verifier = TokenVerifier::new_at(TEST_NOW_SECS).with_trusted_root(trusted_key.public());
 
     // Verify with explicit chain
     verifier
@@ -913,7 +915,7 @@ fn test_concurrent_revocation() {
     use std::sync::Arc;
     use std::thread;
 
-    let verifier = Arc::new(TokenVerifier::new());
+    let verifier = Arc::new(TokenVerifier::new_at(TEST_NOW_SECS));
     let mut handles = vec![];
 
     // Spawn multiple threads to revoke different tokens concurrently
@@ -937,7 +939,7 @@ fn test_concurrent_revocation() {
 
 #[test]
 fn test_load_and_get_revoked() {
-    let verifier = TokenVerifier::new();
+    let verifier = TokenVerifier::new_at(TEST_NOW_SECS);
 
     // Add some revocations
     let hash1 = [1u8; 32];
@@ -956,7 +958,7 @@ fn test_load_and_get_revoked() {
     assert!(all_revoked.contains(&hash3));
 
     // Create a new verifier and load from the first one
-    let verifier2 = TokenVerifier::new();
+    let verifier2 = TokenVerifier::new_at(TEST_NOW_SECS);
     verifier2.load_revoked(&all_revoked).unwrap();
 
     // Both verifiers should see the same revocations

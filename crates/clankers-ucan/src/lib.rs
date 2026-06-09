@@ -34,7 +34,6 @@ pub mod public_store;
 pub mod revocation;
 #[cfg(feature = "runtime-admission")]
 pub mod runtime_admission;
-pub mod utils;
 
 // Re-export generic infrastructure
 // Domain-specific types
@@ -74,6 +73,7 @@ pub type Credential = clanker_auth::Credential<Capability>;
 pub fn generate_root_token(
     secret_key: &iroh::SecretKey,
     lifetime: std::time::Duration,
+    issued_at_seconds: u64,
 ) -> Result<CapabilityToken, AuthError> {
     use rand::RngCore;
     TokenBuilder::new(secret_key.clone())
@@ -101,7 +101,7 @@ pub fn generate_root_token(
             rand::rng().fill_bytes(&mut nonce);
             nonce
         })
-        .build()
+        .build_at(issued_at_seconds)
 }
 
 #[cfg(test)]

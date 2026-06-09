@@ -24,11 +24,12 @@
 //! }
 //!
 //! // Create and verify tokens
+//! let now_seconds = 1_700_000_000;
 //! let token = TokenBuilder::<MyCap>::new(secret_key)
 //!     .with_capability(MyCap::Read)
-//!     .build()?;
+//!     .build_at(now_seconds)?;
 //!
-//! let verifier = TokenVerifier::<MyCap>::new();
+//! let verifier = TokenVerifier::<MyCap>::new_at(now_seconds);
 //! verifier.verify(&token, None)?;
 //! ```
 
@@ -37,7 +38,6 @@ pub mod constants;
 mod credential;
 mod error;
 mod token;
-pub mod utils;
 mod verifier;
 
 use std::fmt::Debug;

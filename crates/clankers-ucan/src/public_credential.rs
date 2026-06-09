@@ -698,7 +698,7 @@ mod tests {
         let legacy_key = iroh::SecretKey::from([31u8; 32]);
         let token = crate::TokenBuilder::new(legacy_key)
             .with_capability(crate::Capability::Prompt)
-            .build()
+            .build_at(1_700_000_000)
             .expect("legacy token");
         let legacy = crate::Credential::from_root(token).to_base64().expect("legacy base64");
 

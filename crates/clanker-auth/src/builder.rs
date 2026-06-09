@@ -14,7 +14,6 @@ use crate::constants::MAX_DELEGATION_DEPTH;
 use crate::error::AuthError;
 use crate::token::Audience;
 use crate::token::CapabilityToken;
-use crate::utils::current_time_secs;
 
 /// Builder for creating capability tokens.
 pub struct TokenBuilder<C: Cap> {
@@ -92,8 +91,8 @@ impl<C: Cap> TokenBuilder<C> {
         self
     }
 
-    /// Build and sign the token.
-    pub fn build(self) -> Result<CapabilityToken<C>, AuthError> {
+    /// Build and sign the token using an explicit Unix timestamp.
+    pub fn build_at(self, issued_at_seconds: u64) -> Result<CapabilityToken<C>, AuthError> {
         if self.capabilities.len() > MAX_CAPABILITIES_PER_TOKEN_USIZE {
             let count = u32::try_from(self.capabilities.len()).unwrap_or(MAX_CAPABILITIES_PER_TOKEN.saturating_add(1));
             return Err(AuthError::TooManyCapabilities {
@@ -132,15 +131,13 @@ impl<C: Cap> TokenBuilder<C> {
             0
         };
 
-        let now = current_time_secs();
-
         let mut token = CapabilityToken::new(
             1,
             self.issuer_key.public(),
             self.audience,
             self.capabilities,
-            now,
-            now.saturating_add(self.lifetime.as_secs()),
+            issued_at_seconds,
+            issued_at_seconds.saturating_add(self.lifetime.as_secs()),
             self.nonce,
             self.parent.as_ref().map(|p| p.hash()).transpose()?,
             delegation_depth,

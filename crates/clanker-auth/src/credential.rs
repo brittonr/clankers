@@ -58,8 +58,13 @@ impl<C: Cap> Credential<C> {
     /// Walks from leaf to root, checking signatures, expiry, and
     /// capability attenuation at each level. Stateless — no parent
     /// cache or network calls needed.
-    pub fn verify(&self, trusted_roots: &[PublicKey], presenter: Option<&PublicKey>) -> Result<(), AuthError> {
-        let mut verifier = TokenVerifier::new();
+    pub fn verify_at(
+        &self,
+        trusted_roots: &[PublicKey],
+        presenter: Option<&PublicKey>,
+        verification_time_seconds: u64,
+    ) -> Result<(), AuthError> {
+        let mut verifier = TokenVerifier::new_at(verification_time_seconds);
         for root in trusted_roots {
             verifier = verifier.with_trusted_root(*root);
         }
@@ -73,12 +78,13 @@ impl<C: Cap> Credential<C> {
     ///
     /// Fails if delegation depth would exceed `MAX_DELEGATION_DEPTH`,
     /// capabilities aren't a subset, or the current token lacks Delegate.
-    pub fn delegate(
+    pub fn delegate_at(
         &self,
         issuer_key: &SecretKey,
         audience: PublicKey,
         capabilities: Vec<C>,
         lifetime: Duration,
+        issued_at_seconds: u64,
     ) -> Result<Self, AuthError> {
         let child_token = TokenBuilder::new(issuer_key.clone())
             .for_key(audience)
@@ -86,7 +92,7 @@ impl<C: Cap> Credential<C> {
             .with_lifetime(lifetime)
             .with_random_nonce()
             .delegated_from(self.token.clone())
-            .build()?;
+            .build_at(issued_at_seconds)?;
 
         let mut new_proofs = Vec::with_capacity(self.proofs.len().saturating_add(1));
         new_proofs.push(self.token.clone());
@@ -99,11 +105,12 @@ impl<C: Cap> Credential<C> {
     }
 
     /// Delegate with bearer audience (no specific recipient key).
-    pub fn delegate_bearer(
+    pub fn delegate_bearer_at(
         &self,
         issuer_key: &SecretKey,
         capabilities: Vec<C>,
         lifetime: Duration,
+        issued_at_seconds: u64,
     ) -> Result<Self, AuthError> {
         let child_token = TokenBuilder::new(issuer_key.clone())
             .for_audience(Audience::Bearer)
@@ -111,7 +118,7 @@ impl<C: Cap> Credential<C> {
             .with_lifetime(lifetime)
             .with_random_nonce()
             .delegated_from(self.token.clone())
-            .build()?;
+            .build_at(issued_at_seconds)?;
 
         let mut new_proofs = Vec::with_capacity(self.proofs.len().saturating_add(1));
         new_proofs.push(self.token.clone());
