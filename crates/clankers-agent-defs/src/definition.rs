@@ -67,13 +67,6 @@ pub fn parse_agent_file(path: &Path, source: AgentSource) -> Result<AgentConfig,
 }
 
 /// Parse agent definition from content string
-#[cfg_attr(
-    dylint_lib = "tigerstyle",
-    allow(
-        tigerstyle::assertion_density,
-        reason = "host runner shell code is exercised by async host-runner tests and preserves adapter sequencing guards"
-    )
-)]
 pub fn parse_agent_content(content: &str, path: &Path, source: AgentSource) -> Result<AgentConfig, String> {
     // Split on --- delimiters
     let parts: Vec<&str> = content.split("---").collect();
@@ -81,6 +74,7 @@ pub fn parse_agent_content(content: &str, path: &Path, source: AgentSource) -> R
     if parts.len() < 3 {
         return Err(format!("{}: Missing frontmatter delimiters (expected '---' ... '---')", path.display()));
     }
+    assert!(parts.len() >= 3);
 
     // parts[0] is empty or whitespace before first ---
     // parts[1] is the frontmatter
@@ -91,6 +85,7 @@ pub fn parse_agent_content(content: &str, path: &Path, source: AgentSource) -> R
     if system_prompt.is_empty() {
         return Err(format!("{}: Empty system prompt", path.display()));
     }
+    assert!(!system_prompt.is_empty());
 
     // Parse frontmatter manually (simple key: value format)
     let mut name = None;

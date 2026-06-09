@@ -32,14 +32,9 @@ pub fn discover_agents(
 }
 
 /// Load all *.md files from a directory and register them
-#[cfg_attr(
-    dylint_lib = "tigerstyle",
-    allow(
-        tigerstyle::assertion_density,
-        reason = "host runner shell code is exercised by async host-runner tests and preserves adapter sequencing guards"
-    )
-)]
 fn load_agents_from_dir(dir: &Path, source: AgentSource, registry: &mut AgentRegistry) {
+    assert!(matches!(source, AgentSource::User | AgentSource::Project));
+    let before_count = registry.count();
     let entries = match std::fs::read_dir(dir) {
         Ok(entries) => entries,
         Err(_) => return, // Directory doesn't exist or can't be read
@@ -62,6 +57,7 @@ fn load_agents_from_dir(dir: &Path, source: AgentSource, registry: &mut AgentReg
             }
         }
     }
+    assert!(registry.count() >= before_count);
 }
 
 #[cfg(test)]
@@ -88,7 +84,7 @@ mod tests {
         writeln!(f, "Test system prompt").expect("Failed to write prompt");
 
         let registry = discover_agents(&agents_dir, None, &AgentScope::User);
-        assert_eq!(registry.len(), 1);
+        assert_eq!(registry.count(), 1);
         assert!(registry.get("test").is_some());
     }
 
@@ -107,7 +103,7 @@ mod tests {
         writeln!(f, "Project prompt").expect("Failed to write prompt");
 
         let registry = discover_agents(temp.path(), Some(&project_dir), &AgentScope::Project);
-        assert_eq!(registry.len(), 1);
+        assert_eq!(registry.count(), 1);
         assert!(registry.get("proj").is_some());
     }
 
@@ -128,7 +124,7 @@ mod tests {
         writeln!(f, "---\nname: proj\ndescription: Proj\n---\nPrompt").expect("Failed to write project agent");
 
         let registry = discover_agents(&user_dir, Some(&project_dir), &AgentScope::User);
-        assert_eq!(registry.len(), 1);
+        assert_eq!(registry.count(), 1);
         assert!(registry.get("user").is_some());
         assert!(registry.get("proj").is_none());
     }

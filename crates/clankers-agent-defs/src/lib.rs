@@ -43,16 +43,13 @@ impl AgentRegistry {
         names
     }
 
-    #[cfg_attr(
-        dylint_lib = "tigerstyle",
-        allow(
-            tigerstyle::usize_in_public_api,
-            reason = "registry length mirrors standard collection APIs for in-process callers"
-        )
-    )]
-    pub fn len(&self) -> usize {
-        self.agents.len()
+    pub fn count(&self) -> u32 {
+        match u32::try_from(self.agents.len()) {
+            Ok(count) => count,
+            Err(_) => u32::MAX,
+        }
     }
+
     pub fn is_empty(&self) -> bool {
         self.agents.is_empty()
     }

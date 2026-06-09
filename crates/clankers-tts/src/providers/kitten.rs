@@ -81,14 +81,14 @@ impl KittenTtsProvider {
         })?;
 
         let voices = vec![
-            voice("Bella", "kitten"),
-            voice("Jasper", "kitten"),
-            voice("Luna", "kitten"),
-            voice("Bruno", "kitten"),
-            voice("Rosie", "kitten"),
-            voice("Hugo", "kitten"),
-            voice("Kiki", "kitten"),
-            voice("Leo", "kitten"),
+            kitten_voice("Bella"),
+            kitten_voice("Jasper"),
+            kitten_voice("Luna"),
+            kitten_voice("Bruno"),
+            kitten_voice("Rosie"),
+            kitten_voice("Hugo"),
+            kitten_voice("Kiki"),
+            kitten_voice("Leo"),
         ];
 
         Ok(Self {
@@ -104,11 +104,11 @@ impl KittenTtsProvider {
     }
 }
 
-fn voice(name: &str, provider: &str) -> Voice {
+fn kitten_voice(voice_name: &str) -> Voice {
     Voice {
-        id: name.to_string(),
-        name: name.to_string(),
-        provider: provider.to_string(),
+        id: voice_name.to_string(),
+        name: voice_name.to_string(),
+        provider: "kitten".to_string(),
     }
 }
 
