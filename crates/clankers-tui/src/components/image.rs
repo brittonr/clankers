@@ -115,24 +115,19 @@ pub fn render_image_to_terminal(
 /// `m=1` on continuation chunks and `m=0` on the final chunk.
 ///
 /// Reference: <https://sw.kovidgoyal.net/kitty/graphics-protocol/>
-#[cfg_attr(
-    dylint_lib = "tigerstyle",
-    allow(tigerstyle::no_unwrap, reason = "base64 output is always valid UTF-8")
-)]
 fn render_kitty(data: &[u8], max_width: u16, max_height: u16) -> io::Result<usize> {
     let encoded = BASE64.encode(data);
     let mut tty = open_tty()?;
 
     // Chunk size for kitty protocol (4096 is the conventional limit)
     const CHUNK_SIZE: usize = 4096;
-    let chunks: Vec<&str> = encoded
-        .as_bytes()
-        .chunks(CHUNK_SIZE)
-        .map(|c| {
-            // SAFETY: base64 output is always valid ASCII/UTF-8
-            std::str::from_utf8(c).expect("base64 is valid UTF-8")
-        })
-        .collect();
+    let mut chunks: Vec<&str> = Vec::new();
+    let mut offset = 0;
+    while offset < encoded.len() {
+        let end = offset.saturating_add(CHUNK_SIZE).min(encoded.len());
+        chunks.push(&encoded[offset..end]);
+        offset = end;
+    }
 
     let total_chunks = chunks.len();
     for (i, chunk) in chunks.iter().enumerate() {
