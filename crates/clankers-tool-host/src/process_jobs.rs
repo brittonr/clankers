@@ -1895,6 +1895,80 @@ impl ProcessJobRedactionPolicy {
     }
 }
 
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct ProcessJobNotificationPolicyState {
+    completion_sent: bool,
+    watch_states: Vec<ProcessJobWatchPatternState>,
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+struct ProcessJobWatchPatternState {
+    last_delivered_tick: Option<u64>,
+    suppressed_matches: u32,
+    disabled: bool,
+}
+
+impl ProcessJobNotificationPolicyState {
+    #[must_use]
+    pub fn evaluate(
+        &mut self,
+        policy: &ProcessJobNotificationPolicy,
+        observation: ProcessJobNotificationObservation,
+    ) -> Vec<ProcessJobNotificationDecision> {
+        let mut decisions = Vec::new();
+        if observation.status.is_terminal() && policy.notify_on_complete && !self.completion_sent {
+            self.completion_sent = true;
+            decisions.push(ProcessJobRedactionPolicy::default().safe_notification_decision(
+                ProcessJobNotificationDecision {
+                    kind: ProcessJobNotificationKind::Completion,
+                    summary: format!("process job reached terminal status: {:?}", observation.status),
+                    log_excerpt: observation.line.clone(),
+                },
+            ));
+        }
+
+        let Some(line) = observation.line else {
+            return decisions;
+        };
+        let patterns = policy.bounded_watch_patterns();
+        if self.watch_states.len() < patterns.len() {
+            self.watch_states.resize_with(patterns.len(), ProcessJobWatchPatternState::default);
+        }
+        for (pattern_index, pattern) in patterns.iter().enumerate() {
+            if !line.contains(pattern) {
+                continue;
+            }
+            let watch_state = &mut self.watch_states[pattern_index];
+            if watch_state.disabled {
+                continue;
+            }
+            let rate_limited = watch_state
+                .last_delivered_tick
+                .is_some_and(|last| observation.tick.saturating_sub(last) < PROCESS_JOB_WATCH_RATE_LIMIT_TICKS);
+            if rate_limited {
+                watch_state.suppressed_matches = watch_state.suppressed_matches.saturating_add(1);
+                if watch_state.suppressed_matches >= PROCESS_JOB_WATCH_SUPPRESSION_LIMIT {
+                    watch_state.disabled = true;
+                }
+                continue;
+            }
+            watch_state.last_delivered_tick = Some(observation.tick);
+            watch_state.suppressed_matches = 0;
+            decisions.push(ProcessJobRedactionPolicy::default().safe_notification_decision(
+                ProcessJobNotificationDecision {
+                    kind: ProcessJobNotificationKind::WatchPattern {
+                        pattern_index,
+                        pattern: pattern.clone(),
+                    },
+                    summary: format!("process job matched readiness pattern {pattern_index}: {pattern}"),
+                    log_excerpt: Some(line.clone()),
+                },
+            ));
+        }
+        decisions
+    }
+}
+
 pub trait ProcessJobNotificationRedactionTarget: Sized {
     #[must_use]
     fn redact_with(self, policy: &ProcessJobRedactionPolicy) -> Self;
@@ -3062,6 +3136,39 @@ mod tests {
         assert_eq!(bounded[0], "ready");
         assert_eq!(bounded[1].chars().count(), MAX_PROCESS_JOB_WATCH_PATTERN_LEN);
         assert!(matches!(ProcessJobNotificationKind::Completion, ProcessJobNotificationKind::Completion));
+    }
+
+    #[test]
+    fn notification_policy_state_delivers_completion_once_and_redacts_watch_patterns() {
+        let policy = ProcessJobNotificationPolicy {
+            notify_on_complete: true,
+            watch_patterns: vec!["Authorization".to_string()],
+        };
+        let mut state = ProcessJobNotificationPolicyState::default();
+        let completion = state.evaluate(&policy, ProcessJobNotificationObservation {
+            status: ProcessJobStatus::Succeeded { exit_code: Some(0) },
+            line: Some("done with token=raw".to_string()),
+            tick: 1,
+        });
+        let duplicate = state.evaluate(&policy, ProcessJobNotificationObservation {
+            status: ProcessJobStatus::Succeeded { exit_code: Some(0) },
+            line: Some("done".to_string()),
+            tick: 2,
+        });
+        let watch = state.evaluate(&policy, ProcessJobNotificationObservation {
+            status: ProcessJobStatus::Running,
+            line: Some("Authorization: Bearer raw-token".to_string()),
+            tick: PROCESS_JOB_WATCH_RATE_LIMIT_TICKS + 2,
+        });
+
+        assert_eq!(completion.len(), 1);
+        assert_eq!(completion[0].log_excerpt.as_deref(), Some(PROCESS_JOB_REDACTED));
+        assert!(duplicate.is_empty());
+        assert_eq!(watch.len(), 1);
+        assert!(matches!(
+            &watch[0].kind,
+            ProcessJobNotificationKind::WatchPattern { pattern, .. } if pattern == PROCESS_JOB_REDACTED
+        ));
     }
 
     #[test]
