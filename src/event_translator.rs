@@ -102,16 +102,23 @@ pub fn translate(event: &AgentEvent) -> Option<TuiEvent> {
             cumulative_usage,
             turn_usage,
         } => Some(TuiEvent::UsageUpdate {
-            total_tokens: cumulative_usage.total_tokens(),
+            total_tokens: usage_tokens_to_tui_count(cumulative_usage.total_tokens()),
             input_tokens: cumulative_usage.input_tokens,
             output_tokens: cumulative_usage.output_tokens,
             cache_creation_input_tokens: cumulative_usage.cache_creation_input_tokens,
             cache_read_input_tokens: cumulative_usage.cache_read_input_tokens,
-            turn_tokens: turn_usage.total_tokens(),
+            turn_tokens: usage_tokens_to_tui_count(turn_usage.total_tokens()),
         }),
 
         // Events the TUI doesn't need
         _ => None,
+    }
+}
+
+fn usage_tokens_to_tui_count(tokens: u64) -> usize {
+    match usize::try_from(tokens) {
+        Ok(value) => value,
+        Err(_) => usize::MAX,
     }
 }
 
