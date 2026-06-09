@@ -873,6 +873,40 @@ pub enum WasmToolExecutionStatus {
     Blocked,
 }
 
+/// Steel runtime evaluation status code.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum SteelRuntimeStatusCode {
+    Succeeded,
+    Denied,
+    ResourceLimited,
+    EvaluationFailed,
+}
+
+/// Steel runtime evaluation reason code.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum SteelRuntimeReasonCode {
+    Ok,
+    SourceTooLarge,
+    OutputTooLarge,
+    ExecutionBudgetExceeded,
+    HostCallBudgetExceeded,
+    UnknownHostFunction,
+    DisabledHostFunction,
+    MissingHostCapability,
+    AmbientAuthorityDenied,
+    UnsupportedExpression,
+}
+
+/// Steel host-call authorization outcome.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum SteelHostCallOutcome {
+    Approved,
+    Denied,
+}
+
 /// Runtime selected to execute a Steel-mediated tool invocation.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -1526,6 +1560,27 @@ mod tests {
         assert_eq!(wasm, r#""completed""#);
         let parsed_wasm: WasmToolExecutionStatus = serde_json::from_str(&wasm).expect("wasm status should deserialize");
         assert_eq!(parsed_wasm, WasmToolExecutionStatus::Completed);
+
+        let runtime_status = serde_json::to_string(&SteelRuntimeStatusCode::ResourceLimited)
+            .expect("Steel runtime status should serialize");
+        assert_eq!(runtime_status, r#""resource_limited""#);
+        let parsed_runtime_status: SteelRuntimeStatusCode =
+            serde_json::from_str(&runtime_status).expect("Steel runtime status should deserialize");
+        assert_eq!(parsed_runtime_status, SteelRuntimeStatusCode::ResourceLimited);
+
+        let runtime_reason = serde_json::to_string(&SteelRuntimeReasonCode::MissingHostCapability)
+            .expect("Steel runtime reason should serialize");
+        assert_eq!(runtime_reason, r#""missing-host-capability""#);
+        let parsed_runtime_reason: SteelRuntimeReasonCode =
+            serde_json::from_str(&runtime_reason).expect("Steel runtime reason should deserialize");
+        assert_eq!(parsed_runtime_reason, SteelRuntimeReasonCode::MissingHostCapability);
+
+        let host_call_outcome =
+            serde_json::to_string(&SteelHostCallOutcome::Approved).expect("Steel host-call outcome should serialize");
+        assert_eq!(host_call_outcome, r#""approved""#);
+        let parsed_host_call_outcome: SteelHostCallOutcome =
+            serde_json::from_str(&host_call_outcome).expect("Steel host-call outcome should deserialize");
+        assert_eq!(parsed_host_call_outcome, SteelHostCallOutcome::Approved);
 
         let executor =
             serde_json::to_string(&SteelToolExecutorKind::StdioPlugin).expect("executor kind should serialize");

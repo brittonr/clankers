@@ -9,6 +9,9 @@
 use std::collections::BTreeMap;
 use std::collections::BTreeSet;
 
+pub use clanker_message::SteelHostCallOutcome;
+pub use clanker_message::SteelRuntimeReasonCode;
+pub use clanker_message::SteelRuntimeStatusCode;
 use clankers_artifacts::ArtifactHash;
 use serde::Deserialize;
 use serde::Serialize;
@@ -116,41 +119,10 @@ impl SteelRuntimeReceipt {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum SteelRuntimeStatusCode {
-    Succeeded,
-    Denied,
-    ResourceLimited,
-    EvaluationFailed,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "kebab-case")]
-pub enum SteelRuntimeReasonCode {
-    Ok,
-    SourceTooLarge,
-    OutputTooLarge,
-    ExecutionBudgetExceeded,
-    HostCallBudgetExceeded,
-    UnknownHostFunction,
-    DisabledHostFunction,
-    MissingHostCapability,
-    AmbientAuthorityDenied,
-    UnsupportedExpression,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SteelHostCallReceipt {
     pub name: String,
     pub outcome: SteelHostCallOutcome,
     pub safe_message: String,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum SteelHostCallOutcome {
-    Approved,
-    Denied,
 }
 
 #[must_use]
