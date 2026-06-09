@@ -2024,6 +2024,7 @@ impl ProjectProcessJobProfileSourcePrecedence {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum ProjectProcessJobProfileValidationCode {
+    InvalidManifestJson,
     UnknownProfile,
     UnsupportedManifestVersion,
     AmbiguousManifestSource,
@@ -2065,6 +2066,370 @@ impl ProjectProcessJobProfileValidationError {
             reason: reason.into(),
         }
     }
+}
+
+pub const PROCESS_JOB_PROFILE_SCHEMA_VERSION: u32 = 1;
+
+fn default_process_job_profile_schema_version() -> u32 {
+    PROCESS_JOB_PROFILE_SCHEMA_VERSION
+}
+
+/// Named project process/job profile collection. Parsing this type is pure and
+/// never dispatches to native, pueue, systemd, or storage adapters.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ProjectProcessJobProfiles {
+    #[serde(default = "default_process_job_profile_schema_version")]
+    pub schema_version: u32,
+    #[serde(default)]
+    pub profiles: BTreeMap<String, ProjectProcessJobProfile>,
+}
+
+impl Default for ProjectProcessJobProfiles {
+    fn default() -> Self {
+        Self {
+            schema_version: PROCESS_JOB_PROFILE_SCHEMA_VERSION,
+            profiles: BTreeMap::new(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
+pub struct ProjectProcessJobProfile {
+    pub backend: Option<ProcessJobBackendKind>,
+    pub command: Option<String>,
+    pub program: Option<String>,
+    #[serde(default)]
+    pub args: Vec<String>,
+    pub cwd: Option<PathBuf>,
+    #[serde(default)]
+    pub writable_paths: Vec<PathBuf>,
+    #[serde(default)]
+    pub env: BTreeMap<String, String>,
+    #[serde(default)]
+    pub resource_policy: ProcessJobResourcePolicy,
+    #[serde(default)]
+    pub notification_policy: ProcessJobNotificationPolicy,
+    #[serde(default)]
+    pub metadata: BTreeMap<String, String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ProjectProcessJobProfileResolution {
+    pub name: String,
+    pub request: ProcessJobSpec,
+    pub evidence: ProjectProcessJobProfileResolutionEvidence,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ProjectProcessJobProfileResolutionEvidence {
+    pub profile_name: String,
+    pub manifest_schema_version: u32,
+    pub profile_source: String,
+    pub policy_source: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ProjectProcessJobProfileManifestSource {
+    pub precedence: ProjectProcessJobProfileSourcePrecedence,
+    pub label: String,
+    pub path: Option<PathBuf>,
+    pub manifest: ProjectProcessJobProfiles,
+}
+
+impl ProjectProcessJobProfileManifestSource {
+    #[must_use]
+    pub fn safe_label(&self) -> String {
+        self.path.as_ref().map_or_else(|| self.label.clone(), |path| path.to_string_lossy().into_owned())
+    }
+}
+
+impl ProjectProcessJobProfiles {
+    pub fn from_json_str(input: &str) -> Result<Self, ProjectProcessJobProfileValidationError> {
+        serde_json::from_str(input).map_err(|err| {
+            ProjectProcessJobProfileValidationError::new(
+                ProjectProcessJobProfileValidationCode::InvalidManifestJson,
+                "<manifest>",
+                format!("invalid process job profiles config: {err}"),
+            )
+        })
+    }
+
+    pub fn resolve(
+        &self,
+        name: &str,
+        owner: ProcessJobOwnerScope,
+        policy: &ProjectProcessJobProfilePolicy,
+    ) -> Result<ProjectProcessJobProfileResolution, ProjectProcessJobProfileValidationError> {
+        self.resolve_with_evidence(name, owner, policy, ProjectProcessJobProfileResolutionEvidence {
+            profile_name: name.to_string(),
+            manifest_schema_version: self.schema_version,
+            profile_source: "inline".to_string(),
+            policy_source: policy.policy_source.clone(),
+        })
+    }
+
+    pub fn resolve_with_evidence(
+        &self,
+        name: &str,
+        owner: ProcessJobOwnerScope,
+        policy: &ProjectProcessJobProfilePolicy,
+        evidence: ProjectProcessJobProfileResolutionEvidence,
+    ) -> Result<ProjectProcessJobProfileResolution, ProjectProcessJobProfileValidationError> {
+        validate_profile_manifest_version(name, self.schema_version)?;
+        let profile = self.profiles.get(name).ok_or_else(|| {
+            ProjectProcessJobProfileValidationError::new(
+                ProjectProcessJobProfileValidationCode::UnknownProfile,
+                name,
+                format!("unknown process job profile: {name}"),
+            )
+        })?;
+        profile.resolve_named(name, owner, policy, evidence)
+    }
+
+    pub fn resolve_from_sources(
+        sources: &[ProjectProcessJobProfileManifestSource],
+        name: &str,
+        owner: ProcessJobOwnerScope,
+        policy: &ProjectProcessJobProfilePolicy,
+    ) -> Result<ProjectProcessJobProfileResolution, ProjectProcessJobProfileValidationError> {
+        let selected = select_profile_manifest_source(sources, name)?;
+        selected
+            .manifest
+            .resolve_with_evidence(name, owner, policy, ProjectProcessJobProfileResolutionEvidence {
+                profile_name: name.to_string(),
+                manifest_schema_version: selected.manifest.schema_version,
+                profile_source: selected.safe_label(),
+                policy_source: policy.policy_source.clone(),
+            })
+    }
+}
+
+fn select_profile_manifest_source<'a>(
+    sources: &'a [ProjectProcessJobProfileManifestSource],
+    name: &str,
+) -> Result<&'a ProjectProcessJobProfileManifestSource, ProjectProcessJobProfileValidationError> {
+    let mut matches: BTreeMap<ProjectProcessJobProfileSourcePrecedence, Vec<&ProjectProcessJobProfileManifestSource>> =
+        BTreeMap::new();
+    for source in sources {
+        if source.manifest.profiles.contains_key(name) {
+            matches.entry(source.precedence).or_default().push(source);
+        }
+    }
+    let Some((_, selected_at_level)) = matches.iter().next_back() else {
+        return Err(ProjectProcessJobProfileValidationError::new(
+            ProjectProcessJobProfileValidationCode::UnknownProfile,
+            name,
+            format!("unknown process job profile: {name}"),
+        ));
+    };
+    if selected_at_level.len() != 1 {
+        let labels = selected_at_level.iter().map(|source| source.safe_label()).collect::<Vec<_>>().join(", ");
+        return Err(ProjectProcessJobProfileValidationError::new(
+            ProjectProcessJobProfileValidationCode::AmbiguousManifestSource,
+            name,
+            format!("ambiguous duplicate profile at same precedence: {labels}"),
+        ));
+    }
+    Ok(selected_at_level[0])
+}
+
+impl ProjectProcessJobProfile {
+    fn resolve_named(
+        &self,
+        name: &str,
+        owner: ProcessJobOwnerScope,
+        policy: &ProjectProcessJobProfilePolicy,
+        evidence: ProjectProcessJobProfileResolutionEvidence,
+    ) -> Result<ProjectProcessJobProfileResolution, ProjectProcessJobProfileValidationError> {
+        let backend = self.backend.unwrap_or(policy.default_backend);
+        validate_profile_backend(name, backend, policy)?;
+        validate_profile_command_shape(name, self)?;
+        validate_profile_environment(name, &self.env, policy)?;
+        validate_profile_resources(name, &self.resource_policy, policy)?;
+        validate_profile_paths(name, self, policy)?;
+
+        let cwd = self.cwd.clone().map_or(ProcessJobCwd::Inherited, ProcessJobCwd::Explicit);
+        let mut metadata = self.metadata.clone();
+        metadata.insert(PROCESS_JOB_PROFILE_METADATA_NAME.to_string(), name.to_string());
+        metadata.insert(
+            PROCESS_JOB_PROFILE_METADATA_SCHEMA_VERSION.to_string(),
+            evidence.manifest_schema_version.to_string(),
+        );
+        metadata.insert(PROCESS_JOB_PROFILE_METADATA_SOURCE.to_string(), evidence.profile_source.clone());
+        metadata.insert(PROCESS_JOB_PROFILE_METADATA_POLICY.to_string(), evidence.policy_source.clone());
+        for (key, value) in &self.env {
+            metadata.insert(format!("env:{key}"), value.clone());
+        }
+        let command_preview = self.command.clone().unwrap_or_else(|| {
+            std::iter::once(self.program.clone().unwrap_or_default())
+                .chain(self.args.clone())
+                .collect::<Vec<_>>()
+                .join(" ")
+        });
+
+        Ok(ProjectProcessJobProfileResolution {
+            name: name.to_string(),
+            request: StartProcessJobRequest {
+                backend,
+                command_preview,
+                program: self.program.clone(),
+                args: self.args.clone(),
+                shell_command: self.command.clone(),
+                cwd,
+                owner,
+                resource_policy: self.resource_policy.clone(),
+                notification_policy: self.notification_policy.clone(),
+                metadata,
+            },
+            evidence,
+        })
+    }
+}
+
+fn validate_profile_manifest_version(
+    name: &str,
+    schema_version: u32,
+) -> Result<(), ProjectProcessJobProfileValidationError> {
+    if schema_version != PROCESS_JOB_PROFILE_SCHEMA_VERSION {
+        return Err(ProjectProcessJobProfileValidationError::new(
+            ProjectProcessJobProfileValidationCode::UnsupportedManifestVersion,
+            name,
+            format!("unsupported process job profile manifest schema_version {schema_version}"),
+        ));
+    }
+    Ok(())
+}
+
+fn validate_profile_backend(
+    name: &str,
+    backend: ProcessJobBackendKind,
+    policy: &ProjectProcessJobProfilePolicy,
+) -> Result<(), ProjectProcessJobProfileValidationError> {
+    if backend == ProcessJobBackendKind::Unknown || !policy.allowed_backends.contains(&backend) {
+        return Err(ProjectProcessJobProfileValidationError::new(
+            ProjectProcessJobProfileValidationCode::DisallowedBackend,
+            name,
+            format!("uses disallowed backend {backend:?}"),
+        ));
+    }
+    Ok(())
+}
+
+fn validate_profile_command_shape(
+    name: &str,
+    profile: &ProjectProcessJobProfile,
+) -> Result<(), ProjectProcessJobProfileValidationError> {
+    let has_command = profile.command.as_ref().is_some_and(|value| !value.trim().is_empty());
+    let has_program = profile.program.as_ref().is_some_and(|value| !value.trim().is_empty());
+    if has_command == has_program {
+        return Err(ProjectProcessJobProfileValidationError::new(
+            ProjectProcessJobProfileValidationCode::MalformedCommandShape,
+            name,
+            "must set exactly one of command or program",
+        ));
+    }
+    if !has_program && !profile.args.is_empty() {
+        return Err(ProjectProcessJobProfileValidationError::new(
+            ProjectProcessJobProfileValidationCode::MalformedCommandShape,
+            name,
+            "cannot set args without program",
+        ));
+    }
+    Ok(())
+}
+
+fn validate_profile_environment(
+    name: &str,
+    env: &BTreeMap<String, String>,
+    policy: &ProjectProcessJobProfilePolicy,
+) -> Result<(), ProjectProcessJobProfileValidationError> {
+    for key in env.keys() {
+        let allowed = key.chars().all(|ch| ch.is_ascii_uppercase() || ch.is_ascii_digit() || ch == '_')
+            && !is_sensitive_process_job_key(key)
+            && policy.allowed_env_prefixes.iter().any(|prefix| key.starts_with(prefix));
+        if !allowed {
+            return Err(ProjectProcessJobProfileValidationError::new(
+                ProjectProcessJobProfileValidationCode::DisallowedEnvironmentKey,
+                name,
+                format!("has disallowed environment key {key}"),
+            ));
+        }
+    }
+    Ok(())
+}
+
+fn validate_profile_resources(
+    name: &str,
+    resources: &ProcessJobResourcePolicy,
+    policy: &ProjectProcessJobProfilePolicy,
+) -> Result<(), ProjectProcessJobProfileValidationError> {
+    if let (Some(actual), Some(maximum)) = (resources.timeout, policy.max_timeout)
+        && actual > maximum
+    {
+        return Err(ProjectProcessJobProfileValidationError::new(
+            ProjectProcessJobProfileValidationCode::ResourceLimitExceeded,
+            name,
+            "timeout exceeds policy",
+        ));
+    }
+    if let (Some(actual), Some(maximum)) = (resources.memory_max_bytes, policy.max_memory_bytes)
+        && actual > maximum
+    {
+        return Err(ProjectProcessJobProfileValidationError::new(
+            ProjectProcessJobProfileValidationCode::ResourceLimitExceeded,
+            name,
+            "memory exceeds policy",
+        ));
+    }
+    if let (Some(actual), Some(maximum)) = (resources.cpu_quota_percent, policy.max_cpu_quota_percent)
+        && actual > maximum
+    {
+        return Err(ProjectProcessJobProfileValidationError::new(
+            ProjectProcessJobProfileValidationCode::ResourceLimitExceeded,
+            name,
+            "cpu quota exceeds policy",
+        ));
+    }
+    if let (Some(actual), Some(maximum)) = (resources.max_log_bytes, policy.max_log_bytes)
+        && actual > maximum
+    {
+        return Err(ProjectProcessJobProfileValidationError::new(
+            ProjectProcessJobProfileValidationCode::ResourceLimitExceeded,
+            name,
+            "log bytes exceeds policy",
+        ));
+    }
+    Ok(())
+}
+
+fn validate_profile_paths(
+    name: &str,
+    profile: &ProjectProcessJobProfile,
+    policy: &ProjectProcessJobProfilePolicy,
+) -> Result<(), ProjectProcessJobProfileValidationError> {
+    if let Some(cwd) = &profile.cwd
+        && !path_allowed(cwd, &policy.allowed_cwd_prefixes)
+    {
+        return Err(ProjectProcessJobProfileValidationError::new(
+            ProjectProcessJobProfileValidationCode::DisallowedCwd,
+            name,
+            format!("cwd is outside allowed prefixes: {}", cwd.to_string_lossy()),
+        ));
+    }
+    for writable_path in &profile.writable_paths {
+        if !path_allowed(writable_path, &policy.allowed_writable_path_prefixes) {
+            return Err(ProjectProcessJobProfileValidationError::new(
+                ProjectProcessJobProfileValidationCode::DisallowedWritablePath,
+                name,
+                format!("writable path is outside allowed prefixes: {}", writable_path.to_string_lossy()),
+            ));
+        }
+    }
+    Ok(())
+}
+
+fn path_allowed(path: &std::path::Path, allowed_prefixes: &[PathBuf]) -> bool {
+    allowed_prefixes.is_empty() || allowed_prefixes.iter().any(|prefix| path.starts_with(prefix))
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -2722,6 +3087,39 @@ mod tests {
         let json = serde_json::to_string(&ProjectProcessJobProfileSourcePrecedence::Workspace)
             .expect("precedence should serialize");
         assert_eq!(json, r#""workspace""#);
+    }
+
+    #[test]
+    fn project_profile_resolution_produces_backend_neutral_start_spec() {
+        let profiles = ProjectProcessJobProfiles {
+            schema_version: PROCESS_JOB_PROFILE_SCHEMA_VERSION,
+            profiles: BTreeMap::from([("verify".to_string(), ProjectProcessJobProfile {
+                backend: Some(ProcessJobBackendKind::Pueue),
+                program: Some("cargo".to_string()),
+                args: vec!["nextest".to_string(), "run".to_string()],
+                cwd: Some(PathBuf::from("/repo")),
+                env: BTreeMap::from([("APP_MODE".to_string(), "ci".to_string())]),
+                ..ProjectProcessJobProfile::default()
+            })]),
+        };
+        let policy = ProjectProcessJobProfilePolicy {
+            allowed_backends: vec![ProcessJobBackendKind::Native, ProcessJobBackendKind::Pueue],
+            allowed_env_prefixes: vec!["APP_".to_string()],
+            allowed_cwd_prefixes: vec![PathBuf::from("/repo")],
+            policy_source: "test-policy".to_string(),
+            ..ProjectProcessJobProfilePolicy::default()
+        };
+
+        let resolved = profiles
+            .resolve("verify", ProcessJobOwnerScope::Workspace("repo".to_string()), &policy)
+            .expect("profile should resolve");
+
+        assert_eq!(resolved.request.backend, ProcessJobBackendKind::Pueue);
+        assert_eq!(resolved.request.command_preview, "cargo nextest run");
+        assert_eq!(resolved.request.program.as_deref(), Some("cargo"));
+        assert_eq!(resolved.request.metadata.get(PROCESS_JOB_PROFILE_METADATA_NAME).map(String::as_str), Some("verify"));
+        assert_eq!(resolved.request.metadata.get("env:APP_MODE").map(String::as_str), Some("ci"));
+        assert_eq!(resolved.evidence.policy_source, "test-policy");
     }
 
     #[test]
