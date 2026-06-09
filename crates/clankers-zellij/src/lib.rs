@@ -1,14 +1,6 @@
 //! Zellij integration and orchestration
 #![allow(unexpected_cfgs)]
 #![cfg_attr(dylint_lib = "tigerstyle", feature(register_tool), register_tool(tigerstyle))]
-#![cfg_attr(
-    dylint_lib = "tigerstyle",
-    allow(
-        tigerstyle::assertion_density,
-        tigerstyle::ambiguous_params,
-        reason = "Zellij integration is thin process/socket glue exercised by integration tests"
-    )
-)]
 
 pub mod streaming;
 
@@ -28,6 +20,10 @@ impl std::error::Error for ZellijError {}
 
 use std::path::Path;
 
+const ZELLIJ_CACHE_UNCHECKED: u8 = 0;
+const ZELLIJ_CACHE_AVAILABLE: u8 = 1;
+const ZELLIJ_CACHE_UNAVAILABLE: u8 = 2;
+
 /// Check if we're inside an active Zellij session.
 ///
 /// Checks `ZELLIJ` first (set by Zellij in panes it spawns), then falls
@@ -37,12 +33,14 @@ use std::path::Path;
 pub fn is_inside_zellij() -> bool {
     use std::sync::atomic::AtomicU8;
     use std::sync::atomic::Ordering;
-    // 0 = unchecked, 1 = yes, 2 = no
-    static CACHED: AtomicU8 = AtomicU8::new(0);
+    static CACHED: AtomicU8 = AtomicU8::new(ZELLIJ_CACHE_UNCHECKED);
+
+    assert_ne!(ZELLIJ_CACHE_AVAILABLE, ZELLIJ_CACHE_UNAVAILABLE);
+    assert_eq!(ZELLIJ_CACHE_UNCHECKED, 0);
 
     let cached = CACHED.load(Ordering::Relaxed);
-    if cached != 0 {
-        return cached == 1;
+    if cached != ZELLIJ_CACHE_UNCHECKED {
+        return cached == ZELLIJ_CACHE_AVAILABLE;
     }
 
     let is_available = if std::env::var("ZELLIJ").is_ok() {
@@ -60,7 +58,14 @@ pub fn is_inside_zellij() -> bool {
         false
     };
 
-    CACHED.store(if is_available { 1 } else { 2 }, Ordering::Relaxed);
+    CACHED.store(
+        if is_available {
+            ZELLIJ_CACHE_AVAILABLE
+        } else {
+            ZELLIJ_CACHE_UNAVAILABLE
+        },
+        Ordering::Relaxed,
+    );
     is_available
 }
 
@@ -92,10 +97,17 @@ pub fn session_name_for_cwd(cwd: &Path) -> String {
     format!("clankers-{}", cwd_hash(cwd))
 }
 
+/// Query for matching a zellij session in `zellij list-sessions --no-formatting` output.
+#[derive(Debug, Clone, Copy)]
+pub struct SessionListingQuery<'a> {
+    pub listing: &'a str,
+    pub session_name: &'a str,
+}
+
 /// Check whether a named zellij session already exists in the output of
 /// `zellij list-sessions --no-formatting`.
-pub fn session_exists_in_listing(listing: &str, session_name: &str) -> bool {
-    listing.lines().any(|l| l.trim().starts_with(session_name))
+pub fn session_exists_in_listing(query: SessionListingQuery<'_>) -> bool {
+    query.listing.lines().any(|line| line.trim().starts_with(query.session_name))
 }
 
 /// Build the argument list for `zellij` to create a **new** session.
@@ -123,7 +135,10 @@ pub fn launch_or_attach(cwd: &Path, layout: Option<&str>) -> std::io::Result<()>
     let existing = std::process::Command::new("zellij").args(["list-sessions", "--no-formatting"]).output()?;
     let listing = String::from_utf8_lossy(&existing.stdout);
 
-    if session_exists_in_listing(&listing, &session_name) {
+    if session_exists_in_listing(SessionListingQuery {
+        listing: &listing,
+        session_name: &session_name,
+    }) {
         let args = build_attach_args(&session_name);
         std::process::Command::new("zellij").args(&args).status()?;
     } else {
@@ -241,34 +256,38 @@ mod tests {
 
     // ── session_exists_in_listing ────────────────────────────────────
 
+    fn listing_has_session(listing: &str, session_name: &str) -> bool {
+        session_exists_in_listing(SessionListingQuery { listing, session_name })
+    }
+
     #[test]
     fn test_session_exists_in_listing_found() {
         let listing = "clankers-abcd1234\nother-session\n";
-        assert!(session_exists_in_listing(listing, "clankers-abcd1234"));
+        assert!(listing_has_session(listing, "clankers-abcd1234"));
     }
 
     #[test]
     fn test_session_exists_in_listing_not_found() {
         let listing = "clankers-abcd1234\nother-session\n";
-        assert!(!session_exists_in_listing(listing, "clankers-deadbeef"));
+        assert!(!listing_has_session(listing, "clankers-deadbeef"));
     }
 
     #[test]
     fn test_session_exists_in_listing_empty() {
-        assert!(!session_exists_in_listing("", "clankers-abcd1234"));
+        assert!(!listing_has_session("", "clankers-abcd1234"));
     }
 
     #[test]
     fn test_session_exists_in_listing_prefix_match() {
         // zellij sometimes adds metadata after the session name
         let listing = "clankers-abcd1234 (attached)\n";
-        assert!(session_exists_in_listing(listing, "clankers-abcd1234"));
+        assert!(listing_has_session(listing, "clankers-abcd1234"));
     }
 
     #[test]
     fn test_session_exists_in_listing_whitespace() {
         let listing = "  clankers-abcd1234  \n";
-        assert!(session_exists_in_listing(listing, "clankers-abcd1234"));
+        assert!(listing_has_session(listing, "clankers-abcd1234"));
     }
 
     #[test]
@@ -277,9 +296,9 @@ mod tests {
         // This is safe because session_name_for_cwd always produces exactly
         // "clankers-" + 8 hex chars, so real names won't be prefixes of each other.
         let listing = "clankers-abcdef12\n";
-        assert!(session_exists_in_listing(listing, "clankers-abcdef12"));
+        assert!(listing_has_session(listing, "clankers-abcdef12"));
         // A completely different name should not match
-        assert!(!session_exists_in_listing(listing, "clankers-99999999"));
+        assert!(!listing_has_session(listing, "clankers-99999999"));
     }
 
     // ── build_new_session_args ───────────────────────────────────────

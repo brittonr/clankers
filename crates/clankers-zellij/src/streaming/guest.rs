@@ -17,7 +17,13 @@ use super::protocol::SessionInfo;
 use super::protocol::{self};
 
 /// Join a remote zellij session
-pub async fn join_session(node_id: EndpointId, psk: &[u8; 32]) -> Result<SessionInfo, crate::ZellijError> {
+pub async fn join_session(
+    node_id: EndpointId,
+    psk: &[u8; handshake::PSK_BYTES],
+) -> Result<SessionInfo, crate::ZellijError> {
+    assert_eq!(psk.len(), handshake::PSK_BYTES);
+    assert!(!ALPN.is_empty());
+
     let secret_key = SecretKey::generate(&mut rand::rng());
     let endpoint = Endpoint::builder().secret_key(secret_key).alpns(vec![ALPN.to_vec()]).bind().await.map_err(|e| {
         crate::ZellijError {
@@ -85,6 +91,9 @@ async fn proxy_socket(
     mut quic_send: iroh::endpoint::SendStream,
     mut quic_recv: iroh::endpoint::RecvStream,
 ) {
+    assert!(!socket_path.as_os_str().is_empty());
+    assert!(socket_path.file_name().is_some());
+
     let listener = match UnixListener::bind(&socket_path) {
         Ok(l) => l,
         Err(e) => {

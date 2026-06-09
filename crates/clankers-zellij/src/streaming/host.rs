@@ -16,6 +16,9 @@ use super::protocol::{self};
 
 /// Locate the zellij session socket
 pub fn find_session_socket(session_name: &str) -> Option<PathBuf> {
+    assert!(!session_name.is_empty());
+    assert!(!session_name.contains('/'));
+
     // Linux: ~/.local/share/zellij/ or /tmp/zellij-{uid}/
     // Get UID from id command or use fallback
     let uid = std::process::Command::new("id")
@@ -56,7 +59,10 @@ pub async fn host_session(
     session_name: &str,
     secret_key: SecretKey,
     is_read_only: bool,
-) -> Result<(Endpoint, [u8; 32]), crate::ZellijError> {
+) -> Result<(Endpoint, [u8; handshake::PSK_BYTES]), crate::ZellijError> {
+    assert!(!session_name.is_empty());
+    assert!(!session_name.contains('/'));
+
     let psk = handshake::generate_psk();
 
     let endpoint = Endpoint::builder().secret_key(secret_key).alpns(vec![ALPN.to_vec()]).bind().await.map_err(|e| {
@@ -88,7 +94,12 @@ pub async fn host_session(
     dylint_lib = "tigerstyle",
     allow(unbounded_loop, reason = "event loop; bounded by endpoint close")
 )]
-async fn accept_guests(endpoint: Endpoint, socket_path: &Path, psk: &[u8; 32], session_info: &SessionInfo) {
+async fn accept_guests(
+    endpoint: Endpoint,
+    socket_path: &Path,
+    psk: &[u8; handshake::PSK_BYTES],
+    session_info: &SessionInfo,
+) {
     loop {
         let incoming = match endpoint.accept().await {
             Some(i) => i,
@@ -110,9 +121,12 @@ async fn accept_guests(endpoint: Endpoint, socket_path: &Path, psk: &[u8; 32], s
 async fn handle_guest(
     incoming: iroh::endpoint::Incoming,
     socket_path: &Path,
-    psk: &[u8; 32],
+    psk: &[u8; handshake::PSK_BYTES],
     info: &SessionInfo,
 ) -> Result<(), crate::ZellijError> {
+    assert!(!socket_path.as_os_str().is_empty());
+    assert_eq!(psk.len(), handshake::PSK_BYTES);
+
     let conn = incoming.await.map_err(|e| crate::ZellijError {
         message: format!("Connection failed: {}", e),
     })?;

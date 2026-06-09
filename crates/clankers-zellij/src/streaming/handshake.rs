@@ -5,38 +5,43 @@ use rand::Rng;
 use tokio::io::AsyncReadExt;
 use tokio::io::AsyncWriteExt;
 
+pub const PSK_BYTES: usize = 32;
+
 /// Generate a 32-byte pre-shared key
-pub fn generate_psk() -> [u8; 32] {
-    let mut psk = [0u8; 32];
+pub fn generate_psk() -> [u8; PSK_BYTES] {
+    let mut psk = [0u8; PSK_BYTES];
     rand::rng().fill(&mut psk);
     psk
 }
 
 /// Format PSK as hex for display
-pub fn psk_to_hex(psk: &[u8; 32]) -> String {
+pub fn psk_to_hex(psk: &[u8; PSK_BYTES]) -> String {
     hex::encode(psk)
 }
 
 /// Parse PSK from hex string
-pub fn psk_from_hex(hex_str: &str) -> Option<[u8; 32]> {
+pub fn psk_from_hex(hex_str: &str) -> Option<[u8; PSK_BYTES]> {
     let bytes = hex::decode(hex_str).ok()?;
-    if bytes.len() != 32 {
+    if bytes.len() != PSK_BYTES {
         return None;
     }
-    let mut psk = [0u8; 32];
+    let mut psk = [0u8; PSK_BYTES];
     psk.copy_from_slice(&bytes);
     Some(psk)
 }
 
 /// Host: verify PSK from incoming connection
-pub async fn verify_psk<S: AsyncReadExt + Unpin>(stream: &mut S, expected_psk: &[u8; 32]) -> std::io::Result<bool> {
-    let mut received = [0u8; 32];
+pub async fn verify_psk<S: AsyncReadExt + Unpin>(
+    stream: &mut S,
+    expected_psk: &[u8; PSK_BYTES],
+) -> std::io::Result<bool> {
+    let mut received = [0u8; PSK_BYTES];
     stream.read_exact(&mut received).await?;
     Ok(received == *expected_psk)
 }
 
 /// Guest: send PSK to host
-pub async fn send_psk<S: AsyncWriteExt + Unpin>(stream: &mut S, psk: &[u8; 32]) -> std::io::Result<()> {
+pub async fn send_psk<S: AsyncWriteExt + Unpin>(stream: &mut S, psk: &[u8; PSK_BYTES]) -> std::io::Result<()> {
     stream.write_all(psk).await?;
     stream.flush().await?;
     Ok(())
