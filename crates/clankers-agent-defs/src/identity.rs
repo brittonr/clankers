@@ -130,16 +130,15 @@ impl AgentStats {
 
 impl AgentIdentity {
     /// Create a new identity.
-    pub fn new(name: impl Into<String>, agent_type: impl Into<String>) -> Self {
+    pub fn new(name: impl Into<String>, agent_type: impl Into<String>, created_at: DateTime<Utc>) -> Self {
         let id = format!("agent-{}", generate_hex_id());
-        let now = identity_timestamp_now();
         Self {
             id,
             name: name.into(),
             agent_type: agent_type.into(),
             tags: Vec::new(),
-            created_at: now,
-            last_active: now,
+            created_at,
+            last_active: created_at,
             work_history: Vec::new(),
             session_ids: Vec::new(),
             stats: AgentStats::default(),
@@ -153,8 +152,14 @@ impl AgentIdentity {
     }
 
     /// Record a completed work item.
-    pub fn record_work(&mut self, task: &str, outcome: WorkOutcome, duration: Duration, session_id: Option<&str>) {
-        let now = identity_timestamp_now();
+    pub fn record_work(
+        &mut self,
+        task: &str,
+        outcome: WorkOutcome,
+        duration: Duration,
+        session_id: Option<&str>,
+        completed_at: DateTime<Utc>,
+    ) {
         let duration_ms = u64::try_from(duration.as_millis()).unwrap_or_else(|_| u64::MAX.saturating_sub(1));
 
         // Truncate task to 200 chars for storage
@@ -162,15 +167,15 @@ impl AgentIdentity {
 
         self.work_history.push(WorkRecord {
             task: task_truncated,
-            started_at: now - duration,
-            completed_at: now,
+            started_at: completed_at - duration,
+            completed_at,
             outcome: outcome.clone(),
             duration_ms,
             session_id: session_id.map(String::from),
         });
 
         self.stats.record(&outcome, duration_ms);
-        self.last_active = now;
+        self.last_active = completed_at;
 
         // Keep only last 100 work records to avoid unbounded growth
         if self.work_history.len() > 100 {
@@ -179,10 +184,10 @@ impl AgentIdentity {
     }
 
     /// Associate a session with this identity.
-    pub fn add_session(&mut self, session_id: &str) {
+    pub fn add_session(&mut self, session_id: &str, last_active: DateTime<Utc>) {
         if !self.session_ids.contains(&session_id.to_string()) {
             self.session_ids.push(session_id.to_string());
-            self.last_active = identity_timestamp_now();
+            self.last_active = last_active;
         }
         // Keep only last 50 session IDs
         if self.session_ids.len() > 50 {
@@ -194,17 +199,6 @@ impl AgentIdentity {
     pub fn has_tag(&self, tag: &str) -> bool {
         self.tags.iter().any(|t| t.eq_ignore_ascii_case(tag))
     }
-}
-
-#[cfg_attr(
-    dylint_lib = "tigerstyle",
-    allow(
-        tigerstyle::ambient_clock,
-        reason = "identity persistence shell stamps records at mutation boundaries"
-    )
-)]
-fn identity_timestamp_now() -> DateTime<Utc> {
-    Utc::now()
 }
 
 // ── Persistent store ────────────────────────────────────────────────────
@@ -309,9 +303,17 @@ impl IdentityStore {
 mod tests {
     use super::*;
 
+    fn test_timestamp() -> DateTime<Utc> {
+        DateTime::from_timestamp(1_700_000_000, 0).expect("valid test timestamp")
+    }
+
+    fn test_agent(name: &str, agent_type: &str) -> AgentIdentity {
+        AgentIdentity::new(name, agent_type, test_timestamp())
+    }
+
     #[test]
     fn test_identity_creation() {
-        let agent = AgentIdentity::new("builder-1", "default").with_tags(["rust", "backend"]);
+        let agent = test_agent("builder-1", "default").with_tags(["rust", "backend"]);
         assert!(agent.id.starts_with("agent-"));
         assert_eq!(agent.name, "builder-1");
         assert_eq!(agent.agent_type, "default");
@@ -322,11 +324,23 @@ mod tests {
 
     #[test]
     fn test_record_work() {
-        let mut agent = AgentIdentity::new("worker", "default");
+        let mut agent = test_agent("worker", "default");
 
-        agent.record_work("fix bug #123", WorkOutcome::Success, Duration::from_secs(30), Some("sess-1"));
-        agent.record_work("add tests", WorkOutcome::Success, Duration::from_secs(60), Some("sess-1"));
-        agent.record_work("deploy", WorkOutcome::Failure, Duration::from_secs(10), None);
+        agent.record_work(
+            "fix bug #123",
+            WorkOutcome::Success,
+            Duration::from_secs(30),
+            Some("sess-1"),
+            test_timestamp(),
+        );
+        agent.record_work(
+            "add tests",
+            WorkOutcome::Success,
+            Duration::from_secs(60),
+            Some("sess-1"),
+            test_timestamp(),
+        );
+        agent.record_work("deploy", WorkOutcome::Failure, Duration::from_secs(10), None, test_timestamp());
 
         assert_eq!(agent.stats.total_tasks, 3);
         assert_eq!(agent.stats.successes, 2);
@@ -337,9 +351,15 @@ mod tests {
 
     #[test]
     fn test_work_history_capped() {
-        let mut agent = AgentIdentity::new("worker", "default");
+        let mut agent = test_agent("worker", "default");
         for i in 0..150 {
-            agent.record_work(&format!("task {i}"), WorkOutcome::Success, Duration::from_secs(1), None);
+            agent.record_work(
+                &format!("task {i}"),
+                WorkOutcome::Success,
+                Duration::from_secs(1),
+                None,
+                test_timestamp(),
+            );
         }
         assert_eq!(agent.work_history.len(), 100);
         assert_eq!(agent.stats.total_tasks, 150);
@@ -347,10 +367,10 @@ mod tests {
 
     #[test]
     fn test_session_tracking() {
-        let mut agent = AgentIdentity::new("worker", "default");
-        agent.add_session("sess-1");
-        agent.add_session("sess-2");
-        agent.add_session("sess-1"); // duplicate
+        let mut agent = test_agent("worker", "default");
+        agent.add_session("sess-1", test_timestamp());
+        agent.add_session("sess-2", test_timestamp());
+        agent.add_session("sess-1", test_timestamp()); // duplicate
         assert_eq!(agent.session_ids.len(), 2);
     }
 
@@ -359,8 +379,8 @@ mod tests {
         let tmp = tempfile::TempDir::new().expect("Failed to create temp directory");
         let store = IdentityStore::open(&tmp.path().join("agents.redb")).expect("Failed to open store");
 
-        let mut agent = AgentIdentity::new("scout-1", "scout").with_tags(["rust", "grep"]);
-        agent.record_work("find TODO", WorkOutcome::Success, Duration::from_secs(5), None);
+        let mut agent = test_agent("scout-1", "scout").with_tags(["rust", "grep"]);
+        agent.record_work("find TODO", WorkOutcome::Success, Duration::from_secs(5), None, test_timestamp());
 
         store.put(&agent).expect("Failed to save agent");
 
@@ -375,9 +395,9 @@ mod tests {
         let tmp = tempfile::TempDir::new().expect("Failed to create temp directory");
         let store = IdentityStore::open(&tmp.path().join("agents.redb")).expect("Failed to open store");
 
-        let a1 = AgentIdentity::new("rust-dev", "builder").with_tags(["rust", "backend"]);
-        let a2 = AgentIdentity::new("js-dev", "builder").with_tags(["javascript", "frontend"]);
-        let a3 = AgentIdentity::new("fullstack", "builder").with_tags(["rust", "javascript"]);
+        let a1 = test_agent("rust-dev", "builder").with_tags(["rust", "backend"]);
+        let a2 = test_agent("js-dev", "builder").with_tags(["javascript", "frontend"]);
+        let a3 = test_agent("fullstack", "builder").with_tags(["rust", "javascript"]);
 
         store.put(&a1).expect("Failed to save agent a1");
         store.put(&a2).expect("Failed to save agent a2");
@@ -394,17 +414,17 @@ mod tests {
         let tmp = tempfile::TempDir::new().expect("Failed to create temp directory");
         let store = IdentityStore::open(&tmp.path().join("agents.redb")).expect("Failed to open store");
 
-        let mut good = AgentIdentity::new("good-worker", "default").with_tags(["rust"]);
+        let mut good = test_agent("good-worker", "default").with_tags(["rust"]);
         for _ in 0..10 {
-            good.record_work("task", WorkOutcome::Success, Duration::from_secs(1), None);
+            good.record_work("task", WorkOutcome::Success, Duration::from_secs(1), None, test_timestamp());
         }
 
-        let mut mediocre = AgentIdentity::new("mediocre-worker", "default").with_tags(["rust"]);
+        let mut mediocre = test_agent("mediocre-worker", "default").with_tags(["rust"]);
         for _ in 0..5 {
-            mediocre.record_work("task", WorkOutcome::Success, Duration::from_secs(1), None);
+            mediocre.record_work("task", WorkOutcome::Success, Duration::from_secs(1), None, test_timestamp());
         }
         for _ in 0..5 {
-            mediocre.record_work("task", WorkOutcome::Failure, Duration::from_secs(1), None);
+            mediocre.record_work("task", WorkOutcome::Failure, Duration::from_secs(1), None, test_timestamp());
         }
 
         store.put(&good).expect("Failed to save good worker");
@@ -420,7 +440,7 @@ mod tests {
         let tmp = tempfile::TempDir::new().expect("Failed to create temp directory");
         let store = IdentityStore::open(&tmp.path().join("agents.redb")).expect("Failed to open store");
 
-        let agent = AgentIdentity::new("ephemeral", "default");
+        let agent = test_agent("ephemeral", "default");
         let id = agent.id.clone();
         store.put(&agent).expect("Failed to save agent");
 
@@ -439,7 +459,7 @@ mod tests {
 
     #[test]
     fn test_identity_serialization() {
-        let agent = AgentIdentity::new("test", "default").with_tags(["a", "b"]);
+        let agent = test_agent("test", "default").with_tags(["a", "b"]);
         let json = serde_json::to_string(&agent).expect("Failed to serialize agent");
         let parsed: AgentIdentity = serde_json::from_str(&json).expect("Failed to deserialize agent");
         assert_eq!(parsed.name, "test");

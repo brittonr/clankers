@@ -3,6 +3,7 @@
 ## Corrections
 | Date | Source | What Went Wrong | What To Do Instead |
 |------|--------|----------------|-------------------|
+| 2026-06-09 | self | Repeated the known multi-root grep mistake by passing `"crates src"` / `"crates src tests"` as one path during Tigerstyle burn-down | Use one common parent or separate grep calls; never space-join multiple roots in the pi grep `path` field. |
 | 2026-06-09 | self | Added struct-level `// Lock order:` comments for Tigerstyle multi-lock findings, but the lint still failed on `ProcessEntry` and `LivenessTracker` | Put `Lock order:` documentation on the lock fields themselves, matching existing field-doc examples, before rerunning full tigerstyle. |
 | 2026-06-09 | self | Trusted a package-scoped `./xtask/tigerstyle.sh -p clanker-message -- --keep-going` green while the later full tigerstyle run still found clanker-message sentinel-fallback findings in `metrics.rs` | Use package-scoped tigerstyle only as a fast loop; rerun the full `./xtask/tigerstyle.sh -- --keep-going` before declaring a tigerstyle slice green. |
 | 2026-06-09 | self | Tried moving `SessionId` to `clanker-message`, which pulled `uuid::Uuid` into `contracts.rs` and failed the FCIS LLM contract boundary | Do not move ID DTOs with random-generation constructors into `clanker-message` unless the constructor is split from the neutral DTO or the FCIS rail is intentionally redesigned. |
