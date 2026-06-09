@@ -9,6 +9,7 @@
 use std::collections::BTreeMap;
 use std::collections::BTreeSet;
 
+pub use clanker_message::STEEL_RUNTIME_STATUS_SCHEMA;
 pub use clanker_message::SteelHostCallOutcome;
 pub use clanker_message::SteelHostCallReceipt;
 pub use clanker_message::SteelHostFunctionRegistration;
@@ -22,7 +23,6 @@ use serde::Deserialize;
 use serde::Serialize;
 
 pub const STEEL_RUNTIME_RECEIPT_SCHEMA: &str = "clankers.steel_runtime.receipt.v1";
-pub const STEEL_RUNTIME_STATUS_SCHEMA: &str = "clankers.steel_runtime.status.v1";
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SteelRuntimeReceipt {

@@ -3,6 +3,7 @@
 ## Corrections
 | Date | Source | What Went Wrong | What To Do Instead |
 |------|--------|----------------|-------------------|
+| 2026-06-09 | self | Tried moving `SessionId` to `clanker-message`, which pulled `uuid::Uuid` into `contracts.rs` and failed the FCIS LLM contract boundary | Do not move ID DTOs with random-generation constructors into `clanker-message` unless the constructor is split from the neutral DTO or the FCIS rail is intentionally redesigned. |
 | 2026-06-09 | self | Moved dynamic runtime DTOs out of `clankers-runtime` but left a production `BTreeSet` import used only by tests, so `cargo check` emitted an unused-import warning | After moving DTO definitions, grep remaining imports and mark test-only helper imports with `#[cfg(test)]` before recording validation output. |
 | 2026-06-09 | self | Sent a truncated Steel process wrapper while trying to run the FCIS test, causing a parse EOF instead of executing validation | Use the established complete `(spawn-process ... wait ...)` snippet for validation commands; do not hand-edit partial forms. |
 | 2026-06-09 | self | Wrote the remote dependency DTO test expecting `required_hashes()` to preserve artifact-kind order, but the API intentionally sorts by hash hex | For deterministic projection tests, derive expected hash order with the same documented sort key or assert set equality separately from kind-ordered dependency lists. |

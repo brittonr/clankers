@@ -1574,6 +1574,8 @@ impl SteelRuntimeRequest {
     }
 }
 
+pub const STEEL_RUNTIME_STATUS_SCHEMA: &str = "clankers.steel_runtime.status.v1";
+
 /// Steel runtime availability and sandbox status.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SteelRuntimeStatus {
@@ -2749,7 +2751,7 @@ mod tests {
         assert_eq!(request.receipt_destination, "stdout");
         assert!(request.host_functions.is_empty());
         let status_dto = SteelRuntimeStatus {
-            schema: "clankers.steel_runtime.status.v1".to_string(),
+            schema: STEEL_RUNTIME_STATUS_SCHEMA.to_string(),
             available: true,
             implementation: "fixture".to_string(),
             profile: profile.clone(),

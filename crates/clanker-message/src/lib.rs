@@ -99,6 +99,7 @@ pub use contracts::RuntimeToolStatus;
 pub use contracts::RuntimeUsageObservation;
 pub use contracts::RuntimeUsageObservationKind;
 pub use contracts::RustNativeFallbackStatus;
+pub use contracts::STEEL_RUNTIME_STATUS_SCHEMA;
 pub use contracts::SerializedMessage;
 pub use contracts::SessionKey;
 pub use contracts::SessionSummary;
