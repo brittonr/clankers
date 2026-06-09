@@ -5,13 +5,6 @@
 //! credentials, or load plugins.
 #![allow(unexpected_cfgs)]
 #![cfg_attr(dylint_lib = "tigerstyle", feature(register_tool), register_tool(tigerstyle))]
-#![cfg_attr(
-    dylint_lib = "tigerstyle",
-    allow(
-        tigerstyle::explicit_defaults,
-        reason = "adapter DTO defaults intentionally use derived serde/builder defaults covered by adapter tests"
-    )
-)]
 
 use std::collections::BTreeSet;
 use std::collections::HashMap;
@@ -291,14 +284,30 @@ pub struct EmbeddedToolMetadata {
     pub name: String,
     pub description: String,
     pub runtime: EmbeddedToolRuntime,
-    #[serde(default)]
+    #[serde(default = "default_capabilities")]
     pub capabilities: Vec<EmbeddedCapability>,
-    #[serde(default)]
+    #[serde(default = "default_approval_policy")]
     pub approval: ApprovalPolicy,
-    #[serde(default)]
+    #[serde(default = "default_redaction_policy")]
     pub redaction: RedactionPolicy,
-    #[serde(default)]
+    #[serde(default = "default_input_schema")]
     pub input_schema: Value,
+}
+
+fn default_capabilities() -> Vec<EmbeddedCapability> {
+    Vec::new()
+}
+
+fn default_approval_policy() -> ApprovalPolicy {
+    ApprovalPolicy::default()
+}
+
+fn default_redaction_policy() -> RedactionPolicy {
+    RedactionPolicy::default()
+}
+
+fn default_input_schema() -> Value {
+    Value::Null
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
@@ -495,7 +504,10 @@ impl CatalogToolExecutor {
         Self {
             catalog,
             outcomes: HashMap::new(),
-            limits: ToolTruncationLimits::default(),
+            limits: ToolTruncationLimits {
+                max_bytes: clankers_tool_host::DEFAULT_TOOL_MAX_BYTES,
+                max_lines: clankers_tool_host::DEFAULT_TOOL_MAX_LINES,
+            },
         }
     }
 
