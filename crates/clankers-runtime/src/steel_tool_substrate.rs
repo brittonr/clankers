@@ -5,6 +5,11 @@
 
 use std::collections::BTreeSet;
 
+pub use clanker_message::SteelToolExecutorKind;
+pub use clanker_message::SteelToolSubstrateFallbackMode;
+pub use clanker_message::SteelToolSubstrateIssue;
+pub use clanker_message::SteelToolSubstrateRolloutStage;
+pub use clanker_message::SteelToolSubstrateStatus;
 use clankers_artifacts::ArtifactHash;
 use serde::Deserialize;
 use serde::Serialize;
@@ -23,54 +28,6 @@ pub const DEFAULT_TOOL_SUBSTRATE_LIST_SEAM: &str = "steel.host.tool.list";
 const DEFAULT_RECEIPT_PREFIX: &str = "target/steel-tool-plugin-substrate";
 const DEFAULT_REQUIRED_CAPABILITY: &str = "steel-tool-substrate";
 const DEFAULT_REQUIRED_UCAN_ABILITY: &str = "clankers/steel/tool.call";
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum SteelToolExecutorKind {
-    RustBuiltin,
-    WasmPlugin,
-    StdioPlugin,
-    Subagent,
-}
-
-impl SteelToolExecutorKind {
-    #[must_use]
-    pub fn as_str(self) -> &'static str {
-        match self {
-            Self::RustBuiltin => "rust_builtin",
-            Self::WasmPlugin => "wasm_plugin",
-            Self::StdioPlugin => "stdio_plugin",
-            Self::Subagent => "subagent",
-        }
-    }
-
-    #[must_use]
-    pub fn parse(value: &str) -> Option<Self> {
-        match value {
-            "rust_builtin" => Some(Self::RustBuiltin),
-            "wasm_plugin" => Some(Self::WasmPlugin),
-            "stdio_plugin" => Some(Self::StdioPlugin),
-            "subagent" => Some(Self::Subagent),
-            _ => None,
-        }
-    }
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum SteelToolSubstrateRolloutStage {
-    Disabled,
-    Comparison,
-    Default,
-    Block,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum SteelToolSubstrateFallbackMode {
-    RustNative,
-    Block,
-}
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SteelToolSubstrateProfile {
@@ -138,31 +95,6 @@ pub struct SteelToolInvocationPlan {
     pub source_label: String,
     pub executor_kind: SteelToolExecutorKind,
     pub input_hash: ArtifactHash,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum SteelToolSubstrateStatus {
-    Authorized,
-    FallbackUsed,
-    Blocked,
-    Denied,
-    Failed,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "kebab-case")]
-pub enum SteelToolSubstrateIssue {
-    Ok,
-    Disabled,
-    ComparisonMode,
-    ExecutorKindDenied,
-    ToolDisabled,
-    InputTooLarge,
-    MissingSessionCapability,
-    MissingUcanAbility,
-    RuntimeFailed,
-    MalformedPlan,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

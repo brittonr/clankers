@@ -873,6 +873,84 @@ pub enum WasmToolExecutionStatus {
     Blocked,
 }
 
+/// Runtime selected to execute a Steel-mediated tool invocation.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum SteelToolExecutorKind {
+    RustBuiltin,
+    WasmPlugin,
+    StdioPlugin,
+    Subagent,
+}
+
+impl SteelToolExecutorKind {
+    #[must_use]
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::RustBuiltin => "rust_builtin",
+            Self::WasmPlugin => "wasm_plugin",
+            Self::StdioPlugin => "stdio_plugin",
+            Self::Subagent => "subagent",
+        }
+    }
+
+    #[must_use]
+    pub fn parse(value: &str) -> Option<Self> {
+        match value {
+            "rust_builtin" => Some(Self::RustBuiltin),
+            "wasm_plugin" => Some(Self::WasmPlugin),
+            "stdio_plugin" => Some(Self::StdioPlugin),
+            "subagent" => Some(Self::Subagent),
+            _ => None,
+        }
+    }
+}
+
+/// Steel tool substrate rollout stage.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum SteelToolSubstrateRolloutStage {
+    Disabled,
+    Comparison,
+    Default,
+    Block,
+}
+
+/// Steel tool substrate fallback behavior.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum SteelToolSubstrateFallbackMode {
+    RustNative,
+    Block,
+}
+
+/// Steel tool substrate receipt status.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum SteelToolSubstrateStatus {
+    Authorized,
+    FallbackUsed,
+    Blocked,
+    Denied,
+    Failed,
+}
+
+/// Steel tool substrate issue code.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum SteelToolSubstrateIssue {
+    Ok,
+    Disabled,
+    ComparisonMode,
+    ExecutorKindDenied,
+    ToolDisabled,
+    InputTooLarge,
+    MissingSessionCapability,
+    MissingUcanAbility,
+    RuntimeFailed,
+    MalformedPlan,
+}
+
 /// Policy for handling tool-name collisions while building a tool catalog.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -1448,6 +1526,43 @@ mod tests {
         assert_eq!(wasm, r#""completed""#);
         let parsed_wasm: WasmToolExecutionStatus = serde_json::from_str(&wasm).expect("wasm status should deserialize");
         assert_eq!(parsed_wasm, WasmToolExecutionStatus::Completed);
+
+        let executor =
+            serde_json::to_string(&SteelToolExecutorKind::StdioPlugin).expect("executor kind should serialize");
+        assert_eq!(executor, r#""stdio_plugin""#);
+        let parsed_executor: SteelToolExecutorKind =
+            serde_json::from_str(&executor).expect("executor kind should deserialize");
+        assert_eq!(parsed_executor, SteelToolExecutorKind::StdioPlugin);
+        assert_eq!(parsed_executor.as_str(), "stdio_plugin");
+        assert_eq!(SteelToolExecutorKind::parse("stdio_plugin"), Some(parsed_executor));
+
+        let rollout =
+            serde_json::to_string(&SteelToolSubstrateRolloutStage::Comparison).expect("rollout stage should serialize");
+        assert_eq!(rollout, r#""comparison""#);
+        let parsed_rollout: SteelToolSubstrateRolloutStage =
+            serde_json::from_str(&rollout).expect("rollout stage should deserialize");
+        assert_eq!(parsed_rollout, SteelToolSubstrateRolloutStage::Comparison);
+
+        let fallback =
+            serde_json::to_string(&SteelToolSubstrateFallbackMode::RustNative).expect("fallback mode should serialize");
+        assert_eq!(fallback, r#""rust_native""#);
+        let parsed_fallback: SteelToolSubstrateFallbackMode =
+            serde_json::from_str(&fallback).expect("fallback mode should deserialize");
+        assert_eq!(parsed_fallback, SteelToolSubstrateFallbackMode::RustNative);
+
+        let substrate_status =
+            serde_json::to_string(&SteelToolSubstrateStatus::FallbackUsed).expect("substrate status should serialize");
+        assert_eq!(substrate_status, r#""fallback_used""#);
+        let parsed_substrate_status: SteelToolSubstrateStatus =
+            serde_json::from_str(&substrate_status).expect("substrate status should deserialize");
+        assert_eq!(parsed_substrate_status, SteelToolSubstrateStatus::FallbackUsed);
+
+        let issue = serde_json::to_string(&SteelToolSubstrateIssue::ExecutorKindDenied)
+            .expect("substrate issue should serialize");
+        assert_eq!(issue, r#""executor-kind-denied""#);
+        let parsed_issue: SteelToolSubstrateIssue =
+            serde_json::from_str(&issue).expect("substrate issue should deserialize");
+        assert_eq!(parsed_issue, SteelToolSubstrateIssue::ExecutorKindDenied);
     }
 
     #[test]
