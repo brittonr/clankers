@@ -69,13 +69,6 @@ pub(super) fn steel_selected_engine_turn_call_count() -> usize {
     STEEL_SELECTED_ENGINE_TURN_CALLS.load(Ordering::SeqCst)
 }
 
-#[cfg_attr(
-    dylint_lib = "tigerstyle",
-    allow(
-        tigerstyle::assertion_density,
-        reason = "Steel-selected shell seam delegates typed host effects to the existing reducer-backed host runner"
-    )
-)]
 pub(super) async fn run_steel_selected_engine_turn<M, T, R, E, C, U>(
     seed: EngineRunSeed,
     hosts: HostAdapters<'_, M, T, R, E, C, U>,
@@ -89,6 +82,9 @@ where
     C: CancellationSource,
     U: UsageObserver,
 {
+    assert!(!receipt_context.session_id.is_empty(), "steel-selected turn needs a session id");
+    assert!(!receipt_context.model.is_empty(), "steel-selected turn needs a model name");
+
     let execution_input = steel_turn_execution_input(&receipt_context);
     let authority = authorize_steel_turn_execution(receipt_context.profile, &execution_input);
     if !authority.is_allowed() {
