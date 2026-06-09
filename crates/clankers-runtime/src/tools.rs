@@ -3,9 +3,10 @@
 use std::collections::BTreeMap;
 use std::collections::BTreeSet;
 
-use clankers_artifacts::RedactionClass;
 pub use clanker_message::SideEffectLevel;
+pub use clanker_message::ToolCatalogOmission;
 pub use clanker_message::ToolCollisionPolicy;
+use clankers_artifacts::RedactionClass;
 use serde::Deserialize;
 use serde::Serialize;
 
@@ -187,22 +188,6 @@ pub struct ToolDescriptor {
     pub side_effect: SideEffectLevel,
     pub requires_confirmation: bool,
     pub source: String,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct ToolCatalogOmission {
-    pub name: String,
-    pub reason: String,
-}
-
-impl ToolCatalogOmission {
-    #[must_use]
-    pub fn new(name: impl Into<String>, reason: impl Into<String>) -> Self {
-        Self {
-            name: sanitize_metadata_value(name.into()),
-            reason: sanitize_metadata_value(reason.into()),
-        }
-    }
 }
 
 impl ToolDescriptor {

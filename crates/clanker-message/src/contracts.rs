@@ -33,6 +33,23 @@ pub struct ToolInfo {
     pub source: String,
 }
 
+/// Safe reason a tool was omitted from a published tool catalog.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ToolCatalogOmission {
+    pub name: String,
+    pub reason: String,
+}
+
+impl ToolCatalogOmission {
+    #[must_use]
+    pub fn new(name: impl Into<String>, reason: impl Into<String>) -> Self {
+        Self {
+            name: sanitize_short_public_value(name.into()),
+            reason: sanitize_short_public_value(reason.into()),
+        }
+    }
+}
+
 /// Minimal serialized message used for seeding and replaying session history.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct SerializedMessage {
@@ -2010,6 +2027,17 @@ mod tests {
         let info: ToolInfo = serde_json::from_str(r#"{"name":"read","description":"Read files"}"#)
             .expect("tool info should deserialize");
         assert_eq!(info.source, "");
+    }
+
+    #[test]
+    fn tool_catalog_omission_sanitizes_safe_reason_contract() {
+        let omission = ToolCatalogOmission::new("secret-token-tool", "disabled by policy");
+        assert_eq!(omission.name, "[REDACTED]");
+        assert_eq!(omission.reason, "disabled by policy");
+        let json = serde_json::to_string(&omission).expect("tool catalog omission should serialize");
+        let parsed: ToolCatalogOmission =
+            serde_json::from_str(&json).expect("tool catalog omission should deserialize");
+        assert_eq!(parsed, omission);
     }
 
     #[test]
