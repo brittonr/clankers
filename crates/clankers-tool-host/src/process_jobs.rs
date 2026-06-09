@@ -498,6 +498,40 @@ impl ProcessJobBackendCapabilities {
     }
 }
 
+/// Receipt projection retained as a compatibility extension over backend capability DTOs.
+pub trait ProcessJobBackendCapabilitiesReceiptExt {
+    #[must_use]
+    fn unsupported_receipt(
+        &self,
+        operation: ProcessJobOperation,
+        id: Option<ProcessJobId>,
+        message: impl Into<String>,
+    ) -> ProcessJobReceipt;
+}
+
+impl ProcessJobBackendCapabilitiesReceiptExt for ProcessJobBackendCapabilities {
+    fn unsupported_receipt(
+        &self,
+        operation: ProcessJobOperation,
+        id: Option<ProcessJobId>,
+        message: impl Into<String>,
+    ) -> ProcessJobReceipt {
+        let backend = self.backend.unwrap_or(ProcessJobBackendKind::Unknown);
+        ProcessJobReceipt::unsupported_with_detail(ProcessJobUnsupportedDetail {
+            operation,
+            id,
+            backend,
+            action: operation.action_name().to_string(),
+            capability_detail: Some(
+                self.unsupported_detail(operation)
+                    .map(std::string::ToString::to_string)
+                    .unwrap_or_else(|| "capability unsupported".to_string()),
+            ),
+            message: message.into(),
+        })
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ProcessJobSafeCapabilityHints {
     pub supports_kill: bool,
@@ -2800,6 +2834,20 @@ mod tests {
         let denied = native_process_job_admission_decision(ProcessJobNativeAdmissionInput { active: 2, limit: 2 });
         assert!(!denied.accepted);
         assert_eq!(denied.summary(), "native process admission denied: active process limit reached (2/2)");
+    }
+
+    #[test]
+    fn backend_capability_extension_projects_unsupported_receipts() {
+        let receipt = ProcessJobBackendCapabilities::pueue().unsupported_receipt(
+            ProcessJobOperation::WriteStdin,
+            Some(ProcessJobId("proc_1".to_string())),
+            "stdin is not supported by pueue backend",
+        );
+        let error = receipt.error.expect("unsupported stdin receipt");
+        assert_eq!(error.code, ProcessJobErrorCode::UnsupportedActionForBackend);
+        assert_eq!(error.backend, Some(ProcessJobBackendKind::Pueue));
+        assert_eq!(error.action.as_deref(), Some("write_stdin"));
+        assert_eq!(error.capability_detail.as_deref(), Some("stdin requires stdin support"));
     }
 
     #[test]

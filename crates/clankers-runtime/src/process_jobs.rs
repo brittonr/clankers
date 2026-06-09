@@ -45,6 +45,7 @@ pub use clankers_tool_host::process_jobs::PROCESS_JOB_WATCH_RATE_LIMIT_TICKS;
 pub use clankers_tool_host::process_jobs::PROCESS_JOB_WATCH_SUPPRESSION_LIMIT;
 pub use clankers_tool_host::process_jobs::PollProcessJobRequest;
 pub use clankers_tool_host::process_jobs::ProcessJobBackendCapabilities;
+pub use clankers_tool_host::process_jobs::ProcessJobBackendCapabilitiesReceiptExt;
 pub use clankers_tool_host::process_jobs::ProcessJobBackendKind;
 pub use clankers_tool_host::process_jobs::ProcessJobBackendStart;
 pub use clankers_tool_host::process_jobs::ProcessJobBackendStatus;
@@ -148,40 +149,6 @@ impl ProcessJobNotificationPolicyEngine for DefaultProcessJobNotificationPolicyE
         observation: ProcessJobNotificationObservation,
     ) -> Vec<ProcessJobNotificationDecision> {
         state.evaluate(policy, observation)
-    }
-}
-
-/// Runtime receipt projection retained as a compatibility extension over backend capability DTOs.
-pub trait ProcessJobBackendCapabilitiesReceiptExt {
-    #[must_use]
-    fn unsupported_receipt(
-        &self,
-        operation: ProcessJobOperation,
-        id: Option<ProcessJobId>,
-        message: impl Into<String>,
-    ) -> ProcessJobReceipt;
-}
-
-impl ProcessJobBackendCapabilitiesReceiptExt for ProcessJobBackendCapabilities {
-    fn unsupported_receipt(
-        &self,
-        operation: ProcessJobOperation,
-        id: Option<ProcessJobId>,
-        message: impl Into<String>,
-    ) -> ProcessJobReceipt {
-        let backend = self.backend.unwrap_or(ProcessJobBackendKind::Unknown);
-        ProcessJobReceipt::unsupported_with_detail(ProcessJobUnsupportedDetail {
-            operation,
-            id,
-            backend,
-            action: operation.action_name().to_string(),
-            capability_detail: Some(
-                self.unsupported_detail(operation)
-                    .map(std::string::ToString::to_string)
-                    .unwrap_or_else(|| "capability unsupported".to_string()),
-            ),
-            message: message.into(),
-        })
     }
 }
 
