@@ -16,6 +16,7 @@ transcript-compat = ["dep:chrono", "dep:hex", "dep:rand"]
 
 [dependencies]
 chrono = { version = "0.4", features = ["serde"], optional = true }
+clankers-artifacts = { version = "0.1.0", path = "../clankers-artifacts" }
 hex = { version = "0.4", optional = true }
 rand = { version = "0.9", optional = true }
 serde = { version = "1", features = ["derive"] }

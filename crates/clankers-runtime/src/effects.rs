@@ -5,8 +5,12 @@ use std::collections::BTreeMap;
 pub use clanker_message::EffectAbilityClass;
 pub use clanker_message::EffectCorrelationId;
 pub use clanker_message::EffectResultStatus;
+pub use clanker_message::REMOTE_EXECUTION_ARTIFACT_SCHEMA_VERSION;
+pub use clanker_message::RemoteArtifactEnvelope;
 pub use clanker_message::RemoteDependencyFailureKind;
 pub use clanker_message::RemoteExecutionArtifactKind;
+pub use clanker_message::RemoteExecutionDependency;
+pub use clanker_message::RemoteExecutionRequest;
 pub use clanker_message::RemoteExecutionTarget;
 pub use clanker_message::UcanAuthorizationMetadata;
 use clankers_artifacts::ArtifactHash;
@@ -82,112 +86,6 @@ impl EffectRequest {
             sanitize_metadata_value(raw_value)
         };
         self.safe_source_metadata.insert(key, value);
-        self
-    }
-}
-
-/// One declared remote/subagent dependency bound to a content hash.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct RemoteExecutionDependency {
-    /// Safe artifact kind.
-    pub kind: RemoteExecutionArtifactKind,
-    /// Content-addressed artifact identity.
-    pub hash: ArtifactHash,
-}
-
-impl RemoteExecutionDependency {
-    /// Build a safe dependency declaration.
-    #[must_use]
-    pub fn new(kind: RemoteExecutionArtifactKind, hash: ArtifactHash) -> Self {
-        Self { kind, hash }
-    }
-}
-
-/// Typed remote/subagent execution request preflight declaration.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct RemoteExecutionRequest {
-    /// Stable correlation ID for remote preflight, sync, and execution receipts.
-    pub correlation_id: EffectCorrelationId,
-    /// Whether this is local subagent execution or a remote daemon peer.
-    pub target: RemoteExecutionTarget,
-    /// Required safe artifacts, normalized by kind/hash.
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub required_artifacts: Vec<RemoteExecutionDependency>,
-}
-
-impl RemoteExecutionRequest {
-    /// Create a remote/subagent dependency declaration.
-    #[must_use]
-    pub fn new(target: RemoteExecutionTarget, correlation_id: EffectCorrelationId) -> Self {
-        Self {
-            correlation_id,
-            target,
-            required_artifacts: Vec::new(),
-        }
-    }
-
-    /// Attach safe artifact dependencies in deterministic order.
-    #[must_use]
-    pub fn with_required_artifacts<I>(mut self, artifacts: I) -> Self
-    where I: IntoIterator<Item = RemoteExecutionDependency> {
-        self.required_artifacts = artifacts.into_iter().collect();
-        self.required_artifacts
-            .sort_by(|left, right| left.kind.cmp(&right.kind).then_with(|| left.hash.hex().cmp(&right.hash.hex())));
-        self.required_artifacts.dedup();
-        self
-    }
-
-    /// Return a plain hash set projection for effect request dependencies.
-    #[must_use]
-    pub fn required_hashes(&self) -> Vec<ArtifactHash> {
-        let mut hashes = self.required_artifacts.iter().map(|dependency| dependency.hash).collect::<Vec<_>>();
-        hashes.sort_by_key(|hash| hash.hex());
-        hashes.dedup();
-        hashes
-    }
-}
-
-/// Supported schema version for safe remote artifact envelopes.
-pub const REMOTE_EXECUTION_ARTIFACT_SCHEMA_VERSION: u32 = 1;
-
-/// Safe artifact envelope advertised or transferred during remote dependency sync.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct RemoteArtifactEnvelope {
-    /// Requested dependency identity.
-    pub dependency: RemoteExecutionDependency,
-    /// Envelope schema version understood by this runtime.
-    pub schema_version: u32,
-    /// Hash recomputed from the canonical envelope body by the receiver.
-    pub computed_hash: ArtifactHash,
-    /// Redaction class of the envelope body. Secret envelopes are never syncable.
-    pub redaction_class: RedactionClass,
-    /// Optional safe UCAN authorization metadata; never contains compact tokens or secrets.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub ucan_authorization: Option<UcanAuthorizationMetadata>,
-}
-
-impl RemoteArtifactEnvelope {
-    /// Build an envelope receipt for remote sync preflight.
-    #[must_use]
-    pub fn new(
-        dependency: RemoteExecutionDependency,
-        schema_version: u32,
-        computed_hash: ArtifactHash,
-        redaction_class: RedactionClass,
-    ) -> Self {
-        Self {
-            dependency,
-            schema_version,
-            computed_hash,
-            redaction_class,
-            ucan_authorization: None,
-        }
-    }
-
-    /// Attach redacted UCAN authorization metadata to the envelope.
-    #[must_use]
-    pub fn with_ucan_authorization(mut self, metadata: UcanAuthorizationMetadata) -> Self {
-        self.ucan_authorization = Some(metadata);
         self
     }
 }

@@ -6,6 +6,8 @@
 
 use std::time::Duration;
 
+use clankers_artifacts::ArtifactHash;
+use clankers_artifacts::RedactionClass;
 use serde::Deserialize;
 use serde::Serialize;
 use serde_json::Value;
@@ -874,6 +876,112 @@ pub enum RemoteDependencyFailureKind {
 pub enum RemoteExecutionTarget {
     Subagent,
     RemoteDaemon,
+}
+
+/// One declared remote/subagent dependency bound to a content hash.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct RemoteExecutionDependency {
+    /// Safe artifact kind.
+    pub kind: RemoteExecutionArtifactKind,
+    /// Content-addressed artifact identity.
+    pub hash: ArtifactHash,
+}
+
+impl RemoteExecutionDependency {
+    /// Build a safe dependency declaration.
+    #[must_use]
+    pub fn new(kind: RemoteExecutionArtifactKind, hash: ArtifactHash) -> Self {
+        Self { kind, hash }
+    }
+}
+
+/// Typed remote/subagent execution request preflight declaration.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct RemoteExecutionRequest {
+    /// Stable correlation ID for remote preflight, sync, and execution receipts.
+    pub correlation_id: EffectCorrelationId,
+    /// Whether this is local subagent execution or a remote daemon peer.
+    pub target: RemoteExecutionTarget,
+    /// Required safe artifacts, normalized by kind/hash.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub required_artifacts: Vec<RemoteExecutionDependency>,
+}
+
+impl RemoteExecutionRequest {
+    /// Create a remote/subagent dependency declaration.
+    #[must_use]
+    pub fn new(target: RemoteExecutionTarget, correlation_id: EffectCorrelationId) -> Self {
+        Self {
+            correlation_id,
+            target,
+            required_artifacts: Vec::new(),
+        }
+    }
+
+    /// Attach safe artifact dependencies in deterministic order.
+    #[must_use]
+    pub fn with_required_artifacts<I>(mut self, artifacts: I) -> Self
+    where I: IntoIterator<Item = RemoteExecutionDependency> {
+        self.required_artifacts = artifacts.into_iter().collect();
+        self.required_artifacts
+            .sort_by(|left, right| left.kind.cmp(&right.kind).then_with(|| left.hash.hex().cmp(&right.hash.hex())));
+        self.required_artifacts.dedup();
+        self
+    }
+
+    /// Return a plain hash set projection for effect request dependencies.
+    #[must_use]
+    pub fn required_hashes(&self) -> Vec<ArtifactHash> {
+        let mut hashes = self.required_artifacts.iter().map(|dependency| dependency.hash).collect::<Vec<_>>();
+        hashes.sort_by_key(|hash| hash.hex());
+        hashes.dedup();
+        hashes
+    }
+}
+
+/// Supported schema version for safe remote artifact envelopes.
+pub const REMOTE_EXECUTION_ARTIFACT_SCHEMA_VERSION: u32 = 1;
+
+/// Safe artifact envelope advertised or transferred during remote dependency sync.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct RemoteArtifactEnvelope {
+    /// Requested dependency identity.
+    pub dependency: RemoteExecutionDependency,
+    /// Envelope schema version understood by this runtime.
+    pub schema_version: u32,
+    /// Hash recomputed from the canonical envelope body by the receiver.
+    pub computed_hash: ArtifactHash,
+    /// Redaction class of the envelope body. Secret envelopes are never syncable.
+    pub redaction_class: RedactionClass,
+    /// Optional safe UCAN authorization metadata; never contains compact tokens or secrets.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub ucan_authorization: Option<UcanAuthorizationMetadata>,
+}
+
+impl RemoteArtifactEnvelope {
+    /// Build an envelope receipt for remote sync preflight.
+    #[must_use]
+    pub fn new(
+        dependency: RemoteExecutionDependency,
+        schema_version: u32,
+        computed_hash: ArtifactHash,
+        redaction_class: RedactionClass,
+    ) -> Self {
+        Self {
+            dependency,
+            schema_version,
+            computed_hash,
+            redaction_class,
+            ucan_authorization: None,
+        }
+    }
+
+    /// Attach redacted UCAN authorization metadata to the envelope.
+    #[must_use]
+    pub fn with_ucan_authorization(mut self, metadata: UcanAuthorizationMetadata) -> Self {
+        self.ucan_authorization = Some(metadata);
+        self
+    }
 }
 
 /// Dynamic runtime implementation kind.
@@ -2089,6 +2197,37 @@ mod tests {
         assert_eq!(target, r#""remote-daemon""#);
         let parsed_target: RemoteExecutionTarget = serde_json::from_str(&target).expect("target should deserialize");
         assert_eq!(parsed_target, RemoteExecutionTarget::RemoteDaemon);
+    }
+
+    #[test]
+    fn remote_execution_dependency_and_envelope_contracts_are_stable() {
+        let prompt_hash = ArtifactHash::digest(b"prompt");
+        let skill_hash = ArtifactHash::digest(b"skill");
+        let prompt = RemoteExecutionDependency::new(RemoteExecutionArtifactKind::Prompt, prompt_hash);
+        let skill = RemoteExecutionDependency::new(RemoteExecutionArtifactKind::Skill, skill_hash);
+        let request =
+            RemoteExecutionRequest::new(RemoteExecutionTarget::Subagent, EffectCorrelationId::from_static("r1"))
+                .with_required_artifacts([skill.clone(), prompt.clone(), prompt.clone()]);
+        let mut expected_hashes = vec![prompt_hash, skill_hash];
+        expected_hashes.sort_by_key(|hash| hash.hex());
+        assert_eq!(request.required_hashes(), expected_hashes);
+        assert_eq!(request.required_artifacts, vec![prompt.clone(), skill.clone()]);
+
+        let envelope = RemoteArtifactEnvelope::new(
+            prompt.clone(),
+            REMOTE_EXECUTION_ARTIFACT_SCHEMA_VERSION,
+            prompt_hash,
+            RedactionClass::Public,
+        )
+        .with_ucan_authorization(UcanAuthorizationMetadata::new(
+            "artifact/read",
+            "artifact://prompt",
+            "allowed",
+        ));
+        let json = serde_json::to_string(&envelope).expect("remote artifact envelope should serialize");
+        let parsed: RemoteArtifactEnvelope =
+            serde_json::from_str(&json).expect("remote artifact envelope should deserialize");
+        assert_eq!(parsed, envelope);
     }
 
     #[test]

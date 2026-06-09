@@ -3,6 +3,7 @@
 ## Corrections
 | Date | Source | What Went Wrong | What To Do Instead |
 |------|--------|----------------|-------------------|
+| 2026-06-09 | self | Wrote the remote dependency DTO test expecting `required_hashes()` to preserve artifact-kind order, but the API intentionally sorts by hash hex | For deterministic projection tests, derive expected hash order with the same documented sort key or assert set equality separately from kind-ordered dependency lists. |
 | 2026-06-09 | self | Repeated the Cargo multi-filter mistake during Steel orchestration DTO validation (`cargo test ... filter1 filter2`), so the command failed before tests ran | Cargo accepts only one positional TESTNAME; run focused runtime filters separately or use one broad shared substring. |
 | 2026-06-08 | self | Sent a Steel `git status` process helper with one extra closing parenthesis, causing a parse failure before the command ran | Use a shorter known-good process wrapper or count parentheses before sending ad-hoc Steel snippets; don't compose long nested `if` forms inline. |
 | 2026-06-08 | self | `scripts/check-message-contract-boundary.rs` failed because `clankers-tool-host` still exposed public `DateTime<Utc>` process-job APIs after prior DTO moves | Green SDK/tool-host process-job public APIs should use `ProcessJobTimestamp`; keep chrono conversion helpers private or at the runtime/root shell edge. |
