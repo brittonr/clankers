@@ -65,9 +65,13 @@ impl Default for WatchdogConfig {
 }
 
 /// Shared liveness state updated by the output reader, checked by the watchdog.
+///
+/// Lock order: last_output -> state. No method holds both locks across blocking or async work.
 #[derive(Debug)]
 pub struct LivenessTracker {
+    /// Lock order: acquire before `state` if both liveness locks are ever needed.
     last_output: Mutex<Instant>,
+    /// Lock order: acquire after `last_output`; current methods do not hold both locks.
     state: Mutex<HealthState>,
     subagent_id: String,
 }

@@ -26,6 +26,7 @@ pub async fn log(count: usize) -> Result<Vec<LogEntry>> {
         revwalk.push_head()?;
         revwalk.set_sorting(Sort::TIME)?;
 
+        let now_epoch_secs = chrono::Utc::now().timestamp();
         let mut entries = Vec::with_capacity(count);
         for (i, oid_result) in revwalk.enumerate() {
             if i >= count {
@@ -37,7 +38,7 @@ pub async fn log(count: usize) -> Result<Vec<LogEntry>> {
             let subject = commit.summary().unwrap_or("(no message)").to_string();
             let author = commit.author().name().unwrap_or("unknown").to_string();
             let time = commit.time();
-            let relative = format_relative_time(time.seconds());
+            let relative = format_relative_time_at(now_epoch_secs, time.seconds());
 
             entries.push(LogEntry {
                 short_hash: short,
@@ -69,13 +70,12 @@ const SECS_PER_YEAR: u64 = 31_536_000;
         reason = "complex control flow — extracting helpers would obscure logic"
     )
 )]
-pub fn format_relative_time(epoch_secs: i64) -> String {
-    let now = chrono::Utc::now().timestamp();
-    let delta = now - epoch_secs;
-    if delta < 0 {
+pub fn format_relative_time_at(now_epoch_secs: i64, epoch_secs: i64) -> String {
+    if epoch_secs > now_epoch_secs {
         return "in the future".to_string();
     }
-    let delta = delta as u64;
+    let delta_secs = now_epoch_secs.saturating_sub(epoch_secs);
+    let delta = u64::try_from(delta_secs).unwrap_or(u64::MAX);
     if delta < SECS_PER_MINUTE {
         format!("{} seconds ago", delta)
     } else if delta < SECS_PER_HOUR {

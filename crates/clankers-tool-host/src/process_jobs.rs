@@ -79,6 +79,22 @@ fn empty_process_job_watch_patterns() -> Vec<String> {
     Vec::new()
 }
 
+fn empty_project_process_job_profiles() -> BTreeMap<String, ProjectProcessJobProfile> {
+    BTreeMap::new()
+}
+
+fn empty_project_process_job_args() -> Vec<String> {
+    Vec::new()
+}
+
+fn empty_project_process_job_paths() -> Vec<PathBuf> {
+    Vec::new()
+}
+
+fn empty_project_process_job_metadata() -> BTreeMap<String, String> {
+    BTreeMap::new()
+}
+
 /// Stable Clankers-owned process/job identifier.
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 #[serde(transparent)]
@@ -938,15 +954,15 @@ impl NativeProcessJobIdentity {
             (self.command_fingerprint.clone(), observation.command_fingerprint.clone()),
             (self.cwd_fingerprint.clone(), observation.cwd_fingerprint.clone()),
         ];
-        let mut matched_any = false;
+        let mut has_matching_fact = false;
         for (expected, actual) in comparable_facts {
             match (expected, actual) {
-                (Some(left), Some(right)) if left == right => matched_any = true,
+                (Some(left), Some(right)) if left == right => has_matching_fact = true,
                 (Some(_), Some(_)) => return ProcessJobReconciliationState::IdentityMismatch,
                 _ => {}
             }
         }
-        if matched_any {
+        if has_matching_fact {
             ProcessJobReconciliationState::ReattachedLogIncomplete
         } else {
             ProcessJobReconciliationState::IdentityMismatch
@@ -991,21 +1007,24 @@ pub struct ProcessJobReconciliationOutcome {
 pub fn reconcile_external_backend_reference(
     facts: ExternalProcessJobReconciliationFacts,
 ) -> ProcessJobReconciliationOutcome {
-    let ref_matches = facts.observed_backend_ref.as_ref() == Some(&facts.expected_backend_ref);
+    debug_assert!(!facts.id.0.is_empty());
+    debug_assert!(!facts.expected_backend_ref.0.is_empty());
+
+    let has_matching_backend_ref = facts.observed_backend_ref.as_ref() == Some(&facts.expected_backend_ref);
     let (state, log_state, status, reason) = match facts.state {
-        ExternalProcessJobBackendState::Running if ref_matches => (
+        ExternalProcessJobBackendState::Running if has_matching_backend_ref => (
             ProcessJobReconciliationState::Reattached,
             ProcessJobLogReconciliationState::BackendReferenced,
             ProcessJobStatus::Running,
             None,
         ),
-        ExternalProcessJobBackendState::Succeeded { exit_code } if ref_matches => (
+        ExternalProcessJobBackendState::Succeeded { exit_code } if has_matching_backend_ref => (
             ProcessJobReconciliationState::Exited,
             ProcessJobLogReconciliationState::BackendReferenced,
             ProcessJobStatus::Succeeded { exit_code },
             None,
         ),
-        ExternalProcessJobBackendState::Failed { exit_code, reason } if ref_matches => (
+        ExternalProcessJobBackendState::Failed { exit_code, reason } if has_matching_backend_ref => (
             ProcessJobReconciliationState::Exited,
             ProcessJobLogReconciliationState::BackendReferenced,
             ProcessJobStatus::Failed {
@@ -1135,7 +1154,10 @@ pub struct ProcessJobProjectionItem {
     pub updated_at: ProcessJobTimestamp,
     pub completed_at: Option<ProcessJobTimestamp>,
     pub log_refs: Vec<ProcessJobLogRef>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[serde(
+        default = "absent_process_job_profile_metadata",
+        skip_serializing_if = "Option::is_none"
+    )]
     pub profile: Option<ProcessJobProfileReceiptMetadata>,
 }
 
@@ -1154,8 +1176,8 @@ pub fn project_process_job_list(
     summaries: impl IntoIterator<Item = ProcessJobSummary>,
     bounds: ProcessJobProjectionBounds,
 ) -> ProcessJobListProjection {
-    let mut active = Vec::new();
-    let mut completed = Vec::new();
+    let mut active = Vec::with_capacity(bounds.max_active);
+    let mut completed = Vec::with_capacity(bounds.max_completed);
     for summary in summaries {
         let lifecycle = if summary.status.is_terminal() {
             ProcessJobLifecycleBucket::Completed
@@ -1190,6 +1212,8 @@ pub fn project_process_job_list(
     let total_completed = completed.len();
     active.truncate(bounds.max_active);
     completed.truncate(bounds.max_completed);
+    debug_assert!(active.len() <= total_active);
+    debug_assert!(completed.len() <= total_completed);
     ProcessJobListProjection {
         active,
         completed,
@@ -1975,7 +1999,7 @@ impl ProcessJobNotificationPolicyState {
         policy: &ProcessJobNotificationPolicy,
         observation: ProcessJobNotificationObservation,
     ) -> Vec<ProcessJobNotificationDecision> {
-        let mut decisions = Vec::new();
+        let mut decisions = Vec::with_capacity(MAX_PROCESS_JOB_WATCH_PATTERNS.saturating_add(1));
         if observation.status.is_terminal() && policy.notify_on_complete && !self.completion_sent {
             self.completion_sent = true;
             decisions.push(ProcessJobRedactionPolicy::default().safe_notification_decision(
@@ -2002,10 +2026,10 @@ impl ProcessJobNotificationPolicyState {
             if watch_state.disabled {
                 continue;
             }
-            let rate_limited = watch_state
+            let is_within_watch_cooldown = watch_state
                 .last_delivered_tick
                 .is_some_and(|last| observation.tick.saturating_sub(last) < PROCESS_JOB_WATCH_RATE_LIMIT_TICKS);
-            if rate_limited {
+            if is_within_watch_cooldown {
                 watch_state.suppressed_matches = watch_state.suppressed_matches.saturating_add(1);
                 if watch_state.suppressed_matches >= PROCESS_JOB_WATCH_SUPPRESSION_LIMIT {
                     watch_state.disabled = true;
@@ -2214,7 +2238,7 @@ fn default_process_job_profile_schema_version() -> u32 {
 pub struct ProjectProcessJobProfiles {
     #[serde(default = "default_process_job_profile_schema_version")]
     pub schema_version: u32,
-    #[serde(default)]
+    #[serde(default = "empty_project_process_job_profiles")]
     pub profiles: BTreeMap<String, ProjectProcessJobProfile>,
 }
 
@@ -2232,18 +2256,18 @@ pub struct ProjectProcessJobProfile {
     pub backend: Option<ProcessJobBackendKind>,
     pub command: Option<String>,
     pub program: Option<String>,
-    #[serde(default)]
+    #[serde(default = "empty_project_process_job_args")]
     pub args: Vec<String>,
     pub cwd: Option<PathBuf>,
-    #[serde(default)]
+    #[serde(default = "empty_project_process_job_paths")]
     pub writable_paths: Vec<PathBuf>,
-    #[serde(default)]
+    #[serde(default = "empty_project_process_job_metadata")]
     pub env: BTreeMap<String, String>,
     #[serde(default)]
     pub resource_policy: ProcessJobResourcePolicy,
     #[serde(default)]
     pub notification_policy: ProcessJobNotificationPolicy,
-    #[serde(default)]
+    #[serde(default = "empty_project_process_job_metadata")]
     pub metadata: BTreeMap<String, String>,
 }
 
@@ -2342,6 +2366,8 @@ fn select_profile_manifest_source<'a>(
     sources: &'a [ProjectProcessJobProfileManifestSource],
     name: &str,
 ) -> Result<&'a ProjectProcessJobProfileManifestSource, ProjectProcessJobProfileValidationError> {
+    debug_assert!(!name.is_empty());
+
     let mut matches: BTreeMap<ProjectProcessJobProfileSourcePrecedence, Vec<&ProjectProcessJobProfileManifestSource>> =
         BTreeMap::new();
     for source in sources {
@@ -2356,6 +2382,7 @@ fn select_profile_manifest_source<'a>(
             format!("unknown process job profile: {name}"),
         ));
     };
+    debug_assert!(!selected_at_level.is_empty());
     if selected_at_level.len() != 1 {
         let labels = selected_at_level.iter().map(|source| source.safe_label()).collect::<Vec<_>>().join(", ");
         return Err(ProjectProcessJobProfileValidationError::new(
@@ -2364,6 +2391,7 @@ fn select_profile_manifest_source<'a>(
             format!("ambiguous duplicate profile at same precedence: {labels}"),
         ));
     }
+    debug_assert_eq!(selected_at_level.len(), 1);
     Ok(selected_at_level[0])
 }
 
@@ -2478,10 +2506,10 @@ fn validate_profile_environment(
     policy: &ProjectProcessJobProfilePolicy,
 ) -> Result<(), ProjectProcessJobProfileValidationError> {
     for key in env.keys() {
-        let allowed = key.chars().all(|ch| ch.is_ascii_uppercase() || ch.is_ascii_digit() || ch == '_')
+        let is_allowed = key.chars().all(|ch| ch.is_ascii_uppercase() || ch.is_ascii_digit() || ch == '_')
             && !is_sensitive_process_job_key(key)
             && policy.allowed_env_prefixes.iter().any(|prefix| key.starts_with(prefix));
-        if !allowed {
+        if !is_allowed {
             return Err(ProjectProcessJobProfileValidationError::new(
                 ProjectProcessJobProfileValidationCode::DisallowedEnvironmentKey,
                 name,
@@ -2497,6 +2525,9 @@ fn validate_profile_resources(
     resources: &ProcessJobResourcePolicy,
     policy: &ProjectProcessJobProfilePolicy,
 ) -> Result<(), ProjectProcessJobProfileValidationError> {
+    debug_assert!(!name.is_empty());
+    debug_assert!(!policy.policy_source.is_empty());
+
     if let (Some(actual), Some(maximum)) = (resources.timeout, policy.max_timeout)
         && actual > maximum
     {
@@ -2541,6 +2572,9 @@ fn validate_profile_paths(
     profile: &ProjectProcessJobProfile,
     policy: &ProjectProcessJobProfilePolicy,
 ) -> Result<(), ProjectProcessJobProfileValidationError> {
+    debug_assert!(!name.is_empty());
+    debug_assert!(!policy.policy_source.is_empty());
+
     if let Some(cwd) = &profile.cwd
         && !path_allowed(cwd, &policy.allowed_cwd_prefixes)
     {

@@ -5,4 +5,4 @@ pub use clanker_message::metrics::LatencyHistogram;
 pub use clanker_message::metrics::MetricEventKind;
 pub use clanker_message::metrics::MetricEventRecord;
 pub use clanker_message::metrics::SessionMetricsSummary;
-pub use clanker_message::metrics::TopKCounter;
+pub use clanker_message::metrics::TopCounter;

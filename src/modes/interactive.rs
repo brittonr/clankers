@@ -293,6 +293,7 @@ pub(crate) use super::agent_commands::TaskResult;
 // Main event loop
 // ---------------------------------------------------------------------------
 
+// Tiger Style: the interactive shell owns the full TUI/session wiring bundle at this boundary.
 #[allow(clippy::too_many_arguments, clippy::unused_async)]
 async fn run_event_loop(
     terminal: &mut Terminal<CrosstermBackend<io::Stdout>>,

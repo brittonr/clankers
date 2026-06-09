@@ -522,7 +522,7 @@ pub fn compact_by_truncation(messages: &[AgentMessage], max_tokens: usize, keep_
 
 fn estimate_message_tokens(msg: &AgentMessage) -> usize {
     let json = serde_json::to_string(msg).unwrap_or_default();
-    estimate_tokens(&json)
+    usize::try_from(estimate_tokens(&json)).unwrap_or(usize::MAX)
 }
 
 #[cfg(test)]

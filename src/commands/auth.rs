@@ -82,8 +82,8 @@ pub(crate) fn split_provider_prefix(input: &str) -> (String, String) {
     (clankers_provider::auth::DEFAULT_OAUTH_PROVIDER.to_string(), trimmed.to_string())
 }
 
-fn format_expires_in(expires_at_ms: i64) -> String {
-    let remaining_ms = expires_at_ms - chrono::Utc::now().timestamp_millis();
+fn format_expires_in(now_ms: i64, expires_at_ms: i64) -> String {
+    let remaining_ms = expires_at_ms.saturating_sub(now_ms);
     if remaining_ms <= 0 {
         return "expired".to_string();
     }
@@ -99,10 +99,11 @@ pub(crate) fn describe_credential(cred: &clankers_provider::auth::StoredCredenti
     match cred {
         clankers_provider::auth::StoredCredential::ApiKey { .. } => "api key".to_string(),
         clankers_provider::auth::StoredCredential::OAuth { expires_at_ms, .. } => {
-            if cred.is_expired() {
+            let now_ms = chrono::Utc::now().timestamp_millis();
+            if *expires_at_ms <= now_ms {
                 "oauth expired".to_string()
             } else {
-                format!("oauth valid (expires in {})", format_expires_in(*expires_at_ms))
+                format!("oauth valid (expires in {})", format_expires_in(now_ms, *expires_at_ms))
             }
         }
     }

@@ -2,16 +2,20 @@
 
 /// Estimate the number of tokens in a text string.
 ///
-/// Uses a simple heuristic: character count divided by 4. This is a rough
+/// Uses a simple heuristic: UTF-8 byte count divided by 4. This is a rough
 /// approximation commonly used for English text.
-pub fn estimate_tokens(text: &str) -> usize {
-    text.len() / 4
+const TOKEN_ESTIMATE_BYTES_PER_TOKEN: u64 = 4;
+const _: () = assert!(usize::BITS <= u64::BITS);
+
+pub fn estimate_tokens(text: &str) -> u64 {
+    let byte_count = text.len() as u64;
+    byte_count / TOKEN_ESTIMATE_BYTES_PER_TOKEN
 }
 
 /// Estimate the number of tokens in a list of JSON-serializable message values.
 ///
 /// Serializes the messages to JSON and applies the token estimation heuristic.
-pub fn estimate_tokens_for_messages(messages: &[serde_json::Value]) -> usize {
+pub fn estimate_tokens_for_messages(messages: &[serde_json::Value]) -> u64 {
     let serialized = serde_json::to_string(messages).unwrap_or_default();
     estimate_tokens(&serialized)
 }

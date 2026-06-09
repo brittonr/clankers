@@ -12,4 +12,4 @@ pub use types::DailyMetricsRollup;
 pub use types::LatencyHistogram;
 pub use types::MetricEventRecord;
 pub use types::SessionMetricsSummary;
-pub use types::TopKCounter;
+pub use types::TopCounter;

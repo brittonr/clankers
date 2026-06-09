@@ -29,11 +29,8 @@
         tigerstyle::sentinel_fallback,
         tigerstyle::unchecked_narrowing,
         tigerstyle::platform_dependent_cast,
-        tigerstyle::multi_lock_ordering,
-        tigerstyle::contradictory_time,
         tigerstyle::no_recursion,
         tigerstyle::catch_all_on_enum,
-        tigerstyle::unjustified_allow,
         reason = "binary entrypoint is CLI/orchestration shell over existing library contracts; focused command tests cover behavior during Tigerstyle drain"
     )
 )]

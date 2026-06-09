@@ -171,8 +171,8 @@ fn test_dir_size_approx() {
 #[test]
 fn test_format_relative_time() {
     let now = chrono::Utc::now().timestamp();
-    assert!(log::format_relative_time(now - 30).contains("seconds"));
-    assert!(log::format_relative_time(now - 120).contains("minute"));
-    assert!(log::format_relative_time(now - 7200).contains("hour"));
-    assert!(log::format_relative_time(now - 86400).contains("day"));
+    assert!(log::format_relative_time_at(now, now - 30).contains("seconds"));
+    assert!(log::format_relative_time_at(now, now - 120).contains("minute"));
+    assert!(log::format_relative_time_at(now, now - 7200).contains("hour"));
+    assert!(log::format_relative_time_at(now, now - 86400).contains("day"));
 }

@@ -61,6 +61,8 @@ impl ProcessStatus {
     }
 }
 
+// Lock order: notification_state -> notifications -> notification_cursor; output -> poll_cursor;
+// status, stdin, and kill_tx are single-lock paths. Do not hold std::sync locks across await points.
 pub(super) struct ProcessEntry {
     pub(super) id: String,
     pub(super) command: String,
@@ -69,15 +71,23 @@ pub(super) struct ProcessEntry {
     pub(super) started_at_wall: DateTime<Utc>,
     pub(super) backend_ref: Option<BackendRef>,
     pub(super) profile: Option<ProcessJobProfileReceiptMetadata>,
+    /// Lock order: acquire before `poll_cursor` when draining output.
     pub(super) output: std::sync::Mutex<Vec<String>>,
+    /// Lock order: acquire after `output`; no other process locks are held.
     pub(super) poll_cursor: std::sync::Mutex<usize>,
     pub(super) notification_policy: ProcessJobNotificationPolicy,
+    /// Lock order: acquire before notification event locks, then drop before std::sync locks.
     pub(super) notification_state: tokio::sync::Mutex<ProcessJobNotificationPolicyState>,
+    /// Lock order: acquire before `notification_cursor` when draining notifications.
     pub(super) notifications: std::sync::Mutex<Vec<ProcessJobNotificationEvent>>,
+    /// Lock order: acquire after `notifications`; no async guard may be held.
     pub(super) notification_cursor: std::sync::Mutex<usize>,
     pub(super) next_notification_seq: AtomicU64,
+    /// Lock order: independent status lock; do not hold with stdio or kill locks.
     pub(super) status: std::sync::Mutex<ProcessStatus>,
+    /// Lock order: independent stdio lock; do not hold with status or kill locks.
     pub(super) stdin: tokio::sync::Mutex<Option<ChildStdin>>,
+    /// Lock order: independent kill lock; do not hold with status or stdio locks.
     pub(super) kill_tx: std::sync::Mutex<Option<oneshot::Sender<()>>>,
 }
 

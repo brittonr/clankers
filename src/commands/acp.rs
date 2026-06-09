@@ -5,6 +5,7 @@ use crate::cli::AcpAction;
 use crate::commands::CommandContext;
 use crate::error::Result;
 
+// Tiger Style: command handlers share one async dispatch signature even when this transport is synchronous.
 #[allow(clippy::unused_async, reason = "command handlers share an async dispatch signature")]
 pub async fn run(_ctx: &CommandContext, action: AcpAction) -> Result<()> {
     match action {

@@ -16,6 +16,26 @@ use serde_json::Value;
 
 use crate::content::Content;
 
+fn default_string() -> String {
+    String::new()
+}
+
+fn default_vec<T>() -> Vec<T> {
+    Vec::new()
+}
+
+fn default_btree_map<K, V>() -> BTreeMap<K, V> {
+    BTreeMap::new()
+}
+
+fn default_option<T>() -> Option<T> {
+    None
+}
+
+fn default_json_value() -> Value {
+    Value::Null
+}
+
 /// Tool definition for function calling.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ToolDefinition {
@@ -30,7 +50,7 @@ pub struct ToolInfo {
     pub name: String,
     pub description: String,
     /// Source of the tool: "built-in" or plugin name.
-    #[serde(default)]
+    #[serde(default = "default_string")]
     pub source: String,
 }
 
@@ -266,7 +286,7 @@ pub struct ThinkingConfig {
     pub budget_tokens: Option<usize>,
 }
 
-const RUNTIME_RETRY_DELAY_MS_MAX: u64 = 365 * 24 * 60 * 60 * 1000;
+const RUNTIME_RETRY_DELAY_MS_MAX: u64 = 31_536_000_000;
 
 /// Role for provider messages exchanged with host model adapters.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -417,7 +437,7 @@ impl ProviderModelFailure {
 
 fn sanitize_short_public_value(value: String) -> String {
     let lower = value.to_ascii_lowercase();
-    let contains_secret = [
+    let has_secret_marker = [
         "token",
         "secret",
         "password",
@@ -428,7 +448,7 @@ fn sanitize_short_public_value(value: String) -> String {
     ]
     .iter()
     .any(|marker| lower.contains(marker));
-    if contains_secret {
+    if has_secret_marker {
         "[REDACTED]".to_string()
     } else {
         value.chars().take(160).collect()
@@ -559,11 +579,11 @@ impl PromptAssemblyPolicy {
 pub struct PromptSources {
     pub system_prompt: Option<String>,
     pub host_context: Vec<HostContext>,
-    #[serde(default)]
+    #[serde(default = "default_vec")]
     pub filesystem_context: Vec<HostContext>,
     pub filesystem_context_requested: bool,
     pub context_references: Vec<ContextReferenceRequest>,
-    #[serde(default)]
+    #[serde(default = "default_vec")]
     pub skill_snippets: Vec<SkillSnippet>,
 }
 
@@ -727,7 +747,7 @@ pub struct ExtensionRuntimeRequest {
     pub visible_tool_name: Option<String>,
     pub original_tool_name: Option<String>,
     pub runtime_entrypoint: Option<String>,
-    #[serde(default)]
+    #[serde(default = "default_json_value")]
     pub arguments: Value,
 }
 
@@ -792,12 +812,12 @@ pub struct EffectRequest {
     /// Content hash of the input schema or tool descriptor that shaped the request.
     pub input_schema_hash: Option<ArtifactHash>,
     /// Declared artifacts required to safely understand/execute the request.
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    #[serde(default = "default_vec", skip_serializing_if = "Vec::is_empty")]
     pub declared_artifact_dependencies: Vec<ArtifactHash>,
     /// Redaction class for request/result receipt material.
     pub redaction_class: RedactionClass,
     /// Safe source metadata for review logs; values are sanitized and secret markers rejected.
-    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    #[serde(default = "default_btree_map", skip_serializing_if = "BTreeMap::is_empty")]
     pub safe_source_metadata: BTreeMap<String, String>,
 }
 
@@ -884,7 +904,7 @@ pub struct EffectResult {
     /// Safe, sanitized summary suitable for logs/review receipts.
     pub safe_summary: String,
     /// Optional safe UCAN authorization metadata; never contains compact tokens or secrets.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[serde(default = "default_option", skip_serializing_if = "Option::is_none")]
     pub ucan_authorization: Option<UcanAuthorizationMetadata>,
 }
 
@@ -955,25 +975,25 @@ pub struct UcanAuthorizationMetadata {
     /// Allowed, denied, replayed, revoked, or unavailable authorization status.
     pub status: String,
     /// Safe issuer DID, when available.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[serde(default = "default_option", skip_serializing_if = "Option::is_none")]
     pub issuer: Option<String>,
     /// Safe audience DID, when available.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[serde(default = "default_option", skip_serializing_if = "Option::is_none")]
     pub audience: Option<String>,
     /// Safe proof-chain or grant references, never raw compact token strings.
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    #[serde(default = "default_vec", skip_serializing_if = "Vec::is_empty")]
     pub proof_references: Vec<String>,
     /// Safe caveat identifiers/classes evaluated for this decision.
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    #[serde(default = "default_vec", skip_serializing_if = "Vec::is_empty")]
     pub caveat_ids: Vec<String>,
     /// Replay admission status, when replay checking was involved.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[serde(default = "default_option", skip_serializing_if = "Option::is_none")]
     pub replay_status: Option<String>,
     /// Revocation status, when revocation checking was involved.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[serde(default = "default_option", skip_serializing_if = "Option::is_none")]
     pub revocation_status: Option<String>,
     /// Redacted denial class for denied authorization receipts.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[serde(default = "default_option", skip_serializing_if = "Option::is_none")]
     pub denial_class: Option<String>,
 }
 
@@ -1141,7 +1161,7 @@ pub struct RemoteExecutionRequest {
     /// Whether this is local subagent execution or a remote daemon peer.
     pub target: RemoteExecutionTarget,
     /// Required safe artifacts, normalized by kind/hash.
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    #[serde(default = "default_vec", skip_serializing_if = "Vec::is_empty")]
     pub required_artifacts: Vec<RemoteExecutionDependency>,
 }
 
@@ -1192,7 +1212,7 @@ pub struct RemoteArtifactEnvelope {
     /// Redaction class of the envelope body. Secret envelopes are never syncable.
     pub redaction_class: RedactionClass,
     /// Optional safe UCAN authorization metadata; never contains compact tokens or secrets.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[serde(default = "default_option", skip_serializing_if = "Option::is_none")]
     pub ucan_authorization: Option<UcanAuthorizationMetadata>,
 }
 
@@ -1253,10 +1273,10 @@ impl RemoteDependencyFailure {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct RemoteDependencySyncReport {
     /// Safe artifacts the peer should request by hash before execution.
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    #[serde(default = "default_vec", skip_serializing_if = "Vec::is_empty")]
     pub missing_safe_artifacts: Vec<RemoteExecutionDependency>,
     /// Failures that abort execution before side effects.
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    #[serde(default = "default_vec", skip_serializing_if = "Vec::is_empty")]
     pub failures: Vec<RemoteDependencyFailure>,
 }
 
@@ -2174,11 +2194,11 @@ pub enum RuntimeToolStatus {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RuntimeToolResponse {
     pub status: RuntimeToolStatus,
-    #[serde(default)]
+    #[serde(default = "default_vec")]
     pub content: Vec<Content>,
-    #[serde(default)]
+    #[serde(default = "default_json_value")]
     pub details: Value,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[serde(default = "default_option", skip_serializing_if = "Option::is_none")]
     pub message: Option<String>,
 }
 
@@ -2224,8 +2244,8 @@ impl RuntimeRetryRequest {
 
 fn runtime_retry_delay_ms(delay: Duration) -> u64 {
     let delay_ms = delay.as_millis();
-    let delay_ms_max = u128::from(RUNTIME_RETRY_DELAY_MS_MAX);
-    if delay_ms > delay_ms_max {
+    let delay_max_ms = u128::from(RUNTIME_RETRY_DELAY_MS_MAX);
+    if delay_ms > delay_max_ms {
         return RUNTIME_RETRY_DELAY_MS_MAX;
     }
     match u64::try_from(delay_ms) {

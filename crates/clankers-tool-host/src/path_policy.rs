@@ -50,7 +50,7 @@ impl PathPolicy {
     /// Build the policy from well-known sensitive paths.
     #[must_use]
     pub fn new() -> Self {
-        let mut denied = Vec::new();
+        let mut denied = Vec::with_capacity(SENSITIVE_PATHS.len().saturating_add(SENSITIVE_SYSTEM_PATHS.len()));
 
         if let Some(home) = dirs::home_dir() {
             for rel in SENSITIVE_PATHS {

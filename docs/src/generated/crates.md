@@ -1536,7 +1536,7 @@ struct StoredToolResult
 struct SyncReport
 struct ToolEntry
 struct ToolResultStore
-struct TopKCounter
+struct TopCounter
 struct UsageTracker
 ```
 

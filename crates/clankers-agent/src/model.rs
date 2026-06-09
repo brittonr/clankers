@@ -147,7 +147,7 @@ pub fn thinking_level_to_config(level: clanker_message::ThinkingLevel) -> Option
     if level.is_enabled() {
         Some(ThinkingConfig {
             enabled: true,
-            budget_tokens: level.budget_tokens().map(|tokens| tokens as usize),
+            budget_tokens: level.budget_tokens().and_then(|tokens| usize::try_from(tokens).ok()),
         })
     } else {
         None
