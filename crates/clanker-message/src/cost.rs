@@ -1,7 +1,7 @@
 #![cfg_attr(
     dylint_lib = "tigerstyle",
     allow(
-        float_for_currency,
+        tigerstyle::float_for_currency,
         reason = "cost contracts currently mirror router/model-selection USD floats"
     )
 )]
