@@ -267,7 +267,11 @@ fn collect_line(raw: &str, ctx: &ToolContext, collected: &mut String, line_count
     }
     collected.push_str(&line);
     *line_count += 1;
-    ctx.emit_structured_progress(ToolProgress::lines(*line_count as u64, None));
+    ctx.emit_structured_progress(ToolProgress::lines(
+        *line_count as u64,
+        None,
+        std::time::Instant::now(),
+    ));
 }
 
 async fn drain_reader(

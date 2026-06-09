@@ -128,7 +128,9 @@ impl Tool for GrepTool {
                     && let Some(end) = msg.rfind(" matches)")
                     && let Ok(count) = msg[start + 1..end].parse::<u64>()
                 {
-                    progress_ctx.emit_structured_progress(ToolProgress::lines(count, None).with_message("Searching"));
+                    progress_ctx.emit_structured_progress(
+                        ToolProgress::lines(count, None, std::time::Instant::now()).with_message("Searching"),
+                    );
                 }
             })
         })
@@ -141,7 +143,12 @@ impl Tool for GrepTool {
             }
             Ok(Err(e)) => {
                 if e.contains("cancelled") {
-                    ctx.emit_structured_progress(ToolProgress::phase("Cancelling", 1, Some(1)));
+                    ctx.emit_structured_progress(ToolProgress::phase(
+                        "Cancelling",
+                        1,
+                        Some(1),
+                        std::time::Instant::now(),
+                    ));
                 }
                 ToolResult::error(e)
             }

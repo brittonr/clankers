@@ -147,8 +147,9 @@ impl Tool for FindTool {
                     && let Some(end) = msg.rfind(')')
                     && let Ok(count) = msg[start + 1..end].parse::<u64>()
                 {
-                    progress_ctx
-                        .emit_structured_progress(ToolProgress::items(count, None).with_message("Finding files"));
+                    progress_ctx.emit_structured_progress(
+                        ToolProgress::items(count, None, std::time::Instant::now()).with_message("Finding files"),
+                    );
                 }
             })
         })
@@ -178,7 +179,12 @@ impl Tool for FindTool {
             }
             Ok(Err(e)) => {
                 if e.contains("cancelled") {
-                    ctx.emit_structured_progress(ToolProgress::phase("Cancelling", 1, Some(1)));
+                    ctx.emit_structured_progress(ToolProgress::phase(
+                        "Cancelling",
+                        1,
+                        Some(1),
+                        std::time::Instant::now(),
+                    ));
                 }
                 ToolResult::error(e)
             }

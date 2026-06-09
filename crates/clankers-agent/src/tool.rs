@@ -27,17 +27,6 @@ pub mod progress {
     pub use clanker_message::ToolResultAccumulator;
     pub use clanker_message::TruncationConfig;
 
-    #[cfg_attr(
-        dylint_lib = "tigerstyle",
-        allow(
-            ambient_clock,
-            reason = "tool progress timestamps are captured at the tool event boundary"
-        )
-    )]
-    fn progress_timestamp() -> Instant {
-        Instant::now()
-    }
-
     /// Different types of progress a tool can report without depending on display DTOs.
     #[derive(Debug, Clone, PartialEq)]
     pub enum ProgressKind {
@@ -73,43 +62,43 @@ pub mod progress {
 
     impl ToolProgress {
         #[must_use]
-        pub fn bytes(current: u64, total: Option<u64>) -> Self {
+        pub fn bytes(current: u64, total: Option<u64>, timestamp: Instant) -> Self {
             Self {
                 kind: ProgressKind::Bytes { current, total },
                 message: None,
-                timestamp: progress_timestamp(),
+                timestamp,
             }
         }
 
         #[must_use]
-        pub fn lines(current: u64, total: Option<u64>) -> Self {
+        pub fn lines(current: u64, total: Option<u64>, timestamp: Instant) -> Self {
             Self {
                 kind: ProgressKind::Lines { current, total },
                 message: None,
-                timestamp: progress_timestamp(),
+                timestamp,
             }
         }
 
         #[must_use]
-        pub fn items(current: u64, total: Option<u64>) -> Self {
+        pub fn items(current: u64, total: Option<u64>, timestamp: Instant) -> Self {
             Self {
                 kind: ProgressKind::Items { current, total },
                 message: None,
-                timestamp: progress_timestamp(),
+                timestamp,
             }
         }
 
         #[must_use]
-        pub fn percentage(percent: f32) -> Self {
+        pub fn percentage(percent: f32, timestamp: Instant) -> Self {
             Self {
                 kind: ProgressKind::Percentage { percent },
                 message: None,
-                timestamp: progress_timestamp(),
+                timestamp,
             }
         }
 
         #[must_use]
-        pub fn phase(name: impl Into<String>, step: u32, total_steps: Option<u32>) -> Self {
+        pub fn phase(name: impl Into<String>, step: u32, total_steps: Option<u32>, timestamp: Instant) -> Self {
             Self {
                 kind: ProgressKind::Phase {
                     name: name.into(),
@@ -117,7 +106,7 @@ pub mod progress {
                     total_steps,
                 },
                 message: None,
-                timestamp: progress_timestamp(),
+                timestamp,
             }
         }
 
@@ -154,6 +143,16 @@ impl Default for ThrottleState {
             min_interval: Duration::from_millis(100),
         }
     }
+}
+
+fn progress_update_is_throttled(last_emit: Option<Instant>, event_time: Instant, min_interval: Duration) -> bool {
+    let Some(last_emit) = last_emit else {
+        return false;
+    };
+    let Some(elapsed) = event_time.checked_duration_since(last_emit) else {
+        return true;
+    };
+    elapsed < min_interval
 }
 
 /// Legacy compatibility context passed to unmigrated tool invocations.
@@ -259,18 +258,17 @@ impl ToolContext {
     /// Throttled to max 10 updates/sec (100ms interval) per `call_id`.
     /// If called more frequently, the event is silently dropped.
     pub fn emit_structured_progress(&self, progress: progress::ToolProgress) {
+        let event_time = progress.timestamp;
         let mut state = self.throttle_state.lock();
 
-        // Check throttle
-        if let Some(last) = state.last_progress_emit
-            && last.elapsed() < state.min_interval
-        {
-            // Drop this event (throttled)
+        // Check throttle.
+        if progress_update_is_throttled(state.last_progress_emit, event_time, state.min_interval) {
+            // Drop this event (throttled).
             return;
         }
 
-        // Update throttle state
-        state.last_progress_emit = Some(Instant::now());
+        // Update throttle state.
+        state.last_progress_emit = Some(event_time);
         drop(state);
 
         // Emit event
@@ -590,17 +588,24 @@ mod tests {
         let ctx = ToolContext::new("call-1".to_string(), CancellationToken::new(), Some(tx));
 
         ctx.set_throttle_interval(Duration::from_millis(50));
+        let first_emit_at = Instant::now();
 
-        ctx.emit_structured_progress(progress::ToolProgress::lines(1, Some(100)));
-        ctx.emit_structured_progress(progress::ToolProgress::lines(2, Some(100)));
+        ctx.emit_structured_progress(progress::ToolProgress::lines(1, Some(100), first_emit_at));
+        ctx.emit_structured_progress(progress::ToolProgress::lines(
+            2,
+            Some(100),
+            first_emit_at + Duration::from_millis(10),
+        ));
 
         let event1 = rx.try_recv().expect("should receive first progress event");
         assert!(matches!(event1, AgentEvent::ToolProgressUpdate { .. }));
         assert!(rx.try_recv().is_err());
 
-        std::thread::sleep(Duration::from_millis(60));
-
-        ctx.emit_structured_progress(progress::ToolProgress::lines(3, Some(100)));
+        ctx.emit_structured_progress(progress::ToolProgress::lines(
+            3,
+            Some(100),
+            first_emit_at + Duration::from_millis(60),
+        ));
         let event2 = rx.try_recv().expect("should receive second progress event after throttle");
         assert!(matches!(event2, AgentEvent::ToolProgressUpdate { .. }));
     }
@@ -626,7 +631,7 @@ mod tests {
     #[test]
     fn emit_structured_progress_no_channel_is_noop() {
         let ctx = ToolContext::new("call-1".to_string(), CancellationToken::new(), None);
-        ctx.emit_structured_progress(progress::ToolProgress::lines(42, None));
+        ctx.emit_structured_progress(progress::ToolProgress::lines(42, None, Instant::now()));
     }
 
     #[test]

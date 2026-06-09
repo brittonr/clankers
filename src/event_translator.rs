@@ -313,7 +313,8 @@ mod tests {
     fn test_translate_tool_progress_update_projects_neutral_agent_progress_to_tui_edge() {
         let event = AgentEvent::ToolProgressUpdate {
             call_id: "call_progress".to_string(),
-            progress: agent_progress::ToolProgress::phase("Fetching", 1, Some(2)).with_message("Downloading"),
+            progress: agent_progress::ToolProgress::phase("Fetching", 1, Some(2), std::time::Instant::now())
+                .with_message("Downloading"),
         };
         let result = translate(&event);
         match result {
