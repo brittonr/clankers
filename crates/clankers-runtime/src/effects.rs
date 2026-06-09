@@ -7,6 +7,7 @@ pub use clanker_message::EffectCorrelationId;
 pub use clanker_message::EffectResultStatus;
 pub use clanker_message::REMOTE_EXECUTION_ARTIFACT_SCHEMA_VERSION;
 pub use clanker_message::RemoteArtifactEnvelope;
+pub use clanker_message::RemoteDependencyFailure;
 pub use clanker_message::RemoteDependencyFailureKind;
 pub use clanker_message::RemoteExecutionArtifactKind;
 pub use clanker_message::RemoteExecutionDependency;
@@ -87,31 +88,6 @@ impl EffectRequest {
         };
         self.safe_source_metadata.insert(key, value);
         self
-    }
-}
-
-/// Redacted remote dependency failure receipt.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct RemoteDependencyFailure {
-    /// Dependency involved in the failure.
-    pub dependency: RemoteExecutionDependency,
-    /// Failure kind.
-    pub kind: RemoteDependencyFailureKind,
-    /// Safe redacted summary.
-    pub safe_summary: String,
-}
-
-impl RemoteDependencyFailure {
-    fn new(
-        dependency: RemoteExecutionDependency,
-        kind: RemoteDependencyFailureKind,
-        safe_summary: impl Into<String>,
-    ) -> Self {
-        Self {
-            dependency,
-            kind,
-            safe_summary: sanitize_metadata_value(safe_summary.into()),
-        }
     }
 }
 

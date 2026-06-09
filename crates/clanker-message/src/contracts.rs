@@ -984,6 +984,33 @@ impl RemoteArtifactEnvelope {
     }
 }
 
+/// Redacted remote dependency failure receipt.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct RemoteDependencyFailure {
+    /// Dependency involved in the failure.
+    pub dependency: RemoteExecutionDependency,
+    /// Failure kind.
+    pub kind: RemoteDependencyFailureKind,
+    /// Safe redacted summary.
+    pub safe_summary: String,
+}
+
+impl RemoteDependencyFailure {
+    /// Build a redacted remote dependency failure receipt.
+    #[must_use]
+    pub fn new(
+        dependency: RemoteExecutionDependency,
+        kind: RemoteDependencyFailureKind,
+        safe_summary: impl Into<String>,
+    ) -> Self {
+        Self {
+            dependency,
+            kind,
+            safe_summary: sanitize_short_public_value(safe_summary.into()),
+        }
+    }
+}
+
 /// Dynamic runtime implementation kind.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -2228,6 +2255,17 @@ mod tests {
         let parsed: RemoteArtifactEnvelope =
             serde_json::from_str(&json).expect("remote artifact envelope should deserialize");
         assert_eq!(parsed, envelope);
+
+        let failure = RemoteDependencyFailure::new(
+            skill,
+            RemoteDependencyFailureKind::SecretDependencyDenied,
+            "secret token leaked",
+        );
+        assert_eq!(failure.safe_summary, "[REDACTED]");
+        let failure_json = serde_json::to_string(&failure).expect("remote dependency failure should serialize");
+        let parsed_failure: RemoteDependencyFailure =
+            serde_json::from_str(&failure_json).expect("remote dependency failure should deserialize");
+        assert_eq!(parsed_failure, failure);
     }
 
     #[test]

@@ -72,6 +72,7 @@ pub use contracts::ProviderModelStatus;
 pub use contracts::ProviderStreamEvent;
 pub use contracts::REMOTE_EXECUTION_ARTIFACT_SCHEMA_VERSION;
 pub use contracts::RemoteArtifactEnvelope;
+pub use contracts::RemoteDependencyFailure;
 pub use contracts::RemoteDependencyFailureKind;
 pub use contracts::RemoteExecutionArtifactKind;
 pub use contracts::RemoteExecutionDependency;

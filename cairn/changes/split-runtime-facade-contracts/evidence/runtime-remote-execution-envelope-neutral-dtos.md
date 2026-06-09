@@ -1,15 +1,15 @@
 Artifact-Type: validation-log
-Task-ID: I53,V52
+Task-ID: I53,V52,I54,V53
 Covers: r[remaining-coupling-drain.runtime-facade-contract-split.green-contracts], r[remaining-coupling-drain.runtime-facade-contract-split.docs], r[remaining-coupling-drain.runtime-facade-contract-split.validation], r[remaining-coupling-drain.runtime-facade-contract-split.closeout]
 Status: pass
 
 ## Scope
 
-Moved reusable remote-execution dependency/envelope DTOs to neutral message contracts:
+Moved reusable remote-execution dependency/envelope/failure DTOs to neutral message contracts:
 
-- Added `clanker_message::{RemoteExecutionDependency, RemoteExecutionRequest, RemoteArtifactEnvelope, REMOTE_EXECUTION_ARTIFACT_SCHEMA_VERSION}` and a direct green dependency on `clankers-artifacts` for `ArtifactHash` / `RedactionClass` fields.
+- Added `clanker_message::{RemoteExecutionDependency, RemoteExecutionRequest, RemoteArtifactEnvelope, RemoteDependencyFailure, REMOTE_EXECUTION_ARTIFACT_SCHEMA_VERSION}` and a direct green dependency on `clankers-artifacts` for `ArtifactHash` / `RedactionClass` fields.
 - Re-exported those DTOs through `clankers-runtime::effects` and the runtime crate root so existing runtime API paths remain available.
-- Kept remote dependency sync evaluation, failure reports, effect-result projection, and fail-closed handler policy in `clankers-runtime`.
+- Kept remote dependency sync evaluation, report-to-effect projection, and fail-closed handler policy in `clankers-runtime`.
 - Regenerated `docs/src/generated/runtime-facade-api.md` after the ownership change.
 
 ## Validation
