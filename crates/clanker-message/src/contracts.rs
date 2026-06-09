@@ -473,6 +473,19 @@ pub struct PromptSourceRequest {
     pub policy: PromptAssemblyPolicy,
 }
 
+/// Host prompt input.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PromptInput {
+    pub text: String,
+}
+
+impl PromptInput {
+    #[must_use]
+    pub fn new(text: impl Into<String>) -> Self {
+        Self { text: text.into() }
+    }
+}
+
 /// Prompt assembly feature policy supplied by the host.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PromptAssemblyPolicy {
@@ -2421,6 +2434,11 @@ mod tests {
 
     #[test]
     fn prompt_sources_roundtrip_preserves_context_references_and_defaults() {
+        let input = PromptInput::new("hello from host");
+        let input_json = serde_json::to_string(&input).expect("prompt input should serialize");
+        let parsed_input: PromptInput = serde_json::from_str(&input_json).expect("prompt input should deserialize");
+        assert_eq!(parsed_input.text, "hello from host");
+
         let sources = PromptSources {
             system_prompt: Some("system".to_string()),
             host_context: vec![HostContext {

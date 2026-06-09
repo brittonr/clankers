@@ -72,6 +72,7 @@ pub use contracts::OrchestrationPlanStatus;
 pub use contracts::OrchestrationPlannerKind;
 pub use contracts::OrchestrationRolloutStage;
 pub use contracts::PromptAssemblyPolicy;
+pub use contracts::PromptInput;
 pub use contracts::PromptProvenance;
 pub use contracts::PromptSection;
 pub use contracts::PromptSourceKind;

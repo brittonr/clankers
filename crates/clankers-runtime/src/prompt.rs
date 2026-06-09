@@ -3,13 +3,14 @@
 use std::collections::BTreeSet;
 
 pub use clanker_message::AssembledPrompt;
+use clanker_message::Content;
 pub use clanker_message::ContextReferenceKind;
 pub use clanker_message::ContextReferenceRequest;
-use clanker_message::Content;
 pub use clanker_message::HostContext;
 pub use clanker_message::ModelFailure;
 pub use clanker_message::ModelRequestMetadata;
 pub use clanker_message::PromptAssemblyPolicy;
+pub use clanker_message::PromptInput;
 pub use clanker_message::PromptProvenance;
 pub use clanker_message::PromptSection;
 pub use clanker_message::PromptSourceKind;
@@ -29,19 +30,6 @@ use crate::SessionId;
 use crate::SessionLedgerMessage;
 use crate::events::contains_secret_marker;
 use crate::events::sanitize_metadata_value;
-
-/// Host prompt input.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct PromptInput {
-    pub text: String,
-}
-
-impl PromptInput {
-    #[must_use]
-    pub fn new(text: impl Into<String>) -> Self {
-        Self { text: text.into() }
-    }
-}
 
 /// Prompt submission receipt.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
