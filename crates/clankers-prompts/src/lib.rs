@@ -7,21 +7,17 @@
 //! - .clankers/prompts/*.md (project)
 #![allow(unexpected_cfgs)]
 #![cfg_attr(dylint_lib = "tigerstyle", feature(register_tool), register_tool(tigerstyle))]
-#![cfg_attr(
-    dylint_lib = "tigerstyle",
-    allow(
-        tigerstyle::assertion_density,
-        tigerstyle::unbounded_collection_growth,
-        tigerstyle::raw_arithmetic_overflow,
-        reason = "prompt scanner is small compatibility glue covered by parser tests"
-    )
-)]
 
 use std::path::Path;
 use std::path::PathBuf;
 
 use serde::Deserialize;
 use serde::Serialize;
+
+const MAX_PROMPTS_PER_DIR_COUNT: usize = 1024;
+const MAX_DISCOVERED_PROMPTS_COUNT: usize = 2048;
+const MAX_VARIABLES_PER_TEMPLATE_COUNT: usize = 128;
+const TEMPLATE_VARIABLE_DELIMITER_BYTES: usize = 2;
 
 /// A discovered prompt template
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -36,6 +32,7 @@ pub struct PromptTemplate {
 /// Scan a prompts directory for *.md files
 pub fn scan_prompts_dir(dir: &Path) -> Vec<PromptTemplate> {
     let mut prompts = Vec::new();
+    assert!(prompts.is_empty());
     if !dir.is_dir() {
         return prompts;
     }
@@ -44,6 +41,9 @@ pub fn scan_prompts_dir(dir: &Path) -> Vec<PromptTemplate> {
         Err(_) => return prompts,
     };
     for entry in entries.flatten() {
+        if prompts.len() >= MAX_PROMPTS_PER_DIR_COUNT {
+            break;
+        }
         let path = entry.path();
         if path.extension().and_then(|e| e.to_str()) != Some("md") {
             continue;
@@ -52,6 +52,7 @@ pub fn scan_prompts_dir(dir: &Path) -> Vec<PromptTemplate> {
             prompts.push(prompt);
         }
     }
+    assert!(prompts.len() <= MAX_PROMPTS_PER_DIR_COUNT);
     prompts.sort_by(|a, b| a.name.cmp(&b.name));
     prompts
 }
@@ -59,16 +60,18 @@ pub fn scan_prompts_dir(dir: &Path) -> Vec<PromptTemplate> {
 /// Discover prompts from both global and project directories
 pub fn discover_prompts(global_dir: &Path, project_dir: Option<&Path>) -> Vec<PromptTemplate> {
     let mut prompts = scan_prompts_dir(global_dir);
+    assert!(prompts.len() <= MAX_PROMPTS_PER_DIR_COUNT);
     if let Some(proj) = project_dir {
         let project_prompts = scan_prompts_dir(proj);
         for pp in project_prompts {
             if let Some(existing) = prompts.iter_mut().find(|p| p.name == pp.name) {
                 *existing = pp;
-            } else {
+            } else if prompts.len() < MAX_DISCOVERED_PROMPTS_COUNT {
                 prompts.push(pp);
             }
         }
     }
+    assert!(prompts.len() <= MAX_DISCOVERED_PROMPTS_COUNT);
     prompts.sort_by(|a, b| a.name.cmp(&b.name));
     prompts
 }
@@ -107,18 +110,26 @@ fn extract_description(content: &str) -> String {
 
 /// Extract {{variable}} names from template content
 fn extract_variables(content: &str) -> Vec<String> {
-    let mut vars = Vec::new();
+    let mut vars = Vec::with_capacity(MAX_VARIABLES_PER_TEMPLATE_COUNT);
+    assert!(vars.is_empty());
     let mut remaining = content;
-    while let Some(start) = remaining.find("{{") {
-        remaining = &remaining[start + 2..];
-        if let Some(end) = remaining.find("}}") {
-            let var = remaining[..end].trim().to_string();
-            if !var.is_empty() && !vars.contains(&var) {
-                vars.push(var);
-            }
-            remaining = &remaining[end + 2..];
+    for _ in 0..MAX_VARIABLES_PER_TEMPLATE_COUNT {
+        let Some(start) = remaining.find("{{") else {
+            break;
+        };
+        let value_start = start.saturating_add(TEMPLATE_VARIABLE_DELIMITER_BYTES);
+        remaining = &remaining[value_start..];
+        let Some(end) = remaining.find("}}") else {
+            break;
+        };
+        let var = remaining[..end].trim().to_string();
+        if !var.is_empty() && !vars.contains(&var) {
+            vars.push(var);
         }
+        let next_start = end.saturating_add(TEMPLATE_VARIABLE_DELIMITER_BYTES);
+        remaining = &remaining[next_start..];
     }
+    assert!(vars.len() <= MAX_VARIABLES_PER_TEMPLATE_COUNT);
     vars
 }
 
