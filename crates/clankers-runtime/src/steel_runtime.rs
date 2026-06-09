@@ -10,6 +10,7 @@ use std::collections::BTreeMap;
 use std::collections::BTreeSet;
 
 pub use clanker_message::SteelHostCallOutcome;
+pub use clanker_message::SteelHostCallReceipt;
 pub use clanker_message::SteelHostFunctionRegistration;
 pub use clanker_message::SteelRuntimeProfile;
 pub use clanker_message::SteelRuntimeReasonCode;
@@ -46,13 +47,6 @@ impl SteelRuntimeReceipt {
         let bytes = serde_json::to_vec(self).expect("Steel runtime receipt serializes");
         ArtifactHash::digest(&bytes)
     }
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct SteelHostCallReceipt {
-    pub name: String,
-    pub outcome: SteelHostCallOutcome,
-    pub safe_message: String,
 }
 
 #[must_use]

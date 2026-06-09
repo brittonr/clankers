@@ -985,6 +985,14 @@ pub enum SteelHostCallOutcome {
     Denied,
 }
 
+/// Safe Steel host-call receipt entry.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SteelHostCallReceipt {
+    pub name: String,
+    pub outcome: SteelHostCallOutcome,
+    pub safe_message: String,
+}
+
 /// Runtime selected to execute a Steel-mediated tool invocation.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -1689,6 +1697,15 @@ mod tests {
         let parsed_host_call_outcome: SteelHostCallOutcome =
             serde_json::from_str(&host_call_outcome).expect("Steel host-call outcome should deserialize");
         assert_eq!(parsed_host_call_outcome, SteelHostCallOutcome::Approved);
+        let host_call_receipt = SteelHostCallReceipt {
+            name: "steel.host.demo".to_string(),
+            outcome: SteelHostCallOutcome::Approved,
+            safe_message: "approved".to_string(),
+        };
+        let receipt_json = serde_json::to_string(&host_call_receipt).expect("host-call receipt should serialize");
+        let parsed_receipt: SteelHostCallReceipt =
+            serde_json::from_str(&receipt_json).expect("host-call receipt should deserialize");
+        assert_eq!(parsed_receipt, host_call_receipt);
 
         let executor =
             serde_json::to_string(&SteelToolExecutorKind::StdioPlugin).expect("executor kind should serialize");

@@ -82,6 +82,7 @@ pub use contracts::SkillResolutionRequest;
 pub use contracts::SkillSnippet;
 pub use contracts::SteelAmbientAccessKind;
 pub use contracts::SteelHostCallOutcome;
+pub use contracts::SteelHostCallReceipt;
 pub use contracts::SteelHostFunctionRegistration;
 pub use contracts::SteelRuntimeProfile;
 pub use contracts::SteelRuntimeReasonCode;
