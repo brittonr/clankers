@@ -104,7 +104,7 @@ impl WebTool {
                 match response.json::<Value>().await {
                     Ok(json) => {
                         let results = format_search_results_streaming(&json, max_results, ctx);
-                        ctx.emit_result_chunk(ResultChunk::text(&results));
+                        ctx.emit_result_chunk(ResultChunk::text(&results, std::time::Instant::now()));
                         ToolResult::text(results)
                     }
                     Err(e) => ToolResult::error(format!("Failed to parse Kagi response: {}", e)),
@@ -136,7 +136,7 @@ impl WebTool {
                 ctx.emit_progress(&format!("summarized: {} chars", output.len()));
                 let result_text =
                     format!("# Content from {}\n\n{}\n\n---\n*Summarized via Kagi Universal Summarizer*", url, output);
-                ctx.emit_result_chunk(ResultChunk::text(&result_text));
+                ctx.emit_result_chunk(ResultChunk::text(&result_text, std::time::Instant::now()));
                 return ToolResult::text(result_text);
             }
             ctx.emit_progress("Kagi summarizer unavailable, falling back to raw fetch");
@@ -188,7 +188,7 @@ impl WebTool {
                             ctx.emit_progress(&format!("done: {} chars", clean.len()));
                             format!("# Content from {}\n\n{}", url, clean)
                         };
-                        ctx.emit_result_chunk(ResultChunk::text(&result_text));
+                        ctx.emit_result_chunk(ResultChunk::text(&result_text, std::time::Instant::now()));
                         ToolResult::text(result_text)
                     }
                     Err(e) => ToolResult::error(format!("Failed to read response body: {}", e)),

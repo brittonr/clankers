@@ -261,7 +261,7 @@ impl Tool for ExecuteCodeTool {
 fn collect_line(raw: &str, ctx: &ToolContext, collected: &mut String, line_count: &mut usize) {
     let line = strip_ansi(raw);
     ctx.emit_progress(&line);
-    ctx.emit_result_chunk(ResultChunk::text(&line));
+    ctx.emit_result_chunk(ResultChunk::text(&line, std::time::Instant::now()));
     if !collected.is_empty() {
         collected.push('\n');
     }

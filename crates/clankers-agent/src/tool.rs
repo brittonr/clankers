@@ -610,9 +610,9 @@ mod tests {
         let (tx, mut rx) = broadcast::channel(16);
         let ctx = ToolContext::new("call-1".to_string(), CancellationToken::new(), Some(tx));
 
-        ctx.emit_result_chunk(progress::ResultChunk::text("chunk 1"));
-        ctx.emit_result_chunk(progress::ResultChunk::text("chunk 2"));
-        ctx.emit_result_chunk(progress::ResultChunk::text("chunk 3"));
+        ctx.emit_result_chunk(progress::ResultChunk::text("chunk 1", std::time::Instant::now()));
+        ctx.emit_result_chunk(progress::ResultChunk::text("chunk 2", std::time::Instant::now()));
+        ctx.emit_result_chunk(progress::ResultChunk::text("chunk 3", std::time::Instant::now()));
 
         let e1 = rx.try_recv().expect("should receive chunk 1");
         let e2 = rx.try_recv().expect("should receive chunk 2");
@@ -632,6 +632,6 @@ mod tests {
     #[test]
     fn emit_result_chunk_no_channel_is_noop() {
         let ctx = ToolContext::new("call-1".to_string(), CancellationToken::new(), None);
-        ctx.emit_result_chunk(progress::ResultChunk::text("test"));
+        ctx.emit_result_chunk(progress::ResultChunk::text("test", std::time::Instant::now()));
     }
 }

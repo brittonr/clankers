@@ -8,17 +8,6 @@ use std::time::Instant;
 
 use super::tool_result::ToolResult;
 
-#[cfg_attr(
-    dylint_lib = "tigerstyle",
-    allow(
-        tigerstyle::ambient_clock,
-        reason = "ResultChunk builders are shell-facing convenience constructors."
-    )
-)]
-fn result_chunk_timestamp_now() -> Instant {
-    Instant::now()
-}
-
 /// Result chunk that tools emit as they produce output
 #[derive(Debug, Clone)]
 pub struct ResultChunk {
@@ -34,32 +23,32 @@ pub struct ResultChunk {
 
 impl ResultChunk {
     /// Create a text chunk
-    pub fn text(content: impl Into<String>) -> Self {
+    pub fn text(content: impl Into<String>, timestamp: Instant) -> Self {
         Self {
             content: content.into(),
             content_type: "text".to_string(),
             sequence: 0, // Caller should set this
-            timestamp: result_chunk_timestamp_now(),
+            timestamp,
         }
     }
 
     /// Create a base64-encoded chunk (e.g., for binary data)
-    pub fn base64(content: impl Into<String>) -> Self {
+    pub fn base64(content: impl Into<String>, timestamp: Instant) -> Self {
         Self {
             content: content.into(),
             content_type: "base64".to_string(),
             sequence: 0,
-            timestamp: result_chunk_timestamp_now(),
+            timestamp,
         }
     }
 
     /// Create a JSON chunk
-    pub fn json(value: &serde_json::Value) -> Self {
+    pub fn json(value: &serde_json::Value, timestamp: Instant) -> Self {
         Self {
             content: value.to_string(),
             content_type: "json".to_string(),
             sequence: 0,
-            timestamp: result_chunk_timestamp_now(),
+            timestamp,
         }
     }
 
@@ -139,32 +128,24 @@ impl ToolResultAccumulator {
     }
 
     /// Create a text chunk and add it
-    pub fn push_text(&mut self, text: impl Into<String>) {
-        self.push(ResultChunk::text(text));
+    pub fn push_text(&mut self, text: impl Into<String>, timestamp: Instant) {
+        self.push(ResultChunk::text(text, timestamp));
     }
 
     /// Get total lines accumulated
-    #[cfg_attr(
-        dylint_lib = "tigerstyle",
-        allow(
-            tigerstyle::usize_in_public_api,
-            reason = "Accumulator counters are internal display metrics backed by usize line and byte counts."
-        )
-    )]
-    pub fn total_lines(&self) -> usize {
-        self.total_lines
+    pub fn total_lines(&self) -> u64 {
+        match u64::try_from(self.total_lines) {
+            Ok(value) => value,
+            Err(_) => u64::MAX,
+        }
     }
 
     /// Get total bytes accumulated
-    #[cfg_attr(
-        dylint_lib = "tigerstyle",
-        allow(
-            tigerstyle::usize_in_public_api,
-            reason = "Accumulator counters are internal display metrics backed by usize line and byte counts."
-        )
-    )]
-    pub fn total_bytes(&self) -> usize {
-        self.total_bytes
+    pub fn total_bytes(&self) -> u64 {
+        match u64::try_from(self.total_bytes) {
+            Ok(value) => value,
+            Err(_) => u64::MAX,
+        }
     }
 
     /// Finalize: merge chunks, apply truncation, return ToolResult
@@ -227,16 +208,16 @@ mod tests {
 
     #[test]
     fn result_chunk_builders() {
-        let text = ResultChunk::text("hello");
+        let text = ResultChunk::text("hello", Instant::now());
         assert_eq!(text.content, "hello");
         assert_eq!(text.content_type, "text");
         assert_eq!(text.sequence, 0);
 
-        let with_seq = ResultChunk::text("world").with_sequence(42);
+        let with_seq = ResultChunk::text("world", Instant::now()).with_sequence(42);
         assert_eq!(with_seq.sequence, 42);
 
         let json_val = serde_json::json!({"key": "value"});
-        let json_chunk = ResultChunk::json(&json_val);
+        let json_chunk = ResultChunk::json(&json_val, Instant::now());
         assert_eq!(json_chunk.content_type, "json");
     }
 
@@ -244,9 +225,9 @@ mod tests {
     fn accumulator_no_truncation() {
         let mut acc = ToolResultAccumulator::new();
 
-        acc.push_text("line 1");
-        acc.push_text("line 2");
-        acc.push_text("line 3");
+        acc.push_text("line 1", Instant::now());
+        acc.push_text("line 2", Instant::now());
+        acc.push_text("line 3", Instant::now());
 
         assert_eq!(acc.total_lines(), 3);
 
@@ -277,7 +258,7 @@ mod tests {
 
         // Add 20 lines
         for i in 0..20 {
-            acc.push_text(format!("line {}", i));
+            acc.push_text(format!("line {}", i), Instant::now());
         }
 
         assert_eq!(acc.total_lines(), 20);
@@ -315,7 +296,7 @@ mod tests {
         let mut acc = ToolResultAccumulator::with_config(config);
 
         // Add large content
-        acc.push_text("x".repeat(200));
+        acc.push_text("x".repeat(200), Instant::now());
 
         assert!(acc.total_bytes() > 100);
 
@@ -328,9 +309,9 @@ mod tests {
     fn accumulator_sequence_numbering() {
         let mut acc = ToolResultAccumulator::new();
 
-        let chunk1 = ResultChunk::text("first");
-        let chunk2 = ResultChunk::text("second");
-        let chunk3 = ResultChunk::text("third");
+        let chunk1 = ResultChunk::text("first", Instant::now());
+        let chunk2 = ResultChunk::text("second", Instant::now());
+        let chunk3 = ResultChunk::text("third", Instant::now());
 
         acc.push(chunk1);
         acc.push(chunk2);

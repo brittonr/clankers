@@ -161,7 +161,7 @@ impl Tool for FindTool {
                 }
 
                 // Emit the full output as a result chunk for the accumulator
-                ctx.emit_result_chunk(ResultChunk::text(&output));
+                ctx.emit_result_chunk(ResultChunk::text(&output, std::time::Instant::now()));
 
                 // Apply truncation
                 const MAX_LINES: usize = 2000;

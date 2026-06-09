@@ -1478,9 +1478,9 @@ mod tests {
 
         async fn execute(&self, ctx: &ToolContext, _params: Value) -> ToolExecResult {
             // Emit several chunks
-            ctx.emit_result_chunk(ResultChunk::text("line 1\nline 2"));
-            ctx.emit_result_chunk(ResultChunk::text("line 3\nline 4"));
-            ctx.emit_result_chunk(ResultChunk::text("line 5"));
+            ctx.emit_result_chunk(ResultChunk::text("line 1\nline 2", std::time::Instant::now()));
+            ctx.emit_result_chunk(ResultChunk::text("line 3\nline 4", std::time::Instant::now()));
+            ctx.emit_result_chunk(ResultChunk::text("line 5", std::time::Instant::now()));
 
             // Yield to let collector process events
             tokio::task::yield_now().await;

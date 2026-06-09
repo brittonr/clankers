@@ -136,7 +136,7 @@ impl Tool for GrepTool {
 
         match result {
             Ok(Ok(output)) => {
-                ctx.emit_result_chunk(ResultChunk::text(&output));
+                ctx.emit_result_chunk(ResultChunk::text(&output, std::time::Instant::now()));
                 Self::result_from_output(output)
             }
             Ok(Err(e)) => {
