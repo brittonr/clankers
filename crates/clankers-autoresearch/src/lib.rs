@@ -14,4 +14,5 @@ pub use confidence::ConfidenceResult;
 pub use jsonl::ExperimentConfig;
 pub use jsonl::ExperimentResult;
 pub use jsonl::ResultStatus;
+pub use session::ExperimentInitOptions;
 pub use session::ExperimentSession;

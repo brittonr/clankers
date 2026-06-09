@@ -22,35 +22,39 @@ pub struct ExperimentSession {
     pub best_metric: Option<f64>,
 }
 
+#[derive(Debug, Clone, Copy)]
+pub struct ExperimentInitOptions<'a> {
+    pub cwd: &'a Path,
+    pub name: &'a str,
+    pub metric_name: &'a str,
+    pub metric_unit: Option<&'a str>,
+    pub direction: Option<&'a str>,
+    pub timestamp: DateTime<Utc>,
+}
+
 impl ExperimentSession {
-    pub fn init(
-        cwd: &Path,
-        name: &str,
-        metric_name: &str,
-        metric_unit: Option<&str>,
-        direction: Option<&str>,
-    ) -> std::io::Result<Self> {
-        let log_path = cwd.join("autoresearch.jsonl");
+    pub fn init(options: ExperimentInitOptions<'_>) -> std::io::Result<Self> {
+        let log_path = options.cwd.join("autoresearch.jsonl");
 
         let (run_counter, results, best_metric) = if log_path.exists() {
             let log = jsonl::read_log(&log_path)?;
             let run_counter = log.results.last().map(|r| r.run).unwrap_or(0);
-            let best = compute_best(&log.results, direction == Some("minimize"));
+            let best = compute_best(&log.results, options.direction == Some("minimize"));
             (run_counter, log.results, best)
         } else {
             (0, Vec::new(), None)
         };
 
-        let mut config = ExperimentConfig::new(name, metric_name);
-        config.metric_unit = metric_unit.map(String::from);
-        config.direction = direction.map(String::from);
+        let mut config = ExperimentConfig::new(options.name, options.metric_name, options.timestamp);
+        config.metric_unit = options.metric_unit.map(String::from);
+        config.direction = options.direction.map(String::from);
 
         jsonl::append_config(&log_path, &config)?;
 
         Ok(Self {
             config,
             log_path,
-            cwd: cwd.to_path_buf(),
+            cwd: options.cwd.to_path_buf(),
             run_counter,
             results,
             best_metric,
@@ -81,6 +85,7 @@ impl ExperimentSession {
         metric: f64,
         status: ResultStatus,
         description: &str,
+        timestamp: DateTime<Utc>,
     ) -> std::io::Result<RecordOutcome> {
         self.run_counter = self.run_counter.saturating_add(1);
 
@@ -93,7 +98,7 @@ impl ExperimentSession {
             status,
             description: description.to_string(),
             asi: None,
-            timestamp: session_timestamp_now(),
+            timestamp,
         };
 
         jsonl::append_result(&self.log_path, &result)?;
@@ -159,17 +164,6 @@ impl ExperimentSession {
     }
 }
 
-#[cfg_attr(
-    dylint_lib = "tigerstyle",
-    allow(
-        tigerstyle::ambient_clock,
-        reason = "experiment result recording is a persistence shell boundary"
-    )
-)]
-fn session_timestamp_now() -> DateTime<Utc> {
-    Utc::now()
-}
-
 #[derive(Debug)]
 pub struct RecordOutcome {
     pub run: u32,
@@ -190,10 +184,22 @@ fn compute_best(results: &[ExperimentResult], is_minimize: bool) -> Option<f64> 
 mod tests {
     use super::*;
 
+    fn test_timestamp() -> DateTime<Utc> {
+        DateTime::from_timestamp(1_700_000_000, 0).expect("valid test timestamp")
+    }
+
     #[test]
     fn init_creates_log() {
         let tmp = tempfile::TempDir::new().unwrap();
-        let session = ExperimentSession::init(tmp.path(), "test", "latency", Some("ms"), Some("minimize")).unwrap();
+        let session = ExperimentSession::init(ExperimentInitOptions {
+            cwd: tmp.path(),
+            name: "test",
+            metric_name: "latency",
+            metric_unit: Some("ms"),
+            direction: Some("minimize"),
+            timestamp: test_timestamp(),
+        })
+        .unwrap();
         assert_eq!(session.run_counter, 0);
         assert!(session.log_path.exists());
     }
@@ -222,26 +228,48 @@ mod tests {
             .status()
             .unwrap();
 
-        let mut session = ExperimentSession::init(tmp.path(), "test", "score", None, None).unwrap();
+        let mut session = ExperimentSession::init(ExperimentInitOptions {
+            cwd: tmp.path(),
+            name: "test",
+            metric_name: "score",
+            metric_unit: None,
+            direction: None,
+            timestamp: test_timestamp(),
+        })
+        .unwrap();
 
         // Run 1: keep
-        let outcome = session.record_result("abc1234", 10.0, ResultStatus::Keep, "first try").unwrap();
+        let outcome = session
+            .record_result("abc1234", 10.0, ResultStatus::Keep, "first try", test_timestamp())
+            .unwrap();
         assert_eq!(outcome.run, 1);
         assert!(outcome.is_new_best);
 
         // Run 2: keep (better)
-        let outcome = session.record_result("def5678", 15.0, ResultStatus::Keep, "second try").unwrap();
+        let outcome = session
+            .record_result("def5678", 15.0, ResultStatus::Keep, "second try", test_timestamp())
+            .unwrap();
         assert_eq!(outcome.run, 2);
         assert!(outcome.is_new_best);
         assert!((outcome.best_metric.unwrap() - 15.0).abs() < f64::EPSILON);
 
         // Run 3: discard
-        let outcome = session.record_result("ghi9012", 5.0, ResultStatus::Discard, "bad try").unwrap();
+        let outcome = session
+            .record_result("ghi9012", 5.0, ResultStatus::Discard, "bad try", test_timestamp())
+            .unwrap();
         assert_eq!(outcome.run, 3);
         assert!(!outcome.is_new_best);
 
         // Resume from existing log
-        let resumed = ExperimentSession::init(tmp.path(), "test-v2", "score", None, None).unwrap();
+        let resumed = ExperimentSession::init(ExperimentInitOptions {
+            cwd: tmp.path(),
+            name: "test-v2",
+            metric_name: "score",
+            metric_unit: None,
+            direction: None,
+            timestamp: test_timestamp(),
+        })
+        .unwrap();
         assert_eq!(resumed.run_counter, 3);
         assert_eq!(resumed.results.len(), 3);
     }

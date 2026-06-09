@@ -22,26 +22,15 @@ pub struct ExperimentConfig {
     pub timestamp: DateTime<Utc>,
 }
 
-#[cfg_attr(
-    dylint_lib = "tigerstyle",
-    allow(
-        tigerstyle::ambient_clock,
-        reason = "experiment JSONL creation is a persistence shell boundary"
-    )
-)]
-fn experiment_timestamp_now() -> DateTime<Utc> {
-    Utc::now()
-}
-
 impl ExperimentConfig {
-    pub fn new(name: &str, metric_name: &str) -> Self {
+    pub fn new(name: &str, metric_name: &str, timestamp: DateTime<Utc>) -> Self {
         Self {
             record_type: "config".to_string(),
             name: name.to_string(),
             metric_name: metric_name.to_string(),
             metric_unit: None,
             direction: None,
-            timestamp: experiment_timestamp_now(),
+            timestamp,
         }
     }
 
@@ -135,12 +124,16 @@ pub fn append_result(path: &Path, result: &ExperimentResult) -> std::io::Result<
 mod tests {
     use super::*;
 
+    fn test_timestamp() -> DateTime<Utc> {
+        DateTime::from_timestamp(1_700_000_000, 0).expect("valid test timestamp")
+    }
+
     #[test]
     fn config_round_trip() {
         let tmp = tempfile::TempDir::new().unwrap();
         let path = tmp.path().join("autoresearch.jsonl");
 
-        let config = ExperimentConfig::new("test-experiment", "latency_ms");
+        let config = ExperimentConfig::new("test-experiment", "latency_ms", test_timestamp());
         append_config(&path, &config).unwrap();
 
         let log = read_log(&path).unwrap();
@@ -154,7 +147,7 @@ mod tests {
         let tmp = tempfile::TempDir::new().unwrap();
         let path = tmp.path().join("autoresearch.jsonl");
 
-        let config = ExperimentConfig::new("test", "val_bpb");
+        let config = ExperimentConfig::new("test", "val_bpb", test_timestamp());
         append_config(&path, &config).unwrap();
 
         let result = ExperimentResult {
@@ -166,7 +159,7 @@ mod tests {
             status: ResultStatus::Keep,
             description: "first run".to_string(),
             asi: None,
-            timestamp: Utc::now(),
+            timestamp: test_timestamp(),
         };
         append_result(&path, &result).unwrap();
 
@@ -181,7 +174,7 @@ mod tests {
         let tmp = tempfile::TempDir::new().unwrap();
         let path = tmp.path().join("autoresearch.jsonl");
 
-        let config = ExperimentConfig::new("test", "ms");
+        let config = ExperimentConfig::new("test", "ms", test_timestamp());
         append_config(&path, &config).unwrap();
 
         for i in 1..=3 {
@@ -194,13 +187,13 @@ mod tests {
                 status: ResultStatus::Keep,
                 description: format!("run {i}"),
                 asi: None,
-                timestamp: Utc::now(),
+                timestamp: test_timestamp(),
             };
             append_result(&path, &result).unwrap();
         }
 
         // Re-init by appending new config
-        let config2 = ExperimentConfig::new("test-v2", "ms");
+        let config2 = ExperimentConfig::new("test-v2", "ms", test_timestamp());
         append_config(&path, &config2).unwrap();
 
         let log = read_log(&path).unwrap();

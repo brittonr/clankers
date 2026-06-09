@@ -108,7 +108,8 @@ mod tests {
     fn dashboard_state_parses_jsonl() {
         let tmp = tempfile::TempDir::new().unwrap();
         let path = tmp.path().join("autoresearch.jsonl");
-        let config = clankers_autoresearch::ExperimentConfig::new("test", "latency_ms");
+        let timestamp = chrono::DateTime::from_timestamp(1_700_000_000, 0).expect("valid test timestamp");
+        let config = clankers_autoresearch::ExperimentConfig::new("test", "latency_ms", timestamp);
         clankers_autoresearch::jsonl::append_config(&path, &config).unwrap();
         let result = clankers_autoresearch::ExperimentResult {
             record_type: "result".to_string(),
@@ -119,7 +120,7 @@ mod tests {
             status: clankers_autoresearch::ResultStatus::Keep,
             description: "baseline".to_string(),
             asi: None,
-            timestamp: chrono::Utc::now(),
+            timestamp,
         };
         clankers_autoresearch::jsonl::append_result(&path, &result).unwrap();
         let state = ExperimentDashboardState::from_jsonl(&path).unwrap();

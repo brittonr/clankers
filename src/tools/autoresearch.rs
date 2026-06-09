@@ -67,7 +67,14 @@ impl Tool for InitExperimentTool {
             Ok(cwd) => cwd,
             Err(e) => return ToolResult::error(format!("failed to get cwd: {e}")),
         };
-        match clankers_autoresearch::ExperimentSession::init(&cwd, name, metric_name, metric_unit, direction) {
+        match clankers_autoresearch::ExperimentSession::init(clankers_autoresearch::ExperimentInitOptions {
+            cwd: &cwd,
+            name,
+            metric_name,
+            metric_unit,
+            direction,
+            timestamp: chrono::Utc::now(),
+        }) {
             Ok(session) => ToolResult::text(format!(
                 "Initialized autoresearch session '{}' tracking '{}' at {}",
                 session.config.name,
@@ -214,7 +221,7 @@ impl Tool for LogExperimentTool {
             Ok(session) => session,
             Err(e) => return ToolResult::error(format!("failed to load autoresearch session: {e}")),
         };
-        match session.record_result(commit, metric, status, description) {
+        match session.record_result(commit, metric, status, description, chrono::Utc::now()) {
             Ok(outcome) => {
                 let confidence = outcome
                     .confidence
