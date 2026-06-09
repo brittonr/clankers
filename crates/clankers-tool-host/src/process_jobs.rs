@@ -629,6 +629,36 @@ impl NativeProcessJobLogLayout {
     }
 }
 
+/// Log retention policy applied by native append-only log stores.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ProcessJobLogRetentionPolicy {
+    pub max_bytes_per_job: u64,
+    pub max_age: Option<Duration>,
+    pub keep_terminal_logs: bool,
+}
+
+impl ProcessJobLogRetentionPolicy {
+    #[must_use]
+    pub fn reference_for(
+        &self,
+        job_id: ProcessJobId,
+        stream: ProcessJobStream,
+        now: DateTime<Utc>,
+    ) -> ProcessJobLogRef {
+        let layout = NativeProcessJobLogLayout::for_stream(job_id, stream);
+        let retained_until = self
+            .max_age
+            .and_then(|age| chrono::Duration::from_std(age).ok())
+            .map(|age| process_job_timestamp(now + age));
+        ProcessJobLogRef {
+            stream,
+            reference: layout.reference,
+            retained_until,
+            max_bytes: Some(self.max_bytes_per_job),
+        }
+    }
+}
+
 fn sanitize_log_path_component(input: &str) -> String {
     input
         .chars()
@@ -3035,6 +3065,24 @@ mod tests {
         assert!(json.contains("native:42"));
         let parsed: ProcessJobBackendStatus = serde_json::from_str(&json).expect("backend status should deserialize");
         assert_eq!(parsed, status);
+    }
+
+    #[test]
+    fn log_retention_policy_projects_safe_log_reference_without_host_io() {
+        let policy = ProcessJobLogRetentionPolicy {
+            max_bytes_per_job: 4096,
+            max_age: Some(Duration::from_secs(60)),
+            keep_terminal_logs: true,
+        };
+        let now = DateTime::parse_from_rfc3339("2026-05-17T05:52:12Z")
+            .expect("timestamp parses")
+            .with_timezone(&Utc);
+
+        let log_ref = policy.reference_for(ProcessJobId("proc/one".to_string()), ProcessJobStream::Combined, now);
+
+        assert_eq!(log_ref.reference, "native:proc_one/combined.log");
+        assert_eq!(log_ref.max_bytes, Some(4096));
+        assert_eq!(log_ref.retained_until, Some(process_job_timestamp(now + chrono::Duration::seconds(60))));
     }
 
     #[test]

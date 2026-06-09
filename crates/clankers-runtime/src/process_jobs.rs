@@ -13,6 +13,7 @@ use std::path::PathBuf;
 use std::time::Duration;
 
 use async_trait::async_trait;
+#[cfg(test)]
 use chrono::DateTime;
 use chrono::Utc;
 pub use clankers_tool_host::process_jobs::AdoptProcessJobRequest;
@@ -63,6 +64,7 @@ pub use clankers_tool_host::process_jobs::ProcessJobLogCursor;
 pub use clankers_tool_host::process_jobs::ProcessJobLogOverflowPolicy;
 pub use clankers_tool_host::process_jobs::ProcessJobLogRange;
 pub use clankers_tool_host::process_jobs::ProcessJobLogRef;
+pub use clankers_tool_host::process_jobs::ProcessJobLogRetentionPolicy;
 pub use clankers_tool_host::process_jobs::ProcessJobLifecycleBucket;
 pub use clankers_tool_host::process_jobs::ProcessJobListProjection;
 pub use clankers_tool_host::process_jobs::ProcessJobLogReconciliationState;
@@ -122,40 +124,7 @@ pub use clankers_tool_host::process_jobs::native_process_job_admission_decision;
 pub use clankers_tool_host::process_jobs::process_job_timestamp;
 pub use clankers_tool_host::process_jobs::project_process_job_list;
 pub use clankers_tool_host::process_jobs::reconcile_external_backend_reference;
-use serde::Deserialize;
-use serde::Serialize;
-
 use crate::RuntimeError;
-
-/// Log retention policy applied by native append-only log stores.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct ProcessJobLogRetentionPolicy {
-    pub max_bytes_per_job: u64,
-    pub max_age: Option<Duration>,
-    pub keep_terminal_logs: bool,
-}
-
-impl ProcessJobLogRetentionPolicy {
-    #[must_use]
-    pub fn reference_for(
-        &self,
-        job_id: ProcessJobId,
-        stream: ProcessJobStream,
-        now: DateTime<Utc>,
-    ) -> ProcessJobLogRef {
-        let layout = NativeProcessJobLogLayout::for_stream(job_id, stream);
-        let retained_until = self
-            .max_age
-            .and_then(|age| chrono::Duration::from_std(age).ok())
-            .map(|age| process_job_timestamp(now + age));
-        ProcessJobLogRef {
-            stream,
-            reference: layout.reference,
-            retained_until,
-            max_bytes: Some(self.max_bytes_per_job),
-        }
-    }
-}
 
 #[async_trait]
 pub trait ProcessJobNotificationPolicyEngine: Send + Sync {
