@@ -8,8 +8,6 @@ use std::collections::BTreeMap;
 use std::path::PathBuf;
 use std::time::Duration;
 
-use chrono::DateTime;
-use chrono::Utc;
 use serde::Deserialize;
 use serde::Serialize;
 
@@ -58,11 +56,6 @@ impl ProcessJobTimestamp {
     pub fn saturating_add_seconds(self, seconds: i64) -> Self {
         Self(self.0.saturating_add(seconds))
     }
-}
-
-#[must_use]
-pub fn process_job_timestamp(timestamp: DateTime<Utc>) -> ProcessJobTimestamp {
-    ProcessJobTimestamp::from_unix_seconds(timestamp.timestamp())
 }
 
 fn add_timestamp_duration(timestamp: ProcessJobTimestamp, duration: Duration) -> Option<ProcessJobTimestamp> {
@@ -620,7 +613,7 @@ pub struct ProcessJobBackendStart {
 pub struct ProcessJobBackendStatus {
     pub backend_ref: BackendRef,
     pub status: ProcessJobStatus,
-    pub updated_at: DateTime<Utc>,
+    pub updated_at: ProcessJobTimestamp,
     pub log_refs: Vec<ProcessJobLogRef>,
 }
 
@@ -677,13 +670,13 @@ impl ProcessJobLogRetentionPolicy {
         &self,
         job_id: ProcessJobId,
         stream: ProcessJobStream,
-        now: DateTime<Utc>,
+        now: ProcessJobTimestamp,
     ) -> ProcessJobLogRef {
         let layout = NativeProcessJobLogLayout::for_stream(job_id, stream);
         let retained_until = self
             .max_age
-            .and_then(|age| chrono::Duration::from_std(age).ok())
-            .map(|age| process_job_timestamp(now + age));
+            .and_then(|age| i64::try_from(age.as_secs()).ok())
+            .map(|seconds| now.saturating_add_seconds(seconds));
         ProcessJobLogRef {
             stream,
             reference: layout.reference,
@@ -1087,11 +1080,14 @@ pub struct ProcessJobSummary {
 
 impl ProcessJobReconciliationOutcome {
     #[must_use]
-    pub fn into_summary_update(self, mut summary: ProcessJobSummary, updated_at: DateTime<Utc>) -> ProcessJobSummary {
+    pub fn into_summary_update(
+        self,
+        mut summary: ProcessJobSummary,
+        updated_at: ProcessJobTimestamp,
+    ) -> ProcessJobSummary {
         summary.backend = self.backend;
         summary.backend_ref = self.backend_ref;
         summary.status = self.status;
-        let updated_at = process_job_timestamp(updated_at);
         summary.updated_at = updated_at;
         summary.log_refs = self.log_refs;
         if summary.status.is_terminal() && summary.completed_at.is_none() {
@@ -2922,14 +2918,6 @@ mod tests {
     }
 
     #[test]
-    fn process_job_timestamp_projects_chrono_seconds() {
-        let timestamp = DateTime::parse_from_rfc3339("2026-05-18T00:00:07Z")
-            .expect("timestamp parses")
-            .with_timezone(&Utc);
-        assert_eq!(process_job_timestamp(timestamp), ProcessJobTimestamp::from_unix_seconds(1_779_062_407));
-    }
-
-    #[test]
     fn external_backend_reconciliation_maps_matching_backend_facts_to_outcome() {
         let outcome = reconcile_external_backend_reference(ExternalProcessJobReconciliationFacts {
             id: ProcessJobId("proc".to_string()),
@@ -2957,8 +2945,8 @@ mod tests {
         };
         let json = serde_json::to_string(&facts).expect("facts should serialize");
         assert!(json.contains("succeeded"));
-        let parsed: ExternalProcessJobReconciliationFacts = serde_json::from_str(&json)
-            .expect("facts should deserialize");
+        let parsed: ExternalProcessJobReconciliationFacts =
+            serde_json::from_str(&json).expect("facts should deserialize");
         assert_eq!(parsed, facts);
     }
 
@@ -2989,7 +2977,10 @@ mod tests {
             ..identity.clone()
         };
 
-        assert_eq!(identity.verify_observation(Some(&matching)), ProcessJobReconciliationState::ReattachedLogIncomplete);
+        assert_eq!(
+            identity.verify_observation(Some(&matching)),
+            ProcessJobReconciliationState::ReattachedLogIncomplete
+        );
         assert_eq!(identity.verify_observation(Some(&reused_pid)), ProcessJobReconciliationState::IdentityMismatch);
         assert_eq!(ambiguous.verify_observation(Some(&matching)), ProcessJobReconciliationState::IdentityMismatch);
         assert_eq!(identity.verify_observation(None), ProcessJobReconciliationState::LostAfterRestart);
@@ -3095,9 +3086,7 @@ mod tests {
 
     #[test]
     fn backend_status_contract_preserves_backend_ref_status_and_logs() {
-        let updated_at = DateTime::parse_from_rfc3339("2026-05-18T00:00:00Z")
-            .expect("timestamp parses")
-            .with_timezone(&Utc);
+        let updated_at = ProcessJobTimestamp::from_unix_seconds(1_779_062_400);
         let status = ProcessJobBackendStatus {
             backend_ref: BackendRef("native:42".to_string()),
             status: ProcessJobStatus::Running,
@@ -3122,15 +3111,13 @@ mod tests {
             max_age: Some(Duration::from_secs(60)),
             keep_terminal_logs: true,
         };
-        let now = DateTime::parse_from_rfc3339("2026-05-17T05:52:12Z")
-            .expect("timestamp parses")
-            .with_timezone(&Utc);
+        let now = ProcessJobTimestamp::from_unix_seconds(1_778_997_132);
 
         let log_ref = policy.reference_for(ProcessJobId("proc/one".to_string()), ProcessJobStream::Combined, now);
 
         assert_eq!(log_ref.reference, "native:proc_one/combined.log");
         assert_eq!(log_ref.max_bytes, Some(4096));
-        assert_eq!(log_ref.retained_until, Some(process_job_timestamp(now + chrono::Duration::seconds(60))));
+        assert_eq!(log_ref.retained_until, Some(ProcessJobTimestamp::from_unix_seconds(1_778_997_192)));
     }
 
     #[test]
@@ -3285,7 +3272,9 @@ mod tests {
     #[test]
     fn project_process_job_profile_source_precedence_orders_by_specificity() {
         assert!(ProjectProcessJobProfileSourcePrecedence::Global < ProjectProcessJobProfileSourcePrecedence::Workspace);
-        assert!(ProjectProcessJobProfileSourcePrecedence::Workspace < ProjectProcessJobProfileSourcePrecedence::Explicit);
+        assert!(
+            ProjectProcessJobProfileSourcePrecedence::Workspace < ProjectProcessJobProfileSourcePrecedence::Explicit
+        );
         assert_eq!(ProjectProcessJobProfileSourcePrecedence::Explicit.label(), "explicit");
         let json = serde_json::to_string(&ProjectProcessJobProfileSourcePrecedence::Workspace)
             .expect("precedence should serialize");
@@ -3320,7 +3309,10 @@ mod tests {
         assert_eq!(resolved.request.backend, ProcessJobBackendKind::Pueue);
         assert_eq!(resolved.request.command_preview, "cargo nextest run");
         assert_eq!(resolved.request.program.as_deref(), Some("cargo"));
-        assert_eq!(resolved.request.metadata.get(PROCESS_JOB_PROFILE_METADATA_NAME).map(String::as_str), Some("verify"));
+        assert_eq!(
+            resolved.request.metadata.get(PROCESS_JOB_PROFILE_METADATA_NAME).map(String::as_str),
+            Some("verify")
+        );
         assert_eq!(resolved.request.metadata.get("env:APP_MODE").map(String::as_str), Some("ci"));
         assert_eq!(resolved.evidence.policy_source, "test-policy");
     }

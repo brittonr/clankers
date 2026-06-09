@@ -13,7 +13,6 @@ use std::path::PathBuf;
 use std::time::Duration;
 
 use async_trait::async_trait;
-#[cfg(test)]
 use chrono::DateTime;
 use chrono::Utc;
 pub use clankers_tool_host::process_jobs::AdoptProcessJobRequest;
@@ -60,15 +59,15 @@ pub use clankers_tool_host::process_jobs::ProcessJobGarbageCollectionFailure;
 pub use clankers_tool_host::process_jobs::ProcessJobGarbageCollectionReceipt;
 pub use clankers_tool_host::process_jobs::ProcessJobId;
 pub use clankers_tool_host::process_jobs::ProcessJobIdentityEnvelope;
+pub use clankers_tool_host::process_jobs::ProcessJobLifecycleBucket;
+pub use clankers_tool_host::process_jobs::ProcessJobListProjection;
 pub use clankers_tool_host::process_jobs::ProcessJobLogChunk;
 pub use clankers_tool_host::process_jobs::ProcessJobLogCursor;
 pub use clankers_tool_host::process_jobs::ProcessJobLogOverflowPolicy;
 pub use clankers_tool_host::process_jobs::ProcessJobLogRange;
+pub use clankers_tool_host::process_jobs::ProcessJobLogReconciliationState;
 pub use clankers_tool_host::process_jobs::ProcessJobLogRef;
 pub use clankers_tool_host::process_jobs::ProcessJobLogRetentionPolicy;
-pub use clankers_tool_host::process_jobs::ProcessJobLifecycleBucket;
-pub use clankers_tool_host::process_jobs::ProcessJobListProjection;
-pub use clankers_tool_host::process_jobs::ProcessJobLogReconciliationState;
 pub use clankers_tool_host::process_jobs::ProcessJobLogWriteDisposition;
 pub use clankers_tool_host::process_jobs::ProcessJobNativeAdmissionDecision;
 pub use clankers_tool_host::process_jobs::ProcessJobNativeAdmissionInput;
@@ -82,21 +81,12 @@ pub use clankers_tool_host::process_jobs::ProcessJobNotificationRedactionTarget;
 pub use clankers_tool_host::process_jobs::ProcessJobOperation;
 pub use clankers_tool_host::process_jobs::ProcessJobOwnerScope;
 pub use clankers_tool_host::process_jobs::ProcessJobProfileReceiptMetadata;
-pub use clankers_tool_host::process_jobs::ProjectProcessJobProfile;
-pub use clankers_tool_host::process_jobs::ProjectProcessJobProfileManifestSource;
-pub use clankers_tool_host::process_jobs::ProjectProcessJobProfilePolicy;
-pub use clankers_tool_host::process_jobs::ProjectProcessJobProfileResolution;
-pub use clankers_tool_host::process_jobs::ProjectProcessJobProfileResolutionEvidence;
-pub use clankers_tool_host::process_jobs::ProjectProcessJobProfileSourcePrecedence;
-pub use clankers_tool_host::process_jobs::ProjectProcessJobProfiles;
-pub use clankers_tool_host::process_jobs::ProjectProcessJobProfileValidationCode;
-pub use clankers_tool_host::process_jobs::ProjectProcessJobProfileValidationError;
 pub use clankers_tool_host::process_jobs::ProcessJobProjectionBounds;
 pub use clankers_tool_host::process_jobs::ProcessJobProjectionItem;
-pub use clankers_tool_host::process_jobs::ProcessJobReconciliationOutcome;
 pub use clankers_tool_host::process_jobs::ProcessJobReceipt;
 pub use clankers_tool_host::process_jobs::ProcessJobReceiptCommon;
 pub use clankers_tool_host::process_jobs::ProcessJobReceiptPayload;
+pub use clankers_tool_host::process_jobs::ProcessJobReconciliationOutcome;
 pub use clankers_tool_host::process_jobs::ProcessJobReconciliationReport;
 pub use clankers_tool_host::process_jobs::ProcessJobReconciliationState;
 pub use clankers_tool_host::process_jobs::ProcessJobRedactionPolicy;
@@ -116,16 +106,30 @@ pub use clankers_tool_host::process_jobs::ProcessJobToolReceipt;
 pub use clankers_tool_host::process_jobs::ProcessJobToolRequest;
 pub use clankers_tool_host::process_jobs::ProcessJobToolResult;
 pub use clankers_tool_host::process_jobs::ProcessJobUnsupportedDetail;
+pub use clankers_tool_host::process_jobs::ProjectProcessJobProfile;
+pub use clankers_tool_host::process_jobs::ProjectProcessJobProfileManifestSource;
+pub use clankers_tool_host::process_jobs::ProjectProcessJobProfilePolicy;
+pub use clankers_tool_host::process_jobs::ProjectProcessJobProfileResolution;
+pub use clankers_tool_host::process_jobs::ProjectProcessJobProfileResolutionEvidence;
+pub use clankers_tool_host::process_jobs::ProjectProcessJobProfileSourcePrecedence;
+pub use clankers_tool_host::process_jobs::ProjectProcessJobProfileValidationCode;
+pub use clankers_tool_host::process_jobs::ProjectProcessJobProfileValidationError;
+pub use clankers_tool_host::process_jobs::ProjectProcessJobProfiles;
 pub use clankers_tool_host::process_jobs::ReadProcessJobLogRequest;
 pub use clankers_tool_host::process_jobs::StartProcessJobProfileRequest;
 pub use clankers_tool_host::process_jobs::StartProcessJobRequest;
 pub use clankers_tool_host::process_jobs::WaitProcessJobRequest;
 pub use clankers_tool_host::process_jobs::WriteProcessJobStdinRequest;
 pub use clankers_tool_host::process_jobs::native_process_job_admission_decision;
-pub use clankers_tool_host::process_jobs::process_job_timestamp;
 pub use clankers_tool_host::process_jobs::project_process_job_list;
 pub use clankers_tool_host::process_jobs::reconcile_external_backend_reference;
+
 use crate::RuntimeError;
+
+#[must_use]
+pub fn process_job_timestamp(timestamp: DateTime<Utc>) -> ProcessJobTimestamp {
+    ProcessJobTimestamp::from_unix_seconds(timestamp.timestamp())
+}
 
 #[async_trait]
 pub trait ProcessJobNotificationPolicyEngine: Send + Sync {
@@ -248,14 +252,14 @@ pub async fn reconcile_persisted_process_jobs(
                 log_refs: summary.log_refs.clone(),
                 reason: None,
             }
-            .into_summary_update(summary, Utc::now());
+            .into_summary_update(summary, process_job_timestamp(Utc::now()));
             store.upsert(updated).await?;
             report.record_observation(ProcessJobReconciliationState::BackendUnavailable);
             continue;
         };
         let outcome = backend.reconcile(summary.clone()).await?;
         let state = outcome.state;
-        store.upsert(outcome.into_summary_update(summary, Utc::now())).await?;
+        store.upsert(outcome.into_summary_update(summary, process_job_timestamp(Utc::now()))).await?;
         report.record_observation(state);
     }
     Ok(report)
@@ -354,7 +358,7 @@ mod tests {
             Ok(ProcessJobBackendStatus {
                 backend_ref,
                 status: ProcessJobStatus::Running,
-                updated_at: Utc::now(),
+                updated_at: process_job_timestamp(Utc::now()),
                 log_refs: Vec::new(),
             })
         }
@@ -1451,8 +1455,8 @@ mod tests {
             status: observed.status.clone(),
             command_preview: "sleep 1".to_string(),
             cwd: ProcessJobCwd::Inherited,
-            started_at: Some(process_job_timestamp(observed.updated_at)),
-            updated_at: process_job_timestamp(observed.updated_at),
+            started_at: Some(observed.updated_at),
+            updated_at: observed.updated_at,
             completed_at: None,
             log_refs: observed.log_refs,
             profile: None,
@@ -1834,7 +1838,7 @@ mod tests {
             let summary = persisted_summary("proc_state", ProcessJobBackendKind::Native, ProcessJobStatus::Running);
             let outcome = backend.reconcile(summary.clone()).await.expect("fake backend reconciles");
             assert_eq!(outcome.state, state);
-            let updated = outcome.into_summary_update(summary, Utc::now());
+            let updated = outcome.into_summary_update(summary, process_job_timestamp(Utc::now()));
             assert_eq!(updated.id, ProcessJobId("proc_state".to_string()));
             assert_eq!(updated.backend_ref, Some(BackendRef("native:proc_state".to_string())));
             match state {
@@ -1962,7 +1966,7 @@ mod tests {
             reason: Some("pueue daemon unavailable".to_string()),
         };
 
-        let updated = outcome.into_summary_update(summary, now + chrono::Duration::seconds(5));
+        let updated = outcome.into_summary_update(summary, process_job_timestamp(now + chrono::Duration::seconds(5)));
 
         assert_eq!(updated.id, ProcessJobId("proc_stable".to_string()));
         assert!(matches!(updated.status, ProcessJobStatus::BackendUnavailable { .. }));
@@ -2044,8 +2048,11 @@ mod tests {
             keep_terminal_logs: true,
         };
         let now = DateTime::parse_from_rfc3339("2026-05-17T05:52:12Z").expect("timestamp parses").with_timezone(&Utc);
-        let log_ref =
-            policy.reference_for(ProcessJobId("../job with spaces".to_string()), ProcessJobStream::Combined, now);
+        let log_ref = policy.reference_for(
+            ProcessJobId("../job with spaces".to_string()),
+            ProcessJobStream::Combined,
+            process_job_timestamp(now),
+        );
 
         assert_eq!(log_ref.reference, "native:.._job_with_spaces/combined.log");
         assert_eq!(log_ref.max_bytes, Some(1024));

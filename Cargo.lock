@@ -1919,7 +1919,6 @@ name = "clankers-tool-host"
 version = "0.1.0"
 dependencies = [
  "blake3",
- "chrono",
  "clanker-message",
  "clankers-engine",
  "dirs 6.0.0",

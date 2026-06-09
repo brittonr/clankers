@@ -681,6 +681,30 @@ pub enum EffectResultStatus {
     Unavailable,
 }
 
+/// Stable correlation identifier carried through requests, results, and receipts.
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+pub struct EffectCorrelationId(String);
+
+impl EffectCorrelationId {
+    /// Construct from an opaque ID string supplied by a runtime host.
+    #[must_use]
+    pub fn from_string(id: impl Into<String>) -> Self {
+        Self(id.into())
+    }
+
+    /// Construct from a known deterministic ID for tests/replay.
+    #[must_use]
+    pub fn from_static(id: &'static str) -> Self {
+        Self(id.to_owned())
+    }
+
+    /// Borrow the ID as text.
+    #[must_use]
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+}
+
 /// Safe content-addressed artifact kind declared by remote/subagent execution.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
@@ -1031,7 +1055,10 @@ mod tests {
         let json = serde_json::to_string(&event).expect("event should serialize");
         assert!(json.contains(r#""type":"usage""#));
         let parsed: ProviderStreamEvent = serde_json::from_str(&json).expect("event should deserialize");
-        assert!(matches!(parsed, ProviderStreamEvent::Usage { stop_reason: Some(crate::content::StopReason::Stop), .. }));
+        assert!(matches!(parsed, ProviderStreamEvent::Usage {
+            stop_reason: Some(crate::content::StopReason::Stop),
+            ..
+        }));
     }
 
     #[test]
@@ -1049,8 +1076,7 @@ mod tests {
 
     #[test]
     fn provider_model_status_roundtrip_preserves_snake_case() {
-        let json = serde_json::to_string(&ProviderModelStatus::RetryableFailure)
-            .expect("status should serialize");
+        let json = serde_json::to_string(&ProviderModelStatus::RetryableFailure).expect("status should serialize");
         assert_eq!(json, r#""retryable_failure""#);
         let parsed: ProviderModelStatus = serde_json::from_str(&json).expect("status should deserialize");
         assert_eq!(parsed, ProviderModelStatus::RetryableFailure);
@@ -1085,8 +1111,8 @@ mod tests {
 
     #[test]
     fn auth_store_operation_roundtrip_preserves_snake_case() {
-        let json = serde_json::to_string(&AuthStoreOperation::PendingLoginVerifier)
-            .expect("operation should serialize");
+        let json =
+            serde_json::to_string(&AuthStoreOperation::PendingLoginVerifier).expect("operation should serialize");
         assert_eq!(json, r#""pending_login_verifier""#);
         let parsed: AuthStoreOperation = serde_json::from_str(&json).expect("operation should deserialize");
         assert_eq!(parsed, AuthStoreOperation::PendingLoginVerifier);
@@ -1272,64 +1298,68 @@ mod tests {
     }
 
     #[test]
+    fn effect_correlation_id_is_stable_for_replay_and_serialization() {
+        let correlation_id = EffectCorrelationId::from_string("effect-static-1");
+        assert_eq!(correlation_id.as_str(), "effect-static-1");
+        let json = serde_json::to_string(&correlation_id).expect("correlation id should serialize");
+        assert_eq!(json, r#""effect-static-1""#);
+        let parsed: EffectCorrelationId = serde_json::from_str(&json).expect("correlation id should deserialize");
+        assert_eq!(parsed, correlation_id);
+    }
+
+    #[test]
     fn remote_execution_selectors_roundtrip_preserve_kebab_case() {
-        let artifact = serde_json::to_string(&RemoteExecutionArtifactKind::ToolSchema)
-            .expect("artifact kind should serialize");
+        let artifact =
+            serde_json::to_string(&RemoteExecutionArtifactKind::ToolSchema).expect("artifact kind should serialize");
         assert_eq!(artifact, r#""tool-schema""#);
-        let parsed_artifact: RemoteExecutionArtifactKind = serde_json::from_str(&artifact)
-            .expect("artifact kind should deserialize");
+        let parsed_artifact: RemoteExecutionArtifactKind =
+            serde_json::from_str(&artifact).expect("artifact kind should deserialize");
         assert_eq!(parsed_artifact, RemoteExecutionArtifactKind::ToolSchema);
 
-        let target = serde_json::to_string(&RemoteExecutionTarget::RemoteDaemon)
-            .expect("target should serialize");
+        let target = serde_json::to_string(&RemoteExecutionTarget::RemoteDaemon).expect("target should serialize");
         assert_eq!(target, r#""remote-daemon""#);
-        let parsed_target: RemoteExecutionTarget = serde_json::from_str(&target)
-            .expect("target should deserialize");
+        let parsed_target: RemoteExecutionTarget = serde_json::from_str(&target).expect("target should deserialize");
         assert_eq!(parsed_target, RemoteExecutionTarget::RemoteDaemon);
     }
 
     #[test]
     fn dynamic_runtime_selector_status_dtos_roundtrip_preserve_snake_case() {
-        let runtime = serde_json::to_string(&DynamicRuntimeKind::SteelScheme)
-            .expect("runtime kind should serialize");
+        let runtime = serde_json::to_string(&DynamicRuntimeKind::SteelScheme).expect("runtime kind should serialize");
         assert_eq!(runtime, r#""steel_scheme""#);
-        let parsed_runtime: DynamicRuntimeKind = serde_json::from_str(&runtime)
-            .expect("runtime kind should deserialize");
+        let parsed_runtime: DynamicRuntimeKind =
+            serde_json::from_str(&runtime).expect("runtime kind should deserialize");
         assert_eq!(parsed_runtime, DynamicRuntimeKind::SteelScheme);
 
-        let action = serde_json::to_string(&DynamicRuntimeActionKind::HostFunction)
-            .expect("action kind should serialize");
+        let action =
+            serde_json::to_string(&DynamicRuntimeActionKind::HostFunction).expect("action kind should serialize");
         assert_eq!(action, r#""host_function""#);
-        let parsed_action: DynamicRuntimeActionKind = serde_json::from_str(&action)
-            .expect("action kind should deserialize");
+        let parsed_action: DynamicRuntimeActionKind =
+            serde_json::from_str(&action).expect("action kind should deserialize");
         assert_eq!(parsed_action, DynamicRuntimeActionKind::HostFunction);
 
         let redaction = serde_json::to_string(&DynamicRuntimeRedactionClass::MetadataOnly)
             .expect("redaction class should serialize");
         assert_eq!(redaction, r#""metadata_only""#);
-        let parsed_redaction: DynamicRuntimeRedactionClass = serde_json::from_str(&redaction)
-            .expect("redaction class should deserialize");
+        let parsed_redaction: DynamicRuntimeRedactionClass =
+            serde_json::from_str(&redaction).expect("redaction class should deserialize");
         assert_eq!(parsed_redaction, DynamicRuntimeRedactionClass::MetadataOnly);
 
-        let status = serde_json::to_string(&DynamicRuntimeActionStatus::UcanDenied)
-            .expect("status should serialize");
+        let status = serde_json::to_string(&DynamicRuntimeActionStatus::UcanDenied).expect("status should serialize");
         assert_eq!(status, r#""ucan_denied""#);
-        let parsed_status: DynamicRuntimeActionStatus = serde_json::from_str(&status)
-            .expect("status should deserialize");
+        let parsed_status: DynamicRuntimeActionStatus =
+            serde_json::from_str(&status).expect("status should deserialize");
         assert_eq!(parsed_status, DynamicRuntimeActionStatus::UcanDenied);
 
-        let reason = serde_json::to_string(&DynamicRuntimeActionReason::UnsafeTargetResource)
-            .expect("reason should serialize");
+        let reason =
+            serde_json::to_string(&DynamicRuntimeActionReason::UnsafeTargetResource).expect("reason should serialize");
         assert_eq!(reason, r#""unsafe_target_resource""#);
-        let parsed_reason: DynamicRuntimeActionReason = serde_json::from_str(&reason)
-            .expect("reason should deserialize");
+        let parsed_reason: DynamicRuntimeActionReason =
+            serde_json::from_str(&reason).expect("reason should deserialize");
         assert_eq!(parsed_reason, DynamicRuntimeActionReason::UnsafeTargetResource);
 
-        let wasm = serde_json::to_string(&WasmToolExecutionStatus::Completed)
-            .expect("wasm status should serialize");
+        let wasm = serde_json::to_string(&WasmToolExecutionStatus::Completed).expect("wasm status should serialize");
         assert_eq!(wasm, r#""completed""#);
-        let parsed_wasm: WasmToolExecutionStatus = serde_json::from_str(&wasm)
-            .expect("wasm status should deserialize");
+        let parsed_wasm: WasmToolExecutionStatus = serde_json::from_str(&wasm).expect("wasm status should deserialize");
         assert_eq!(parsed_wasm, WasmToolExecutionStatus::Completed);
     }
 
@@ -1338,16 +1368,14 @@ mod tests {
         let json = serde_json::to_string(&RemoteDependencyFailureKind::MissingSafeArtifact)
             .expect("failure kind should serialize");
         assert_eq!(json, r#""missing-safe-artifact""#);
-        let parsed: RemoteDependencyFailureKind = serde_json::from_str(&json)
-            .expect("failure kind should deserialize");
+        let parsed: RemoteDependencyFailureKind = serde_json::from_str(&json).expect("failure kind should deserialize");
         assert_eq!(parsed, RemoteDependencyFailureKind::MissingSafeArtifact);
     }
 
     #[test]
     fn tool_collision_policy_default_and_roundtrip_preserve_snake_case() {
         assert_eq!(ToolCollisionPolicy::default(), ToolCollisionPolicy::Reject);
-        let json = serde_json::to_string(&ToolCollisionPolicy::HostOverrides)
-            .expect("policy should serialize");
+        let json = serde_json::to_string(&ToolCollisionPolicy::HostOverrides).expect("policy should serialize");
         assert_eq!(json, r#""host_overrides""#);
         let parsed: ToolCollisionPolicy = serde_json::from_str(&json).expect("policy should deserialize");
         assert_eq!(parsed, ToolCollisionPolicy::HostOverrides);

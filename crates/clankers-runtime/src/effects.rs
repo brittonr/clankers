@@ -2,49 +2,19 @@
 
 use std::collections::BTreeMap;
 
-use clankers_artifacts::ArtifactHash;
-use clankers_artifacts::RedactionClass;
 pub use clanker_message::EffectAbilityClass;
+pub use clanker_message::EffectCorrelationId;
 pub use clanker_message::EffectResultStatus;
 pub use clanker_message::RemoteDependencyFailureKind;
 pub use clanker_message::RemoteExecutionArtifactKind;
 pub use clanker_message::RemoteExecutionTarget;
+use clankers_artifacts::ArtifactHash;
+use clankers_artifacts::RedactionClass;
 use serde::Deserialize;
 use serde::Serialize;
-use uuid::Uuid;
 
 use crate::events::contains_secret_marker;
 use crate::events::sanitize_metadata_value;
-
-/// Stable correlation identifier carried through requests, results, and receipts.
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
-pub struct EffectCorrelationId(String);
-
-impl EffectCorrelationId {
-    /// Mint a new opaque correlation ID.
-    #[must_use]
-    pub fn new() -> Self {
-        Self(Uuid::new_v4().to_string())
-    }
-
-    /// Construct from a known deterministic ID for tests/replay.
-    #[must_use]
-    pub fn from_static(id: &'static str) -> Self {
-        Self(id.to_owned())
-    }
-
-    /// Borrow the ID as text.
-    #[must_use]
-    pub fn as_str(&self) -> &str {
-        &self.0
-    }
-}
-
-impl Default for EffectCorrelationId {
-    fn default() -> Self {
-        Self::new()
-    }
-}
 
 /// Policy-relevant effect request envelope.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

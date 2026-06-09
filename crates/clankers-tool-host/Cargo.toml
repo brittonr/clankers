@@ -6,7 +6,6 @@ license.workspace = true
 
 [dependencies]
 blake3 = { workspace = true }
-chrono = { workspace = true }
 clanker-message = { workspace = true }
 clankers-engine = { path = "../clankers-engine" }
 dirs = "6"

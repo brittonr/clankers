@@ -45,6 +45,7 @@ pub use contracts::DynamicRuntimeActionStatus;
 pub use contracts::DynamicRuntimeKind;
 pub use contracts::DynamicRuntimeRedactionClass;
 pub use contracts::EffectAbilityClass;
+pub use contracts::EffectCorrelationId;
 pub use contracts::EffectResultStatus;
 pub use contracts::ErrorClass;
 pub use contracts::ExtensionRuntimeKind;
