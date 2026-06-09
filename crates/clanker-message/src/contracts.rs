@@ -4,6 +4,7 @@
 //! not depend on provider implementations, router runtime services, async runtimes,
 //! databases, network clients, daemon protocols, or UI crates.
 
+use std::collections::BTreeMap;
 use std::time::Duration;
 
 use clankers_artifacts::ArtifactHash;
@@ -705,6 +706,169 @@ impl EffectCorrelationId {
     pub fn as_str(&self) -> &str {
         &self.0
     }
+}
+
+/// Policy-relevant effect request envelope.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct EffectRequest {
+    /// Requested ability class.
+    pub class: EffectAbilityClass,
+    /// Correlation ID for matching handler receipts/replay results.
+    pub correlation_id: EffectCorrelationId,
+    /// Content hash of the input schema or tool descriptor that shaped the request.
+    pub input_schema_hash: Option<ArtifactHash>,
+    /// Declared artifacts required to safely understand/execute the request.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub declared_artifact_dependencies: Vec<ArtifactHash>,
+    /// Redaction class for request/result receipt material.
+    pub redaction_class: RedactionClass,
+    /// Safe source metadata for review logs; values are sanitized and secret markers rejected.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub safe_source_metadata: BTreeMap<String, String>,
+}
+
+impl EffectRequest {
+    /// Create a request envelope with an explicit class, correlation ID, and redaction policy.
+    #[must_use]
+    pub fn new(
+        class: EffectAbilityClass,
+        correlation_id: EffectCorrelationId,
+        redaction_class: RedactionClass,
+    ) -> Self {
+        Self {
+            class,
+            correlation_id,
+            input_schema_hash: None,
+            declared_artifact_dependencies: Vec::new(),
+            redaction_class,
+            safe_source_metadata: BTreeMap::new(),
+        }
+    }
+
+    /// Attach an input schema/tool descriptor hash.
+    #[must_use]
+    pub fn with_input_schema_hash(mut self, hash: ArtifactHash) -> Self {
+        self.input_schema_hash = Some(hash);
+        self
+    }
+
+    /// Attach artifact dependencies in deterministic order.
+    #[must_use]
+    pub fn with_artifact_dependencies<I>(mut self, dependencies: I) -> Self
+    where I: IntoIterator<Item = ArtifactHash> {
+        self.declared_artifact_dependencies = dependencies.into_iter().collect();
+        self.declared_artifact_dependencies.sort_by_key(|hash| hash.hex());
+        self.declared_artifact_dependencies.dedup();
+        self
+    }
+
+    /// Add safe source metadata. Secret-looking values are replaced with a redaction marker.
+    #[must_use]
+    pub fn with_safe_metadata(mut self, key: impl Into<String>, value: impl Into<String>) -> Self {
+        let key = sanitize_effect_metadata_value(key.into());
+        let raw_value = value.into();
+        let value = if contains_effect_secret_marker(&raw_value) {
+            "[redacted-secret-marker]".to_owned()
+        } else {
+            sanitize_effect_metadata_value(raw_value)
+        };
+        self.safe_source_metadata.insert(key, value);
+        self
+    }
+}
+
+/// Minimal request reference copied into results/receipts.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct EffectRequestRef {
+    /// Requested ability class.
+    pub class: EffectAbilityClass,
+    /// Correlation ID used to match request and result.
+    pub correlation_id: EffectCorrelationId,
+    /// Redaction class applied to result receipt data.
+    pub redaction_class: RedactionClass,
+}
+
+impl From<&EffectRequest> for EffectRequestRef {
+    fn from(request: &EffectRequest) -> Self {
+        Self {
+            class: request.class,
+            correlation_id: request.correlation_id.clone(),
+            redaction_class: request.redaction_class,
+        }
+    }
+}
+
+/// Redacted effect result/receipt envelope.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct EffectResult {
+    /// Request reference this result answers.
+    pub request: EffectRequestRef,
+    /// Handler outcome status.
+    pub status: EffectResultStatus,
+    /// Optional content-addressed result artifact.
+    pub output_artifact: Option<ArtifactHash>,
+    /// Safe, sanitized summary suitable for logs/review receipts.
+    pub safe_summary: String,
+    /// Optional safe UCAN authorization metadata; never contains compact tokens or secrets.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub ucan_authorization: Option<UcanAuthorizationMetadata>,
+}
+
+impl EffectResult {
+    /// Build a redacted result envelope for a request.
+    #[must_use]
+    pub fn new(request: &EffectRequest, status: EffectResultStatus, safe_summary: impl Into<String>) -> Self {
+        let raw_summary = safe_summary.into();
+        let safe_summary = if contains_effect_secret_marker(&raw_summary) {
+            "[redacted-secret-marker]".to_owned()
+        } else {
+            sanitize_effect_metadata_value(raw_summary)
+        };
+        Self {
+            request: EffectRequestRef::from(request),
+            status,
+            output_artifact: None,
+            safe_summary,
+            ucan_authorization: None,
+        }
+    }
+
+    /// Attach a result artifact hash.
+    #[must_use]
+    pub fn with_output_artifact(mut self, hash: ArtifactHash) -> Self {
+        self.output_artifact = Some(hash);
+        self
+    }
+
+    /// Attach redacted UCAN authorization metadata to the receipt.
+    #[must_use]
+    pub fn with_ucan_authorization(mut self, metadata: UcanAuthorizationMetadata) -> Self {
+        self.ucan_authorization = Some(metadata);
+        self
+    }
+}
+
+fn sanitize_effect_metadata_value(value: String) -> String {
+    if contains_effect_secret_marker(&value) {
+        "[REDACTED]".to_string()
+    } else {
+        value.chars().take(160).collect()
+    }
+}
+
+fn contains_effect_secret_marker(value: &str) -> bool {
+    let lower = value.to_ascii_lowercase();
+    [
+        "token",
+        "secret",
+        "password",
+        "api_key",
+        "authorization",
+        "bearer",
+        "cookie",
+    ]
+    .iter()
+    .any(|marker| lower.contains(marker))
 }
 
 /// Safe UCAN authorization metadata for effect receipts and sync envelopes.
@@ -2188,6 +2352,42 @@ mod tests {
         assert_eq!(json, r#""effect-static-1""#);
         let parsed: EffectCorrelationId = serde_json::from_str(&json).expect("correlation id should deserialize");
         assert_eq!(parsed, correlation_id);
+    }
+
+    #[test]
+    fn effect_request_and_result_receipts_sanitize_metadata_contracts() {
+        let schema_hash = ArtifactHash::digest(b"schema");
+        let dep_a = ArtifactHash::digest(b"a");
+        let dep_b = ArtifactHash::digest(b"b");
+        let request = EffectRequest::new(
+            EffectAbilityClass::Shell,
+            EffectCorrelationId::from_static("effect-1"),
+            RedactionClass::MetadataOnly,
+        )
+        .with_input_schema_hash(schema_hash)
+        .with_artifact_dependencies([dep_b, dep_a, dep_b])
+        .with_safe_metadata("tool", "bash")
+        .with_safe_metadata("authorization", "Bearer secret-token");
+
+        let mut expected_dependencies = vec![dep_a, dep_b];
+        expected_dependencies.sort_by_key(|hash| hash.hex());
+        assert_eq!(request.declared_artifact_dependencies, expected_dependencies);
+        assert_eq!(request.safe_source_metadata.get("tool"), Some(&"bash".to_owned()));
+        let metadata_json = serde_json::to_string(&request.safe_source_metadata).expect("metadata json");
+        assert!(!metadata_json.contains("Bearer"));
+        assert!(!metadata_json.contains("secret-token"));
+        assert!(metadata_json.contains("redacted"));
+
+        let result = EffectResult::new(&request, EffectResultStatus::Denied, "token secret value denied")
+            .with_output_artifact(schema_hash);
+        assert_eq!(result.request.class, EffectAbilityClass::Shell);
+        assert_eq!(result.request.correlation_id.as_str(), "effect-1");
+        assert_eq!(result.status, EffectResultStatus::Denied);
+        assert_eq!(result.safe_summary, "[redacted-secret-marker]");
+        assert_eq!(result.output_artifact, Some(schema_hash));
+        let result_json = serde_json::to_string(&result).expect("effect result should serialize");
+        let parsed: EffectResult = serde_json::from_str(&result_json).expect("effect result should deserialize");
+        assert_eq!(parsed, result);
     }
 
     #[test]

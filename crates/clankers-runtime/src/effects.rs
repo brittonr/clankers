@@ -4,6 +4,9 @@ use std::collections::BTreeMap;
 
 pub use clanker_message::EffectAbilityClass;
 pub use clanker_message::EffectCorrelationId;
+pub use clanker_message::EffectRequest;
+pub use clanker_message::EffectRequestRef;
+pub use clanker_message::EffectResult;
 pub use clanker_message::EffectResultStatus;
 pub use clanker_message::REMOTE_EXECUTION_ARTIFACT_SCHEMA_VERSION;
 pub use clanker_message::RemoteArtifactEnvelope;
@@ -14,82 +17,11 @@ pub use clanker_message::RemoteExecutionDependency;
 pub use clanker_message::RemoteExecutionRequest;
 pub use clanker_message::RemoteExecutionTarget;
 pub use clanker_message::UcanAuthorizationMetadata;
+#[cfg(test)]
 use clankers_artifacts::ArtifactHash;
 use clankers_artifacts::RedactionClass;
 use serde::Deserialize;
 use serde::Serialize;
-
-use crate::events::contains_secret_marker;
-use crate::events::sanitize_metadata_value;
-
-/// Policy-relevant effect request envelope.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct EffectRequest {
-    /// Requested ability class.
-    pub class: EffectAbilityClass,
-    /// Correlation ID for matching handler receipts/replay results.
-    pub correlation_id: EffectCorrelationId,
-    /// Content hash of the input schema or tool descriptor that shaped the request.
-    pub input_schema_hash: Option<ArtifactHash>,
-    /// Declared artifacts required to safely understand/execute the request.
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub declared_artifact_dependencies: Vec<ArtifactHash>,
-    /// Redaction class for request/result receipt material.
-    pub redaction_class: RedactionClass,
-    /// Safe source metadata for review logs; values are sanitized and secret markers rejected.
-    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
-    pub safe_source_metadata: BTreeMap<String, String>,
-}
-
-impl EffectRequest {
-    /// Create a request envelope with an explicit class, correlation ID, and redaction policy.
-    #[must_use]
-    pub fn new(
-        class: EffectAbilityClass,
-        correlation_id: EffectCorrelationId,
-        redaction_class: RedactionClass,
-    ) -> Self {
-        Self {
-            class,
-            correlation_id,
-            input_schema_hash: None,
-            declared_artifact_dependencies: Vec::new(),
-            redaction_class,
-            safe_source_metadata: BTreeMap::new(),
-        }
-    }
-
-    /// Attach an input schema/tool descriptor hash.
-    #[must_use]
-    pub fn with_input_schema_hash(mut self, hash: ArtifactHash) -> Self {
-        self.input_schema_hash = Some(hash);
-        self
-    }
-
-    /// Attach artifact dependencies in deterministic order.
-    #[must_use]
-    pub fn with_artifact_dependencies<I>(mut self, dependencies: I) -> Self
-    where I: IntoIterator<Item = ArtifactHash> {
-        self.declared_artifact_dependencies = dependencies.into_iter().collect();
-        self.declared_artifact_dependencies.sort_by_key(|hash| hash.hex());
-        self.declared_artifact_dependencies.dedup();
-        self
-    }
-
-    /// Add safe source metadata. Secret-looking values are replaced with a redaction marker.
-    #[must_use]
-    pub fn with_safe_metadata(mut self, key: impl Into<String>, value: impl Into<String>) -> Self {
-        let key = sanitize_metadata_value(key.into());
-        let raw_value = value.into();
-        let value = if contains_secret_marker(&raw_value) {
-            "[redacted-secret-marker]".to_owned()
-        } else {
-            sanitize_metadata_value(raw_value)
-        };
-        self.safe_source_metadata.insert(key, value);
-        self
-    }
-}
 
 /// Fail-closed remote dependency sync preflight report.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -173,77 +105,6 @@ pub fn evaluate_remote_dependency_sync(
 
 fn remote_dependency_key(dependency: &RemoteExecutionDependency) -> (RemoteExecutionArtifactKind, String) {
     (dependency.kind, dependency.hash.hex())
-}
-
-/// Minimal request reference copied into results/receipts.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct EffectRequestRef {
-    /// Requested ability class.
-    pub class: EffectAbilityClass,
-    /// Correlation ID used to match request and result.
-    pub correlation_id: EffectCorrelationId,
-    /// Redaction class applied to result receipt data.
-    pub redaction_class: RedactionClass,
-}
-
-impl From<&EffectRequest> for EffectRequestRef {
-    fn from(request: &EffectRequest) -> Self {
-        Self {
-            class: request.class,
-            correlation_id: request.correlation_id.clone(),
-            redaction_class: request.redaction_class,
-        }
-    }
-}
-
-/// Redacted effect result/receipt envelope.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct EffectResult {
-    /// Request reference this result answers.
-    pub request: EffectRequestRef,
-    /// Handler outcome status.
-    pub status: EffectResultStatus,
-    /// Optional content-addressed result artifact.
-    pub output_artifact: Option<ArtifactHash>,
-    /// Safe, sanitized summary suitable for logs/review receipts.
-    pub safe_summary: String,
-    /// Optional safe UCAN authorization metadata; never contains compact tokens or secrets.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub ucan_authorization: Option<UcanAuthorizationMetadata>,
-}
-
-impl EffectResult {
-    /// Build a redacted result envelope for a request.
-    #[must_use]
-    pub fn new(request: &EffectRequest, status: EffectResultStatus, safe_summary: impl Into<String>) -> Self {
-        let raw_summary = safe_summary.into();
-        let safe_summary = if contains_secret_marker(&raw_summary) {
-            "[redacted-secret-marker]".to_owned()
-        } else {
-            sanitize_metadata_value(raw_summary)
-        };
-        Self {
-            request: EffectRequestRef::from(request),
-            status,
-            output_artifact: None,
-            safe_summary,
-            ucan_authorization: None,
-        }
-    }
-
-    /// Attach a result artifact hash.
-    #[must_use]
-    pub fn with_output_artifact(mut self, hash: ArtifactHash) -> Self {
-        self.output_artifact = Some(hash);
-        self
-    }
-
-    /// Attach redacted UCAN authorization metadata to the receipt.
-    #[must_use]
-    pub fn with_ucan_authorization(mut self, metadata: UcanAuthorizationMetadata) -> Self {
-        self.ucan_authorization = Some(metadata);
-        self
-    }
 }
 
 /// Result of fail-closed effect gating around a host side effect.
