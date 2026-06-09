@@ -10,7 +10,11 @@ use std::collections::BTreeMap;
 use std::collections::BTreeSet;
 
 pub use clanker_message::SteelHostCallOutcome;
+pub use clanker_message::SteelHostFunctionRegistration;
+pub use clanker_message::SteelRuntimeProfile;
 pub use clanker_message::SteelRuntimeReasonCode;
+pub use clanker_message::SteelRuntimeRequest;
+pub use clanker_message::SteelRuntimeStatus;
 pub use clanker_message::SteelRuntimeStatusCode;
 use clankers_artifacts::ArtifactHash;
 use serde::Deserialize;
@@ -18,80 +22,6 @@ use serde::Serialize;
 
 pub const STEEL_RUNTIME_RECEIPT_SCHEMA: &str = "clankers.steel_runtime.receipt.v1";
 pub const STEEL_RUNTIME_STATUS_SCHEMA: &str = "clankers.steel_runtime.status.v1";
-
-const DEFAULT_PROFILE_NAME: &str = "default-deny";
-const DEFAULT_MAX_SOURCE_BYTES: u64 = 4096;
-const DEFAULT_MAX_OUTPUT_BYTES: u64 = 1024;
-const DEFAULT_MAX_HOST_CALLS: u64 = 4;
-const DEFAULT_MAX_STEPS: u64 = 256;
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct SteelRuntimeProfile {
-    pub name: String,
-    pub max_source_bytes: u64,
-    pub max_output_bytes: u64,
-    pub max_host_calls: u64,
-    pub max_steps: u64,
-    pub ambient_authority: bool,
-    pub agent_tool_enabled: bool,
-}
-
-impl SteelRuntimeProfile {
-    #[must_use]
-    pub fn default_deny() -> Self {
-        Self {
-            name: DEFAULT_PROFILE_NAME.to_string(),
-            max_source_bytes: DEFAULT_MAX_SOURCE_BYTES,
-            max_output_bytes: DEFAULT_MAX_OUTPUT_BYTES,
-            max_host_calls: DEFAULT_MAX_HOST_CALLS,
-            max_steps: DEFAULT_MAX_STEPS,
-            ambient_authority: false,
-            agent_tool_enabled: false,
-        }
-    }
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct SteelRuntimeRequest {
-    pub profile: SteelRuntimeProfile,
-    pub source: String,
-    pub session_capabilities: Vec<String>,
-    pub disabled_tools: Vec<String>,
-    pub host_functions: Vec<SteelHostFunctionRegistration>,
-    pub receipt_destination: String,
-}
-
-impl SteelRuntimeRequest {
-    #[must_use]
-    pub fn pure(source: impl Into<String>) -> Self {
-        Self {
-            profile: SteelRuntimeProfile::default_deny(),
-            source: source.into(),
-            session_capabilities: Vec::new(),
-            disabled_tools: Vec::new(),
-            host_functions: Vec::new(),
-            receipt_destination: "stdout".to_string(),
-        }
-    }
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct SteelHostFunctionRegistration {
-    pub name: String,
-    pub required_capability: String,
-    pub output: String,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct SteelRuntimeStatus {
-    pub schema: String,
-    pub available: bool,
-    pub implementation: String,
-    pub profile: SteelRuntimeProfile,
-    pub agent_tool_enabled: bool,
-    pub ambient_authority: bool,
-    pub sandbox_claim: String,
-}
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SteelRuntimeReceipt {

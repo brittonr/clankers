@@ -873,6 +873,84 @@ pub enum WasmToolExecutionStatus {
     Blocked,
 }
 
+const DEFAULT_STEEL_PROFILE_NAME: &str = "default-deny";
+const DEFAULT_STEEL_MAX_SOURCE_BYTES: u64 = 4096;
+const DEFAULT_STEEL_MAX_OUTPUT_BYTES: u64 = 1024;
+const DEFAULT_STEEL_MAX_HOST_CALLS: u64 = 4;
+const DEFAULT_STEEL_MAX_STEPS: u64 = 256;
+
+/// Steel runtime profile limits and authority flags.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SteelRuntimeProfile {
+    pub name: String,
+    pub max_source_bytes: u64,
+    pub max_output_bytes: u64,
+    pub max_host_calls: u64,
+    pub max_steps: u64,
+    pub ambient_authority: bool,
+    pub agent_tool_enabled: bool,
+}
+
+impl SteelRuntimeProfile {
+    #[must_use]
+    pub fn default_deny() -> Self {
+        Self {
+            name: DEFAULT_STEEL_PROFILE_NAME.to_string(),
+            max_source_bytes: DEFAULT_STEEL_MAX_SOURCE_BYTES,
+            max_output_bytes: DEFAULT_STEEL_MAX_OUTPUT_BYTES,
+            max_host_calls: DEFAULT_STEEL_MAX_HOST_CALLS,
+            max_steps: DEFAULT_STEEL_MAX_STEPS,
+            ambient_authority: false,
+            agent_tool_enabled: false,
+        }
+    }
+}
+
+/// Steel host function made available to a constrained runtime profile.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SteelHostFunctionRegistration {
+    pub name: String,
+    pub required_capability: String,
+    pub output: String,
+}
+
+/// Steel runtime evaluation request.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SteelRuntimeRequest {
+    pub profile: SteelRuntimeProfile,
+    pub source: String,
+    pub session_capabilities: Vec<String>,
+    pub disabled_tools: Vec<String>,
+    pub host_functions: Vec<SteelHostFunctionRegistration>,
+    pub receipt_destination: String,
+}
+
+impl SteelRuntimeRequest {
+    #[must_use]
+    pub fn pure(source: impl Into<String>) -> Self {
+        Self {
+            profile: SteelRuntimeProfile::default_deny(),
+            source: source.into(),
+            session_capabilities: Vec::new(),
+            disabled_tools: Vec::new(),
+            host_functions: Vec::new(),
+            receipt_destination: "stdout".to_string(),
+        }
+    }
+}
+
+/// Steel runtime availability and sandbox status.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SteelRuntimeStatus {
+    pub schema: String,
+    pub available: bool,
+    pub implementation: String,
+    pub profile: SteelRuntimeProfile,
+    pub agent_tool_enabled: bool,
+    pub ambient_authority: bool,
+    pub sandbox_claim: String,
+}
+
 /// Steel runtime evaluation status code.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -1560,6 +1638,36 @@ mod tests {
         assert_eq!(wasm, r#""completed""#);
         let parsed_wasm: WasmToolExecutionStatus = serde_json::from_str(&wasm).expect("wasm status should deserialize");
         assert_eq!(parsed_wasm, WasmToolExecutionStatus::Completed);
+
+        let profile = SteelRuntimeProfile::default_deny();
+        assert_eq!(profile.name, "default-deny");
+        assert!(!profile.ambient_authority);
+        let request = SteelRuntimeRequest::pure("(host \"demo\")");
+        assert_eq!(request.receipt_destination, "stdout");
+        assert!(request.host_functions.is_empty());
+        let status_dto = SteelRuntimeStatus {
+            schema: "clankers.steel_runtime.status.v1".to_string(),
+            available: true,
+            implementation: "fixture".to_string(),
+            profile: profile.clone(),
+            agent_tool_enabled: false,
+            ambient_authority: false,
+            sandbox_claim: "none".to_string(),
+        };
+        let status_json = serde_json::to_string(&status_dto).expect("Steel runtime status DTO should serialize");
+        let parsed_status_dto: SteelRuntimeStatus =
+            serde_json::from_str(&status_json).expect("Steel runtime status DTO should deserialize");
+        assert_eq!(parsed_status_dto, status_dto);
+        let registration = SteelHostFunctionRegistration {
+            name: "steel.host.demo".to_string(),
+            required_capability: "demo".to_string(),
+            output: "ok".to_string(),
+        };
+        let registration_json =
+            serde_json::to_string(&registration).expect("Steel host function registration should serialize");
+        let parsed_registration: SteelHostFunctionRegistration =
+            serde_json::from_str(&registration_json).expect("Steel host function registration should deserialize");
+        assert_eq!(parsed_registration, registration);
 
         let runtime_status = serde_json::to_string(&SteelRuntimeStatusCode::ResourceLimited)
             .expect("Steel runtime status should serialize");
