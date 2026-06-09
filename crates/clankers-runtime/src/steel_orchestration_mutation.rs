@@ -7,6 +7,9 @@ use std::collections::BTreeSet;
 use std::fs;
 use std::path::Path;
 
+pub use clanker_message::SteelOrchestrationActivationDecision;
+pub use clanker_message::SteelOrchestrationMutationReason;
+pub use clanker_message::SteelOrchestrationMutationStatus;
 use clankers_artifacts::ArtifactHash;
 use serde::Deserialize;
 use serde::Serialize;
@@ -78,48 +81,6 @@ impl SteelOrchestrationMutationReceipt {
         let bytes = serde_json::to_vec(self).expect("orchestration mutation receipt serializes");
         ArtifactHash::digest(&bytes)
     }
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum SteelOrchestrationMutationStatus {
-    Ready,
-    Staged,
-    Promoted,
-    RolledBack,
-    Denied,
-    FailedValidation,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "kebab-case")]
-pub enum SteelOrchestrationMutationReason {
-    Ready,
-    Staged,
-    Promoted,
-    RolledBack,
-    InvalidSchema,
-    MalformedPatchHash,
-    PathEscape,
-    StalePackHash,
-    RawHostWriteDenied,
-    AuthorityKernelChange,
-    RequiredGateRemoval,
-    UnknownActivationPolicy,
-    GateFailed,
-    CurrentPackChanged,
-    BackupHashMismatch,
-    ApplyFailed,
-    RollbackFailed,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum SteelOrchestrationActivationDecision {
-    Denied,
-    StagedOnly,
-    NextTurn,
-    ExplicitReload,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

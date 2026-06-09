@@ -1357,6 +1357,51 @@ pub enum SteelMutationRollbackReason {
     TargetWriteFailed,
 }
 
+/// Repo-local Steel orchestration-pack mutation status.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum SteelOrchestrationMutationStatus {
+    Ready,
+    Staged,
+    Promoted,
+    RolledBack,
+    Denied,
+    FailedValidation,
+}
+
+/// Repo-local Steel orchestration-pack mutation reason code.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum SteelOrchestrationMutationReason {
+    Ready,
+    Staged,
+    Promoted,
+    RolledBack,
+    InvalidSchema,
+    MalformedPatchHash,
+    PathEscape,
+    StalePackHash,
+    RawHostWriteDenied,
+    AuthorityKernelChange,
+    RequiredGateRemoval,
+    UnknownActivationPolicy,
+    GateFailed,
+    CurrentPackChanged,
+    BackupHashMismatch,
+    ApplyFailed,
+    RollbackFailed,
+}
+
+/// Repo-local Steel orchestration-pack activation decision.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum SteelOrchestrationActivationDecision {
+    Denied,
+    StagedOnly,
+    NextTurn,
+    ExplicitReload,
+}
+
 /// Policy for handling tool-name collisions while building a tool catalog.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -2206,6 +2251,30 @@ mod tests {
         let parsed_rollback_reason: SteelMutationRollbackReason =
             serde_json::from_str(&rollback_reason).expect("mutation rollback reason should deserialize");
         assert_eq!(parsed_rollback_reason, SteelMutationRollbackReason::BackupHashMismatch);
+    }
+
+    #[test]
+    fn steel_orchestration_mutation_selector_status_dtos_roundtrip_preserve_wire_case() {
+        let status = serde_json::to_string(&SteelOrchestrationMutationStatus::FailedValidation)
+            .expect("orchestration mutation status should serialize");
+        assert_eq!(status, r#""failed_validation""#);
+        let parsed_status: SteelOrchestrationMutationStatus =
+            serde_json::from_str(&status).expect("orchestration mutation status should deserialize");
+        assert_eq!(parsed_status, SteelOrchestrationMutationStatus::FailedValidation);
+
+        let reason = serde_json::to_string(&SteelOrchestrationMutationReason::RawHostWriteDenied)
+            .expect("orchestration mutation reason should serialize");
+        assert_eq!(reason, r#""raw-host-write-denied""#);
+        let parsed_reason: SteelOrchestrationMutationReason =
+            serde_json::from_str(&reason).expect("orchestration mutation reason should deserialize");
+        assert_eq!(parsed_reason, SteelOrchestrationMutationReason::RawHostWriteDenied);
+
+        let decision = serde_json::to_string(&SteelOrchestrationActivationDecision::ExplicitReload)
+            .expect("orchestration activation decision should serialize");
+        assert_eq!(decision, r#""explicit_reload""#);
+        let parsed_decision: SteelOrchestrationActivationDecision =
+            serde_json::from_str(&decision).expect("orchestration activation decision should deserialize");
+        assert_eq!(parsed_decision, SteelOrchestrationActivationDecision::ExplicitReload);
     }
 
     #[test]
