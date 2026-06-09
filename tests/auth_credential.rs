@@ -43,6 +43,10 @@ fn caps(items: Vec<CapabilityDocument>) -> CapabilitySet {
     CapabilitySet::new(items).expect("capability set")
 }
 
+fn test_unix_time_seconds() -> u64 {
+    SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).expect("clock").as_secs()
+}
+
 fn session_prompt_request(user_id: &str) -> BasaltAdmissionRequest {
     clankers::modes::daemon::session_store::session_prompt_admission_request(user_id)
 }
@@ -58,7 +62,7 @@ fn session_create_request() -> BasaltAdmissionRequest {
 fn root_credential_for(owner: &PublicUcanIssuer, user_id: &str) -> PublicCredentialEnvelope {
     let session = issuer(91);
     owner
-        .issue_root_credential(
+        .issue_root_credential_at(
             session.audience().expect("audience"),
             caps(vec![
                 cap("clankers:daemon/", "session/create"),
@@ -71,6 +75,7 @@ fn root_credential_for(owner: &PublicUcanIssuer, user_id: &str) -> PublicCredent
                 cap(&format!("clankers:session/{user_id}"), "session/attach"),
             ]),
             Duration::from_secs(3600),
+            test_unix_time_seconds(),
         )
         .expect("credential")
 }
@@ -101,7 +106,7 @@ fn expired_credential(owner_key: &iroh::SecretKey) -> PublicCredentialEnvelope {
 }
 
 fn not_before_credential(owner_key: &iroh::SecretKey) -> PublicCredentialEnvelope {
-    let now = SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).expect("clock").as_secs();
+    let now = test_unix_time_seconds();
     manual_owner_credential(
         owner_key,
         None,
@@ -136,15 +141,22 @@ fn delegated_public_credential_chain_verification() {
     let child = issuer(93);
     let session = issuer(95);
 
+    let issued_at_seconds = test_unix_time_seconds();
     let parent = owner
-        .delegate_to(&child, caps(vec![cap("clankers:session/", "session/prompt")]), Duration::from_secs(3600))
+        .delegate_to_at(
+            &child,
+            caps(vec![cap("clankers:session/", "session/prompt")]),
+            Duration::from_secs(3600),
+            issued_at_seconds,
+        )
         .expect("parent");
     let child_cred = child
-        .issue_child_from_parent(
+        .issue_child_from_parent_at(
             &parent,
             session.audience().expect("audience"),
             caps(vec![cap("clankers:session/alice", "session/prompt")]),
             Duration::from_secs(1800),
+            issued_at_seconds,
         )
         .expect("child credential");
 
@@ -250,7 +262,7 @@ fn remote_auth_rejects_expired_not_before_wrong_audience_and_policy_denied_crede
         Some(issuer(111).audience().expect("wrong audience")),
         caps(vec![cap("clankers:session/", "session/prompt")]),
         TokenTimeBounds::from_unix_seconds_and_duration(
-            SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).expect("clock").as_secs(),
+            test_unix_time_seconds(),
             Duration::from_secs(3600),
         )
         .expect("bounds"),
@@ -261,10 +273,11 @@ fn remote_auth_rejects_expired_not_before_wrong_audience_and_policy_denied_crede
     assert!(wrong_audience_error.contains("audience mismatch"));
 
     let prompt_only = owner
-        .issue_root_credential(
+        .issue_root_credential_at(
             issuer(113).audience().expect("audience"),
             caps(vec![cap("clankers:session/", "session/prompt")]),
             Duration::from_secs(3600),
+            test_unix_time_seconds(),
         )
         .expect("prompt credential");
     let denied = auth.verify_credential(&prompt_only, &session_create_request()).expect_err("policy denied");

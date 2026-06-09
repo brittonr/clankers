@@ -3,7 +3,7 @@
 ## Corrections
 | Date | Source | What Went Wrong | What To Do Instead |
 |------|--------|----------------|-------------------|
-| 2026-06-09 | self | Repeated the known multi-root grep mistake by passing `"crates src"` / `"crates src tests"` as one path during Tigerstyle burn-down, and later used `path="."` for register-call greps which pulled `.git/clankers-checkpoints` noise into results | Use one real source root per grep (`src`, `crates/<crate>`, or `tests`) or separate grep calls; never space-join multiple roots, and avoid broad `.` when checkpoint/worktree dirs can match. |
+| 2026-06-09 | self | Repeated the known multi-root grep mistake by passing `"crates src"` / `"crates src tests"` as one path during Tigerstyle burn-down, later used `path="."` for register-call greps which pulled `.git/clankers-checkpoints` noise into results, and missed root `src/` UCAN call sites by only grepping `crates/` | Use one real source root per grep (`src`, `crates/<crate>`, or `tests`) or separate grep calls; never space-join multiple roots, avoid broad `.` when checkpoint/worktree dirs can match, and grep both `crates` and `src` before changing public workspace APIs. |
 | 2026-06-09 | self | Added struct-level `// Lock order:` comments for Tigerstyle multi-lock findings, but the lint still failed on `ProcessEntry` and `LivenessTracker` | Put `Lock order:` documentation on the lock fields themselves, matching existing field-doc examples, before rerunning full tigerstyle. |
 | 2026-06-09 | self | Trusted a package-scoped `./xtask/tigerstyle.sh -p clanker-message -- --keep-going` green while the later full tigerstyle run still found clanker-message sentinel-fallback findings in `metrics.rs` | Use package-scoped tigerstyle only as a fast loop; rerun the full `./xtask/tigerstyle.sh -- --keep-going` before declaring a tigerstyle slice green. |
 | 2026-06-09 | self | Tried moving `SessionId` to `clanker-message`, which pulled `uuid::Uuid` into `contracts.rs` and failed the FCIS LLM contract boundary | Do not move ID DTOs with random-generation constructors into `clanker-message` unless the constructor is split from the neutral DTO or the FCIS rail is intentionally redesigned. |
@@ -281,6 +281,7 @@
 
 ## Patterns That Work
 
+- For Tigerstyle ambient-clock burn-down in issuance/storage helpers, add explicit `_at` APIs or constructor timestamps and move tests to fixed verification times; trait implementations that do not carry time can reuse the explicitly stored timestamp instead of calling `SystemTime::now()`.
 - Full workspace `cargo nextest run` fits pi's 300s tool timeout when split as `--partition count:1/4` through `count:4/4`; on 2026-05-30 each partition finished in ~112-116s with cached builds.
 - For formatting a touched Rust crate root without recursing into child modules, `rustfmt --config skip_children=true crates/.../src/lib.rs` kept formatting limited to the root file on 2026-05-31.
 - For deterministic ordering tests across fire-and-forget hook tasks, use test-only `Notify` gates to linearize the recorder around real causal boundaries (provider waits for controller lifecycle observation; post-hook recorder waits for prior lifecycle markers) instead of asserting raw Tokio scheduling order.

@@ -552,6 +552,10 @@ mod tests {
 
     use super::*;
 
+    const PUBLIC_UCAN_ISSUED_AT_SECONDS: u64 = 1_000;
+    const PUBLIC_UCAN_LIFETIME_SECONDS: u64 = 4_000_000_000;
+    const PUBLIC_UCAN_STORE_EVENT_SECONDS: u64 = 1_001;
+
     // r[verify ucan.gate.tool-check]
     #[test]
     fn wildcard_tool_allows_all() {
@@ -772,7 +776,7 @@ mod tests {
     ) -> (tempfile::TempDir, PublicUcanCapabilityGate) {
         let tmp = tempfile::tempdir().expect("tempdir");
         let db = Arc::new(redb::Database::create(tmp.path().join("auth.db")).expect("db"));
-        let store = RedbPublicCredentialStore::new(db).expect("store");
+        let store = RedbPublicCredentialStore::new(db, PUBLIC_UCAN_STORE_EVENT_SECONDS).expect("store");
         let root = clankers_ucan::PublicUcanIssuer::from_signer(ucan::Ed25519InMemorySigner::from_seed_bytes(
             [71; ucan::ED25519_SECRET_KEY_BYTES],
         ));
@@ -780,10 +784,11 @@ mod tests {
             [73; ucan::ED25519_SECRET_KEY_BYTES],
         ));
         let envelope = root
-            .issue_root_credential(
+            .issue_root_credential_at(
                 session.audience().expect("audience"),
                 ucan::CapabilitySet::new(capabilities).expect("capabilities"),
-                std::time::Duration::from_secs(60),
+                std::time::Duration::from_secs(PUBLIC_UCAN_LIFETIME_SECONDS),
+                PUBLIC_UCAN_ISSUED_AT_SECONDS,
             )
             .expect("credential");
         let policy = Arc::new(clankers_ucan::clankers_daemon_auth_policy().expect("policy"));

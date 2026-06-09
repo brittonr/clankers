@@ -442,7 +442,14 @@ pub fn create_auth_layer(
     identity: &crate::modes::rpc::iroh::Identity,
 ) -> Option<Arc<AuthLayer>> {
     let db = Arc::clone(db);
-    let public_store = match RedbPublicCredentialStore::new(Arc::clone(&db)) {
+    let event_time_seconds = match auth_event_time_seconds() {
+        Some(value) => value,
+        None => {
+            warn!("Failed to init public UCAN credential store: system clock is before Unix epoch");
+            return None;
+        }
+    };
+    let public_store = match RedbPublicCredentialStore::new(Arc::clone(&db), event_time_seconds) {
         Ok(store) => store,
         Err(error) => {
             warn!("Failed to init public UCAN credential store: {error}");
@@ -466,6 +473,13 @@ pub fn create_auth_layer(
     });
     info!("Public UCAN auth layer initialized (trusted root: {})", identity.public_key().fmt_short());
     Some(layer)
+}
+
+fn auth_event_time_seconds() -> Option<u64> {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .ok()
+        .map(|duration| duration.as_secs())
 }
 
 #[cfg(test)]

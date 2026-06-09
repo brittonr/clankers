@@ -27,7 +27,8 @@ struct TokenScope {
 pub fn run(ctx: &CommandContext, action: TokenAction) -> Result<()> {
     let identity_path = crate::modes::rpc::iroh::identity_path(&ctx.paths);
     let identity = crate::modes::rpc::iroh::Identity::load_or_generate(&identity_path);
-    let redb_db = open_auth_db(ctx)?;
+    let event_time_seconds = current_unix_time_seconds()?;
+    let redb_db = open_auth_db(ctx, event_time_seconds)?;
 
     match action {
         TokenAction::Create {
@@ -59,26 +60,35 @@ pub fn run(ctx: &CommandContext, action: TokenAction) -> Result<()> {
                 shell_wd,
                 root,
             };
-            handle_create(&identity, &redb_db, &expire, audience_key, from, scope)
+            handle_create(&identity, &redb_db, &expire, audience_key, from, scope, event_time_seconds)
         }
         TokenAction::List => handle_list(&redb_db),
-        TokenAction::Revoke { hash } => handle_revoke(&redb_db, &hash),
+        TokenAction::Revoke { hash } => handle_revoke(&redb_db, &hash, event_time_seconds),
         TokenAction::Info { token } => handle_info(&token),
     }
 }
 
-fn open_auth_db(ctx: &CommandContext) -> Result<std::sync::Arc<redb::Database>> {
+fn open_auth_db(ctx: &CommandContext, event_time_seconds: u64) -> Result<std::sync::Arc<redb::Database>> {
     let db_path = ctx.paths.global_config_dir.join("clankers.db");
     std::fs::create_dir_all(&ctx.paths.global_config_dir).ok();
     let redb_db = std::sync::Arc::new(redb::Database::create(&db_path).map_err(|e| crate::error::Error::Io {
         source: std::io::Error::other(e.to_string()),
     })?);
-    clankers_ucan::RedbPublicCredentialStore::new(std::sync::Arc::clone(&redb_db)).map_err(|e| {
+    clankers_ucan::RedbPublicCredentialStore::new(std::sync::Arc::clone(&redb_db), event_time_seconds).map_err(|e| {
         crate::error::Error::Io {
             source: std::io::Error::other(e.to_string()),
         }
     })?;
     Ok(redb_db)
+}
+
+fn current_unix_time_seconds() -> Result<u64> {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|duration| duration.as_secs())
+        .map_err(|source| crate::error::Error::Config {
+            message: format!("System clock is before Unix epoch: {source}"),
+        })
 }
 
 fn handle_create(
@@ -88,6 +98,7 @@ fn handle_create(
     audience_key: Option<String>,
     from: Option<String>,
     scope: TokenScope,
+    event_time_seconds: u64,
 ) -> Result<()> {
     let lifetime = parse_duration(expire).ok_or_else(|| crate::error::Error::Config {
         message: format!("Invalid duration: '{}'. Examples: 1h, 24h, 7d, 30d, 365d", expire),
@@ -106,11 +117,11 @@ fn handle_create(
             }
         })?;
         issuer
-            .issue_child_from_parent(&parent, audience, capabilities, lifetime)
+            .issue_child_from_parent_at(&parent, audience, capabilities, lifetime, event_time_seconds)
             .map_err(|e| crate::error::Error::Config { message: e.to_string() })?
     } else {
         issuer
-            .issue_root_credential(audience, capabilities, lifetime)
+            .issue_root_credential_at(audience, capabilities, lifetime, event_time_seconds)
             .map_err(|e| crate::error::Error::Config { message: e.to_string() })?
     };
 
@@ -118,7 +129,7 @@ fn handle_create(
         message: format!("Failed to encode credential: {e}"),
     })?;
 
-    store_credential(redb_db, &credential)?;
+    store_credential(redb_db, &credential, event_time_seconds)?;
     print_credential_summary(&credential);
     println!("{}", b64);
     Ok(())
@@ -260,8 +271,9 @@ fn encode_resource_segment(input: &str) -> String {
 fn store_credential(
     redb_db: &std::sync::Arc<redb::Database>,
     cred: &clankers_ucan::PublicCredentialEnvelope,
+    event_time_seconds: u64,
 ) -> Result<()> {
-    let store = clankers_ucan::RedbPublicCredentialStore::new(std::sync::Arc::clone(redb_db)).map_err(|e| {
+    let store = clankers_ucan::RedbPublicCredentialStore::new(std::sync::Arc::clone(redb_db), event_time_seconds).map_err(|e| {
         crate::error::Error::Io {
             source: std::io::Error::other(e.to_string()),
         }
@@ -332,12 +344,12 @@ fn print_credential_list_entry(key: &str, encoded: &[u8]) {
     }
 }
 
-fn handle_revoke(redb_db: &std::sync::Arc<redb::Database>, input: &str) -> Result<()> {
+fn handle_revoke(redb_db: &std::sync::Arc<redb::Database>, input: &str, event_time_seconds: u64) -> Result<()> {
     let reference = match clankers_ucan::PublicCredentialEnvelope::from_base64(input) {
         Ok(credential) => credential.token_reference(),
         Err(_) => proof_reference_from_input(input)?,
     };
-    let store = clankers_ucan::RedbPublicCredentialStore::new(std::sync::Arc::clone(redb_db)).map_err(|e| {
+    let store = clankers_ucan::RedbPublicCredentialStore::new(std::sync::Arc::clone(redb_db), event_time_seconds).map_err(|e| {
         crate::error::Error::Io {
             source: std::io::Error::other(e.to_string()),
         }

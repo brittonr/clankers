@@ -491,7 +491,7 @@ mod tests {
     fn store() -> (tempfile::TempDir, RedbPublicCredentialStore) {
         let tmp = tempfile::tempdir().expect("tempdir");
         let db = Arc::new(redb::Database::create(tmp.path().join("auth.db")).expect("db"));
-        let store = RedbPublicCredentialStore::new(db).expect("store");
+        let store = RedbPublicCredentialStore::new(db, VERIFY_AT_SECONDS).expect("store");
         (tmp, store)
     }
 

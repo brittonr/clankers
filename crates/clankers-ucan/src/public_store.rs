@@ -1,7 +1,6 @@
 //! Redb-backed public UCAN credential, revocation, and replay state.
 
 use std::sync::Arc;
-use std::time::SystemTime;
 
 use redb::Database;
 use redb::ReadableTable;
@@ -23,11 +22,12 @@ pub const PUBLIC_REPLAY_TABLE: TableDefinition<&str, u64> = TableDefinition::new
 #[derive(Clone)]
 pub struct RedbPublicCredentialStore {
     db: Arc<Database>,
+    event_time_seconds: u64,
 }
 
 impl RedbPublicCredentialStore {
     #[allow(clippy::result_large_err)]
-    pub fn new(db: Arc<Database>) -> Result<Self, redb::Error> {
+    pub fn new(db: Arc<Database>, event_time_seconds: u64) -> Result<Self, redb::Error> {
         let tx = db.begin_write()?;
         {
             let _ = tx.open_table(PUBLIC_AUTH_TOKENS_TABLE)?;
@@ -35,12 +35,17 @@ impl RedbPublicCredentialStore {
             let _ = tx.open_table(PUBLIC_REPLAY_TABLE)?;
         }
         tx.commit()?;
-        Ok(Self { db })
+        Ok(Self { db, event_time_seconds })
     }
 
     #[must_use]
     pub const fn db(&self) -> &Arc<Database> {
         &self.db
+    }
+
+    #[must_use]
+    pub const fn event_time_seconds(&self) -> u64 {
+        self.event_time_seconds
     }
 
     pub fn lookup_credential(&self, user_id: &str) -> Option<PublicCredentialEnvelope> {
@@ -104,7 +109,7 @@ impl RedbPublicCredentialStore {
                     message: source.to_string(),
                 }
             })?;
-            table.insert(reference.as_bytes(), now_unix_seconds()).map_err(|source| {
+            table.insert(reference.as_bytes(), self.event_time_seconds()).map_err(|source| {
                 PublicCredentialStoreError::Backend {
                     message: source.to_string(),
                 }
@@ -145,7 +150,7 @@ impl RedbPublicCredentialStore {
                 return Ok(ReplayAdmissionStatus::Duplicate);
             }
             table
-                .insert(key.as_str(), now_unix_seconds())
+                .insert(key.as_str(), self.event_time_seconds())
                 .map_err(|source| PublicCredentialStoreError::Backend {
                     message: source.to_string(),
                 })?;
@@ -222,20 +227,6 @@ impl std::fmt::Display for PublicCredentialStoreError {
 
 impl std::error::Error for PublicCredentialStoreError {}
 
-#[cfg_attr(
-    dylint_lib = "tigerstyle",
-    allow(
-        tigerstyle::ambient_clock,
-        reason = "replay admission storage is an imperative shell boundary that timestamps accepted credential references"
-    )
-)]
-fn now_unix_seconds() -> u64 {
-    SystemTime::now()
-        .duration_since(SystemTime::UNIX_EPOCH)
-        .map(|duration| duration.as_secs())
-        .unwrap_or(0)
-}
-
 #[cfg(test)]
 mod tests {
     use std::sync::Arc;
@@ -249,13 +240,16 @@ mod tests {
 
     const ROOT_KEY_BYTE: u8 = 61;
     const SESSION_KEY_BYTE: u8 = 67;
+    const ISSUED_AT_SECONDS: u64 = 1_000;
+    const VERIFY_AT_SECONDS: u64 = 1_001;
+    const STORE_EVENT_TIME_SECONDS: u64 = 1_002;
     const RESOURCE: &str = "clankers:session/demo";
     const ABILITY: &str = "session/attach";
 
     fn store() -> (tempfile::TempDir, RedbPublicCredentialStore) {
         let tmp = tempfile::tempdir().expect("tempdir");
         let db = Arc::new(redb::Database::create(tmp.path().join("auth.db")).expect("db"));
-        let store = RedbPublicCredentialStore::new(db).expect("store");
+        let store = RedbPublicCredentialStore::new(db, STORE_EVENT_TIME_SECONDS).expect("store");
         (tmp, store)
     }
 
@@ -268,10 +262,11 @@ mod tests {
     fn envelope() -> PublicCredentialEnvelope {
         let root = issuer(ROOT_KEY_BYTE);
         let session = issuer(SESSION_KEY_BYTE);
-        root.issue_root_credential(
+        root.issue_root_credential_at(
             session.audience().expect("audience"),
             CapabilitySet::single(RESOURCE, ABILITY).expect("capability"),
             Duration::from_secs(60),
+            ISSUED_AT_SECONDS,
         )
         .expect("envelope")
         .with_replay_id("nonce-1")
@@ -296,10 +291,7 @@ mod tests {
         store.revoke_reference(&envelope.token_reference()).expect("revoke");
 
         let error = envelope
-            .verify_with_did_keys_and_revocations(
-                VerificationTime::try_from_system_time(SystemTime::now()).expect("time"),
-                &store,
-            )
+            .verify_with_did_keys_and_revocations(VerificationTime::from_unix_seconds(VERIFY_AT_SECONDS), &store)
             .expect_err("revoked");
 
         assert!(matches!(error, PublicCredentialError::Verify { .. }));

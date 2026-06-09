@@ -6,7 +6,6 @@
 
 use std::fmt;
 use std::time::Duration;
-use std::time::SystemTime;
 
 use crate::public_credential::PublicCredentialEnvelope;
 
@@ -40,13 +39,14 @@ impl PublicUcanIssuer {
         self.signer.verification_key().map_err(PublicIssuerError::from)
     }
 
-    pub fn issue_root_credential(
+    pub fn issue_root_credential_at(
         &self,
         audience: ucan::AudienceDid,
         capabilities: ucan::CapabilitySet,
         lifetime: Duration,
+        issued_at_seconds: u64,
     ) -> PublicIssuerResult<PublicCredentialEnvelope> {
-        let bounds = token_time_bounds(lifetime)?;
+        let bounds = token_time_bounds_at(lifetime, issued_at_seconds)?;
         let token = ucan::issue_token_with_signer(
             &self.signer,
             &audience,
@@ -57,14 +57,15 @@ impl PublicUcanIssuer {
         Ok(PublicCredentialEnvelope::new(token, Vec::new(), audience, vec![self.issuer()?]))
     }
 
-    pub fn issue_delegated_credential(
+    pub fn issue_delegated_credential_at(
         &self,
         audience: ucan::AudienceDid,
         capabilities: ucan::CapabilitySet,
         proofs: Vec<ucan::CompactToken>,
         lifetime: Duration,
+        issued_at_seconds: u64,
     ) -> PublicIssuerResult<PublicCredentialEnvelope> {
-        let bounds = token_time_bounds(lifetime)?;
+        let bounds = token_time_bounds_at(lifetime, issued_at_seconds)?;
         let trusted_roots = trusted_roots_from_proofs(&proofs)?;
         let token = ucan::issue_token_with_signer(
             &self.signer,
@@ -76,26 +77,28 @@ impl PublicUcanIssuer {
         Ok(PublicCredentialEnvelope::new(token, proofs, audience, trusted_roots))
     }
 
-    pub fn delegate_to(
+    pub fn delegate_to_at(
         &self,
         delegate: &PublicUcanIssuer,
         capabilities: ucan::CapabilitySet,
         lifetime: Duration,
+        issued_at_seconds: u64,
     ) -> PublicIssuerResult<PublicCredentialEnvelope> {
-        self.issue_root_credential(delegate.audience()?, capabilities, lifetime)
+        self.issue_root_credential_at(delegate.audience()?, capabilities, lifetime, issued_at_seconds)
     }
 
-    pub fn issue_child_from_parent(
+    pub fn issue_child_from_parent_at(
         &self,
         parent: &PublicCredentialEnvelope,
         audience: ucan::AudienceDid,
         capabilities: ucan::CapabilitySet,
         lifetime: Duration,
+        issued_at_seconds: u64,
     ) -> PublicIssuerResult<PublicCredentialEnvelope> {
         let mut proofs = Vec::with_capacity(parent.proofs().len() + 1);
         proofs.push(parent.token().clone());
         proofs.extend_from_slice(parent.proofs());
-        let mut envelope = self.issue_delegated_credential(audience, capabilities, proofs, lifetime)?;
+        let mut envelope = self.issue_delegated_credential_at(audience, capabilities, proofs, lifetime, issued_at_seconds)?;
         envelope.set_trusted_roots(parent.trusted_roots().to_vec());
         Ok(envelope)
     }
@@ -114,28 +117,12 @@ pub fn revocation_reference_for(envelope: &PublicCredentialEnvelope) -> ucan::Pr
     envelope.token_reference()
 }
 
-fn token_time_bounds(lifetime: Duration) -> PublicIssuerResult<ucan::TokenTimeBounds> {
-    ucan::TokenTimeBounds::from_unix_seconds_and_duration(now_unix_seconds()?, lifetime).map_err(|source| {
+fn token_time_bounds_at(lifetime: Duration, issued_at_seconds: u64) -> PublicIssuerResult<ucan::TokenTimeBounds> {
+    ucan::TokenTimeBounds::from_unix_seconds_and_duration(issued_at_seconds, lifetime).map_err(|source| {
         PublicIssuerError::Time {
             message: source.to_string(),
         }
     })
-}
-
-#[cfg_attr(
-    dylint_lib = "tigerstyle",
-    allow(
-        tigerstyle::ambient_clock,
-        reason = "public credential issuance is an imperative shell boundary that signs fresh wall-clock UCAN bounds"
-    )
-)]
-fn now_unix_seconds() -> PublicIssuerResult<u64> {
-    SystemTime::now()
-        .duration_since(SystemTime::UNIX_EPOCH)
-        .map(|duration| duration.as_secs())
-        .map_err(|source| PublicIssuerError::Time {
-            message: source.to_string(),
-        })
 }
 
 fn trusted_roots_from_proofs(proofs: &[ucan::CompactToken]) -> PublicIssuerResult<Vec<ucan::IssuerDid>> {
@@ -189,6 +176,8 @@ mod tests {
     const ROOT_KEY_BYTE: u8 = 41;
     const CHILD_KEY_BYTE: u8 = 43;
     const SESSION_KEY_BYTE: u8 = 47;
+    const ISSUED_AT_SECONDS: u64 = 1_000;
+    const VERIFY_AT_SECONDS: u64 = 1_001;
     const RESOURCE: &str = "clankers:session/demo";
     const ABILITY: &str = "session/attach";
 
@@ -216,13 +205,18 @@ mod tests {
         let root = issuer(ROOT_KEY_BYTE);
         let session = issuer(SESSION_KEY_BYTE);
         let envelope = root
-            .issue_root_credential(session.audience().expect("session audience"), caps(), Duration::from_secs(60))
+            .issue_root_credential_at(
+                session.audience().expect("session audience"),
+                caps(),
+                Duration::from_secs(60),
+                ISSUED_AT_SECONDS,
+            )
             .expect("root credential");
         let encoded = encode_public_credential_base64(&envelope).expect("encode");
         let decoded = decode_public_credential_base64(encoded.as_str()).expect("decode");
 
         let verified = decoded
-            .verify_with_did_keys(VerificationTime::try_from_system_time(SystemTime::now()).expect("time"))
+            .verify_with_did_keys(VerificationTime::from_unix_seconds(VERIFY_AT_SECONDS))
             .expect("verify");
 
         assert_eq!(verified.audience(), decoded.audience());
@@ -234,18 +228,21 @@ mod tests {
         let root = issuer(ROOT_KEY_BYTE);
         let child = issuer(CHILD_KEY_BYTE);
         let session = issuer(SESSION_KEY_BYTE);
-        let parent = root.delegate_to(&child, caps(), Duration::from_secs(60)).expect("parent credential");
+        let parent = root
+            .delegate_to_at(&child, caps(), Duration::from_secs(60), ISSUED_AT_SECONDS)
+            .expect("parent credential");
         let child_envelope = child
-            .issue_child_from_parent(
+            .issue_child_from_parent_at(
                 &parent,
                 session.audience().expect("session audience"),
                 caps(),
                 Duration::from_secs(60),
+                ISSUED_AT_SECONDS,
             )
             .expect("child credential");
 
         let verified = child_envelope
-            .verify_with_did_keys(VerificationTime::try_from_system_time(SystemTime::now()).expect("time"))
+            .verify_with_did_keys(VerificationTime::from_unix_seconds(VERIFY_AT_SECONDS))
             .expect("verify child");
 
         assert_eq!(verified.issuer(), &child.issuer().expect("child issuer"));
