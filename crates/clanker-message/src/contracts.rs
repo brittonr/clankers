@@ -1193,6 +1193,36 @@ impl RemoteDependencyFailure {
     }
 }
 
+/// Fail-closed remote dependency sync preflight report.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct RemoteDependencySyncReport {
+    /// Safe artifacts the peer should request by hash before execution.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub missing_safe_artifacts: Vec<RemoteExecutionDependency>,
+    /// Failures that abort execution before side effects.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub failures: Vec<RemoteDependencyFailure>,
+}
+
+impl RemoteDependencySyncReport {
+    /// True only when every declared dependency is present, supported, non-secret, and
+    /// hash-matched.
+    #[must_use]
+    pub fn ready(&self) -> bool {
+        self.missing_safe_artifacts.is_empty() && self.failures.is_empty()
+    }
+
+    /// Convert the preflight outcome into an effect result for fail-closed dispatch.
+    #[must_use]
+    pub fn to_effect_result(&self, request: &EffectRequest) -> EffectResult {
+        if self.ready() {
+            EffectResult::new(request, EffectResultStatus::Allowed, "remote dependencies ready")
+        } else {
+            EffectResult::new(request, EffectResultStatus::Unavailable, "remote dependencies unavailable")
+        }
+    }
+}
+
 /// Dynamic runtime implementation kind.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -2628,6 +2658,20 @@ mod tests {
         let parsed_failure: RemoteDependencyFailure =
             serde_json::from_str(&failure_json).expect("remote dependency failure should deserialize");
         assert_eq!(parsed_failure, failure);
+
+        let sync_report = RemoteDependencySyncReport {
+            missing_safe_artifacts: vec![prompt],
+            failures: vec![failure],
+        };
+        assert!(!sync_report.ready());
+        let effect_request = EffectRequest::new(
+            EffectAbilityClass::Provider,
+            EffectCorrelationId::from_static("remote-sync"),
+            RedactionClass::MetadataOnly,
+        );
+        let effect_result = sync_report.to_effect_result(&effect_request);
+        assert_eq!(effect_result.status, EffectResultStatus::Unavailable);
+        assert_eq!(effect_result.safe_summary, "remote dependencies unavailable");
     }
 
     #[test]

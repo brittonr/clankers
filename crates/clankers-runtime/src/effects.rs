@@ -12,6 +12,7 @@ pub use clanker_message::REMOTE_EXECUTION_ARTIFACT_SCHEMA_VERSION;
 pub use clanker_message::RemoteArtifactEnvelope;
 pub use clanker_message::RemoteDependencyFailure;
 pub use clanker_message::RemoteDependencyFailureKind;
+pub use clanker_message::RemoteDependencySyncReport;
 pub use clanker_message::RemoteExecutionArtifactKind;
 pub use clanker_message::RemoteExecutionDependency;
 pub use clanker_message::RemoteExecutionRequest;
@@ -22,36 +23,6 @@ use clankers_artifacts::ArtifactHash;
 use clankers_artifacts::RedactionClass;
 use serde::Deserialize;
 use serde::Serialize;
-
-/// Fail-closed remote dependency sync preflight report.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct RemoteDependencySyncReport {
-    /// Safe artifacts the peer should request by hash before execution.
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub missing_safe_artifacts: Vec<RemoteExecutionDependency>,
-    /// Failures that abort execution before side effects.
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub failures: Vec<RemoteDependencyFailure>,
-}
-
-impl RemoteDependencySyncReport {
-    /// True only when every declared dependency is present, supported, non-secret, and
-    /// hash-matched.
-    #[must_use]
-    pub fn ready(&self) -> bool {
-        self.missing_safe_artifacts.is_empty() && self.failures.is_empty()
-    }
-
-    /// Convert the preflight outcome into an effect result for fail-closed dispatch.
-    #[must_use]
-    pub fn to_effect_result(&self, request: &EffectRequest) -> EffectResult {
-        if self.ready() {
-            EffectResult::new(request, EffectResultStatus::Allowed, "remote dependencies ready")
-        } else {
-            EffectResult::new(request, EffectResultStatus::Unavailable, "remote dependencies unavailable")
-        }
-    }
-}
 
 /// Evaluate safe remote dependency sync without touching model/tool/provider resources.
 #[must_use]
