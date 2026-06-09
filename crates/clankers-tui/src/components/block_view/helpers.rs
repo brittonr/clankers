@@ -14,42 +14,19 @@ pub fn format_elapsed(secs: u64) -> String {
 
 /// Build a horizontal rule of `─` that fills the remaining width.
 /// `used` is how many columns are already consumed by the prefix on this line.
-#[cfg_attr(
-    dylint_lib = "tigerstyle",
-    allow(
-        tigerstyle::usize_in_public_api,
-        tigerstyle::ambiguous_params,
-        reason = "TUI helpers expose terminal column counts as usize to match ratatui and unicode-width APIs"
-    )
-)]
-pub fn hrule(width: usize, used: usize) -> String {
+pub(super) fn hrule(width: usize, used: usize) -> String {
     let remaining = width.saturating_sub(used);
     "─".repeat(remaining)
 }
 
 /// Build a horizontal rule of `┄` that fills the remaining width.
-#[cfg_attr(
-    dylint_lib = "tigerstyle",
-    allow(
-        tigerstyle::usize_in_public_api,
-        tigerstyle::ambiguous_params,
-        reason = "TUI helpers expose terminal column counts as usize to match ratatui and unicode-width APIs"
-    )
-)]
-pub fn hrule_dotted(width: usize, used: usize) -> String {
+pub(super) fn hrule_dotted(width: usize, used: usize) -> String {
     let remaining = width.saturating_sub(used);
     "┄".repeat(remaining)
 }
 
 /// Convert a column index (character offset) to a byte offset in a string.
-#[cfg_attr(
-    dylint_lib = "tigerstyle",
-    allow(
-        tigerstyle::usize_in_public_api,
-        reason = "TUI string indexing uses usize because Rust byte offsets and char iterators are usize-indexed"
-    )
-)]
-pub fn char_to_byte(s: &str, col: usize) -> usize {
+pub(super) fn char_to_byte(s: &str, col: usize) -> usize {
     s.char_indices().nth(col).map(|(i, _)| i).unwrap_or(s.len())
 }
 
@@ -63,15 +40,7 @@ pub fn char_to_byte(s: &str, col: usize) -> usize {
 ///
 /// Returns `(visible_lines, residual_offset)` where `residual_offset` is always
 /// small enough to fit in a `u16`.
-#[cfg_attr(
-    dylint_lib = "tigerstyle",
-    allow(
-        tigerstyle::usize_in_public_api,
-        tigerstyle::ambiguous_params,
-        reason = "TUI viewport slicing uses usize to match Vec indices, ratatui scroll offsets, and unicode-width counts"
-    )
-)]
-pub fn slice_visible_window<'a>(
+pub(super) fn slice_visible_window<'a>(
     lines: &[Line<'a>],
     scroll_offset: usize,
     visible_height: usize,

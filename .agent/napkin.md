@@ -3,6 +3,7 @@
 ## Working Notes
 
 - 2026-06-09: Plugin SDK Tigerstyle burn-down: removing unused event-dispatch context and replacing multi-`&str` HTTP request args with a `RequestOptions` bag kept public call sites readable. Validate SDK API changes with both `cargo check -p clanker-plugin-sdk --all-features --tests` and each out-of-workspace plugin via `cargo check --manifest-path plugins/<plugin>/Cargo.toml`.
+- 2026-06-09: TUI block-view helper suppressions were avoidable because the helper module is private. Prefer `pub(super)` on sibling-only helpers before reshaping internal `usize` terminal geometry APIs.
 
 ## Corrections
 | Date | Source | What Went Wrong | What To Do Instead |
