@@ -8,6 +8,7 @@ pub use clanker_message::EffectResultStatus;
 pub use clanker_message::RemoteDependencyFailureKind;
 pub use clanker_message::RemoteExecutionArtifactKind;
 pub use clanker_message::RemoteExecutionTarget;
+pub use clanker_message::UcanAuthorizationMetadata;
 use clankers_artifacts::ArtifactHash;
 use clankers_artifacts::RedactionClass;
 use serde::Deserialize;
@@ -189,130 +190,6 @@ impl RemoteArtifactEnvelope {
         self.ucan_authorization = Some(metadata);
         self
     }
-}
-
-/// Safe UCAN authorization metadata for effect receipts and sync envelopes.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct UcanAuthorizationMetadata {
-    /// Stable ability string checked by the UCAN adapter.
-    pub ability: String,
-    /// Stable resource URI checked by the UCAN adapter.
-    pub resource_uri: String,
-    /// Allowed, denied, replayed, revoked, or unavailable authorization status.
-    pub status: String,
-    /// Safe issuer DID, when available.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub issuer: Option<String>,
-    /// Safe audience DID, when available.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub audience: Option<String>,
-    /// Safe proof-chain or grant references, never raw compact token strings.
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub proof_references: Vec<String>,
-    /// Safe caveat identifiers/classes evaluated for this decision.
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub caveat_ids: Vec<String>,
-    /// Replay admission status, when replay checking was involved.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub replay_status: Option<String>,
-    /// Revocation status, when revocation checking was involved.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub revocation_status: Option<String>,
-    /// Redacted denial class for denied authorization receipts.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub denial_class: Option<String>,
-}
-
-impl UcanAuthorizationMetadata {
-    /// Build safe receipt metadata. Inputs are sanitized and secret-looking values are redacted.
-    #[must_use]
-    pub fn new(ability: impl Into<String>, resource_uri: impl Into<String>, status: impl Into<String>) -> Self {
-        Self {
-            ability: sanitize_authorization_value(ability.into()),
-            resource_uri: sanitize_authorization_value(resource_uri.into()),
-            status: sanitize_authorization_value(status.into()),
-            issuer: None,
-            audience: None,
-            proof_references: Vec::new(),
-            caveat_ids: Vec::new(),
-            replay_status: None,
-            revocation_status: None,
-            denial_class: None,
-        }
-    }
-
-    #[must_use]
-    pub fn with_issuer(mut self, issuer: impl Into<String>) -> Self {
-        self.issuer = Some(sanitize_authorization_value(issuer.into()));
-        self
-    }
-
-    #[must_use]
-    pub fn with_audience(mut self, audience: impl Into<String>) -> Self {
-        self.audience = Some(sanitize_authorization_value(audience.into()));
-        self
-    }
-
-    #[must_use]
-    pub fn with_proof_references<I, S>(mut self, references: I) -> Self
-    where
-        I: IntoIterator<Item = S>,
-        S: Into<String>,
-    {
-        self.proof_references = sorted_sanitized_values(references);
-        self
-    }
-
-    #[must_use]
-    pub fn with_caveat_ids<I, S>(mut self, caveat_ids: I) -> Self
-    where
-        I: IntoIterator<Item = S>,
-        S: Into<String>,
-    {
-        self.caveat_ids = sorted_sanitized_values(caveat_ids);
-        self
-    }
-
-    #[must_use]
-    pub fn with_replay_status(mut self, replay_status: impl Into<String>) -> Self {
-        self.replay_status = Some(sanitize_authorization_value(replay_status.into()));
-        self
-    }
-
-    #[must_use]
-    pub fn with_revocation_status(mut self, revocation_status: impl Into<String>) -> Self {
-        self.revocation_status = Some(sanitize_authorization_value(revocation_status.into()));
-        self
-    }
-
-    #[must_use]
-    pub fn with_denial_class(mut self, denial_class: impl Into<String>) -> Self {
-        self.denial_class = Some(sanitize_authorization_value(denial_class.into()));
-        self
-    }
-}
-
-fn sorted_sanitized_values<I, S>(values: I) -> Vec<String>
-where
-    I: IntoIterator<Item = S>,
-    S: Into<String>,
-{
-    let mut sanitized = values.into_iter().map(|value| sanitize_authorization_value(value.into())).collect::<Vec<_>>();
-    sanitized.sort();
-    sanitized.dedup();
-    sanitized
-}
-
-fn sanitize_authorization_value(value: String) -> String {
-    if contains_secret_marker(&value) || looks_like_compact_token(&value) {
-        "[redacted-secret-marker]".to_owned()
-    } else {
-        sanitize_metadata_value(value)
-    }
-}
-
-fn looks_like_compact_token(value: &str) -> bool {
-    value.matches('.').count() == 2 && value.starts_with("ey") && value.len() > 80
 }
 
 /// Redacted remote dependency failure receipt.

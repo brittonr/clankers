@@ -705,6 +705,148 @@ impl EffectCorrelationId {
     }
 }
 
+/// Safe UCAN authorization metadata for effect receipts and sync envelopes.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct UcanAuthorizationMetadata {
+    /// Stable ability string checked by the UCAN adapter.
+    pub ability: String,
+    /// Stable resource URI checked by the UCAN adapter.
+    pub resource_uri: String,
+    /// Allowed, denied, replayed, revoked, or unavailable authorization status.
+    pub status: String,
+    /// Safe issuer DID, when available.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub issuer: Option<String>,
+    /// Safe audience DID, when available.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub audience: Option<String>,
+    /// Safe proof-chain or grant references, never raw compact token strings.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub proof_references: Vec<String>,
+    /// Safe caveat identifiers/classes evaluated for this decision.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub caveat_ids: Vec<String>,
+    /// Replay admission status, when replay checking was involved.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub replay_status: Option<String>,
+    /// Revocation status, when revocation checking was involved.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub revocation_status: Option<String>,
+    /// Redacted denial class for denied authorization receipts.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub denial_class: Option<String>,
+}
+
+impl UcanAuthorizationMetadata {
+    /// Build safe receipt metadata. Inputs are sanitized and secret-looking values are redacted.
+    #[must_use]
+    pub fn new(ability: impl Into<String>, resource_uri: impl Into<String>, status: impl Into<String>) -> Self {
+        Self {
+            ability: sanitize_authorization_metadata_value(ability.into()),
+            resource_uri: sanitize_authorization_metadata_value(resource_uri.into()),
+            status: sanitize_authorization_metadata_value(status.into()),
+            issuer: None,
+            audience: None,
+            proof_references: Vec::new(),
+            caveat_ids: Vec::new(),
+            replay_status: None,
+            revocation_status: None,
+            denial_class: None,
+        }
+    }
+
+    #[must_use]
+    pub fn with_issuer(mut self, issuer: impl Into<String>) -> Self {
+        self.issuer = Some(sanitize_authorization_metadata_value(issuer.into()));
+        self
+    }
+
+    #[must_use]
+    pub fn with_audience(mut self, audience: impl Into<String>) -> Self {
+        self.audience = Some(sanitize_authorization_metadata_value(audience.into()));
+        self
+    }
+
+    #[must_use]
+    pub fn with_proof_references<I, S>(mut self, references: I) -> Self
+    where
+        I: IntoIterator<Item = S>,
+        S: Into<String>,
+    {
+        self.proof_references = sorted_sanitized_authorization_values(references);
+        self
+    }
+
+    #[must_use]
+    pub fn with_caveat_ids<I, S>(mut self, caveat_ids: I) -> Self
+    where
+        I: IntoIterator<Item = S>,
+        S: Into<String>,
+    {
+        self.caveat_ids = sorted_sanitized_authorization_values(caveat_ids);
+        self
+    }
+
+    #[must_use]
+    pub fn with_replay_status(mut self, replay_status: impl Into<String>) -> Self {
+        self.replay_status = Some(sanitize_authorization_metadata_value(replay_status.into()));
+        self
+    }
+
+    #[must_use]
+    pub fn with_revocation_status(mut self, revocation_status: impl Into<String>) -> Self {
+        self.revocation_status = Some(sanitize_authorization_metadata_value(revocation_status.into()));
+        self
+    }
+
+    #[must_use]
+    pub fn with_denial_class(mut self, denial_class: impl Into<String>) -> Self {
+        self.denial_class = Some(sanitize_authorization_metadata_value(denial_class.into()));
+        self
+    }
+}
+
+fn sorted_sanitized_authorization_values<I, S>(values: I) -> Vec<String>
+where
+    I: IntoIterator<Item = S>,
+    S: Into<String>,
+{
+    let mut sanitized = values
+        .into_iter()
+        .map(|value| sanitize_authorization_metadata_value(value.into()))
+        .collect::<Vec<_>>();
+    sanitized.sort();
+    sanitized.dedup();
+    sanitized
+}
+
+fn sanitize_authorization_metadata_value(value: String) -> String {
+    if contains_authorization_secret_marker(&value) || looks_like_compact_token(&value) {
+        "[redacted-secret-marker]".to_owned()
+    } else {
+        value.chars().take(160).collect()
+    }
+}
+
+fn contains_authorization_secret_marker(value: &str) -> bool {
+    let lower = value.to_ascii_lowercase();
+    [
+        "token",
+        "secret",
+        "password",
+        "api_key",
+        "authorization",
+        "bearer",
+        "cookie",
+    ]
+    .iter()
+    .any(|marker| lower.contains(marker))
+}
+
+fn looks_like_compact_token(value: &str) -> bool {
+    value.matches('.').count() == 2 && value.starts_with("ey") && value.len() > 80
+}
+
 /// Safe content-addressed artifact kind declared by remote/subagent execution.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
@@ -1911,6 +2053,27 @@ mod tests {
         assert_eq!(json, r#""effect-static-1""#);
         let parsed: EffectCorrelationId = serde_json::from_str(&json).expect("correlation id should deserialize");
         assert_eq!(parsed, correlation_id);
+    }
+
+    #[test]
+    fn ucan_authorization_metadata_redacts_and_sorts_safe_receipt_fields() {
+        let token_like = format!("ey{}.{}.{}", "a".repeat(90), "b".repeat(4), "c".repeat(4));
+        let metadata = UcanAuthorizationMetadata::new("file/read", token_like, "allowed")
+            .with_issuer("did:key:zissuer")
+            .with_audience("bearer secret audience")
+            .with_proof_references(["proof-b", "proof-a", "proof-a"])
+            .with_caveat_ids(["write", "read"])
+            .with_replay_status("fresh")
+            .with_revocation_status("not_revoked")
+            .with_denial_class("none");
+        assert_eq!(metadata.ability, "file/read");
+        assert_eq!(metadata.resource_uri, "[redacted-secret-marker]");
+        assert_eq!(metadata.audience.as_deref(), Some("[redacted-secret-marker]"));
+        assert_eq!(metadata.proof_references, vec!["proof-a".to_string(), "proof-b".to_string()]);
+        assert_eq!(metadata.caveat_ids, vec!["read".to_string(), "write".to_string()]);
+        let json = serde_json::to_string(&metadata).expect("UCAN metadata should serialize");
+        let parsed: UcanAuthorizationMetadata = serde_json::from_str(&json).expect("UCAN metadata should deserialize");
+        assert_eq!(parsed, metadata);
     }
 
     #[test]

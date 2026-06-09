@@ -127,6 +127,7 @@ pub use contracts::ThinkingLevel;
 pub use contracts::ToolCollisionPolicy;
 pub use contracts::ToolDefinition;
 pub use contracts::ToolInfo;
+pub use contracts::UcanAuthorizationMetadata;
 pub use contracts::UnsupportedContextReference;
 pub use contracts::Usage;
 pub use contracts::WasmToolExecutionStatus;
