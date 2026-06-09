@@ -46,39 +46,35 @@ pub struct CapabilityToken<C: Cap> {
     _marker: PhantomData<C>,
 }
 
+pub(crate) struct CapabilityTokenParts<C: Cap> {
+    pub(crate) version: u8,
+    pub(crate) issuer: PublicKey,
+    pub(crate) audience: Audience,
+    pub(crate) capabilities: Vec<C>,
+    pub(crate) issued_at: u64,
+    pub(crate) expires_at: u64,
+    pub(crate) nonce: Option<[u8; 16]>,
+    pub(crate) proof: Option<[u8; 32]>,
+    pub(crate) delegation_depth: u8,
+    pub(crate) signature: [u8; 64],
+}
+
 impl<C: Cap> CapabilityToken<C> {
     /// Create a new token (used by the builder).
-    #[allow(clippy::too_many_arguments)]
-    #[cfg_attr(
-        dylint_lib = "tigerstyle",
-        allow(
-            tigerstyle::too_many_parameters,
-            reason = "private constructor mirrors serialized token fields"
-        )
-    )]
-    pub(crate) fn new(
-        version: u8,
-        issuer: PublicKey,
-        audience: Audience,
-        capabilities: Vec<C>,
-        issued_at: u64,
-        expires_at: u64,
-        nonce: Option<[u8; 16]>,
-        proof: Option<[u8; 32]>,
-        delegation_depth: u8,
-        signature: [u8; 64],
-    ) -> Self {
+    pub(crate) fn from_parts(parts: CapabilityTokenParts<C>) -> Self {
+        assert!(parts.version > 0);
+        assert!(parts.expires_at >= parts.issued_at);
         Self {
-            version,
-            issuer,
-            audience,
-            capabilities,
-            issued_at,
-            expires_at,
-            nonce,
-            proof,
-            delegation_depth,
-            signature,
+            version: parts.version,
+            issuer: parts.issuer,
+            audience: parts.audience,
+            capabilities: parts.capabilities,
+            issued_at: parts.issued_at,
+            expires_at: parts.expires_at,
+            nonce: parts.nonce,
+            proof: parts.proof,
+            delegation_depth: parts.delegation_depth,
+            signature: parts.signature,
             _marker: PhantomData,
         }
     }

@@ -2,17 +2,6 @@
 
 use std::time::Instant;
 
-#[cfg_attr(
-    dylint_lib = "tigerstyle",
-    allow(
-        ambient_clock,
-        reason = "UI progress timestamps must be captured at construction time"
-    )
-)]
-fn progress_timestamp() -> Instant {
-    Instant::now()
-}
-
 /// Structured progress information emitted by tools during execution.
 #[derive(Debug, Clone)]
 pub struct ToolProgressData {
@@ -146,43 +135,43 @@ pub struct ToolProgress {
 
 impl ToolProgress {
     /// Create progress from bytes processed.
-    pub fn bytes(current: u64, total: Option<u64>) -> Self {
+    pub fn bytes(current: u64, total: Option<u64>, timestamp: Instant) -> Self {
         Self {
             kind: ProgressKind::Bytes { current, total },
             message: None,
-            timestamp: progress_timestamp(),
+            timestamp,
         }
     }
 
     /// Create progress from lines processed.
-    pub fn lines(current: u64, total: Option<u64>) -> Self {
+    pub fn lines(current: u64, total: Option<u64>, timestamp: Instant) -> Self {
         Self {
             kind: ProgressKind::Lines { current, total },
             message: None,
-            timestamp: progress_timestamp(),
+            timestamp,
         }
     }
 
     /// Create progress from items processed (generic countable units).
-    pub fn items(current: u64, total: Option<u64>) -> Self {
+    pub fn items(current: u64, total: Option<u64>, timestamp: Instant) -> Self {
         Self {
             kind: ProgressKind::Items { current, total },
             message: None,
-            timestamp: progress_timestamp(),
+            timestamp,
         }
     }
 
     /// Create progress from percentage (0.0 to 100.0).
-    pub fn percentage(percent: f32) -> Self {
+    pub fn percentage(percent: f32, timestamp: Instant) -> Self {
         Self {
             kind: ProgressKind::Percentage { percent },
             message: None,
-            timestamp: progress_timestamp(),
+            timestamp,
         }
     }
 
     /// Create phase progress (e.g., "Fetching", "Parsing", "Cancelling").
-    pub fn phase(name: impl Into<String>, step: u32, total_steps: Option<u32>) -> Self {
+    pub fn phase(name: impl Into<String>, step: u32, total_steps: Option<u32>, timestamp: Instant) -> Self {
         Self {
             kind: ProgressKind::Phase {
                 name: name.into(),
@@ -190,7 +179,7 @@ impl ToolProgress {
                 total_steps,
             },
             message: None,
-            timestamp: progress_timestamp(),
+            timestamp,
         }
     }
 
@@ -339,7 +328,7 @@ mod tests {
 
     #[test]
     fn tool_progress_builders() {
-        let progress = ToolProgress::bytes(50, Some(100)).with_message("Downloading");
+        let progress = ToolProgress::bytes(50, Some(100), Instant::now()).with_message("Downloading");
 
         assert!(matches!(progress.kind, ProgressKind::Bytes {
             current: 50,
@@ -347,7 +336,7 @@ mod tests {
         }));
         assert_eq!(progress.message, Some("Downloading".to_string()));
 
-        let phase = ToolProgress::phase("Building", 1, Some(3));
+        let phase = ToolProgress::phase("Building", 1, Some(3), Instant::now());
         assert!(matches!(phase.kind, ProgressKind::Phase { .. }));
     }
 }

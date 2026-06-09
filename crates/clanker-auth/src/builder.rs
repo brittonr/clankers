@@ -14,6 +14,7 @@ use crate::constants::MAX_DELEGATION_DEPTH;
 use crate::error::AuthError;
 use crate::token::Audience;
 use crate::token::CapabilityToken;
+use crate::token::CapabilityTokenParts;
 
 /// Builder for creating capability tokens.
 pub struct TokenBuilder<C: Cap> {
@@ -131,18 +132,18 @@ impl<C: Cap> TokenBuilder<C> {
             0
         };
 
-        let mut token = CapabilityToken::new(
-            1,
-            self.issuer_key.public(),
-            self.audience,
-            self.capabilities,
-            issued_at_seconds,
-            issued_at_seconds.saturating_add(self.lifetime.as_secs()),
-            self.nonce,
-            self.parent.as_ref().map(|p| p.hash()).transpose()?,
+        let mut token = CapabilityToken::from_parts(CapabilityTokenParts {
+            version: 1,
+            issuer: self.issuer_key.public(),
+            audience: self.audience,
+            capabilities: self.capabilities,
+            issued_at: issued_at_seconds,
+            expires_at: issued_at_seconds.saturating_add(self.lifetime.as_secs()),
+            nonce: self.nonce,
+            proof: self.parent.as_ref().map(|p| p.hash()).transpose()?,
             delegation_depth,
-            [0u8; 64],
-        );
+            signature: [0u8; 64],
+        });
 
         let sign_bytes = bytes_to_sign(&token)?;
         let signature = self.issuer_key.sign(&sign_bytes);

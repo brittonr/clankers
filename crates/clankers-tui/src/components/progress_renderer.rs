@@ -263,6 +263,10 @@ fn format_duration(d: Duration) -> String {
 mod tests {
     use super::*;
 
+    fn test_progress_timestamp() -> Instant {
+        Instant::now()
+    }
+
     #[test]
     fn progress_bar_rendering() {
         assert_eq!(progress_bar(0.0, 10), "[░░░░░░░░░░]");
@@ -323,7 +327,7 @@ mod tests {
     #[test]
     fn renderer_update_and_render_lines() {
         let mut renderer = ProgressRenderer::new();
-        renderer.update("call-1", ToolProgress::lines(42, None));
+        renderer.update("call-1", ToolProgress::lines(42, None, test_progress_timestamp()));
 
         let spans = renderer.render_inline("call-1", 0).expect("should have state");
         let text: String = spans.iter().map(|s| s.content.as_ref()).collect();
@@ -334,7 +338,7 @@ mod tests {
     #[test]
     fn renderer_update_and_render_bytes_with_total() {
         let mut renderer = ProgressRenderer::new();
-        renderer.update("call-2", ToolProgress::bytes(50, Some(100)));
+        renderer.update("call-2", ToolProgress::bytes(50, Some(100), test_progress_timestamp()));
 
         let spans = renderer.render_inline("call-2", 0).expect("should have state");
         let text: String = spans.iter().map(|s| s.content.as_ref()).collect();
@@ -345,7 +349,7 @@ mod tests {
     #[test]
     fn renderer_update_and_render_phase() {
         let mut renderer = ProgressRenderer::new();
-        renderer.update("call-3", ToolProgress::phase("Compiling", 2, Some(3)));
+        renderer.update("call-3", ToolProgress::phase("Compiling", 2, Some(3), test_progress_timestamp()));
 
         let spans = renderer.render_inline("call-3", 0).expect("should have state");
         let text: String = spans.iter().map(|s| s.content.as_ref()).collect();
@@ -362,7 +366,7 @@ mod tests {
     #[test]
     fn renderer_remove_clears_state() {
         let mut renderer = ProgressRenderer::new();
-        renderer.update("call-1", ToolProgress::lines(10, None));
+        renderer.update("call-1", ToolProgress::lines(10, None, test_progress_timestamp()));
         assert!(renderer.render_inline("call-1", 0).is_some());
 
         renderer.remove("call-1");
@@ -372,7 +376,7 @@ mod tests {
     #[test]
     fn eta_calculation_needs_history() {
         let state = ProgressState {
-            progress: ToolProgress::percentage(50.0),
+            progress: ToolProgress::percentage(50.0, test_progress_timestamp()),
             history: VecDeque::new(),
         };
         // Not enough samples
@@ -394,7 +398,7 @@ mod tests {
         });
 
         let state = ProgressState {
-            progress: ToolProgress::percentage(50.0),
+            progress: ToolProgress::percentage(50.0, test_progress_timestamp()),
             history,
         };
 
@@ -406,7 +410,10 @@ mod tests {
     #[test]
     fn renderer_with_message() {
         let mut renderer = ProgressRenderer::new();
-        renderer.update("call-1", ToolProgress::lines(100, None).with_message("Searching /usr/lib"));
+        renderer.update(
+            "call-1",
+            ToolProgress::lines(100, None, test_progress_timestamp()).with_message("Searching /usr/lib"),
+        );
 
         let spans = renderer.render_inline("call-1", 0).expect("should have state");
         let text: String = spans.iter().map(|s| s.content.as_ref()).collect();

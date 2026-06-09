@@ -483,7 +483,7 @@ mod tests {
 
         // Set up progress renderer with structured progress
         let mut progress = ProgressRenderer::new();
-        progress.update("call_progress", ToolProgress::lines(42, None));
+        progress.update("call_progress", ToolProgress::lines(42, None, std::time::Instant::now()));
 
         let mut streaming_outputs = StreamingOutputManager::new();
         streaming_outputs.add_line("call_progress", "output line");
@@ -533,7 +533,7 @@ mod tests {
         });
 
         let mut progress = ProgressRenderer::new();
-        progress.update("call_dl", ToolProgress::bytes(500, Some(1000)));
+        progress.update("call_dl", ToolProgress::bytes(500, Some(1000), std::time::Instant::now()));
 
         let mut streaming_outputs = StreamingOutputManager::new();
         streaming_outputs.add_line("call_dl", "data");

@@ -197,16 +197,54 @@ impl ExtendedAction {
     }
 
     /// Canonical string name (for serialization and display).
-    #[cfg_attr(
-        dylint_lib = "tigerstyle",
-        allow(no_unwrap, reason = "all ExtendedAction variants are in EXTENDED_ACTION_NAMES")
-    )]
     pub fn name(self) -> &'static str {
-        EXTENDED_ACTION_NAMES
-            .iter()
-            .find(|(action, _)| *action == self)
-            .map(|(_, names)| names[0])
-            .expect("all ExtendedActions must have names")
+        match self {
+            ExtendedAction::SearchOutput => "search_output",
+            ExtendedAction::SearchNext => "search_next",
+            ExtendedAction::SearchPrev => "search_prev",
+            ExtendedAction::ToggleBlockCollapse => "toggle_block_collapse",
+            ExtendedAction::CollapseAllBlocks => "collapse_all_blocks",
+            ExtendedAction::ExpandAllBlocks => "expand_all_blocks",
+            ExtendedAction::CopyBlock => "copy_block",
+            ExtendedAction::RerunBlock => "rerun_block",
+            ExtendedAction::EditBlock => "edit_block",
+            ExtendedAction::BranchPrev => "branch_prev",
+            ExtendedAction::BranchNext => "branch_next",
+            ExtendedAction::ToggleBlockIds => "toggle_block_ids",
+            ExtendedAction::ToggleThinking => "toggle_thinking",
+            ExtendedAction::ToggleShowThinking => "toggle_show_thinking",
+            ExtendedAction::TogglePanelFocus => "toggle_panel_focus",
+            ExtendedAction::ToggleCostOverlay => "toggle_cost_overlay",
+            ExtendedAction::ToggleSessionPopup => "toggle_session_popup",
+            ExtendedAction::ToggleBranchPanel => "toggle_branch_panel",
+            ExtendedAction::PanelNextTab => "panel_next_tab",
+            ExtendedAction::PanelPrevTab => "panel_prev_tab",
+            ExtendedAction::PanelScrollUp => "panel_scroll_up",
+            ExtendedAction::PanelScrollDown => "panel_scroll_down",
+            ExtendedAction::PanelClearDone => "panel_clear_done",
+            ExtendedAction::PanelKill => "panel_kill",
+            ExtendedAction::PanelRemove => "panel_remove",
+            ExtendedAction::OpenLeaderMenu => "open_leader_menu",
+            ExtendedAction::OpenModelSelector => "open_model_selector",
+            ExtendedAction::OpenAccountSelector => "open_account_selector",
+            ExtendedAction::OpenBranchSwitcher => "open_branch_switcher",
+            ExtendedAction::OpenEditor => "open_editor",
+            ExtendedAction::PasteImage => "paste_image",
+            ExtendedAction::PaneZoom => "pane_zoom",
+            ExtendedAction::PaneSplitHorizontal => "pane_split_horizontal",
+            ExtendedAction::PaneSplitVertical => "pane_split_vertical",
+            ExtendedAction::PaneClose => "pane_close",
+            ExtendedAction::PaneEqualize => "pane_equalize",
+            ExtendedAction::PaneGrow => "pane_grow",
+            ExtendedAction::PaneShrink => "pane_shrink",
+            ExtendedAction::PaneMoveLeft => "pane_move_left",
+            ExtendedAction::PaneMoveRight => "pane_move_right",
+            ExtendedAction::PaneMoveUp => "pane_move_up",
+            ExtendedAction::PaneMoveDown => "pane_move_down",
+            ExtendedAction::OpenToolToggle => "open_tool_toggle",
+            ExtendedAction::TogglePromptImprove => "toggle_prompt_improve",
+            ExtendedAction::ToggleAutoTest => "toggle_auto_test",
+        }
     }
 }
 
