@@ -788,6 +788,83 @@ pub enum DynamicRuntimeActionReason {
     UnsafeTargetResource,
 }
 
+/// Ambient host access kind requested by dynamic runtime code.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum SteelAmbientAccessKind {
+    Filesystem,
+    Shell,
+    Git,
+    Network,
+    Provider,
+    Credential,
+    Daemon,
+    Tui,
+    NativeTool,
+}
+
+impl SteelAmbientAccessKind {
+    #[must_use]
+    pub fn all() -> [Self; 9] {
+        [
+            Self::Filesystem,
+            Self::Shell,
+            Self::Git,
+            Self::Network,
+            Self::Provider,
+            Self::Credential,
+            Self::Daemon,
+            Self::Tui,
+            Self::NativeTool,
+        ]
+    }
+
+    #[must_use]
+    pub const fn host_function_name(self) -> &'static str {
+        match self {
+            Self::Filesystem => "steel.ambient.fs",
+            Self::Shell => "steel.ambient.shell",
+            Self::Git => "steel.ambient.git",
+            Self::Network => "steel.ambient.network",
+            Self::Provider => "steel.ambient.provider",
+            Self::Credential => "steel.ambient.credential",
+            Self::Daemon => "steel.ambient.daemon",
+            Self::Tui => "steel.ambient.tui",
+            Self::NativeTool => "steel.ambient.native_tool",
+        }
+    }
+
+    #[must_use]
+    pub const fn target_resource(self) -> &'static str {
+        match self {
+            Self::Filesystem => "fs:ambient",
+            Self::Shell => "process:shell",
+            Self::Git => "git:ambient",
+            Self::Network => "network:ambient",
+            Self::Provider => "provider:ambient",
+            Self::Credential => "credential:ambient",
+            Self::Daemon => "daemon:ambient",
+            Self::Tui => "tui:ambient",
+            Self::NativeTool => "native-tool:ambient",
+        }
+    }
+
+    #[must_use]
+    pub const fn route_hint(self) -> &'static str {
+        match self {
+            Self::Filesystem => "raw filesystem",
+            Self::Shell => "shell command",
+            Self::Git => "git operation",
+            Self::Network => "network request",
+            Self::Provider => "provider call",
+            Self::Credential => "credential read",
+            Self::Daemon => "daemon access",
+            Self::Tui => "tui mutation",
+            Self::NativeTool => "native tool",
+        }
+    }
+}
+
 /// Wasm tool execution result status.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -1356,6 +1433,16 @@ mod tests {
         let parsed_reason: DynamicRuntimeActionReason =
             serde_json::from_str(&reason).expect("reason should deserialize");
         assert_eq!(parsed_reason, DynamicRuntimeActionReason::UnsafeTargetResource);
+
+        let ambient =
+            serde_json::to_string(&SteelAmbientAccessKind::NativeTool).expect("ambient access kind should serialize");
+        assert_eq!(ambient, r#""native_tool""#);
+        let parsed_ambient: SteelAmbientAccessKind =
+            serde_json::from_str(&ambient).expect("ambient access kind should deserialize");
+        assert_eq!(parsed_ambient, SteelAmbientAccessKind::NativeTool);
+        assert_eq!(parsed_ambient.host_function_name(), "steel.ambient.native_tool");
+        assert_eq!(parsed_ambient.target_resource(), "native-tool:ambient");
+        assert_eq!(parsed_ambient.route_hint(), "native tool");
 
         let wasm = serde_json::to_string(&WasmToolExecutionStatus::Completed).expect("wasm status should serialize");
         assert_eq!(wasm, r#""completed""#);

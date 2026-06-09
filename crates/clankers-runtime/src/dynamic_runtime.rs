@@ -14,6 +14,7 @@ pub use clanker_message::DynamicRuntimeActionReason;
 pub use clanker_message::DynamicRuntimeActionStatus;
 pub use clanker_message::DynamicRuntimeKind;
 pub use clanker_message::DynamicRuntimeRedactionClass;
+pub use clanker_message::SteelAmbientAccessKind;
 pub use clanker_message::WasmToolExecutionStatus;
 use clankers_artifacts::ArtifactHash;
 use serde::Deserialize;
@@ -54,82 +55,6 @@ pub struct DynamicRuntimeAuthorizationContext {
     pub session_capabilities: BTreeSet<String>,
     pub disabled_actions: BTreeSet<String>,
     pub max_input_bytes: u64,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum SteelAmbientAccessKind {
-    Filesystem,
-    Shell,
-    Git,
-    Network,
-    Provider,
-    Credential,
-    Daemon,
-    Tui,
-    NativeTool,
-}
-
-impl SteelAmbientAccessKind {
-    #[must_use]
-    pub fn all() -> [Self; 9] {
-        [
-            Self::Filesystem,
-            Self::Shell,
-            Self::Git,
-            Self::Network,
-            Self::Provider,
-            Self::Credential,
-            Self::Daemon,
-            Self::Tui,
-            Self::NativeTool,
-        ]
-    }
-
-    #[must_use]
-    pub const fn host_function_name(self) -> &'static str {
-        match self {
-            Self::Filesystem => "steel.ambient.fs",
-            Self::Shell => "steel.ambient.shell",
-            Self::Git => "steel.ambient.git",
-            Self::Network => "steel.ambient.network",
-            Self::Provider => "steel.ambient.provider",
-            Self::Credential => "steel.ambient.credential",
-            Self::Daemon => "steel.ambient.daemon",
-            Self::Tui => "steel.ambient.tui",
-            Self::NativeTool => "steel.ambient.native_tool",
-        }
-    }
-
-    #[must_use]
-    pub const fn target_resource(self) -> &'static str {
-        match self {
-            Self::Filesystem => "fs:ambient",
-            Self::Shell => "process:shell",
-            Self::Git => "git:ambient",
-            Self::Network => "network:ambient",
-            Self::Provider => "provider:ambient",
-            Self::Credential => "credential:ambient",
-            Self::Daemon => "daemon:ambient",
-            Self::Tui => "tui:ambient",
-            Self::NativeTool => "native-tool:ambient",
-        }
-    }
-
-    #[must_use]
-    pub const fn route_hint(self) -> &'static str {
-        match self {
-            Self::Filesystem => "raw filesystem",
-            Self::Shell => "shell command",
-            Self::Git => "git operation",
-            Self::Network => "network request",
-            Self::Provider => "provider call",
-            Self::Credential => "credential read",
-            Self::Daemon => "daemon access",
-            Self::Tui => "tui mutation",
-            Self::NativeTool => "native tool",
-        }
-    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
