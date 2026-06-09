@@ -6,6 +6,8 @@ use std::collections::BTreeSet;
 pub use clanker_message::SideEffectLevel;
 pub use clanker_message::ToolCatalogOmission;
 pub use clanker_message::ToolCollisionPolicy;
+pub use clanker_message::ToolEffectReceipt;
+use clanker_message::ToolEffectReceiptDescriptor;
 use clankers_artifacts::RedactionClass;
 use serde::Deserialize;
 use serde::Serialize;
@@ -17,7 +19,6 @@ use crate::effects::EffectAbilityClass;
 use crate::effects::EffectCorrelationId;
 use crate::effects::EffectHandler;
 use crate::effects::EffectRequest;
-use crate::effects::EffectResultStatus;
 use crate::events::sanitize_metadata_value;
 use crate::services::extension_kind_label;
 
@@ -231,23 +232,13 @@ impl ToolDescriptor {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct ToolEffectReceipt {
-    pub tool_name: String,
-    pub effect_class: EffectAbilityClass,
-    pub handler_status: EffectResultStatus,
-    pub safe_summary: String,
-}
+impl ToolEffectReceiptDescriptor for ToolDescriptor {
+    fn tool_effect_receipt_name(&self) -> &str {
+        &self.name
+    }
 
-impl ToolEffectReceipt {
-    #[must_use]
-    pub fn from_effect_result(descriptor: &ToolDescriptor, result: crate::EffectResult) -> Self {
-        Self {
-            tool_name: descriptor.name.clone(),
-            effect_class: result.request.class,
-            handler_status: result.status,
-            safe_summary: result.safe_summary,
-        }
+    fn tool_effect_receipt_class(&self) -> EffectAbilityClass {
+        self.effect_class()
     }
 }
 

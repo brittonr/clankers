@@ -51,6 +51,49 @@ impl ToolCatalogOmission {
     }
 }
 
+/// Minimal descriptor projection needed to build a neutral tool effect receipt.
+pub trait ToolEffectReceiptDescriptor {
+    fn tool_effect_receipt_name(&self) -> &str;
+    fn tool_effect_receipt_class(&self) -> EffectAbilityClass;
+}
+
+/// Safe receipt summarizing the effect gate status for one tool descriptor.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ToolEffectReceipt {
+    pub tool_name: String,
+    pub effect_class: EffectAbilityClass,
+    pub handler_status: EffectResultStatus,
+    pub safe_summary: String,
+}
+
+impl ToolEffectReceipt {
+    #[must_use]
+    pub fn new(
+        tool_name: impl Into<String>,
+        effect_class: EffectAbilityClass,
+        handler_status: EffectResultStatus,
+        safe_summary: impl Into<String>,
+    ) -> Self {
+        Self {
+            tool_name: sanitize_short_public_value(tool_name.into()),
+            effect_class,
+            handler_status,
+            safe_summary: sanitize_short_public_value(safe_summary.into()),
+        }
+    }
+
+    #[must_use]
+    pub fn from_effect_result<D>(descriptor: &D, result: EffectResult) -> Self
+    where D: ToolEffectReceiptDescriptor + ?Sized {
+        Self {
+            tool_name: sanitize_short_public_value(descriptor.tool_effect_receipt_name().to_string()),
+            effect_class: result.request.class,
+            handler_status: result.status,
+            safe_summary: result.safe_summary,
+        }
+    }
+}
+
 /// Minimal serialized message used for seeding and replaying session history.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct SerializedMessage {
@@ -1733,6 +1776,37 @@ pub enum OrchestrationPlannerKind {
     RustNative,
 }
 
+/// Candidate action offered to a Steel turn planner.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct OrchestrationCandidate {
+    pub decision_id: String,
+    pub decision_class: String,
+    pub action_name: String,
+    pub target_resource: String,
+    pub required_ucan_ability: String,
+    pub required_session_capabilities: Vec<String>,
+    pub input_hash: ArtifactHash,
+    pub input_bytes: u64,
+}
+
+/// Authorized turn-planning decision wrapping a dynamic-runtime action envelope.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct OrchestrationDecision {
+    pub decision_id: String,
+    pub decision_class: String,
+    pub action: DynamicRuntimeActionEnvelope,
+}
+
+/// Steel turn orchestration plan returned by a planner seam.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct OrchestrationPlan {
+    pub schema: String,
+    pub seam: String,
+    pub planner: OrchestrationPlannerKind,
+    pub decisions: Vec<OrchestrationDecision>,
+    pub plan_hash: ArtifactHash,
+}
+
 /// Steel turn orchestration plan authorization status.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -2217,6 +2291,36 @@ mod tests {
         let parsed: ToolCatalogOmission =
             serde_json::from_str(&json).expect("tool catalog omission should deserialize");
         assert_eq!(parsed, omission);
+    }
+
+    struct TestToolDescriptor;
+
+    impl ToolEffectReceiptDescriptor for TestToolDescriptor {
+        fn tool_effect_receipt_name(&self) -> &str {
+            "demo-tool"
+        }
+
+        fn tool_effect_receipt_class(&self) -> EffectAbilityClass {
+            EffectAbilityClass::Tool
+        }
+    }
+
+    #[test]
+    fn tool_effect_receipt_projects_safe_effect_result_contract() {
+        let request = EffectRequest::new(
+            EffectAbilityClass::Tool,
+            EffectCorrelationId::from_static("tool-effect"),
+            RedactionClass::MetadataOnly,
+        );
+        let result = EffectResult::new(&request, EffectResultStatus::Denied, "token leaked");
+        let receipt = ToolEffectReceipt::from_effect_result(&TestToolDescriptor, result);
+        assert_eq!(receipt.tool_name, "demo-tool");
+        assert_eq!(receipt.effect_class, EffectAbilityClass::Tool);
+        assert_eq!(receipt.handler_status, EffectResultStatus::Denied);
+        assert_eq!(receipt.safe_summary, "[redacted-secret-marker]");
+        let json = serde_json::to_string(&receipt).expect("tool effect receipt should serialize");
+        let parsed: ToolEffectReceipt = serde_json::from_str(&json).expect("tool effect receipt should deserialize");
+        assert_eq!(parsed, receipt);
     }
 
     #[test]
@@ -2860,6 +2964,39 @@ mod tests {
         let parsed_planner: OrchestrationPlannerKind =
             serde_json::from_str(&planner).expect("planner should deserialize");
         assert_eq!(parsed_planner, OrchestrationPlannerKind::SteelScheme);
+
+        let orchestration_hash = ArtifactHash::digest(b"orchestration");
+        let orchestration_action = DynamicRuntimeActionEnvelope {
+            schema: DYNAMIC_RUNTIME_ACTION_SCHEMA.to_string(),
+            action_id: "decision-1".to_string(),
+            runtime: DynamicRuntimeKind::SteelScheme,
+            runtime_profile: "steel-plan-turn-default".to_string(),
+            action_kind: DynamicRuntimeActionKind::HostFunction,
+            action_name: "steel.host.plan_turn".to_string(),
+            target_resource: "turn:1".to_string(),
+            receipt_destination: "target/orchestration/decision-1.json".to_string(),
+            required_ucan_ability: "clankers/steel/orchestrate.plan_turn".to_string(),
+            required_session_capabilities: vec!["turn-planning".to_string()],
+            input_hash: orchestration_hash,
+            input_bytes: 12,
+            redaction: DynamicRuntimeRedactionClass::MetadataOnly,
+        };
+        let orchestration_plan = OrchestrationPlan {
+            schema: "clankers.steel_orchestration.plan.v1".to_string(),
+            seam: "steel.host.plan_turn".to_string(),
+            planner: OrchestrationPlannerKind::SteelScheme,
+            decisions: vec![OrchestrationDecision {
+                decision_id: "decision-1".to_string(),
+                decision_class: "host_function".to_string(),
+                action: orchestration_action,
+            }],
+            plan_hash: orchestration_hash,
+        };
+        let orchestration_plan_json =
+            serde_json::to_string(&orchestration_plan).expect("orchestration plan should serialize");
+        let parsed_orchestration_plan: OrchestrationPlan =
+            serde_json::from_str(&orchestration_plan_json).expect("orchestration plan should deserialize");
+        assert_eq!(parsed_orchestration_plan, orchestration_plan);
 
         let plan_status =
             serde_json::to_string(&OrchestrationPlanStatus::FallbackUsed).expect("plan status should serialize");

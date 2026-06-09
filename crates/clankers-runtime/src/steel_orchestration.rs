@@ -25,8 +25,11 @@ use basalt::validate_steel_evaluation_receipt;
 use basalt::validate_steel_evaluation_request;
 use chrono::DateTime;
 use chrono::Utc;
+pub use clanker_message::OrchestrationCandidate;
+pub use clanker_message::OrchestrationDecision;
 pub use clanker_message::OrchestrationFallbackMode;
 pub use clanker_message::OrchestrationIssueCode;
+pub use clanker_message::OrchestrationPlan;
 pub use clanker_message::OrchestrationPlanStatus;
 pub use clanker_message::OrchestrationPlannerKind;
 pub use clanker_message::OrchestrationRolloutStage;
@@ -192,34 +195,6 @@ impl SteelTurnPlanningAuthorityReceipt {
     pub const fn is_allowed(&self) -> bool {
         matches!(self.status, SteelTurnPlanningAuthorityStatus::Allowed)
     }
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct OrchestrationCandidate {
-    pub decision_id: String,
-    pub decision_class: String,
-    pub action_name: String,
-    pub target_resource: String,
-    pub required_ucan_ability: String,
-    pub required_session_capabilities: Vec<String>,
-    pub input_hash: ArtifactHash,
-    pub input_bytes: u64,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct OrchestrationPlan {
-    pub schema: String,
-    pub seam: String,
-    pub planner: OrchestrationPlannerKind,
-    pub decisions: Vec<OrchestrationDecision>,
-    pub plan_hash: ArtifactHash,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct OrchestrationDecision {
-    pub decision_id: String,
-    pub decision_class: String,
-    pub action: DynamicRuntimeActionEnvelope,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
