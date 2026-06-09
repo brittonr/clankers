@@ -8,6 +8,17 @@
 use std::collections::BTreeMap;
 use std::collections::BTreeSet;
 
+pub use clanker_message::SteelMutationApplyReason;
+pub use clanker_message::SteelMutationApplyStatus;
+pub use clanker_message::SteelMutationDecisionOutcome;
+pub use clanker_message::SteelMutationHostPreflightReason;
+pub use clanker_message::SteelMutationHostPreflightStatus;
+pub use clanker_message::SteelMutationPatchFormat;
+pub use clanker_message::SteelMutationReasonCode;
+pub use clanker_message::SteelMutationRollbackReason;
+pub use clanker_message::SteelMutationRollbackStatus;
+pub use clanker_message::SteelMutationUcanExpiryStatus;
+pub use clanker_message::SteelMutationVerificationStatus;
 use clankers_artifacts::ArtifactHash;
 use serde::Deserialize;
 use serde::Serialize;
@@ -102,13 +113,6 @@ pub struct SteelMutationPatch {
     pub body_blake3: String,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum SteelMutationPatchFormat {
-    UnifiedDiff,
-    FullReplace,
-}
-
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SteelMutationApproval {
     pub approved: bool,
@@ -127,13 +131,6 @@ pub struct SteelMutationUcanGrant {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum SteelMutationUcanExpiryStatus {
-    Valid,
-    Expired,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SteelMutationDecision {
     pub schema: String,
     pub outcome: SteelMutationDecisionOutcome,
@@ -148,36 +145,6 @@ pub struct SteelMutationDecision {
     pub preflight_profile: Option<String>,
     pub verification_profile: Option<String>,
     pub rollback_required: bool,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum SteelMutationDecisionOutcome {
-    Allowed,
-    Denied,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "kebab-case")]
-pub enum SteelMutationReasonCode {
-    Allowed,
-    InvalidPolicy,
-    UnknownTargetClass,
-    UnknownVerb,
-    VerbNotAllowedForTarget,
-    PathEscape,
-    DeniedPathPattern,
-    MissingPatch,
-    MissingApproval,
-    ApprovalTierMismatch,
-    MissingUcan,
-    ExpiredUcan,
-    RevokedUcan,
-    WrongUcanAbility,
-    WrongUcanAudience,
-    WrongUcanResource,
-    WildcardUcanResource,
-    OverDelegatedUcan,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -277,25 +244,6 @@ impl SteelMutationHostPreflightReceipt {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum SteelMutationHostPreflightStatus {
-    Ready,
-    Denied,
-    Blocked,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "kebab-case")]
-pub enum SteelMutationHostPreflightReason {
-    Ready,
-    DecisionDenied,
-    MissingSessionCapability,
-    DisabledHostFunction,
-    DirtyRepositoryNeedsCheckpoint,
-    MissingTargetHash,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SteelMutationCheckpointPlan {
     pub required: bool,
     pub checkpoint_id: Option<String>,
@@ -355,31 +303,6 @@ impl SteelMutationApplyReceipt {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum SteelMutationApplyStatus {
-    Applied,
-    Blocked,
-    FailedVerification,
-    FailedWrite,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "kebab-case")]
-pub enum SteelMutationApplyReason {
-    Applied,
-    PreflightNotReady,
-    MissingPatchDescriptor,
-    PatchFormatMismatch,
-    PatchHashMismatch,
-    PatchSizeMismatch,
-    UnsupportedPatchFormat,
-    StaleTargetHash,
-    TargetReadFailed,
-    TargetWriteFailed,
-    VerificationFailed,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SteelMutationVerificationReceipt {
     pub profile: Option<String>,
     pub status: SteelMutationVerificationStatus,
@@ -395,14 +318,6 @@ impl SteelMutationVerificationReceipt {
             safe_summary: message.into(),
         }
     }
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum SteelMutationVerificationStatus {
-    Passed,
-    Failed,
-    Skipped,
 }
 
 pub trait SteelMutationTargetStore {
@@ -443,27 +358,6 @@ impl SteelMutationRollbackReceipt {
         let bytes = serde_json::to_vec(self).expect("Steel mutation rollback receipt serializes");
         ArtifactHash::digest(&bytes)
     }
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum SteelMutationRollbackStatus {
-    RolledBack,
-    Blocked,
-    FailedWrite,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "kebab-case")]
-pub enum SteelMutationRollbackReason {
-    RolledBack,
-    ApplyReceiptNotRollbackable,
-    MissingRecordedPostApplyHash,
-    MissingBackupHash,
-    BackupHashMismatch,
-    CurrentTargetChanged,
-    TargetReadFailed,
-    TargetWriteFailed,
 }
 
 pub trait SteelMutationBackupStore {

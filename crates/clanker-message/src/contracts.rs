@@ -1229,6 +1229,134 @@ pub enum SteelRepoEvolutionPlanReason {
     EmptyActions,
 }
 
+/// Patch payload format for Steel self-mutation requests.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum SteelMutationPatchFormat {
+    UnifiedDiff,
+    FullReplace,
+}
+
+/// UCAN expiry status for Steel self-mutation grants.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum SteelMutationUcanExpiryStatus {
+    Valid,
+    Expired,
+}
+
+/// Steel self-mutation authorization decision outcome.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum SteelMutationDecisionOutcome {
+    Allowed,
+    Denied,
+}
+
+/// Steel self-mutation authorization reason code.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum SteelMutationReasonCode {
+    Allowed,
+    InvalidPolicy,
+    UnknownTargetClass,
+    UnknownVerb,
+    VerbNotAllowedForTarget,
+    PathEscape,
+    DeniedPathPattern,
+    MissingPatch,
+    MissingApproval,
+    ApprovalTierMismatch,
+    MissingUcan,
+    ExpiredUcan,
+    RevokedUcan,
+    WrongUcanAbility,
+    WrongUcanAudience,
+    WrongUcanResource,
+    WildcardUcanResource,
+    OverDelegatedUcan,
+}
+
+/// Steel self-mutation host preflight status.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum SteelMutationHostPreflightStatus {
+    Ready,
+    Denied,
+    Blocked,
+}
+
+/// Steel self-mutation host preflight reason code.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum SteelMutationHostPreflightReason {
+    Ready,
+    DecisionDenied,
+    MissingSessionCapability,
+    DisabledHostFunction,
+    DirtyRepositoryNeedsCheckpoint,
+    MissingTargetHash,
+}
+
+/// Steel self-mutation apply status.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum SteelMutationApplyStatus {
+    Applied,
+    Blocked,
+    FailedVerification,
+    FailedWrite,
+}
+
+/// Steel self-mutation apply reason code.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum SteelMutationApplyReason {
+    Applied,
+    PreflightNotReady,
+    MissingPatchDescriptor,
+    PatchFormatMismatch,
+    PatchHashMismatch,
+    PatchSizeMismatch,
+    UnsupportedPatchFormat,
+    StaleTargetHash,
+    TargetReadFailed,
+    TargetWriteFailed,
+    VerificationFailed,
+}
+
+/// Steel self-mutation verification status.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum SteelMutationVerificationStatus {
+    Passed,
+    Failed,
+    Skipped,
+}
+
+/// Steel self-mutation rollback status.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum SteelMutationRollbackStatus {
+    RolledBack,
+    Blocked,
+    FailedWrite,
+}
+
+/// Steel self-mutation rollback reason code.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum SteelMutationRollbackReason {
+    RolledBack,
+    ApplyReceiptNotRollbackable,
+    MissingRecordedPostApplyHash,
+    MissingBackupHash,
+    BackupHashMismatch,
+    CurrentTargetChanged,
+    TargetReadFailed,
+    TargetWriteFailed,
+}
+
 /// Policy for handling tool-name collisions while building a tool catalog.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -1998,6 +2126,86 @@ mod tests {
         let parsed_plan_reason: SteelRepoEvolutionPlanReason =
             serde_json::from_str(&plan_reason).expect("repo evolution plan reason should deserialize");
         assert_eq!(parsed_plan_reason, SteelRepoEvolutionPlanReason::MalformedPayload);
+    }
+
+    #[test]
+    fn steel_mutation_selector_status_dtos_roundtrip_preserve_wire_case() {
+        let patch_format = serde_json::to_string(&SteelMutationPatchFormat::FullReplace)
+            .expect("mutation patch format should serialize");
+        assert_eq!(patch_format, r#""full_replace""#);
+        let parsed_patch_format: SteelMutationPatchFormat =
+            serde_json::from_str(&patch_format).expect("mutation patch format should deserialize");
+        assert_eq!(parsed_patch_format, SteelMutationPatchFormat::FullReplace);
+
+        let expiry_status = serde_json::to_string(&SteelMutationUcanExpiryStatus::Expired)
+            .expect("mutation UCAN expiry should serialize");
+        assert_eq!(expiry_status, r#""expired""#);
+        let parsed_expiry_status: SteelMutationUcanExpiryStatus =
+            serde_json::from_str(&expiry_status).expect("mutation UCAN expiry should deserialize");
+        assert_eq!(parsed_expiry_status, SteelMutationUcanExpiryStatus::Expired);
+
+        let decision_outcome = serde_json::to_string(&SteelMutationDecisionOutcome::Denied)
+            .expect("mutation decision outcome should serialize");
+        assert_eq!(decision_outcome, r#""denied""#);
+        let parsed_decision_outcome: SteelMutationDecisionOutcome =
+            serde_json::from_str(&decision_outcome).expect("mutation decision outcome should deserialize");
+        assert_eq!(parsed_decision_outcome, SteelMutationDecisionOutcome::Denied);
+
+        let reason = serde_json::to_string(&SteelMutationReasonCode::ApprovalTierMismatch)
+            .expect("mutation reason should serialize");
+        assert_eq!(reason, r#""approval-tier-mismatch""#);
+        let parsed_reason: SteelMutationReasonCode =
+            serde_json::from_str(&reason).expect("mutation reason should deserialize");
+        assert_eq!(parsed_reason, SteelMutationReasonCode::ApprovalTierMismatch);
+
+        let preflight_status = serde_json::to_string(&SteelMutationHostPreflightStatus::Blocked)
+            .expect("mutation preflight status should serialize");
+        assert_eq!(preflight_status, r#""blocked""#);
+        let parsed_preflight_status: SteelMutationHostPreflightStatus =
+            serde_json::from_str(&preflight_status).expect("mutation preflight status should deserialize");
+        assert_eq!(parsed_preflight_status, SteelMutationHostPreflightStatus::Blocked);
+
+        let preflight_reason = serde_json::to_string(&SteelMutationHostPreflightReason::MissingTargetHash)
+            .expect("mutation preflight reason should serialize");
+        assert_eq!(preflight_reason, r#""missing-target-hash""#);
+        let parsed_preflight_reason: SteelMutationHostPreflightReason =
+            serde_json::from_str(&preflight_reason).expect("mutation preflight reason should deserialize");
+        assert_eq!(parsed_preflight_reason, SteelMutationHostPreflightReason::MissingTargetHash);
+
+        let apply_status = serde_json::to_string(&SteelMutationApplyStatus::FailedVerification)
+            .expect("mutation apply status should serialize");
+        assert_eq!(apply_status, r#""failed_verification""#);
+        let parsed_apply_status: SteelMutationApplyStatus =
+            serde_json::from_str(&apply_status).expect("mutation apply status should deserialize");
+        assert_eq!(parsed_apply_status, SteelMutationApplyStatus::FailedVerification);
+
+        let apply_reason = serde_json::to_string(&SteelMutationApplyReason::PatchHashMismatch)
+            .expect("mutation apply reason should serialize");
+        assert_eq!(apply_reason, r#""patch-hash-mismatch""#);
+        let parsed_apply_reason: SteelMutationApplyReason =
+            serde_json::from_str(&apply_reason).expect("mutation apply reason should deserialize");
+        assert_eq!(parsed_apply_reason, SteelMutationApplyReason::PatchHashMismatch);
+
+        let verification_status = serde_json::to_string(&SteelMutationVerificationStatus::Skipped)
+            .expect("mutation verification status should serialize");
+        assert_eq!(verification_status, r#""skipped""#);
+        let parsed_verification_status: SteelMutationVerificationStatus =
+            serde_json::from_str(&verification_status).expect("mutation verification status should deserialize");
+        assert_eq!(parsed_verification_status, SteelMutationVerificationStatus::Skipped);
+
+        let rollback_status = serde_json::to_string(&SteelMutationRollbackStatus::FailedWrite)
+            .expect("mutation rollback status should serialize");
+        assert_eq!(rollback_status, r#""failed_write""#);
+        let parsed_rollback_status: SteelMutationRollbackStatus =
+            serde_json::from_str(&rollback_status).expect("mutation rollback status should deserialize");
+        assert_eq!(parsed_rollback_status, SteelMutationRollbackStatus::FailedWrite);
+
+        let rollback_reason = serde_json::to_string(&SteelMutationRollbackReason::BackupHashMismatch)
+            .expect("mutation rollback reason should serialize");
+        assert_eq!(rollback_reason, r#""backup-hash-mismatch""#);
+        let parsed_rollback_reason: SteelMutationRollbackReason =
+            serde_json::from_str(&rollback_reason).expect("mutation rollback reason should deserialize");
+        assert_eq!(parsed_rollback_reason, SteelMutationRollbackReason::BackupHashMismatch);
     }
 
     #[test]
