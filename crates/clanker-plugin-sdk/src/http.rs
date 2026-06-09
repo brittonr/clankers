@@ -43,6 +43,13 @@ pub fn post(url: &str, headers: &BTreeMap<String, String>, body: &str) -> Result
 }
 
 /// General HTTP request.
+#[cfg_attr(
+    dylint_lib = "tigerstyle",
+    allow(
+        tigerstyle::ambiguous_params,
+        reason = "plugin SDK HTTP helper mirrors conventional method/url request ordering for plugin authors"
+    )
+)]
 pub fn request(
     method: &str,
     url: &str,

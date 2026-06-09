@@ -67,14 +67,6 @@
 //! - [`prelude`] — Convenient re-exports of everything you need
 #![allow(unexpected_cfgs)]
 #![cfg_attr(dylint_lib = "tigerstyle", feature(register_tool), register_tool(tigerstyle))]
-#![cfg_attr(
-    dylint_lib = "tigerstyle",
-    allow(
-        tigerstyle::ambiguous_params,
-        reason = "plugin SDK API names intentionally mirror stable plugin author examples and wire helpers"
-    )
-)]
-
 pub mod args;
 pub mod dispatch;
 pub mod types;

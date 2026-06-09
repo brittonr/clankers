@@ -111,6 +111,13 @@ pub fn dispatch_tools(input: &str, handlers: &[(&str, ToolHandler)]) -> FnResult
 ///     ])
 /// }
 /// ```
+#[cfg_attr(
+    dylint_lib = "tigerstyle",
+    allow(
+        tigerstyle::ambiguous_params,
+        reason = "plugin SDK public helper keeps the documented (input, plugin_name, handlers) example shape"
+    )
+)]
 pub fn dispatch_events(input: &str, plugin_name: &str, handlers: &[(&str, EventHandler)]) -> FnResult<String> {
     let evt: crate::types::Event =
         serde_json::from_str(input).map_err(|e| Error::msg(format!("Invalid event JSON: {e}")))?;
