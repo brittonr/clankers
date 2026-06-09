@@ -79,6 +79,7 @@ pub use clankers_tool_host::process_jobs::ProjectProcessJobProfilePolicy;
 pub use clankers_tool_host::process_jobs::ProjectProcessJobProfileSourcePrecedence;
 pub use clankers_tool_host::process_jobs::ProcessJobProjectionBounds;
 pub use clankers_tool_host::process_jobs::ProcessJobProjectionItem;
+pub use clankers_tool_host::process_jobs::ProcessJobReconciliationOutcome;
 pub use clankers_tool_host::process_jobs::ProcessJobReceipt;
 pub use clankers_tool_host::process_jobs::ProcessJobReceiptCommon;
 pub use clankers_tool_host::process_jobs::ProcessJobReceiptPayload;
@@ -107,16 +108,13 @@ pub use clankers_tool_host::process_jobs::StartProcessJobRequest;
 pub use clankers_tool_host::process_jobs::WaitProcessJobRequest;
 pub use clankers_tool_host::process_jobs::WriteProcessJobStdinRequest;
 pub use clankers_tool_host::process_jobs::native_process_job_admission_decision;
+pub use clankers_tool_host::process_jobs::process_job_timestamp;
 pub use clankers_tool_host::process_jobs::project_process_job_list;
+pub use clankers_tool_host::process_jobs::reconcile_external_backend_reference;
 use serde::Deserialize;
 use serde::Serialize;
 
 use crate::RuntimeError;
-
-#[must_use]
-pub fn process_job_timestamp(timestamp: DateTime<Utc>) -> ProcessJobTimestamp {
-    ProcessJobTimestamp::from_unix_seconds(timestamp.timestamp())
-}
 
 fn is_sensitive_process_job_key(key: &str) -> bool {
     let lowered = key.to_ascii_lowercase();
@@ -136,104 +134,6 @@ const PROCESS_JOB_SENSITIVE_MARKERS: &[&str] = &[
     "access_key",
     "credential",
 ];
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct ProcessJobReconciliationOutcome {
-    pub id: ProcessJobId,
-    pub backend: ProcessJobBackendKind,
-    pub backend_ref: Option<BackendRef>,
-    pub state: ProcessJobReconciliationState,
-    pub log_state: ProcessJobLogReconciliationState,
-    pub status: ProcessJobStatus,
-    pub log_refs: Vec<ProcessJobLogRef>,
-    pub reason: Option<String>,
-}
-
-#[must_use]
-pub fn reconcile_external_backend_reference(
-    facts: ExternalProcessJobReconciliationFacts,
-) -> ProcessJobReconciliationOutcome {
-    let ref_matches = facts.observed_backend_ref.as_ref() == Some(&facts.expected_backend_ref);
-    let (state, log_state, status, reason) = match facts.state {
-        ExternalProcessJobBackendState::Running if ref_matches => (
-            ProcessJobReconciliationState::Reattached,
-            ProcessJobLogReconciliationState::BackendReferenced,
-            ProcessJobStatus::Running,
-            None,
-        ),
-        ExternalProcessJobBackendState::Succeeded { exit_code } if ref_matches => (
-            ProcessJobReconciliationState::Exited,
-            ProcessJobLogReconciliationState::BackendReferenced,
-            ProcessJobStatus::Succeeded { exit_code },
-            None,
-        ),
-        ExternalProcessJobBackendState::Failed { exit_code, reason } if ref_matches => (
-            ProcessJobReconciliationState::Exited,
-            ProcessJobLogReconciliationState::BackendReferenced,
-            ProcessJobStatus::Failed {
-                exit_code,
-                reason: reason.clone(),
-            },
-            Some(reason),
-        ),
-        ExternalProcessJobBackendState::Missing => (
-            ProcessJobReconciliationState::Orphaned,
-            ProcessJobLogReconciliationState::Unavailable {
-                reason: "backend reference is missing".to_string(),
-            },
-            ProcessJobStatus::LostAfterRestart,
-            Some("backend reference is missing".to_string()),
-        ),
-        ExternalProcessJobBackendState::BackendUnavailable { reason } => (
-            ProcessJobReconciliationState::BackendUnavailable,
-            ProcessJobLogReconciliationState::Unavailable { reason: reason.clone() },
-            ProcessJobStatus::BackendUnavailable { reason: reason.clone() },
-            Some(reason),
-        ),
-        ExternalProcessJobBackendState::Ambiguous { reason } => (
-            ProcessJobReconciliationState::IdentityMismatch,
-            ProcessJobLogReconciliationState::Unavailable { reason: reason.clone() },
-            ProcessJobStatus::LostAfterRestart,
-            Some(reason),
-        ),
-        _ => (
-            ProcessJobReconciliationState::IdentityMismatch,
-            ProcessJobLogReconciliationState::Unavailable {
-                reason: "observed backend reference did not match persisted reference".to_string(),
-            },
-            ProcessJobStatus::LostAfterRestart,
-            Some("observed backend reference did not match persisted reference".to_string()),
-        ),
-    };
-    ProcessJobReconciliationOutcome {
-        id: facts.id,
-        backend: facts.backend,
-        backend_ref: facts
-            .observed_backend_ref
-            .filter(|_| state.is_adopted() || matches!(state, ProcessJobReconciliationState::Exited)),
-        state,
-        log_state,
-        status,
-        log_refs: facts.log_refs,
-        reason,
-    }
-}
-
-impl ProcessJobReconciliationOutcome {
-    #[must_use]
-    pub fn into_summary_update(self, mut summary: ProcessJobSummary, updated_at: DateTime<Utc>) -> ProcessJobSummary {
-        summary.backend = self.backend;
-        summary.backend_ref = self.backend_ref;
-        summary.status = self.status;
-        let updated_at = process_job_timestamp(updated_at);
-        summary.updated_at = updated_at;
-        summary.log_refs = self.log_refs;
-        if summary.status.is_terminal() && summary.completed_at.is_none() {
-            summary.completed_at = Some(updated_at);
-        }
-        summary
-    }
-}
 
 /// Log retention policy applied by native append-only log stores.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

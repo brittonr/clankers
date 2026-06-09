@@ -60,6 +60,11 @@ impl ProcessJobTimestamp {
     }
 }
 
+#[must_use]
+pub fn process_job_timestamp(timestamp: DateTime<Utc>) -> ProcessJobTimestamp {
+    ProcessJobTimestamp::from_unix_seconds(timestamp.timestamp())
+}
+
 fn add_timestamp_duration(timestamp: ProcessJobTimestamp, duration: Duration) -> Option<ProcessJobTimestamp> {
     let seconds = i64::try_from(duration.as_secs()).ok()?;
     Some(timestamp.saturating_add_seconds(seconds))
@@ -913,6 +918,88 @@ pub struct ExternalProcessJobReconciliationFacts {
     pub log_refs: Vec<ProcessJobLogRef>,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ProcessJobReconciliationOutcome {
+    pub id: ProcessJobId,
+    pub backend: ProcessJobBackendKind,
+    pub backend_ref: Option<BackendRef>,
+    pub state: ProcessJobReconciliationState,
+    pub log_state: ProcessJobLogReconciliationState,
+    pub status: ProcessJobStatus,
+    pub log_refs: Vec<ProcessJobLogRef>,
+    pub reason: Option<String>,
+}
+
+#[must_use]
+pub fn reconcile_external_backend_reference(
+    facts: ExternalProcessJobReconciliationFacts,
+) -> ProcessJobReconciliationOutcome {
+    let ref_matches = facts.observed_backend_ref.as_ref() == Some(&facts.expected_backend_ref);
+    let (state, log_state, status, reason) = match facts.state {
+        ExternalProcessJobBackendState::Running if ref_matches => (
+            ProcessJobReconciliationState::Reattached,
+            ProcessJobLogReconciliationState::BackendReferenced,
+            ProcessJobStatus::Running,
+            None,
+        ),
+        ExternalProcessJobBackendState::Succeeded { exit_code } if ref_matches => (
+            ProcessJobReconciliationState::Exited,
+            ProcessJobLogReconciliationState::BackendReferenced,
+            ProcessJobStatus::Succeeded { exit_code },
+            None,
+        ),
+        ExternalProcessJobBackendState::Failed { exit_code, reason } if ref_matches => (
+            ProcessJobReconciliationState::Exited,
+            ProcessJobLogReconciliationState::BackendReferenced,
+            ProcessJobStatus::Failed {
+                exit_code,
+                reason: reason.clone(),
+            },
+            Some(reason),
+        ),
+        ExternalProcessJobBackendState::Missing => (
+            ProcessJobReconciliationState::Orphaned,
+            ProcessJobLogReconciliationState::Unavailable {
+                reason: "backend reference is missing".to_string(),
+            },
+            ProcessJobStatus::LostAfterRestart,
+            Some("backend reference is missing".to_string()),
+        ),
+        ExternalProcessJobBackendState::BackendUnavailable { reason } => (
+            ProcessJobReconciliationState::BackendUnavailable,
+            ProcessJobLogReconciliationState::Unavailable { reason: reason.clone() },
+            ProcessJobStatus::BackendUnavailable { reason: reason.clone() },
+            Some(reason),
+        ),
+        ExternalProcessJobBackendState::Ambiguous { reason } => (
+            ProcessJobReconciliationState::IdentityMismatch,
+            ProcessJobLogReconciliationState::Unavailable { reason: reason.clone() },
+            ProcessJobStatus::LostAfterRestart,
+            Some(reason),
+        ),
+        _ => (
+            ProcessJobReconciliationState::IdentityMismatch,
+            ProcessJobLogReconciliationState::Unavailable {
+                reason: "observed backend reference did not match persisted reference".to_string(),
+            },
+            ProcessJobStatus::LostAfterRestart,
+            Some("observed backend reference did not match persisted reference".to_string()),
+        ),
+    };
+    ProcessJobReconciliationOutcome {
+        id: facts.id,
+        backend: facts.backend,
+        backend_ref: facts
+            .observed_backend_ref
+            .filter(|_| state.is_adopted() || matches!(state, ProcessJobReconciliationState::Exited)),
+        state,
+        log_state,
+        status,
+        log_refs: facts.log_refs,
+        reason,
+    }
+}
+
 /// Service-level process/job summary safe for list/status surfaces.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ProcessJobSummary {
@@ -932,6 +1019,22 @@ pub struct ProcessJobSummary {
         skip_serializing_if = "Option::is_none"
     )]
     pub profile: Option<ProcessJobProfileReceiptMetadata>,
+}
+
+impl ProcessJobReconciliationOutcome {
+    #[must_use]
+    pub fn into_summary_update(self, mut summary: ProcessJobSummary, updated_at: DateTime<Utc>) -> ProcessJobSummary {
+        summary.backend = self.backend;
+        summary.backend_ref = self.backend_ref;
+        summary.status = self.status;
+        let updated_at = process_job_timestamp(updated_at);
+        summary.updated_at = updated_at;
+        summary.log_refs = self.log_refs;
+        if summary.status.is_terminal() && summary.completed_at.is_none() {
+            summary.completed_at = Some(updated_at);
+        }
+        summary
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -2253,6 +2356,30 @@ mod tests {
         assert!(!ProcessJobReconciliationState::LostAfterRestart.is_adopted());
         assert!(ProcessJobReconciliationState::IdentityMismatch.is_fail_closed());
         assert!(ProcessJobReconciliationState::BackendUnavailable.is_fail_closed());
+    }
+
+    #[test]
+    fn process_job_timestamp_projects_chrono_seconds() {
+        let timestamp = DateTime::parse_from_rfc3339("2026-05-18T00:00:07Z")
+            .expect("timestamp parses")
+            .with_timezone(&Utc);
+        assert_eq!(process_job_timestamp(timestamp), ProcessJobTimestamp::from_unix_seconds(1_779_062_407));
+    }
+
+    #[test]
+    fn external_backend_reconciliation_maps_matching_backend_facts_to_outcome() {
+        let outcome = reconcile_external_backend_reference(ExternalProcessJobReconciliationFacts {
+            id: ProcessJobId("proc".to_string()),
+            backend: ProcessJobBackendKind::Pueue,
+            expected_backend_ref: BackendRef("pueue:7".to_string()),
+            observed_backend_ref: Some(BackendRef("pueue:7".to_string())),
+            state: ExternalProcessJobBackendState::Succeeded { exit_code: Some(0) },
+            log_refs: Vec::new(),
+        });
+        assert_eq!(outcome.state, ProcessJobReconciliationState::Exited);
+        assert_eq!(outcome.log_state, ProcessJobLogReconciliationState::BackendReferenced);
+        assert_eq!(outcome.backend_ref, Some(BackendRef("pueue:7".to_string())));
+        assert!(matches!(outcome.status, ProcessJobStatus::Succeeded { exit_code: Some(0) }));
     }
 
     #[test]
