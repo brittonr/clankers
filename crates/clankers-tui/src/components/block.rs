@@ -5,3 +5,4 @@
 
 pub use clanker_tui_types::BlockEntry;
 pub use clanker_tui_types::ConversationBlock;
+pub use clanker_tui_types::ConversationBlockInit;

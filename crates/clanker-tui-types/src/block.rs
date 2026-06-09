@@ -12,6 +12,17 @@ use crate::display::MessageRole;
 /// Current canonical envelope version for conversation-block hashing.
 pub const CANONICAL_BLOCK_ENVELOPE_VERSION_V1: u8 = 1;
 
+/// Inputs required to start a conversation block.
+#[derive(Debug, Clone)]
+pub struct ConversationBlockInit {
+    /// Unique block ID (monotonic counter).
+    pub id: usize,
+    /// The user's input prompt.
+    pub prompt: String,
+    /// Canonical timestamp for the block's opening user message.
+    pub started_at: DateTime<Utc>,
+}
+
 /// A single conversation block: one user turn + the full agent response.
 #[derive(Debug, Clone)]
 pub struct ConversationBlock {
@@ -44,19 +55,12 @@ pub struct ConversationBlock {
 }
 
 impl ConversationBlock {
-    #[cfg_attr(
-        dylint_lib = "tigerstyle",
-        allow(
-            tigerstyle::usize_in_public_api,
-            reason = "conversation block IDs are tree indexes shared with existing TUI code"
-        )
-    )]
-    pub fn new(id: usize, prompt: String, started_at: DateTime<Utc>) -> Self {
+    pub fn new(init: ConversationBlockInit) -> Self {
         Self {
-            id,
-            started_at,
+            id: init.id,
+            started_at: init.started_at,
             finalized_hash: None,
-            prompt,
+            prompt: init.prompt,
             responses: Vec::new(),
             collapsed: false,
             streaming: true,
@@ -67,15 +71,8 @@ impl ConversationBlock {
         }
     }
 
-    #[cfg_attr(
-        dylint_lib = "tigerstyle",
-        allow(
-            tigerstyle::usize_in_public_api,
-            reason = "conversation block IDs are tree indexes shared with existing TUI code"
-        )
-    )]
-    pub fn new_synthetic(id: usize, prompt: String, started_at: DateTime<Utc>) -> Self {
-        Self::new(id, prompt, started_at)
+    pub fn new_synthetic(init: ConversationBlockInit) -> Self {
+        Self::new(init)
     }
 
     pub fn finalize_metadata(&mut self) -> Result<(), serde_json::Error> {
@@ -349,7 +346,11 @@ mod tests {
 
     #[test]
     fn transient_ui_state_does_not_affect_finalized_hash() {
-        let mut original = ConversationBlock::new(1, FIXTURE_PROMPT.to_string(), fixed_started_at());
+        let mut original = ConversationBlock::new(ConversationBlockInit {
+            id: 1,
+            prompt: FIXTURE_PROMPT.to_string(),
+            started_at: fixed_started_at(),
+        });
         original.responses = base_responses();
         original.collapsed = false;
         original.streaming = false;

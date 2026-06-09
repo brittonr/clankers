@@ -10,6 +10,8 @@ use ratatui::text::Line;
 use ratatui::text::Span;
 
 use super::super::block::ConversationBlock;
+#[cfg(test)]
+use super::super::block::ConversationBlockInit;
 use super::super::markdown::markdown_style_from_theme;
 use super::super::markdown::render_markdown;
 use super::super::progress_renderer::ProgressRenderer;
@@ -499,11 +501,11 @@ mod tests {
     }
 
     fn streaming_block() -> ConversationBlock {
-        ConversationBlock::new(
-            0,
-            "show streaming".to_string(),
-            Utc.with_ymd_and_hms(2026, 5, 21, 12, 0, 0).single().expect("valid timestamp"),
-        )
+        ConversationBlock::new(ConversationBlockInit {
+            id: 0,
+            prompt: "show streaming".to_string(),
+            started_at: Utc.with_ymd_and_hms(2026, 5, 21, 12, 0, 0).single().expect("valid timestamp"),
+        })
     }
 
     #[test]

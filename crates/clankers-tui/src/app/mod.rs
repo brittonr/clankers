@@ -35,6 +35,7 @@ pub struct RouterInfo {
 use crate::components::account_selector::AccountSelector;
 use crate::components::block::BlockEntry;
 use crate::components::block::ConversationBlock;
+use crate::components::block::ConversationBlockInit;
 use crate::components::editor::Editor;
 use crate::components::messages::MessageScroll;
 use crate::components::model_selector::ModelSelector;
@@ -660,7 +661,11 @@ impl App {
             _ => None,
         });
 
-        let mut block = ConversationBlock::new(self.conversation.next_block_id, prompt, started_at);
+        let mut block = ConversationBlock::new(ConversationBlockInit {
+            id: self.conversation.next_block_id,
+            prompt,
+            started_at,
+        });
         block.parent_block_id = parent_id;
         block.agent_msg_checkpoint = agent_msg_count;
         self.conversation.next_block_id += 1;

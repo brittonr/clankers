@@ -5,6 +5,8 @@ use std::io::Write;
 use chrono::Local;
 use clanker_tui_types::BlockEntry;
 use clanker_tui_types::ConversationBlock;
+#[cfg(test)]
+use clanker_tui_types::ConversationBlockInit;
 use clanker_tui_types::DisplayMessage;
 use clanker_tui_types::MessageRole;
 use clankers_config::settings::Settings;
@@ -390,7 +392,11 @@ mod tests {
     }
 
     fn conversation_entry(prompt: &str, index: usize) -> BlockEntry {
-        let mut block = ConversationBlock::new(index, prompt.to_string(), fixed_started_at());
+        let mut block = ConversationBlock::new(ConversationBlockInit {
+            id: index,
+            prompt: prompt.to_string(),
+            started_at: fixed_started_at(),
+        });
         block.streaming = false;
         block.responses.push(DisplayMessage {
             role: MessageRole::Assistant,
@@ -428,7 +434,11 @@ mod tests {
     }
 
     fn styled_conversation_entry(prompt: &str, index: usize) -> BlockEntry {
-        let mut block = ConversationBlock::new(index, prompt.to_string(), fixed_started_at());
+        let mut block = ConversationBlock::new(ConversationBlockInit {
+            id: index,
+            prompt: prompt.to_string(),
+            started_at: fixed_started_at(),
+        });
         block.streaming = false;
         block.responses.push(DisplayMessage {
             role: MessageRole::Assistant,

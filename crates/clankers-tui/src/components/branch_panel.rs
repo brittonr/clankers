@@ -9,6 +9,8 @@ use crossterm::event::KeyEvent;
 
 use super::prelude::*;
 use crate::components::block::ConversationBlock;
+#[cfg(test)]
+use crate::components::block::ConversationBlockInit;
 use crate::panel::ListNav;
 
 /// Summary of a block on a branch (for the detail message list).
@@ -449,7 +451,11 @@ mod tests {
 
     fn make_block(id: usize, prompt: &str, parent: Option<usize>, tokens: usize) -> ConversationBlock {
         let started_at = chrono::DateTime::from_timestamp(1_700_000_000, 0).expect("valid test timestamp");
-        let mut b = ConversationBlock::new_synthetic(id, prompt.to_string(), started_at);
+        let mut b = ConversationBlock::new_synthetic(ConversationBlockInit {
+            id,
+            prompt: prompt.to_string(),
+            started_at,
+        });
         b.parent_block_id = parent;
         b.streaming = false;
         b.tokens = tokens;
