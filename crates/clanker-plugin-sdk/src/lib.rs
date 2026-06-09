@@ -71,8 +71,7 @@
     dylint_lib = "tigerstyle",
     allow(
         tigerstyle::ambiguous_params,
-        tigerstyle::explicit_defaults,
-        reason = "plugin SDK API and wire serde defaults are stable public compatibility contracts"
+        reason = "plugin SDK API names intentionally mirror stable plugin author examples and wire helpers"
     )
 )]
 

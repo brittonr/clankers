@@ -6,6 +6,14 @@
 use serde::Deserialize;
 use serde::Serialize;
 
+fn default_event_data() -> serde_json::Value {
+    serde_json::Value::Null
+}
+
+fn default_plugin_commands() -> Vec<String> {
+    Vec::new()
+}
+
 // ── Tool call protocol ──────────────────────────────────────────────
 
 /// Inbound tool-call envelope from the host.
@@ -74,7 +82,7 @@ impl ToolResult {
 #[derive(Debug, Clone, Deserialize)]
 pub struct Event {
     pub event: String,
-    #[serde(default)]
+    #[serde(default = "default_event_data")]
     pub data: serde_json::Value,
 }
 
@@ -122,7 +130,7 @@ pub struct PluginMeta {
     pub name: String,
     pub version: String,
     pub tools: Vec<ToolMeta>,
-    #[serde(default)]
+    #[serde(default = "default_plugin_commands")]
     pub commands: Vec<String>,
 }
 
