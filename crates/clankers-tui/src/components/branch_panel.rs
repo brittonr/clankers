@@ -448,7 +448,8 @@ mod tests {
     use super::*;
 
     fn make_block(id: usize, prompt: &str, parent: Option<usize>, tokens: usize) -> ConversationBlock {
-        let mut b = ConversationBlock::new_synthetic(id, prompt.to_string());
+        let started_at = chrono::DateTime::from_timestamp(1_700_000_000, 0).expect("valid test timestamp");
+        let mut b = ConversationBlock::new_synthetic(id, prompt.to_string(), started_at);
         b.parent_block_id = parent;
         b.streaming = false;
         b.tokens = tokens;

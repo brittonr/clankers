@@ -326,7 +326,8 @@ mod tests {
         app.finalize_active_block();
         // Block 2: second child of block 0 (fork)
         // Manually create a fork by manipulating all_blocks
-        let mut forked = ConversationBlock::new_synthetic(2, "alternative answer".into());
+        let started_at = chrono::DateTime::from_timestamp(1_700_000_000, 0).expect("valid test timestamp");
+        let mut forked = ConversationBlock::new_synthetic(2, "alternative answer".into(), started_at);
         forked.parent_block_id = Some(0);
         forked.streaming = false;
         app.conversation.all_blocks.push(forked);

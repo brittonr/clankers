@@ -317,6 +317,7 @@
 - Broad `cargo clippy -p clankers-runtime -p clankers-config -p clankers-agent -p clankers --tests -- -D warnings` currently trips pre-existing `clippy::derivable_impls` in `crates/clankers-config/src/core.rs`; don't cite clippy green unless that unrelated lint is fixed or the command is narrowed.
 
 ### Tiger Style
+- Synthetic/test-friendly constructors should still accept explicit timestamps from the caller; deterministic fixed `DateTime::from_timestamp(...)` in tests avoids `ambient_clock` allows at the shared DTO layer.
 - Session tree traversals: bounded by MAX_TRAVERSAL_DEPTH with cycle detection via visited set
 - Convert recursive DFS to iterative DFS with explicit stack where unbounded depth possible
 - `const _: () = assert!(...)` for compile-time assertions on safety constants

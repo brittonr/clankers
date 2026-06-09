@@ -12,17 +12,6 @@ use crate::display::MessageRole;
 /// Current canonical envelope version for conversation-block hashing.
 pub const CANONICAL_BLOCK_ENVELOPE_VERSION_V1: u8 = 1;
 
-#[cfg_attr(
-    dylint_lib = "tigerstyle",
-    allow(
-        tigerstyle::ambient_clock,
-        reason = "synthetic conversation blocks still originate at the shell boundary"
-    )
-)]
-fn synthetic_block_timestamp() -> DateTime<Utc> {
-    Utc::now()
-}
-
 /// A single conversation block: one user turn + the full agent response.
 #[derive(Debug, Clone)]
 pub struct ConversationBlock {
@@ -81,13 +70,12 @@ impl ConversationBlock {
     #[cfg_attr(
         dylint_lib = "tigerstyle",
         allow(
-            tigerstyle::ambient_clock,
             tigerstyle::usize_in_public_api,
-            reason = "synthetic preview/test blocks do not have persisted message timestamps"
+            reason = "conversation block IDs are tree indexes shared with existing TUI code"
         )
     )]
-    pub fn new_synthetic(id: usize, prompt: String) -> Self {
-        Self::new(id, prompt, synthetic_block_timestamp())
+    pub fn new_synthetic(id: usize, prompt: String, started_at: DateTime<Utc>) -> Self {
+        Self::new(id, prompt, started_at)
     }
 
     pub fn finalize_metadata(&mut self) -> Result<(), serde_json::Error> {
