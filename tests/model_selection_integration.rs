@@ -255,8 +255,8 @@ fn test_cost_tracker_accumulation() {
     assert_eq!(summary.by_model.len(), 3);
 
     // Total cost should be sum of individual costs
-    let sum: f64 = summary.by_model.iter().map(|m| m.cost_usd).sum();
-    assert!((summary.total_cost - sum).abs() < 0.001);
+    let sum: u64 = summary.by_model.iter().map(|m| m.cost_usd.micros()).sum();
+    assert_eq!(summary.total_cost.micros(), sum);
 
     // Should have a most expensive model
     assert!(summary.most_expensive.is_some());
@@ -292,7 +292,8 @@ fn test_cost_tracker_total_cost_matches_summary() {
     let total = tracker.total_cost();
     let summary = tracker.summary();
 
-    assert!((total - summary.total_cost).abs() < 0.001);
+    let summary_total = summary.total_cost.micros() as f64 / 1_000_000.0;
+    assert!((total - summary_total).abs() < 0.001);
 }
 
 // ── Test 4: Model switch validation ─────────────────────────────────────────

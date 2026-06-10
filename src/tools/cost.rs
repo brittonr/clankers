@@ -8,6 +8,7 @@ use std::sync::Arc;
 
 use async_trait::async_trait;
 use clankers_model_selection::cost_tracker::BudgetStatus;
+use clankers_model_selection::cost_tracker::CostMicros;
 use clankers_model_selection::cost_tracker::CostTracker;
 use serde_json::Value;
 use serde_json::json;
@@ -60,15 +61,15 @@ impl Tool for CostTool {
             "summary" => {
                 let budget_line = format_budget(&summary.budget_status);
                 ToolResult::text(format!(
-                    "Session cost: ${:.4} across {} model(s). {}",
-                    summary.total_cost,
+                    "Session cost: ${} across {} model(s). {}",
+                    summary.total_cost.format_major_units(4),
                     summary.by_model.len(),
                     budget_line,
                 ))
             }
             "breakdown" => {
                 use std::fmt::Write;
-                let mut out = format!("Session cost: ${:.4}\n\n", summary.total_cost);
+                let mut out = format!("Session cost: ${}\n\n", summary.total_cost.format_major_units(4));
                 if summary.by_model.is_empty() {
                     out.push_str("No usage recorded yet.");
                 } else {
@@ -77,8 +78,12 @@ impl Tool for CostTool {
                     for m in &summary.by_model {
                         writeln!(
                             out,
-                            "{:<25} | {:>9} | {:>10} | ${:>6.4} | {:>4.1}%",
-                            m.display_name, m.input_tokens, m.output_tokens, m.cost_usd, m.percentage,
+                            "{:<25} | {:>9} | {:>10} | ${:>6} | {:>4.1}%",
+                            m.display_name,
+                            m.input_tokens,
+                            m.output_tokens,
+                            m.cost_usd.format_major_units(4),
+                            m.percentage,
                         )
                         .ok();
                     }
@@ -98,26 +103,30 @@ impl Tool for CostTool {
 fn format_budget(status: &BudgetStatus) -> String {
     match status {
         BudgetStatus::NoBudget => "No budget configured.".to_string(),
-        BudgetStatus::Ok { remaining } => format!("Budget OK — ${:.2} remaining.", remaining),
+        BudgetStatus::Ok { remaining } => {
+            format!("Budget OK — ${} remaining.", remaining.format_major_units(2))
+        }
         BudgetStatus::Warning {
             over_soft_by,
-            hard_limit_remaining,
-        } => {
-            if hard_limit_remaining.is_finite() {
-                format!("⚠ Over soft budget by ${:.2}. ${:.2} until hard limit.", over_soft_by, hard_limit_remaining,)
-            } else {
-                format!("⚠ Over soft budget by ${:.2}.", over_soft_by)
-            }
-        }
+            hard_limit_remaining: Some(hard_limit_remaining),
+        } => format!(
+            "⚠ Over soft budget by ${}. ${} until hard limit.",
+            over_soft_by.format_major_units(2),
+            hard_limit_remaining.format_major_units(2),
+        ),
+        BudgetStatus::Warning {
+            over_soft_by,
+            hard_limit_remaining: None,
+        } => format!("⚠ Over soft budget by ${}.", over_soft_by.format_major_units(2)),
         BudgetStatus::Exceeded { over_hard_by } => {
-            format!("✖ Budget exceeded by ${:.2}. Model downgrades enforced.", over_hard_by)
+            format!("✖ Budget exceeded by ${}. Model downgrades enforced.", over_hard_by.format_major_units(2))
         }
     }
 }
 
-fn format_budget_detail(status: &BudgetStatus, total: f64) -> String {
+fn format_budget_detail(status: &BudgetStatus, total: CostMicros) -> String {
     use std::fmt::Write;
-    let mut out = format!("Total spent: ${:.4}\n", total);
+    let mut out = format!("Total spent: ${}\n", total.format_major_units(4));
     match status {
         BudgetStatus::NoBudget => {
             out.push_str(
@@ -125,27 +134,27 @@ fn format_budget_detail(status: &BudgetStatus, total: f64) -> String {
             );
         }
         BudgetStatus::Ok { remaining } => {
-            write!(out, "Status: ✓ OK\nRemaining: ${:.2}\n", remaining).ok();
-            // Rough projection: if total > 0, estimate turns left
-            if total > 0.01 {
-                // remaining / (total / turns) but we don't know turns here
-                // Just show the ratio
-                let ratio = remaining / total;
-                write!(out, "At current rate, ~{:.0}x more work before limit.", ratio,).ok();
+            write!(out, "Status: ✓ OK\nRemaining: ${}\n", remaining.format_major_units(2)).ok();
+            // Rough projection: if total > 0, estimate turns left.
+            if total.micros() > 10_000 {
+                // remaining / total, but we don't know the turn count here.
+                // Just show the ratio.
+                let ratio = remaining.micros() as f64 / total.micros() as f64;
+                write!(out, "At current rate, ~{ratio:.0}x more work before limit.").ok();
             }
         }
         BudgetStatus::Warning {
             over_soft_by,
             hard_limit_remaining,
         } => {
-            write!(out, "Status: ⚠ Warning\nOver soft limit by: ${:.2}\n", over_soft_by).ok();
-            if hard_limit_remaining.is_finite() {
-                writeln!(out, "Hard limit remaining: ${:.2}", hard_limit_remaining).ok();
+            write!(out, "Status: ⚠ Warning\nOver soft limit by: ${}\n", over_soft_by.format_major_units(2)).ok();
+            if let Some(hard_limit_remaining) = hard_limit_remaining {
+                writeln!(out, "Hard limit remaining: ${}", hard_limit_remaining.format_major_units(2)).ok();
                 out.push_str("Routing policy is biasing toward cheaper models.");
             }
         }
         BudgetStatus::Exceeded { over_hard_by } => {
-            write!(out, "Status: ✖ Exceeded\nOver hard limit by: ${:.2}\n", over_hard_by).ok();
+            write!(out, "Status: ✖ Exceeded\nOver hard limit by: ${}\n", over_hard_by.format_major_units(2)).ok();
             out.push_str("Routing policy is forcing cheapest model (smol/haiku).");
         }
     }

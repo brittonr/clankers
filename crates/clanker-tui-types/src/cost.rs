@@ -4,6 +4,8 @@
 //! reexports them so existing display-edge callers keep the same import path.
 
 pub use clanker_message::BudgetStatus;
+pub use clanker_message::COST_MICROS_PER_UNIT;
+pub use clanker_message::CostMicros;
 pub use clanker_message::CostProvider;
 pub use clanker_message::CostSummary;
 pub use clanker_message::ModelCostBreakdown;

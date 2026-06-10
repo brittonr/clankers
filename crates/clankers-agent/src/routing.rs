@@ -77,22 +77,27 @@ pub(crate) fn record_turn_cost(
     turn_usage: &Usage,
 ) -> Option<f64> {
     let recorder = recorder?;
-    let (total_cost, budget_events) = recorder.record_usage(
-        active_model,
-        turn_usage.input_tokens as u64,
-        turn_usage.output_tokens as u64,
-    );
+    let (total_cost, budget_events) =
+        recorder.record_usage(active_model, turn_usage.input_tokens as u64, turn_usage.output_tokens as u64);
 
     for event in budget_events {
         match event {
             BudgetEvent::Warning { threshold, current } => {
-                tracing::warn!("Budget warning: ${:.2} spent (soft limit: ${:.2})", current, threshold);
+                tracing::warn!(
+                    "Budget warning: ${} spent (soft limit: ${})",
+                    current.format_major_units(2),
+                    threshold.format_major_units(2)
+                );
             }
             BudgetEvent::Exceeded { limit, current } => {
-                tracing::warn!("Budget exceeded: ${:.2} spent (hard limit: ${:.2})", current, limit);
+                tracing::warn!(
+                    "Budget exceeded: ${} spent (hard limit: ${})",
+                    current.format_major_units(2),
+                    limit.format_major_units(2)
+                );
             }
             BudgetEvent::Milestone { milestone, total: _ } => {
-                tracing::info!("Cost milestone: ${:.2}", milestone);
+                tracing::info!("Cost milestone: ${}", milestone.format_major_units(2));
             }
         }
     }

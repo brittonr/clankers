@@ -198,18 +198,19 @@ fn render_status_badges<'a>(spans: &mut Vec<Span<'a>>, data: &StatusBarData<'a>)
         let (cost_text, cost_color) = match &data.budget_status {
             BudgetStatus::NoBudget => (format!(" ${:.4} ", data.total_cost), Color::DarkGray),
             BudgetStatus::Ok { remaining } => {
-                (format!(" ${:.2} (${:.2} left) ", data.total_cost, remaining), Color::Green)
+                (format!(" ${:.2} (${} left) ", data.total_cost, remaining.format_major_units(2)), Color::Green)
             }
             BudgetStatus::Warning {
                 over_soft_by: _,
-                hard_limit_remaining,
-            } => {
-                if hard_limit_remaining.is_finite() {
-                    (format!(" ${:.2} ⚠ (${:.2} to hard) ", data.total_cost, hard_limit_remaining), Color::Yellow)
-                } else {
-                    (format!(" ${:.2} ⚠ over budget ", data.total_cost), Color::Yellow)
-                }
-            }
+                hard_limit_remaining: Some(hard_limit_remaining),
+            } => (
+                format!(" ${:.2} ⚠ (${} to hard) ", data.total_cost, hard_limit_remaining.format_major_units(2)),
+                Color::Yellow,
+            ),
+            BudgetStatus::Warning {
+                over_soft_by: _,
+                hard_limit_remaining: None,
+            } => (format!(" ${:.2} ⚠ over budget ", data.total_cost), Color::Yellow),
             BudgetStatus::Exceeded { .. } => (format!(" ${:.2} ✖ exceeded ", data.total_cost), Color::Red),
         };
         spans.push(Span::styled(

@@ -115,11 +115,19 @@ struct ModelUsage {
 // ── Budget status ───────────────────────────────────────────────────────────
 
 // Cost contracts re-exported from clanker-message (canonical definitions).
+pub use clanker_message::BudgetEvent;
 pub use clanker_message::BudgetStatus;
+pub use clanker_message::CostMicros;
 pub use clanker_message::CostSummary;
 pub use clanker_message::ModelCostBreakdown;
 
-pub use clanker_message::BudgetEvent;
+fn cost_micros_from_major_units(amount: f64) -> CostMicros {
+    assert!(amount.is_finite(), "cost amount must be finite");
+    assert!(amount >= 0.0, "cost amount must be non-negative");
+    let scaled = (amount * clanker_message::COST_MICROS_PER_UNIT as f64).round();
+    assert!(scaled <= u64::MAX as f64, "cost amount must fit in fixed-point storage");
+    CostMicros::from_micros(scaled as u64)
+}
 
 // ── CostTracker ─────────────────────────────────────────────────────────────
 
@@ -260,19 +268,16 @@ impl CostTracker {
                     display_name,
                     input_tokens: u.input_tokens,
                     output_tokens: u.output_tokens,
-                    cost_usd: u.cost_usd,
+                    cost_usd: cost_micros_from_major_units(u.cost_usd),
                     percentage,
                 }
             })
             .collect();
 
-        let most_expensive = by_model
-            .iter()
-            .max_by(|a, b| a.cost_usd.partial_cmp(&b.cost_usd).unwrap_or(std::cmp::Ordering::Equal))
-            .map(|m| m.model_id.clone());
+        let most_expensive = by_model.iter().max_by_key(|model| model.cost_usd).map(|m| m.model_id.clone());
 
         CostSummary {
-            total_cost,
+            total_cost: cost_micros_from_major_units(total_cost),
             by_model,
             budget_status: self.compute_budget_status(total_cost),
             most_expensive,
@@ -325,29 +330,29 @@ impl CostTracker {
             old
         };
 
-        // Hard limit — decomposed: check existence, then crossing
+        // Hard limit — decomposed: check existence, then crossing.
         if let Some(hard) = self.config.hard_limit {
             let has_just_crossed = total >= hard && prev < hard;
             if has_just_crossed {
                 events.push(BudgetEvent::Exceeded {
-                    limit: hard,
-                    current: total,
+                    limit: cost_micros_from_major_units(hard),
+                    current: cost_micros_from_major_units(total),
                 });
             }
         }
 
-        // Soft limit — decomposed: check existence, then crossing
+        // Soft limit — decomposed: check existence, then crossing.
         if let Some(soft) = self.config.soft_limit {
             let has_just_crossed = total >= soft && prev < soft;
             if has_just_crossed {
                 events.push(BudgetEvent::Warning {
-                    threshold: soft,
-                    current: total,
+                    threshold: cost_micros_from_major_units(soft),
+                    current: cost_micros_from_major_units(total),
                 });
             }
         }
 
-        // Milestone intervals — emit one event per crossed milestone
+        // Milestone intervals — emit one event per crossed milestone.
         if let Some(interval) = self.config.warning_interval
             && interval > 0.0
         {
@@ -355,8 +360,8 @@ impl CostTracker {
             let curr_milestone = (total / interval).floor() as u64;
             for m in (prev_milestone + 1)..=curr_milestone {
                 events.push(BudgetEvent::Milestone {
-                    milestone: m as f64 * interval,
-                    total,
+                    milestone: cost_micros_from_major_units(m as f64 * interval),
+                    total: cost_micros_from_major_units(total),
                 });
             }
         }
@@ -370,39 +375,39 @@ impl CostTracker {
             (Some(soft), None) => {
                 if total < soft {
                     BudgetStatus::Ok {
-                        remaining: soft - total,
+                        remaining: cost_micros_from_major_units(soft - total),
                     }
                 } else {
                     BudgetStatus::Warning {
-                        over_soft_by: total - soft,
-                        hard_limit_remaining: f64::INFINITY,
+                        over_soft_by: cost_micros_from_major_units(total - soft),
+                        hard_limit_remaining: None,
                     }
                 }
             }
             (Some(soft), Some(hard)) => {
                 if total < soft {
                     BudgetStatus::Ok {
-                        remaining: soft - total,
+                        remaining: cost_micros_from_major_units(soft - total),
                     }
                 } else if total < hard {
                     BudgetStatus::Warning {
-                        over_soft_by: total - soft,
-                        hard_limit_remaining: hard - total,
+                        over_soft_by: cost_micros_from_major_units(total - soft),
+                        hard_limit_remaining: Some(cost_micros_from_major_units(hard - total)),
                     }
                 } else {
                     BudgetStatus::Exceeded {
-                        over_hard_by: total - hard,
+                        over_hard_by: cost_micros_from_major_units(total - hard),
                     }
                 }
             }
             (None, Some(hard)) => {
                 if total < hard {
                     BudgetStatus::Ok {
-                        remaining: hard - total,
+                        remaining: cost_micros_from_major_units(hard - total),
                     }
                 } else {
                     BudgetStatus::Exceeded {
-                        over_hard_by: total - hard,
+                        over_hard_by: cost_micros_from_major_units(total - hard),
                     }
                 }
             }
@@ -419,8 +424,8 @@ impl CostProvider for CostTracker {
         self.budget_status()
     }
 
-    fn total_cost(&self) -> f64 {
-        self.total_cost()
+    fn total_cost(&self) -> CostMicros {
+        cost_micros_from_major_units(CostTracker::total_cost(self))
     }
 }
 
@@ -526,7 +531,7 @@ mod tests {
 
         let summary = tracker.summary();
         assert_eq!(summary.by_model.len(), 2);
-        assert!(summary.total_cost > 0.0);
+        assert!(!summary.total_cost.is_zero());
     }
 
     #[test]
@@ -602,9 +607,9 @@ mod tests {
                 }
             })
             .collect();
-        assert!(milestones.contains(&1.0));
-        assert!(milestones.contains(&2.0));
-        assert!(milestones.contains(&3.0));
+        assert!(milestones.contains(&cost_micros_from_major_units(1.0)));
+        assert!(milestones.contains(&cost_micros_from_major_units(2.0)));
+        assert!(milestones.contains(&cost_micros_from_major_units(3.0)));
     }
 
     #[test]
@@ -627,7 +632,7 @@ mod tests {
 
         let summary = tracker.summary();
         assert_eq!(summary.by_model.len(), 2);
-        assert!(summary.total_cost > 0.0);
+        assert!(!summary.total_cost.is_zero());
         assert!(summary.most_expensive.is_some());
 
         // Percentages should sum to ~100%

@@ -27,6 +27,7 @@ pub mod signals;
 pub use config::RoutingPolicyConfig;
 pub use cost_tracker::BudgetEvent;
 pub use cost_tracker::BudgetStatus;
+pub use cost_tracker::CostMicros;
 pub use cost_tracker::CostSummary;
 pub use cost_tracker::CostTracker;
 pub use cost_tracker::CostTrackerConfig;

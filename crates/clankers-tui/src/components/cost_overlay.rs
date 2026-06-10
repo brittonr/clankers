@@ -9,6 +9,7 @@
 use std::sync::Arc;
 
 use clanker_tui_types::BudgetStatus;
+use clanker_tui_types::CostMicros;
 use clanker_tui_types::CostProvider;
 use clanker_tui_types::CostSummary;
 
@@ -110,25 +111,26 @@ fn render_summary(frame: &mut Frame, summary: &CostSummary, theme: &Theme) {
         BudgetStatus::NoBudget => {}
         BudgetStatus::Ok { remaining } => {
             lines.push(Line::from(""));
-            let bar = render_budget_bar(
-                summary.total_cost,
-                summary.total_cost + remaining,
-                inner.width as usize,
-                Color::Green,
-            );
+            let limit = summary.total_cost.saturating_add(*remaining);
+            let bar = render_budget_bar(summary.total_cost, limit, inner.width as usize, Color::Green);
             lines.push(bar);
         }
         BudgetStatus::Warning {
-            hard_limit_remaining, ..
+            hard_limit_remaining: Some(hard_limit_remaining),
+            ..
         } => {
             lines.push(Line::from(""));
-            let limit = summary.total_cost + hard_limit_remaining;
+            let limit = summary.total_cost.saturating_add(*hard_limit_remaining);
             let bar = render_budget_bar(summary.total_cost, limit, inner.width as usize, Color::Yellow);
             lines.push(bar);
         }
+        BudgetStatus::Warning {
+            hard_limit_remaining: None,
+            ..
+        } => {}
         BudgetStatus::Exceeded { over_hard_by } => {
             lines.push(Line::from(""));
-            let limit = summary.total_cost - over_hard_by;
+            let limit = summary.total_cost.saturating_sub(*over_hard_by);
             let bar = render_budget_bar(summary.total_cost, limit, inner.width as usize, Color::Red);
             lines.push(bar);
         }
@@ -153,7 +155,7 @@ fn calculate_overlay_area(screen: Rect, summary: &CostSummary) -> Rect {
 /// Render per-model statistics rows, sorted by cost descending
 fn render_model_rows(lines: &mut Vec<Line>, summary: &CostSummary, theme: &Theme) {
     let mut models = summary.by_model.clone();
-    models.sort_by(|a, b| b.cost_usd.partial_cmp(&a.cost_usd).unwrap_or(std::cmp::Ordering::Equal));
+    models.sort_by_key(|model| std::cmp::Reverse(model.cost_usd));
 
     if models.is_empty() {
         lines.push(Line::from(Span::styled("  No usage recorded yet.", Style::default().fg(Color::DarkGray))));
@@ -172,8 +174,8 @@ fn render_model_rows(lines: &mut Vec<Line>, summary: &CostSummary, theme: &Theme
             Span::styled(format!("{:>10}", format_tokens(m.input_tokens)), row_style),
             Span::styled(format!("{:>10}", format_tokens(m.output_tokens)), row_style),
             Span::styled(
-                format!("{:>10}", format!("${:.4}", m.cost_usd)),
-                Style::default().fg(if m.cost_usd > 0.0 {
+                format!("{:>10}", format!("${}", m.cost_usd.format_major_units(4))),
+                Style::default().fg(if !m.cost_usd.is_zero() {
                     Color::Yellow
                 } else {
                     Color::DarkGray
@@ -191,7 +193,7 @@ fn render_total_row(lines: &mut Vec<Line>, summary: &CostSummary, theme: &Theme)
         Span::raw(format!("{:>10}", "")),
         Span::raw(format!("{:>10}", "")),
         Span::styled(
-            format!("{:>10}", format!("${:.4}", summary.total_cost)),
+            format!("{:>10}", format!("${}", summary.total_cost.format_major_units(4))),
             Style::default().fg(Color::Green).add_modifier(Modifier::BOLD),
         ),
         Span::raw(format!("{:>6}", "")),
@@ -199,11 +201,15 @@ fn render_total_row(lines: &mut Vec<Line>, summary: &CostSummary, theme: &Theme)
 }
 
 /// Render a budget progress bar: `████████░░░░ $1.23 / $5.00`
-fn render_budget_bar(current: f64, limit: f64, width: usize, color: Color) -> Line<'static> {
-    let label = format!("${:.2} / ${:.2}", current, limit);
+fn render_budget_bar(current: CostMicros, limit: CostMicros, width: usize, color: Color) -> Line<'static> {
+    let label = format!("${} / ${}", current.format_major_units(2), limit.format_major_units(2));
     // 3 for spaces around bar
     let bar_width = width.saturating_sub(label.len() + 3);
-    let ratio = if limit > 0.0 { (current / limit).min(1.5) } else { 0.0 };
+    let ratio = if !limit.is_zero() {
+        (current.micros() as f64 / limit.micros() as f64).min(1.5)
+    } else {
+        0.0
+    };
     let filled = ((ratio * bar_width as f64) as usize).min(bar_width);
     let empty = bar_width.saturating_sub(filled);
 

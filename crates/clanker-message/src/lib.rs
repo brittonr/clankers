@@ -162,6 +162,8 @@ pub use contracts::WasmToolExecutionRequest;
 pub use contracts::WasmToolExecutionStatus;
 pub use cost::BudgetEvent;
 pub use cost::BudgetStatus;
+pub use cost::COST_MICROS_PER_UNIT;
+pub use cost::CostMicros;
 pub use cost::CostProvider;
 pub use cost::CostSummary;
 pub use cost::ModelCostBreakdown;
