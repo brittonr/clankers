@@ -25,7 +25,7 @@
 - 2026-06-09: clankers-model-selection compound/unbounded/raw-arithmetic/multi-lock cleanup: use fixed hint arrays for OR chains, reserve keyword extraction output from `keyword_hints.len()`, use `saturating_add` for milestone range starts, and document lock order on each RwLock field.
 - 2026-06-09: clankers-engine-host local ambiguous-params cleanup: tiny formatter helpers can take a named request struct (`ToolErrorFormat`) instead of keeping a local lint allow.
 - 2026-06-09: clankers-runtime bool-naming drain was only local bindings (`should_persist_session`, `is_payload_valid`, `is_authorized`); public serialized fields can remain unchanged if the lint only reports locals.
-- 2026-06-09: clankers-matrix response chunking unbounded-growth drain: `split_into_blocks(text)` is already materialized, so reserve `chunks` from `blocks.len()` before the chunk loop.
+- 2026-06-09: clankers-matrix response chunking unbounded-growth/raw-arithmetic drain: `split_into_blocks(text)` is already materialized, so reserve `chunks` from `blocks.len()` before the chunk loop; use `saturating_add` for chunk/line size thresholds and tag JSON slice start.
 
 ## Corrections
 | Date | Source | What Went Wrong | What To Do Instead |

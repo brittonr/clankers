@@ -43,7 +43,13 @@ pub fn chunk_response(text: &str, max_bytes: usize) -> Vec<String> {
         let block_size = block.len();
 
         // If adding this block would exceed the limit, finalize current chunk
-        if !current_chunk.is_empty() && current_chunk.len() + block_size + 2 > max_bytes {
+        if !current_chunk.is_empty()
+            && current_chunk
+                .len()
+                .saturating_add(block_size)
+                .saturating_add(2)
+                > max_bytes
+        {
             chunks.push(current_chunk.trim().to_string());
             current_chunk.clear();
         }
@@ -55,7 +61,9 @@ pub fn chunk_response(text: &str, max_bytes: usize) -> Vec<String> {
             let mut temp = String::new();
 
             for line in lines {
-                if !temp.is_empty() && temp.len() + line.len() + 1 > max_bytes {
+                if !temp.is_empty()
+                    && temp.len().saturating_add(line.len()).saturating_add(1) > max_bytes
+                {
                     chunks.push(temp.trim().to_string());
                     temp.clear();
                 }

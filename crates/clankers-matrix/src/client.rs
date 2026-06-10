@@ -552,7 +552,8 @@ fn parse_room_message(ev: &OriginalSyncRoomMessageEvent, room_id: &str) -> Optio
                 && let Some(bracket_end) = rest.find(']')
             {
                 let event_type = &rest[..bracket_end];
-                let json_str = rest[bracket_end + 1..].trim();
+                let json_start = bracket_end.saturating_add(1);
+                let json_str = rest[json_start..].trim();
 
                 return match event_type {
                     EVENT_ANNOUNCE => serde_json::from_str::<Announce>(json_str).ok().map(ClankersEvent::Announce),
