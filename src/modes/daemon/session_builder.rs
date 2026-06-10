@@ -81,15 +81,13 @@ pub(crate) struct DaemonSessionRuntimeRequest<'a> {
     pub public_auth: Option<crate::capability_gate::PublicUcanToolAuthorization>,
 }
 
+const GIT_ROOT_SEARCH_MAX_DEPTH: usize = 64;
+
 /// Builder that owns session-construction policy while callers own IO/spawn.
 /// Build a hook pipeline for a daemon session from settings.
 ///
 /// This is session assembly policy rather than actor-loop multiplexing. Tests
 /// can exercise it without binding daemon sockets or spawning an actor.
-#[cfg_attr(
-    dylint_lib = "tigerstyle",
-    allow(unbounded_loop, reason = "bounded upward directory walk looking for .git")
-)]
 pub(crate) fn build_session_hook_pipeline(
     settings: &clankers_config::settings::Settings,
     plugin_manager: Option<&Arc<Mutex<clankers_plugin::PluginManager>>>,
@@ -107,16 +105,8 @@ pub(crate) fn build_session_hook_pipeline(
     pipeline.register(Arc::new(clankers_hooks::script::ScriptHookHandler::new(hooks_dir, timeout)));
 
     if settings.hooks.manage_git_hooks {
-        let mut current = cwd.as_path();
-        loop {
-            if current.join(".git").exists() {
-                pipeline.register(Arc::new(clankers_hooks::git::GitHookHandler::new(current.to_path_buf())));
-                break;
-            }
-            match current.parent() {
-                Some(parent) => current = parent,
-                None => break,
-            }
+        if let Some(repo_root) = find_git_root(&cwd) {
+            pipeline.register(Arc::new(clankers_hooks::git::GitHookHandler::new(repo_root)));
         }
     }
 
@@ -125,6 +115,20 @@ pub(crate) fn build_session_hook_pipeline(
     }
 
     Some(Arc::new(pipeline))
+}
+
+fn find_git_root(start: &Path) -> Option<PathBuf> {
+    let mut current = Some(start);
+
+    for _ in 0..GIT_ROOT_SEARCH_MAX_DEPTH {
+        let path = current?;
+        if path.join(".git").exists() {
+            return Some(path.to_path_buf());
+        }
+        current = path.parent();
+    }
+
+    None
 }
 
 pub(crate) fn assemble_session_runtime(request: DaemonSessionRuntimeRequest<'_>) -> DaemonSessionRuntime {

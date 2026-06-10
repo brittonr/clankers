@@ -540,6 +540,7 @@ mod tests {
             "test-model".to_string(),
             "test system".to_string(),
         );
+        agent.set_session_id("standalone-test-session".to_string());
         let (_cmd_tx, mut cmd_rx) = tokio::sync::mpsc::unbounded_channel();
         let (done_tx, mut done_rx) = tokio::sync::mpsc::unbounded_channel();
 

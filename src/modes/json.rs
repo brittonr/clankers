@@ -40,6 +40,7 @@ pub async fn run_json_with_options(
         builder = builder.with_capability_gate(gate);
     }
     let mut agent = builder.build();
+    agent.set_session_id("headless-json".to_string());
     let mut rx = agent.subscribe();
 
     let output_file = opts.output_file.clone();

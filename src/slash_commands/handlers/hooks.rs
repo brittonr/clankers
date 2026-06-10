@@ -165,16 +165,18 @@ fn load_hooks_config() -> clankers_hooks::HooksConfig {
     settings.hooks
 }
 
-#[cfg_attr(
-    dylint_lib = "tigerstyle",
-    allow(unbounded_loop, reason = "event loop; bounded by process exit")
-)]
+const GIT_ROOT_SEARCH_MAX_DEPTH: usize = 64;
+
 fn find_git_root(start: &std::path::Path) -> Option<std::path::PathBuf> {
-    let mut current = start;
-    loop {
-        if current.join(".git").exists() {
-            return Some(current.to_path_buf());
+    let mut current = Some(start);
+
+    for _ in 0..GIT_ROOT_SEARCH_MAX_DEPTH {
+        let path = current?;
+        if path.join(".git").exists() {
+            return Some(path.to_path_buf());
         }
-        current = current.parent()?;
+        current = path.parent();
     }
+
+    None
 }

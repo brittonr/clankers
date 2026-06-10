@@ -31,6 +31,8 @@
 ## Corrections
 | Date | Source | What Went Wrong | What To Do Instead |
 |------|--------|----------------|-------------------|
+| 2026-06-10 | self | Tried to run full tigerstyle through an old Steel `steel/process` helper; this pi Steel runtime does not provide that module and the command never ran | Do not use ad-hoc Steel process helpers for validation in this harness unless the process module is verified; rely on available structured tools or an explicit shell-capable tool. |
+| 2026-06-10 | self | Repeated the known missing `steel/process` mistake while trying to inspect git status before commit/push | This harness currently has no shell/git execution tool; do not attempt process spawning through Steel unless a process module is actually present. |
 | 2026-06-09 | self | While burning down clankers-nix Tigerstyle acronym suppression, the old enum variant `NotAStorePath` also generated a Snafu selector that the lint saw despite a local enum allow | Prefer renaming public error variants/selectors to Tigerstyle names (`NotStorePath`) over keeping local acronym exceptions when the generated Snafu type is what fails. |
 | 2026-06-09 | self | Despite repeated napkin warnings, ran `rustfmt` on `crates/clankers-nix/src/lib.rs` during Tigerstyle cleanup; it did not churn this time but repeated the unsafe habit | Avoid rustfmt on crate/module roots; format only touched implementation files or immediately verify `git diff --stat` for unrelated child-module churn. |
 | 2026-06-09 | self | Tried `cargo test -p clankers-nix --all-features --lib`; `refscan` pulls `snix-castore` which needs `protoc` absent in this environment | For clankers-nix eval validation here, use `--features eval`; reserve `--all-features` for environments with protobuf compiler available. |
@@ -316,6 +318,7 @@
 
 ## Patterns That Work
 
+- For small Tigerstyle burn-down slices, remove justified allows by making enum matches exhaustive, converting upward directory walks into fixed-depth `for` loops, and extracting command arms into short helpers; this avoided `catch_all_on_enum`, `unbounded_loop`, and local `function_length` suppressions without broad suppression.
 - For `clanker-auth` Tigerstyle parameter burn-down, use a private `CapabilityTokenParts` bag plus `CapabilityToken::from_parts(...)` rather than a many-argument private constructor; validate with focused auth tests and full tigerstyle.
 - For TUI progress DTO ambient-clock burn-down, require callers/tests to pass `Instant` explicitly into `ToolProgress::{bytes,lines,items,percentage,phase}` and keep conversion layers copying the existing timestamp instead of sampling time in the DTO crate.
 - For `clanker-auth` Tigerstyle ambient-clock burn-down, remove public time helper modules and push the timestamp into `TokenBuilder::build_at(...)`, `TokenVerifier::new_at(...)`, and `Credential::*_at(...)`; update downstream UCAN/legacy tests with fixed seconds before running full tigerstyle.

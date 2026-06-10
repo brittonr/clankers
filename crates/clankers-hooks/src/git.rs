@@ -29,15 +29,22 @@ impl GitHookHandler {
     }
 
     /// Map a HookPoint to a git hook filename (if applicable).
-    #[cfg_attr(
-        dylint_lib = "tigerstyle",
-        allow(catch_all_on_enum, reason = "default handler covers many variants uniformly")
-    )]
     fn git_hook_name(point: HookPoint) -> Option<&'static str> {
         match point {
             HookPoint::PreCommit => Some("pre-commit"),
             HookPoint::PostCommit => Some("post-commit"),
-            _ => None,
+            HookPoint::PrePrompt
+            | HookPoint::PostPrompt
+            | HookPoint::SessionStart
+            | HookPoint::SessionEnd
+            | HookPoint::OnError
+            | HookPoint::PreTool
+            | HookPoint::PostTool
+            | HookPoint::PreTurn
+            | HookPoint::TurnStart
+            | HookPoint::TurnEnd
+            | HookPoint::PostTurn
+            | HookPoint::ModelChange => None,
         }
     }
 

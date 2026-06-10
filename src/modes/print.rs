@@ -62,6 +62,7 @@ pub async fn run_print_with_options(
         builder = builder.with_capability_gate(gate);
     }
     let mut agent = builder.build();
+    agent.set_session_id("headless-print".to_string());
     let mut rx = agent.subscribe();
 
     let should_show_tools = opts.show_tools;
