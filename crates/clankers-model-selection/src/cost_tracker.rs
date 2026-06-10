@@ -160,10 +160,12 @@ fn usage_cost(usage: TokenUsage, pricing: &ModelPricing) -> (CostMicros, CostMic
 /// Thread-safe via `RwLock`. Designed to be wrapped in `Arc` and shared
 /// between the agent, routing policy, and TUI.
 pub struct CostTracker {
+    /// Lock order: usage -> prev_total.
     usage: RwLock<HashMap<String, ModelUsage>>,
     pricing: HashMap<String, ModelPricing>,
     config: CostTrackerConfig,
-    /// Previous total before last record_usage — for milestone detection
+    /// Previous total before last record_usage — for milestone detection.
+    /// Lock order: usage -> prev_total.
     prev_total: RwLock<CostMicros>,
 }
 
