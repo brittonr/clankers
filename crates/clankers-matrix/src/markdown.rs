@@ -33,11 +33,11 @@ pub fn chunk_response(text: &str, max_bytes: usize) -> Vec<String> {
         return vec![text.to_string()];
     }
 
-    let mut chunks = Vec::new();
     let mut current_chunk = String::new();
 
     // First pass: split into blocks (paragraphs or code blocks)
     let blocks = split_into_blocks(text);
+    let mut chunks = Vec::with_capacity(blocks.len());
 
     for block in blocks {
         let block_size = block.len();
