@@ -26,7 +26,7 @@
 - 2026-06-09: clankers-engine-host local ambiguous-params cleanup: tiny formatter helpers can take a named request struct (`ToolErrorFormat`) instead of keeping a local lint allow.
 - 2026-06-09: clankers-runtime bool-naming drain was only local bindings (`should_persist_session`, `is_payload_valid`, `is_authorized`); public serialized fields can remain unchanged if the lint only reports locals.
 - 2026-06-09: clankers-matrix response chunking unbounded-growth/raw-arithmetic/numeric-units/usize-public/ambient-clock/explicit-defaults drain: `split_into_blocks(text)` is already materialized, so reserve `chunks` from `blocks.len()` before the chunk loop; use `saturating_add` for chunk/line size thresholds and tag JSON slice start; inline Matrix `UInt::new(limit...)` assignment instead of inventing a local `limit_*` name the numeric-unit lint still flags; switch public limits to `u32` and convert internally with `usize::try_from` plus a `max_length_bytes` local; isolate Matrix `Instant`/`Utc` reads behind narrow shell-boundary helpers; replace serde `default` on Vec/Value with explicit default functions and use `SyncSettings::new()` over `default()`.
-- 2026-06-09: clankers-util sentinel-fallback cleanup: when sorting possibly-missing references, return an explicit tuple key like `(is_missing, position)` rather than `usize::MAX` as a sentinel.
+- 2026-06-09: clankers-util sentinel-fallback/ambient-clock cleanup: when sorting possibly-missing references, return an explicit tuple key like `(is_missing, position)` rather than `usize::MAX` as a sentinel; isolate temp-file timestamp reads behind a narrow `truncation_clock_now()` helper.
 
 ## Corrections
 | Date | Source | What Went Wrong | What To Do Instead |

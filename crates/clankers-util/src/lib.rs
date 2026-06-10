@@ -12,7 +12,6 @@
         tigerstyle::ambiguous_params,
         tigerstyle::explicit_defaults,
         tigerstyle::usize_in_public_api,
-        tigerstyle::ambient_clock,
         reason = "utility APIs preserve existing parser/truncation contracts and have focused tests"
     )
 )]

@@ -118,7 +118,7 @@ fn save_full_output(content: &str) -> Option<PathBuf> {
     use std::io::Write;
 
     let temp_dir = std::env::temp_dir();
-    let timestamp = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).ok()?.as_millis();
+    let timestamp = truncation_clock_now().duration_since(std::time::UNIX_EPOCH).ok()?.as_millis();
     let file_name = format!("clankers-output-{}.txt", timestamp);
     let path = temp_dir.join(file_name);
 
@@ -126,6 +126,14 @@ fn save_full_output(content: &str) -> Option<PathBuf> {
     file.write_all(content.as_bytes()).ok()?;
 
     Some(path)
+}
+
+#[cfg_attr(
+    dylint_lib = "tigerstyle",
+    allow(tigerstyle::ambient_clock, reason = "truncation shell-boundary temp filename timestamp source")
+)]
+fn truncation_clock_now() -> std::time::SystemTime {
+    std::time::SystemTime::now()
 }
 
 #[cfg(test)]
