@@ -457,13 +457,25 @@ fn tool_outcome_to_input<C: CancellationSource>(
         }
         ToolHostOutcome::ToolError { content, message, .. } => runtime::tool_failed_input(call_id, message, content),
         ToolHostOutcome::MissingTool { name } => {
-            tool_failed_with_message(call_id, format_tool_error(MISSING_TOOL_ERROR_PREFIX, &name))
+            tool_failed_with_message(
+                call_id,
+                format_tool_error(ToolErrorFormat {
+                    prefix: MISSING_TOOL_ERROR_PREFIX,
+                    name: &name,
+                }),
+            )
         }
         ToolHostOutcome::CapabilityDenied { name, reason } => {
             tool_failed_with_message(call_id, format!("{CAPABILITY_DENIED_ERROR_PREFIX}: {name}: {reason}"))
         }
         ToolHostOutcome::Cancelled { name } => {
-            tool_failed_with_message(call_id, format_tool_error(TOOL_CANCELLED_ERROR_PREFIX, &name))
+            tool_failed_with_message(
+                call_id,
+                format_tool_error(ToolErrorFormat {
+                    prefix: TOOL_CANCELLED_ERROR_PREFIX,
+                    name: &name,
+                }),
+            )
         }
     }
 }
@@ -496,15 +508,13 @@ fn observe_usage<U: UsageObserver>(
     execution_report.usage_observations.push(observation);
 }
 
-#[cfg_attr(
-    dylint_lib = "tigerstyle",
-    allow(
-        tigerstyle::ambiguous_params,
-        reason = "small local formatter keeps prefix and name call sites adjacent"
-    )
-)]
-fn format_tool_error(prefix: &str, name: &str) -> String {
-    format!("{prefix}: {name}")
+struct ToolErrorFormat<'a> {
+    prefix: &'a str,
+    name: &'a str,
+}
+
+fn format_tool_error(format: ToolErrorFormat<'_>) -> String {
+    format!("{}: {}", format.prefix, format.name)
 }
 
 #[cfg(test)]

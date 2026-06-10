@@ -23,6 +23,7 @@
 - 2026-06-09: clankers-session `usize_in_public_api` cleanup can use `u64` for public counts/offsets and keep internal `usize` capacities via `message_capacity()`; avoid `try_from(...).expect(...)` because Tigerstyle no-unwrap is active once the broad crate allow is removed.
 - 2026-06-09: Removing `clankers-session` assertion-density allow opens a larger assertion sweep in Automerge/export/session-format paths; keep that as its own slice instead of mixing with public-count API churn.
 - 2026-06-09: clankers-model-selection compound/unbounded/raw-arithmetic/multi-lock cleanup: use fixed hint arrays for OR chains, reserve keyword extraction output from `keyword_hints.len()`, use `saturating_add` for milestone range starts, and document lock order on each RwLock field.
+- 2026-06-09: clankers-engine-host local ambiguous-params cleanup: tiny formatter helpers can take a named request struct (`ToolErrorFormat`) instead of keeping a local lint allow.
 
 ## Corrections
 | Date | Source | What Went Wrong | What To Do Instead |
