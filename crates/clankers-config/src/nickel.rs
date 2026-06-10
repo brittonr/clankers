@@ -215,7 +215,7 @@ mod tests {
         assert_eq!(settings.memory.project_char_limit, defaults.memory.project_char_limit);
         assert_eq!(settings.compression.summary_model, defaults.compression.summary_model);
         assert_eq!(settings.compression.keep_recent, defaults.compression.keep_recent);
-        assert_eq!(settings.compression.tail_budget_fraction, defaults.compression.tail_budget_fraction);
+        assert_eq!(settings.compression.tail_context_fraction, defaults.compression.tail_context_fraction);
         assert_eq!(settings.compression.min_messages, defaults.compression.min_messages);
     }
 

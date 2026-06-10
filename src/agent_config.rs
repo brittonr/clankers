@@ -173,7 +173,7 @@ fn auto_compact_settings_from_config(
 ) -> compaction::AutoCompactSettings {
     let summary_model = settings.summary_model.trim();
     compaction::AutoCompactSettings {
-        tail_context_fraction: settings.tail_budget_fraction,
+        tail_context_fraction: settings.tail_context_fraction,
         keep_recent: settings.keep_recent,
         summary_model: (!summary_model.is_empty()).then(|| summary_model.to_string()),
     }
@@ -348,7 +348,7 @@ mod tests {
             },
             compression: clankers_config::settings::CompressionSettings {
                 keep_recent: 6,
-                tail_budget_fraction: 0.25,
+                tail_context_fraction: 0.25,
                 summary_model: "compact-model".to_string(),
                 ..Settings::default().compression
             },

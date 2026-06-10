@@ -1212,15 +1212,19 @@ pub struct CompressionSettings {
     #[serde(default = "default_keep_recent")]
     pub keep_recent: usize,
     /// Fraction of the context window reserved for recent-message tail protection.
-    #[serde(default = "default_tail_budget_fraction")]
-    pub tail_budget_fraction: f64,
+    #[serde(
+        default = "default_tail_context_fraction",
+        rename = "tailBudgetFraction",
+        alias = "tail_budget_fraction"
+    )]
+    pub tail_context_fraction: f64,
     /// Minimum message count before compression is allowed.
     #[serde(default = "default_min_messages")]
     pub min_messages: usize,
 }
 
 const DEFAULT_KEEP_RECENT: usize = 4;
-const DEFAULT_TAIL_BUDGET_FRACTION: f64 = 0.40;
+const DEFAULT_TAIL_CONTEXT_FRACTION: f64 = 0.40;
 const DEFAULT_MIN_MESSAGES: usize = 5;
 const DEFAULT_SUMMARY_MODEL: &str = "haiku";
 
@@ -1230,8 +1234,8 @@ fn default_keep_recent() -> usize {
 fn default_summary_model() -> String {
     DEFAULT_SUMMARY_MODEL.to_string()
 }
-fn default_tail_budget_fraction() -> f64 {
-    DEFAULT_TAIL_BUDGET_FRACTION
+fn default_tail_context_fraction() -> f64 {
+    DEFAULT_TAIL_CONTEXT_FRACTION
 }
 fn default_min_messages() -> usize {
     DEFAULT_MIN_MESSAGES
@@ -1243,7 +1247,7 @@ impl Default for CompressionSettings {
             model: None,
             summary_model: default_summary_model(),
             keep_recent: default_keep_recent(),
-            tail_budget_fraction: default_tail_budget_fraction(),
+            tail_context_fraction: default_tail_context_fraction(),
             min_messages: default_min_messages(),
         }
     }
@@ -1498,6 +1502,28 @@ mod tests {
             "clankers/steel/orchestrate.execute_turn"
         ]);
         assert!(settings.steel_turn_planning.validate().is_ok());
+    }
+
+    #[test]
+    fn compression_tail_context_fraction_keeps_wire_compatibility() {
+        let camel_json = r#"{"compression":{"tailBudgetFraction":0.25}}"#;
+        let camel_settings: Settings = serde_json::from_str(camel_json).unwrap();
+        assert_eq!(camel_settings.compression.tail_context_fraction, 0.25);
+
+        let snake_json = r#"{"compression":{"tail_budget_fraction":0.30}}"#;
+        let snake_settings: Settings = serde_json::from_str(snake_json).unwrap();
+        assert_eq!(snake_settings.compression.tail_context_fraction, 0.30);
+
+        let settings = Settings {
+            compression: CompressionSettings {
+                tail_context_fraction: 0.35,
+                ..CompressionSettings::default()
+            },
+            ..Settings::default()
+        };
+        let serialized = serde_json::to_value(settings).unwrap();
+        assert_eq!(serialized["compression"]["tailBudgetFraction"], serde_json::json!(0.35));
+        assert!(serialized["compression"].get("tailContextFraction").is_none());
     }
 
     #[test]
