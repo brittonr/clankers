@@ -16,10 +16,14 @@
 - 2026-06-09: TUI block-view helper suppressions were avoidable because the helper module is private. Prefer `pub(super)` on sibling-only helpers before reshaping internal `usize` terminal geometry APIs.
 - 2026-06-09: For TUI conversation-block IDs, an input bag (`ConversationBlockInit`) removed public constructor `usize` parameters without forcing a full tree-ID migration. Imports used only from test helpers need `#[cfg(test)]` or `cargo check --tests` warns in library builds.
 - 2026-06-09: Tool progress ambient time is best threaded from `ToolProgress` event timestamps through throttle state; tests can use synthetic `Instant + Duration` values instead of sleeping.
+- 2026-06-09: clankers-ucan Tigerstyle cleanup reached zero crate-level Tigerstyle allows by replacing private same-`&str` helper args with small named structs and reserving bounded Vec capacity from already-known component/revocation limits.
 
 ## Corrections
 | Date | Source | What Went Wrong | What To Do Instead |
 |------|--------|----------------|-------------------|
+| 2026-06-09 | self | While burning down clankers-nix Tigerstyle acronym suppression, the old enum variant `NotAStorePath` also generated a Snafu selector that the lint saw despite a local enum allow | Prefer renaming public error variants/selectors to Tigerstyle names (`NotStorePath`) over keeping local acronym exceptions when the generated Snafu type is what fails. |
+| 2026-06-09 | self | Despite repeated napkin warnings, ran `rustfmt` on `crates/clankers-nix/src/lib.rs` during Tigerstyle cleanup; it did not churn this time but repeated the unsafe habit | Avoid rustfmt on crate/module roots; format only touched implementation files or immediately verify `git diff --stat` for unrelated child-module churn. |
+| 2026-06-09 | self | Tried `cargo test -p clankers-nix --all-features --lib`; `refscan` pulls `snix-castore` which needs `protoc` absent in this environment | For clankers-nix eval validation here, use `--features eval`; reserve `--all-features` for environments with protobuf compiler available. |
 | 2026-06-09 | self | Repeated the combined-root search habit with an `rg` path string of `crates src tests` during config rename validation | Even for `rg`, keep one real source root per call or use explicit separate calls before trusting results. |
 | 2026-06-09 | self | Let the first root `cargo nextest run -p clankers agent_config` Steel wrapper time out just after a passing summary, leaving no exit status | Rerun warmed focused tests when the tool times out; do not cite output without a final status line as validation evidence. |
 | 2026-06-09 | self | After compaction I again started commands/edits before re-reading the always-on napkin in the live turn | Read `.agent/napkin.md` as the first live action after every compaction/resume, even when the handoff summary says it was already read. |

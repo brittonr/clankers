@@ -5,9 +5,6 @@
     dylint_lib = "tigerstyle",
     allow(
         tigerstyle::explicit_defaults,
-        tigerstyle::unbounded_collection_growth,
-        tigerstyle::bool_naming,
-        tigerstyle::ambiguous_params,
         reason = "configuration structures preserve serde defaults and documented TOML surface during Tigerstyle drain"
     )
 )]

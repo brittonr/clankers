@@ -47,6 +47,8 @@ pub enum FlakeSourceType {
 pub fn parse_flake_ref(input: &str) -> Result<ParsedFlakeRef, NixError> {
     // Split off fragment (attribute path after #)
     let (source_part, fragment) = split_fragment(input);
+    assert!(source_part.len() <= input.len());
+    assert!(fragment.as_ref().map_or(true, |_| input.contains('#')));
 
     // Handle CLI shorthand: bare paths like ".", "./foo", "../bar"
     if is_bare_path(source_part) {
@@ -81,33 +83,41 @@ pub fn parse_flake_ref(input: &str) -> Result<ParsedFlakeRef, NixError> {
 /// Returns `true` for inputs that should be validated as flake refs before
 /// passing to the nix CLI.
 pub fn looks_like_flake_ref(s: &str) -> bool {
-    // Starts with known scheme prefixes
-    if s.starts_with("github:")
-        || s.starts_with("gitlab:")
-        || s.starts_with("sourcehut:")
-        || s.starts_with("git+")
-        || s.starts_with("file+")
-        || s.starts_with("path:")
-        || s.starts_with("tarball:")
-    {
+    if looks_like_prefixed_flake_ref(s) {
         return true;
     }
 
-    // CLI shorthand: .#foo, ./#foo, ../#foo
-    if s.starts_with(".#") || s.starts_with("./#") || s.starts_with("../#") {
+    if looks_like_cli_shorthand_flake_ref(s) {
         return true;
     }
 
-    // Contains # with a path-like prefix (not a flag)
-    if let Some(before_hash) = s.split('#').next()
-        && s.contains('#')
-        && !before_hash.starts_with('-')
-        && !before_hash.is_empty()
-    {
-        return true;
+    looks_like_path_fragment_flake_ref(s)
+}
+
+fn looks_like_prefixed_flake_ref(s: &str) -> bool {
+    const PREFIXES: [&str; 7] = ["github:", "gitlab:", "sourcehut:", "git+", "file+", "path:", "tarball:"];
+    PREFIXES.iter().any(|prefix| s.starts_with(prefix))
+}
+
+fn looks_like_cli_shorthand_flake_ref(s: &str) -> bool {
+    const PREFIXES: [&str; 3] = [".#", "./#", "../#"];
+    PREFIXES.iter().any(|prefix| s.starts_with(prefix))
+}
+
+fn looks_like_path_fragment_flake_ref(s: &str) -> bool {
+    if !s.contains('#') {
+        return false;
     }
 
-    false
+    let Some(before_hash) = s.split('#').next() else {
+        return false;
+    };
+
+    if before_hash.starts_with('-') {
+        return false;
+    }
+
+    !before_hash.is_empty()
 }
 
 /// Detect whether a directory is a flake project.
@@ -139,7 +149,8 @@ fn split_fragment(input: &str) -> (&str, Option<String>) {
     // For URL-scheme refs, the # is unambiguous
     if let Some(hash_pos) = input.find('#') {
         let source = &input[..hash_pos];
-        let frag = &input[hash_pos + 1..];
+        let fragment_start = hash_pos.saturating_add(1);
+        let frag = &input[fragment_start..];
         if frag.is_empty() {
             (source, None)
         } else {

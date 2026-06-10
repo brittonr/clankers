@@ -281,6 +281,8 @@ fn token_chain_has_trusted_root<'a>(
 ) -> PublicCredentialResult<bool> {
     let mut pending = vec![token];
     let mut visited = HashSet::new();
+    assert_eq!(pending.len(), 1);
+    assert!(visited.is_empty());
 
     while let Some(candidate) = pending.pop() {
         let reference = ucan::proof_reference(candidate).as_bytes().to_vec();

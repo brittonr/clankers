@@ -95,7 +95,7 @@ impl PublicUcanIssuer {
         lifetime: Duration,
         issued_at_seconds: u64,
     ) -> PublicIssuerResult<PublicCredentialEnvelope> {
-        let mut proofs = Vec::with_capacity(parent.proofs().len() + 1);
+        let mut proofs = Vec::with_capacity(parent.proofs().len().saturating_add(1));
         proofs.push(parent.token().clone());
         proofs.extend_from_slice(parent.proofs());
         let mut envelope = self.issue_delegated_credential_at(audience, capabilities, proofs, lifetime, issued_at_seconds)?;

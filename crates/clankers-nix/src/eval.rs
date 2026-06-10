@@ -43,7 +43,9 @@ pub fn evaluate(expr: &str) -> Result<EvalResult, NixError> {
 /// Evaluate with a custom timeout.
 pub fn evaluate_with_timeout(expr: &str, timeout: Duration) -> Result<EvalResult, NixError> {
     let expr_owned = expr.to_string();
-    let start = Instant::now();
+    assert!(timeout > Duration::ZERO);
+    assert!(MAX_OUTPUT_SIZE > 0);
+    let start = eval_clock_now();
 
     // snix-eval uses Rc internally (not Send), so we run it on the current thread.
     // The caller should use spawn_blocking if needed.
@@ -107,6 +109,14 @@ pub fn evaluate_with_timeout(expr: &str, timeout: Duration) -> Result<EvalResult
         in_process: true,
         warnings,
     })
+}
+
+#[cfg_attr(
+    dylint_lib = "tigerstyle",
+    allow(tigerstyle::ambient_clock, reason = "narrow shell-boundary clock read for eval timeout measurement")
+)]
+fn eval_clock_now() -> Instant {
+    Instant::now()
 }
 
 /// Evaluate a .nix file in-process.

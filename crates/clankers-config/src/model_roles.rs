@@ -149,7 +149,7 @@ impl ModelRoles {
 
     /// Human-readable summary of all role assignments.
     pub fn summary(&self, fallback: &str) -> String {
-        let mut lines = Vec::new();
+        let mut lines = Vec::with_capacity(self.roles.len());
         for role in self.roles.values() {
             let model = self.resolve(&role.name, fallback);
             let is_explicit = role.model.is_some();

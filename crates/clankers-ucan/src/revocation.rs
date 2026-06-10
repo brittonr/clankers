@@ -124,7 +124,8 @@ impl RevocationStore for RedbRevocationStore {
             }
         };
 
-        let mut hashes = Vec::new();
+        let max_revocation_entries = usize::try_from(crate::constants::MAX_REVOCATION_LIST_SIZE).unwrap_or(0);
+        let mut hashes = Vec::with_capacity(max_revocation_entries);
 
         // Iterate over all entries
         let iter = match table.iter() {
@@ -154,7 +155,7 @@ impl RevocationStore for RedbRevocationStore {
             }
 
             // Tiger Style: Enforce max size to prevent unbounded memory usage
-            if hashes.len() >= usize::try_from(crate::constants::MAX_REVOCATION_LIST_SIZE).unwrap_or(0) {
+            if hashes.len() >= max_revocation_entries {
                 tracing::warn!(
                     "Revocation list truncated at {} entries (limit: {})",
                     hashes.len(),

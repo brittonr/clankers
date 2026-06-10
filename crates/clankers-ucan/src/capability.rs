@@ -11,7 +11,16 @@ use serde::Serialize;
 ///
 /// Supports only `*` wildcards at the end of patterns (e.g., "pg_*").
 /// Returns true if the pattern matches the input.
-fn glob_match(pattern: &str, input: &str) -> bool {
+struct GlobCandidate<'a> {
+    pattern: &'a str,
+    input: &'a str,
+}
+
+fn glob_match(candidate: GlobCandidate<'_>) -> bool {
+    let pattern = candidate.pattern;
+    let input = candidate.input;
+    assert_eq!(pattern, candidate.pattern);
+    assert_eq!(input, candidate.input);
     if pattern == "*" {
         return true;
     }
@@ -40,7 +49,7 @@ fn glob_match(pattern: &str, input: &str) -> bool {
                 continue;
             }
             if let Some(pos) = remaining.find(part) {
-                remaining = &remaining[pos + part.len()..];
+                remaining = &remaining[pos.saturating_add(part.len())..];
             } else {
                 return false;
             }
@@ -112,7 +121,10 @@ impl Capability {
 
             // ToolUse operations
             (Capability::ToolUse { tool_pattern }, Operation::ToolUse { tool_name }) => {
-                match_pattern(tool_pattern, tool_name)
+                match_pattern(PatternMatch {
+                    pattern: tool_pattern,
+                    value: tool_name,
+                })
             }
 
             // ShellExecute operations
@@ -128,7 +140,10 @@ impl Capability {
                     working_dir: op_wd,
                 },
             ) => {
-                if !glob_match(command_pattern, command) {
+                if !glob_match(GlobCandidate {
+                    pattern: command_pattern,
+                    input: command,
+                }) {
                     return false;
                 }
                 match (cap_wd, op_wd) {
@@ -170,7 +185,10 @@ impl Capability {
 
             // BotCommand operations
             (Capability::BotCommand { command_pattern }, Operation::BotCommand { command }) => {
-                match_pattern(command_pattern, command)
+                match_pattern(PatternMatch {
+                    pattern: command_pattern,
+                    value: command,
+                })
             }
 
             // SessionManage operations
@@ -202,7 +220,7 @@ impl Capability {
 
             // ToolUse pattern containment
             (Capability::ToolUse { tool_pattern: p1 }, Capability::ToolUse { tool_pattern: p2 }) => {
-                pattern_contains(p1, p2)
+                pattern_contains(PatternContainment { parent: p1, child: p2 })
             }
 
             // FileAccess containment
@@ -231,7 +249,7 @@ impl Capability {
 
             // BotCommand pattern containment
             (Capability::BotCommand { command_pattern: p1 }, Capability::BotCommand { command_pattern: p2 }) => {
-                pattern_contains(p1, p2)
+                pattern_contains(PatternContainment { parent: p1, child: p2 })
             }
 
             // ShellExecute containment
@@ -285,12 +303,17 @@ impl Capability {
 /// - `match_pattern("*", "anything")` => true
 /// - `match_pattern("read,grep", "bash")` => false
 // r[impl ucan.auth.wildcard-matches-all]
-fn match_pattern(pattern: &str, value: &str) -> bool {
-    if pattern == "*" {
+struct PatternMatch<'a> {
+    pattern: &'a str,
+    value: &'a str,
+}
+
+fn match_pattern(candidate: PatternMatch<'_>) -> bool {
+    if candidate.pattern == "*" {
         return true;
     }
 
-    pattern.split(',').any(|item| item.trim() == value)
+    candidate.pattern.split(',').any(|item| item.trim() == candidate.value)
 }
 
 /// Check if pattern1 contains pattern2 (for delegation).
@@ -300,7 +323,14 @@ fn match_pattern(pattern: &str, value: &str) -> bool {
 /// - "a,b,c" contains "a,b" (all items in p2 must be in p1)
 /// - Exact match contains itself
 // r[impl ucan.auth.pattern-set-containment]
-fn pattern_contains(p1: &str, p2: &str) -> bool {
+struct PatternContainment<'a> {
+    parent: &'a str,
+    child: &'a str,
+}
+
+fn pattern_contains(containment: PatternContainment<'_>) -> bool {
+    let p1 = containment.parent;
+    let p2 = containment.child;
     if p1 == "*" {
         return true;
     }

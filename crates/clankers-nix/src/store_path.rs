@@ -41,12 +41,14 @@ pub struct NixPath {
 /// Parse a single absolute nix store path into a [`NixPath`].
 ///
 /// Accepts paths like `/nix/store/ql5gvvahh5gnir9g8v25xd4dwqa4hcmp-hello-2.12.1`.
-/// Returns `NixError::NotAStorePath` if the input doesn't start with `/nix/store/`.
+/// Returns `NixError::NotStorePath` if the input doesn't start with `/nix/store/`.
 /// Returns `NixError::InvalidStorePath` if the hash or name is malformed.
 pub fn parse_store_path(path: &str) -> Result<NixPath, NixError> {
     // Strip any trailing path components — StorePath only covers the
     // direct child of /nix/store/.
     let store_part = strip_to_store_entry(path);
+    assert!(store_part.len() <= path.len());
+    assert!(!path.is_empty());
 
     let parsed: StorePathRef<'_> = StorePath::from_absolute_path(store_part.as_bytes()).map_err(|e| {
         if store_part.starts_with("/nix/store/") {
@@ -56,7 +58,7 @@ pub fn parse_store_path(path: &str) -> Result<NixPath, NixError> {
             }
             .build()
         } else {
-            NotAStorePathSnafu { path: path.to_string() }.build()
+            NotStorePathSnafu { path: path.to_string() }.build()
         }
     })?;
 
@@ -82,7 +84,7 @@ pub fn parse_store_path(path: &str) -> Result<NixPath, NixError> {
 )]
 pub fn extract_store_paths(text: &str) -> Vec<NixPath> {
     let mut seen = std::collections::HashSet::new();
-    let mut results = Vec::new();
+    let mut results = Vec::with_capacity(text.len());
 
     for caps in STORE_PATH_RE.captures_iter(text) {
         let full_match = caps.get(0).unwrap().as_str();
@@ -109,7 +111,8 @@ fn strip_to_store_entry(path: &str) -> &str {
     if let Some(rest) = path.strip_prefix(prefix) {
         // Find the next `/` after the store entry name
         if let Some(slash_pos) = rest.find('/') {
-            &path[..prefix.len() + slash_pos]
+            let entry_len = prefix.len().saturating_add(slash_pos);
+            &path[..entry_len]
         } else {
             path
         }
@@ -154,7 +157,7 @@ mod tests {
         let result = parse_store_path("/home/user/project");
         assert!(result.is_err());
         let err = result.unwrap_err();
-        assert!(matches!(err, NixError::NotAStorePath { .. }));
+        assert!(matches!(err, NixError::NotStorePath { .. }));
     }
 
     #[test]

@@ -7,20 +7,6 @@
 //! - .clankers/skills/*/SKILL.md (project)
 #![allow(unexpected_cfgs)]
 #![cfg_attr(dylint_lib = "tigerstyle", feature(register_tool), register_tool(tigerstyle))]
-#![cfg_attr(
-    dylint_lib = "tigerstyle",
-    allow(
-        tigerstyle::assertion_density,
-        tigerstyle::ambiguous_params,
-        tigerstyle::numeric_units,
-        tigerstyle::bool_naming,
-        tigerstyle::unbounded_collection_growth,
-        tigerstyle::compound_assertion,
-        tigerstyle::raw_arithmetic_overflow,
-        reason = "skills crate is validated through focused parser/security tests; public API shape is tool-contract compatibility"
-    )
-)]
-
 mod security;
 
 use std::ffi::OsStr;
@@ -155,6 +141,8 @@ pub fn discover_skills(global_dir: &Path, project_dir: Option<&Path>) -> Vec<Ski
 }
 
 pub fn write_skill(root: &Path, name: &str, category: Option<&str>, content: &str) -> Result<PathBuf, SkillError> {
+    assert!(!name.is_empty());
+    assert!(!content.is_empty());
     validate_name(name)?;
     if let Some(category_name) = category {
         validate_category(category_name)?;
@@ -177,36 +165,44 @@ pub fn write_skill(root: &Path, name: &str, category: Option<&str>, content: &st
     Ok(skill_file)
 }
 
-pub fn edit_skill(root: &Path, name: &str, content: &str) -> Result<(), SkillError> {
-    validate_name(name)?;
-    validate_frontmatter(content)?;
-    validate_content_size(content, false)?;
-    scan_content(content)?;
+pub struct SkillEdit<'a> {
+    pub name: &'a str,
+    pub content: &'a str,
+}
 
-    let skill_file = existing_skill_file(root, name)?;
+pub struct SkillPatch<'a> {
+    pub name: &'a str,
+    pub old_text: &'a str,
+    pub new_text: &'a str,
+    pub file: Option<&'a Path>,
+}
+
+pub fn edit_skill(root: &Path, edit: SkillEdit<'_>) -> Result<(), SkillError> {
+    validate_name(edit.name)?;
+    validate_frontmatter(edit.content)?;
+    validate_content_size(edit.content, false)?;
+    scan_content(edit.content)?;
+
+    let skill_file = existing_skill_file(root, edit.name)?;
     ensure_path_is_writable(root, &skill_file)?;
-    std::fs::write(skill_file, content)?;
+    std::fs::write(skill_file, edit.content)?;
     Ok(())
 }
 
-pub fn patch_skill(
-    root: &Path,
-    name: &str,
-    old_text: &str,
-    new_text: &str,
-    file: Option<&Path>,
-) -> Result<(), SkillError> {
-    validate_name(name)?;
-    if old_text.is_empty() {
+pub fn patch_skill(root: &Path, patch: SkillPatch<'_>) -> Result<(), SkillError> {
+    assert!(!patch.name.is_empty());
+    assert!(SKILL_FILE_NAME.ends_with(".md"));
+    validate_name(patch.name)?;
+    if patch.old_text.is_empty() {
         return Err(SkillError::InvalidContent("old_text must not be empty".to_string()));
     }
 
-    let target_file = match file {
+    let target_file = match patch.file {
         Some(path) => {
             validate_supporting_path(path)?;
-            skill_dir_path(root, name)?.join(path)
+            skill_dir_path(root, patch.name)?.join(path)
         }
-        None => existing_skill_file(root, name)?,
+        None => existing_skill_file(root, patch.name)?,
     };
     ensure_path_is_writable(root, &target_file)?;
     if !target_file.is_file() {
@@ -214,8 +210,12 @@ pub fn patch_skill(
     }
 
     let original = std::fs::read_to_string(&target_file)?;
-    let replaced = replace_first(&original, old_text, new_text)
-        .ok_or_else(|| SkillError::PatchTargetMissing(old_text.to_string()))?;
+    let replaced = replace_first(Replacement {
+        haystack: &original,
+        needle: patch.old_text,
+        replacement: patch.new_text,
+    })
+    .ok_or_else(|| SkillError::PatchTargetMissing(patch.old_text.to_string()))?;
 
     if target_file.file_name() == Some(OsStr::new(SKILL_FILE_NAME)) {
         validate_frontmatter(&replaced)?;
@@ -271,6 +271,8 @@ pub fn remove_skill_file(root: &Path, name: &str, path: &Path) -> Result<(), Ski
 }
 
 pub fn validate_frontmatter(content: &str) -> Result<(), SkillError> {
+    assert!(MAX_NAME_LENGTH > 0);
+    assert!(MAX_DESCRIPTION_LENGTH > MAX_NAME_LENGTH);
     validate_content_size(content, false)?;
     let mut lines = content.lines();
     let Some(first_line) = lines.next() else {
@@ -280,16 +282,16 @@ pub fn validate_frontmatter(content: &str) -> Result<(), SkillError> {
         return Err(SkillError::InvalidContent("content must begin with YAML frontmatter".to_string()));
     }
 
-    let mut frontmatter_lines = Vec::new();
-    let mut found_closing_delimiter = false;
+    let mut frontmatter_lines = Vec::with_capacity(8);
+    let mut is_frontmatter_closed = false;
     for line in lines.by_ref() {
         if line.trim() == FRONTMATTER_DELIMITER {
-            found_closing_delimiter = true;
+            is_frontmatter_closed = true;
             break;
         }
         frontmatter_lines.push(line);
     }
-    if !found_closing_delimiter {
+    if !is_frontmatter_closed {
         return Err(SkillError::InvalidContent("frontmatter must end with --- delimiter".to_string()));
     }
 
@@ -355,7 +357,7 @@ pub fn validate_category(category: &str) -> Result<(), SkillError> {
 }
 
 pub fn validate_content_size(content: &str, supporting_file: bool) -> Result<(), SkillError> {
-    let limit = if supporting_file {
+    let max_content_chars = if supporting_file {
         MAX_SUPPORTING_FILE_CHARS
     } else {
         MAX_SKILL_CONTENT_CHARS
@@ -365,13 +367,15 @@ pub fn validate_content_size(content: &str, supporting_file: bool) -> Result<(),
     } else {
         "skill content"
     };
-    if content.chars().count() > limit {
-        return Err(SkillError::InvalidContent(format!("{label} exceeds {limit} characters")));
+    if content.chars().count() > max_content_chars {
+        return Err(SkillError::InvalidContent(format!("{label} exceeds {max_content_chars} characters")));
     }
     Ok(())
 }
 
 pub fn validate_supporting_path(path: &Path) -> Result<(), SkillError> {
+    assert!(!ALLOWED_SUPPORTING_DIRS.is_empty());
+    assert!(SKILL_FILE_NAME.ends_with(".md"));
     if path.is_absolute() {
         return Err(SkillError::InvalidSupportingPath("supporting file path must be relative".to_string()));
     }
@@ -491,6 +495,8 @@ fn skill_file_path(root: &Path, name: &str, category: Option<&str>) -> Result<Pa
 }
 
 fn existing_skill_dir(root: &Path, name: &str) -> Result<PathBuf, SkillError> {
+    assert!(!name.is_empty());
+    assert!(MAX_NAME_LENGTH > 0);
     let direct_dir = skill_dir_path(root, name)?;
     if direct_dir.join(SKILL_FILE_NAME).is_file() {
         return Ok(direct_dir);
@@ -552,13 +558,24 @@ fn normalize_path(path: &Path) -> Result<PathBuf, SkillError> {
     Ok(normalized)
 }
 
-fn replace_first(haystack: &str, needle: &str, replacement: &str) -> Option<String> {
-    let start = haystack.find(needle)?;
-    let end = start + needle.len();
-    let mut output = String::with_capacity(haystack.len() - needle.len() + replacement.len());
-    output.push_str(&haystack[..start]);
-    output.push_str(replacement);
-    output.push_str(&haystack[end..]);
+struct Replacement<'a> {
+    haystack: &'a str,
+    needle: &'a str,
+    replacement: &'a str,
+}
+
+fn replace_first(replacement: Replacement<'_>) -> Option<String> {
+    let start = replacement.haystack.find(replacement.needle)?;
+    let end = start.saturating_add(replacement.needle.len());
+    let output_capacity_bytes = replacement
+        .haystack
+        .len()
+        .saturating_sub(replacement.needle.len())
+        .saturating_add(replacement.replacement.len());
+    let mut output = String::with_capacity(output_capacity_bytes);
+    output.push_str(&replacement.haystack[..start]);
+    output.push_str(replacement.replacement);
+    output.push_str(&replacement.haystack[end..]);
     Some(output)
 }
 
@@ -644,10 +661,26 @@ mod tests {
         assert_eq!(skill_path, dir.path().join("git-rebase").join(SKILL_FILE_NAME));
         assert_eq!(std::fs::read_to_string(&skill_path).unwrap(), VALID_SKILL);
 
-        edit_skill(dir.path(), "git-rebase", VALID_SKILL_UPDATED).expect("failed to edit skill");
+        edit_skill(
+            dir.path(),
+            SkillEdit {
+                name: "git-rebase",
+                content: VALID_SKILL_UPDATED,
+            },
+        )
+        .expect("failed to edit skill");
         assert_eq!(std::fs::read_to_string(&skill_path).unwrap(), VALID_SKILL_UPDATED);
 
-        patch_skill(dir.path(), "git-rebase", "updated skill", "patched skill", None).expect("failed to patch skill");
+        patch_skill(
+            dir.path(),
+            SkillPatch {
+                name: "git-rebase",
+                old_text: "updated skill",
+                new_text: "patched skill",
+                file: None,
+            },
+        )
+        .expect("failed to patch skill");
         let patched = std::fs::read_to_string(&skill_path).unwrap();
         assert!(patched.contains("patched skill"));
 
@@ -666,8 +699,16 @@ mod tests {
         let full_path = dir.path().join("git-rebase").join("references").join("advanced.md");
         assert_eq!(std::fs::read_to_string(&full_path).unwrap(), "advanced notes");
 
-        patch_skill(dir.path(), "git-rebase", "advanced", "expert", Some(supporting_path))
-            .expect("failed to patch supporting file");
+        patch_skill(
+            dir.path(),
+            SkillPatch {
+                name: "git-rebase",
+                old_text: "advanced",
+                new_text: "expert",
+                file: Some(supporting_path),
+            },
+        )
+        .expect("failed to patch supporting file");
         assert_eq!(std::fs::read_to_string(&full_path).unwrap(), "expert notes");
 
         remove_skill_file(dir.path(), "git-rebase", supporting_path).expect("failed to remove supporting file");

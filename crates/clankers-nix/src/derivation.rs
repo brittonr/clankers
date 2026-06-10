@@ -77,6 +77,8 @@ const MAX_VAR_LEN: usize = 2000;
 /// Read and parse a `.drv` file into a [`DerivationInfo`].
 pub fn read_derivation(drv_path: &Path) -> Result<DerivationInfo, NixError> {
     let path_str = drv_path.display().to_string();
+    assert!(!path_str.is_empty());
+    assert!(PHASE_TRUNCATE_LEN <= MAX_VAR_LEN);
 
     let bytes = std::fs::read(drv_path).map_err(|e| NixError::DerivationIo {
         path: path_str.clone(),
@@ -145,11 +147,14 @@ pub fn read_derivation(drv_path: &Path) -> Result<DerivationInfo, NixError> {
 /// ├── gcc-13.3.0 (cc)
 /// └── hello-2.12.1-src (source)
 /// ```
-pub fn dependency_summary(drv_path: &Path, max_depth: usize) -> Result<String, NixError> {
+pub fn dependency_summary(drv_path: &Path, max_depth: u32) -> Result<String, NixError> {
     let info = read_derivation(drv_path)?;
     let mut lines = Vec::new();
     lines.push(info.name.clone());
-    build_dep_tree(&info, &mut lines, "", max_depth, 0);
+    build_dep_tree(&info, &mut lines, "", DepTreeDepth {
+        max_depth,
+        current_depth: 0,
+    });
     Ok(lines.join("\n"))
 }
 
@@ -158,7 +163,9 @@ fn filter_env(env: &std::collections::BTreeMap<String, bstr::BString>) -> Vec<(S
     let include_set: HashSet<&str> = INCLUDE_VARS.iter().copied().collect();
     let exclude_set: HashSet<&str> = EXCLUDE_VARS.iter().copied().collect();
 
-    let mut result = Vec::new();
+    let mut result = Vec::with_capacity(env.len());
+    assert!(result.capacity() >= env.len());
+    assert!(MAX_VAR_LEN >= PHASE_TRUNCATE_LEN);
 
     for (key, value) in env {
         // Always skip excluded vars
@@ -201,22 +208,24 @@ fn filter_env(env: &std::collections::BTreeMap<String, bstr::BString>) -> Vec<(S
 
 /// Build a tree representation of derivation dependencies.
 /// Recursion is bounded by max_depth parameter (typically 10).
+#[derive(Debug, Clone, Copy)]
+struct DepTreeDepth {
+    max_depth: u32,
+    current_depth: u32,
+}
+
 #[cfg_attr(
     dylint_lib = "tigerstyle",
-    allow(no_recursion, reason = "depth bounded by max_depth parameter")
+    allow(tigerstyle::no_recursion, reason = "depth bounded by explicit DepTreeDepth budget")
 )]
-fn build_dep_tree(
-    info: &DerivationInfo,
-    lines: &mut Vec<String>,
-    prefix: &str,
-    max_depth: usize,
-    current_depth: usize,
-) {
-    if current_depth >= max_depth {
+fn build_dep_tree(info: &DerivationInfo, lines: &mut Vec<String>, prefix: &str, depth: DepTreeDepth) {
+    if depth.current_depth >= depth.max_depth {
         return;
     }
 
-    let total = info.input_drvs.len() + info.input_srcs.len();
+    let total = info.input_drvs.len().saturating_add(info.input_srcs.len());
+    assert!(total >= info.input_drvs.len());
+    assert!(total >= info.input_srcs.len());
     let mut idx = 0;
 
     for input_drv in &info.input_drvs {
@@ -236,7 +245,11 @@ fn build_dep_tree(
         lines.push(format!("{prefix}{connector}{display_name}{outputs_str}"));
 
         // Recurse if we can read the drv
-        if current_depth + 1 < max_depth {
+        let child_depth = DepTreeDepth {
+            max_depth: depth.max_depth,
+            current_depth: depth.current_depth.saturating_add(1),
+        };
+        if child_depth.current_depth < child_depth.max_depth {
             let child_prefix = if is_last {
                 format!("{prefix}    ")
             } else {
@@ -244,7 +257,7 @@ fn build_dep_tree(
             };
             let drv_path = Path::new(&input_drv.path);
             if let Ok(child_info) = read_derivation(drv_path) {
-                build_dep_tree(&child_info, lines, &child_prefix, max_depth, current_depth + 1);
+                build_dep_tree(&child_info, lines, &child_prefix, child_depth);
             }
         }
     }

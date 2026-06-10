@@ -154,8 +154,11 @@ fn normalize_file_resource(path: &str) -> VocabularyResult<String> {
 }
 
 fn normalize_path_segments(path: &str) -> VocabularyResult<String> {
-    let mut output = Vec::new();
     let source = Path::new(path);
+    let component_count = source.components().count();
+    let mut output = Vec::with_capacity(component_count);
+    assert_eq!(output.len(), 0);
+    assert_eq!(output.capacity(), component_count);
     for component in source.components() {
         match component {
             Component::Prefix(_) => {
@@ -176,14 +179,16 @@ fn normalize_path_segments(path: &str) -> VocabularyResult<String> {
 }
 
 fn percent_encode(bytes: &[u8]) -> String {
-    use std::fmt::Write;
+    const HEX: &[u8; 16] = b"0123456789ABCDEF";
 
     let mut encoded = String::new();
     for byte in bytes {
         if is_unreserved(*byte) {
             encoded.push(char::from(*byte));
         } else {
-            let _ = write!(encoded, "%{byte:02X}");
+            encoded.push('%');
+            encoded.push(char::from(HEX[usize::from(*byte >> 4)]));
+            encoded.push(char::from(HEX[usize::from(*byte & 0x0F)]));
         }
     }
     encoded

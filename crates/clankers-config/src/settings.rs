@@ -328,9 +328,9 @@ impl McpServerConfig {
     }
 
     pub fn publishes_tool(&self, tool_name: &str) -> bool {
-        let included = self.include_tools.is_empty() || self.include_tools.iter().any(|tool| tool == tool_name);
-        let excluded = self.exclude_tools.iter().any(|tool| tool == tool_name);
-        included && !excluded
+        let is_included = self.include_tools.is_empty() || self.include_tools.iter().any(|tool| tool == tool_name);
+        let is_excluded = self.exclude_tools.iter().any(|tool| tool == tool_name);
+        is_included && !is_excluded
     }
 
     pub fn published_tool_name(&self, server_name: &str, tool_name: &str) -> String {
@@ -459,16 +459,28 @@ impl BrowserAutomationSettings {
     }
 
     pub fn permits_origin(&self, origin: &str) -> bool {
-        self.allowed_origins.is_empty() || self.allowed_origins.iter().any(|allowed| origin_matches(allowed, origin))
+        self.allowed_origins.is_empty()
+            || self
+                .allowed_origins
+                .iter()
+                .any(|allowed| origin_matches(OriginMatch { pattern: allowed, origin }))
     }
 }
 
-fn origin_matches(pattern: &str, origin: &str) -> bool {
-    if pattern == "*" || pattern == origin {
+struct OriginMatch<'a> {
+    pattern: &'a str,
+    origin: &'a str,
+}
+
+fn origin_matches(candidate: OriginMatch<'_>) -> bool {
+    if candidate.pattern == "*" {
         return true;
     }
-    if let Some(prefix) = pattern.strip_suffix("*") {
-        return origin.starts_with(prefix);
+    if candidate.pattern == candidate.origin {
+        return true;
+    }
+    if let Some(prefix) = candidate.pattern.strip_suffix("*") {
+        return candidate.origin.starts_with(prefix);
     }
     false
 }

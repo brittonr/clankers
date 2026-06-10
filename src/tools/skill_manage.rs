@@ -104,7 +104,15 @@ impl SkillManageTool {
         };
         let file = optional_str(params, "file_path").map(Path::new);
 
-        match clankers_skills::patch_skill(&self.global_skills_dir, name, old_text, new_text, file) {
+        match clankers_skills::patch_skill(
+            &self.global_skills_dir,
+            clankers_skills::SkillPatch {
+                name,
+                old_text,
+                new_text,
+                file,
+            },
+        ) {
             Ok(()) => ToolResult::text(format!("Patched skill '{name}'.")),
             Err(err) => skill_error(err),
         }
@@ -120,7 +128,7 @@ impl SkillManageTool {
             Err(err) => return err,
         };
 
-        match clankers_skills::edit_skill(&self.global_skills_dir, name, content) {
+        match clankers_skills::edit_skill(&self.global_skills_dir, clankers_skills::SkillEdit { name, content }) {
             Ok(()) => ToolResult::text(format!("Replaced skill '{name}' content.")),
             Err(err) => skill_error(err),
         }

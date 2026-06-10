@@ -71,6 +71,8 @@ struct ThreatPattern {
 }
 
 pub fn scan_content(content: &str) -> Result<(), SecurityError> {
+    assert!(!THREAT_PATTERNS.is_empty());
+    assert!(!INVISIBLE_UNICODE.is_empty());
     let lowercase = content.to_lowercase();
     for pattern in THREAT_PATTERNS {
         if pattern.required_terms.iter().all(|term| lowercase.contains(&term.to_lowercase())) {
