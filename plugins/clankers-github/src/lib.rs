@@ -40,13 +40,17 @@ pub fn handle_tool_call(input: String) -> FnResult<String> {
     ])
 }
 
-/// Handle a plugin lifecycle event.
-#[plugin_fn]
-pub fn on_event(input: String) -> FnResult<String> {
-    dispatch_events(&input, &[
+fn dispatch_github_event(input: &str) -> FnResult<String> {
+    dispatch_events(input, &[
         ("agent_start", |_| "clankers-github plugin ready".to_string()),
         ("agent_end", |_| "clankers-github plugin shutting down".to_string()),
     ])
+}
+
+/// Handle a plugin lifecycle event.
+#[plugin_fn]
+pub fn on_event(input: String) -> FnResult<String> {
+    dispatch_github_event(&input)
 }
 
 /// Return plugin metadata as JSON.
@@ -784,4 +788,31 @@ fn handle_repo_info(args: &Value) -> Result<String, String> {
     }
 
     Ok(out)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn event_dispatch_handles_agent_start() {
+        let input = clanker_plugin_sdk::serde_json::json!({
+            "event": "agent_start",
+            "data": {},
+        })
+        .to_string();
+        let output = dispatch_github_event(&input).expect("agent_start event should dispatch");
+        let result: Value = clanker_plugin_sdk::serde_json::from_str(&output).expect("event result should be JSON");
+
+        assert_eq!(result["event"], "agent_start");
+        assert_eq!(result["handled"], true);
+        assert_eq!(result["message"], "clankers-github plugin ready");
+    }
+
+    #[test]
+    fn parses_github_iso_timestamp() {
+        assert_eq!(parse_iso8601_unix("1970-01-01T00:00:00Z"), Some(0));
+        assert_eq!(parse_iso8601_unix("1970-01-02T00:00:00Z"), Some(86_400));
+        assert_eq!(parse_iso8601_unix("not-a-timestamp"), None);
+    }
 }

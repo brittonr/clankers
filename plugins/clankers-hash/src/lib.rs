@@ -14,22 +14,30 @@ use clanker_plugin_sdk::prelude::*;
 //  Extism guest functions
 // ═══════════════════════════════════════════════════════════════════════
 
+fn dispatch_hash_tool_call(input: &str) -> FnResult<String> {
+    dispatch_tools(input, &[
+        ("hash_text", handle_hash_text),
+        ("encode_text", handle_encode_text),
+    ])
+}
+
 /// Dispatch a tool call to the appropriate handler.
 #[plugin_fn]
 pub fn handle_tool_call(input: String) -> FnResult<String> {
-    dispatch_tools(&input, &[
-        ("hash_text", handle_hash_text),
-        ("encode_text", handle_encode_text),
+    dispatch_hash_tool_call(&input)
+}
+
+fn dispatch_hash_event(input: &str) -> FnResult<String> {
+    dispatch_events(input, &[
+        ("agent_start", |_| "clankers-hash plugin initialized".to_string()),
+        ("agent_end", |_| "clankers-hash plugin shutting down".to_string()),
     ])
 }
 
 /// Handle a plugin lifecycle event.
 #[plugin_fn]
 pub fn on_event(input: String) -> FnResult<String> {
-    dispatch_events(&input, &[
-        ("agent_start", |_| "clankers-hash plugin initialized".to_string()),
-        ("agent_end", |_| "clankers-hash plugin shutting down".to_string()),
-    ])
+    dispatch_hash_event(&input)
 }
 
 /// Return plugin metadata as JSON.
@@ -371,5 +379,43 @@ fn b64_val(c: u8) -> Result<u8, String> {
         b'+' => Ok(62),
         b'/' => Ok(63),
         _ => Err(format!("invalid base64 character: '{}'", c as char)),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn event_dispatch_handles_agent_start() {
+        let input = clanker_plugin_sdk::serde_json::json!({
+            "event": "agent_start",
+            "data": {},
+        })
+        .to_string();
+        let output = dispatch_hash_event(&input).expect("agent_start event should dispatch");
+        let result: Value = clanker_plugin_sdk::serde_json::from_str(&output).expect("event result should be JSON");
+
+        assert_eq!(result["event"], "agent_start");
+        assert_eq!(result["handled"], true);
+        assert_eq!(result["message"], "clankers-hash plugin initialized");
+    }
+
+    #[test]
+    fn tool_dispatch_hashes_sha256() {
+        let input = clanker_plugin_sdk::serde_json::json!({
+            "tool": "hash_text",
+            "args": { "text": "abc", "algorithm": "sha256" },
+        })
+        .to_string();
+        let output = dispatch_hash_tool_call(&input).expect("hash_text should dispatch");
+        let result: Value = clanker_plugin_sdk::serde_json::from_str(&output).expect("tool result should be JSON");
+
+        assert_eq!(result["tool"], "hash_text");
+        assert_eq!(result["status"], "ok");
+        assert_eq!(
+            result["result"],
+            "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"
+        );
     }
 }

@@ -3,6 +3,7 @@
 ## Working Notes
 
 - 2026-06-09: Plugin SDK Tigerstyle burn-down: removing unused event-dispatch context and replacing multi-`&str` HTTP request args with a `RequestOptions` bag kept public call sites readable. Validate SDK API changes with both `cargo check -p clanker-plugin-sdk --all-features --tests` and each out-of-workspace plugin via `cargo check --manifest-path plugins/<plugin>/Cargo.toml`.
+- 2026-06-09: Auto-test runs nextest against changed out-of-workspace plugins; plugins with zero tests fail with `error: no tests to run`. Add real smoke/unit tests for changed plugin crates instead of relying on `cargo check`.
 - 2026-06-09: TUI block-view helper suppressions were avoidable because the helper module is private. Prefer `pub(super)` on sibling-only helpers before reshaping internal `usize` terminal geometry APIs.
 - 2026-06-09: For TUI conversation-block IDs, an input bag (`ConversationBlockInit`) removed public constructor `usize` parameters without forcing a full tree-ID migration. Imports used only from test helpers need `#[cfg(test)]` or `cargo check --tests` warns in library builds.
 - 2026-06-09: Tool progress ambient time is best threaded from `ToolProgress` event timestamps through throttle state; tests can use synthetic `Instant + Duration` values instead of sleeping.

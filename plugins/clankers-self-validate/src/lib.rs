@@ -68,9 +68,8 @@ impl ValidateResult {
 //  Extism guest functions
 // ═══════════════════════════════════════════════════════════════════════
 
-#[plugin_fn]
-pub fn handle_tool_call(input: String) -> FnResult<String> {
-    let call: ToolCall = clanker_plugin_sdk::serde_json::from_str(&input)
+fn dispatch_validation_tool_call(input: &str) -> FnResult<String> {
+    let call: ToolCall = clanker_plugin_sdk::serde_json::from_str(input)
         .map_err(|e| Error::msg(format!("Invalid JSON input: {e}")))?;
 
     let result = match call.tool.as_str() {
@@ -92,8 +91,12 @@ pub fn handle_tool_call(input: String) -> FnResult<String> {
 }
 
 #[plugin_fn]
-pub fn on_event(input: String) -> FnResult<String> {
-    dispatch_events(&input, &[
+pub fn handle_tool_call(input: String) -> FnResult<String> {
+    dispatch_validation_tool_call(&input)
+}
+
+fn dispatch_validation_event(input: &str) -> FnResult<String> {
+    dispatch_events(input, &[
         ("agent_start", |_| "Self-validate plugin ready".to_string()),
         ("agent_end", |_| "Self-validate plugin shutting down".to_string()),
         ("tool_call", |data| {
@@ -110,6 +113,11 @@ pub fn on_event(input: String) -> FnResult<String> {
             }
         }),
     ])
+}
+
+#[plugin_fn]
+pub fn on_event(input: String) -> FnResult<String> {
+    dispatch_validation_event(&input)
 }
 
 #[plugin_fn]
@@ -314,5 +322,46 @@ fn severity_description(severity: &str) -> &str {
         "strict" => "STRICT: Fail on any warnings or potential issues. Be very thorough.",
         "lenient" => "LENIENT: Only fail on actual errors. Ignore style and minor issues.",
         _ => "NORMAL: Fail on errors and significant warnings. Flag minor issues as notes.",
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn event_dispatch_handles_agent_start() {
+        let input = clanker_plugin_sdk::serde_json::json!({
+            "event": "agent_start",
+            "data": {},
+        })
+        .to_string();
+        let output = dispatch_validation_event(&input).expect("agent_start event should dispatch");
+        let result: Value = clanker_plugin_sdk::serde_json::from_str(&output).expect("event result should be JSON");
+
+        assert_eq!(result["event"], "agent_start");
+        assert_eq!(result["handled"], true);
+        assert_eq!(result["message"], "Self-validate plugin ready");
+    }
+
+    #[test]
+    fn validate_tool_builds_strict_prompt_metadata() {
+        let input = clanker_plugin_sdk::serde_json::json!({
+            "tool": "validate",
+            "args": {
+                "task": "check plugin dispatch",
+                "severity": "strict",
+                "agent": "reviewer"
+            },
+        })
+        .to_string();
+        let output = dispatch_validation_tool_call(&input).expect("validate should dispatch");
+        let result: Value = clanker_plugin_sdk::serde_json::from_str(&output).expect("tool result should be JSON");
+
+        assert_eq!(result["tool"], "validate");
+        assert_eq!(result["status"], "ok");
+        assert_eq!(result["meta"]["severity"], "strict");
+        assert_eq!(result["meta"]["agent"], "reviewer");
+        assert!(result["result"].as_str().expect("prompt text").contains("check plugin dispatch"));
     }
 }

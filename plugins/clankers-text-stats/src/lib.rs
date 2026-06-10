@@ -12,20 +12,28 @@ use std::collections::BTreeMap;
 //  Extism guest functions
 // ═══════════════════════════════════════════════════════════════════════
 
-#[plugin_fn]
-pub fn handle_tool_call(input: String) -> FnResult<String> {
-    dispatch_tools(&input, &[
+fn dispatch_text_tool_call(input: &str) -> FnResult<String> {
+    dispatch_tools(input, &[
         ("text_stats", handle_text_stats),
         ("char_freq", handle_char_freq),
     ])
 }
 
 #[plugin_fn]
-pub fn on_event(input: String) -> FnResult<String> {
-    dispatch_events(&input, &[
+pub fn handle_tool_call(input: String) -> FnResult<String> {
+    dispatch_text_tool_call(&input)
+}
+
+fn dispatch_text_event(input: &str) -> FnResult<String> {
+    dispatch_events(input, &[
         ("agent_start", |_| "clankers-text-stats plugin initialized".to_string()),
         ("agent_end", |_| "clankers-text-stats plugin shutting down".to_string()),
     ])
+}
+
+#[plugin_fn]
+pub fn on_event(input: String) -> FnResult<String> {
+    dispatch_text_event(&input)
 }
 
 #[plugin_fn]
@@ -258,4 +266,43 @@ fn count_syllables_word(word: &str) -> usize {
 
 fn round2(val: f64) -> f64 {
     (val * 100.0).round() / 100.0
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn event_dispatch_handles_agent_start() {
+        let input = clanker_plugin_sdk::serde_json::json!({
+            "event": "agent_start",
+            "data": {},
+        })
+        .to_string();
+        let output = dispatch_text_event(&input).expect("agent_start event should dispatch");
+        let result: Value = clanker_plugin_sdk::serde_json::from_str(&output).expect("event result should be JSON");
+
+        assert_eq!(result["event"], "agent_start");
+        assert_eq!(result["handled"], true);
+        assert_eq!(result["message"], "clankers-text-stats plugin initialized");
+    }
+
+    #[test]
+    fn tool_dispatch_reports_basic_text_stats() {
+        let input = clanker_plugin_sdk::serde_json::json!({
+            "tool": "text_stats",
+            "args": { "text": "Hello world.\nSecond line!" },
+        })
+        .to_string();
+        let output = dispatch_text_tool_call(&input).expect("text_stats should dispatch");
+        let result: Value = clanker_plugin_sdk::serde_json::from_str(&output).expect("tool result should be JSON");
+        let stats_text = result["result"].as_str().expect("result should be JSON text");
+        let stats: Value = clanker_plugin_sdk::serde_json::from_str(stats_text).expect("stats should be JSON");
+
+        assert_eq!(result["tool"], "text_stats");
+        assert_eq!(result["status"], "ok");
+        assert_eq!(stats["words"], 4);
+        assert_eq!(stats["lines"], 2);
+        assert_eq!(stats["sentences"], 2);
+    }
 }

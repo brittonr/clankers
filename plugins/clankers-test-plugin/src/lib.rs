@@ -43,21 +43,23 @@ fn handle_reverse(args: &Value) -> Result<String, String> {
     Ok(text.chars().rev().collect())
 }
 
-/// Process a tool call (JSON in, JSON out).
-#[plugin_fn]
-pub fn handle_tool_call(input: String) -> FnResult<String> {
-    dispatch_tools(&input, &[
+fn dispatch_test_tool_call(input: &str) -> FnResult<String> {
+    dispatch_tools(input, &[
         ("test_echo", handle_echo),
         ("test_reverse", handle_reverse),
     ])
 }
 
+/// Process a tool call (JSON in, JSON out).
+#[plugin_fn]
+pub fn handle_tool_call(input: String) -> FnResult<String> {
+    dispatch_test_tool_call(&input)
+}
+
 // ── Event handling ───────────────────────────────────────────────────
 
-/// Handle a plugin lifecycle event.
-#[plugin_fn]
-pub fn on_event(input: String) -> FnResult<String> {
-    dispatch_events(&input, &[
+fn dispatch_test_event(input: &str) -> FnResult<String> {
+    dispatch_events(input, &[
         ("agent_start", |_| "Test plugin initialized".to_string()),
         ("agent_end", |_| "Test plugin shutting down".to_string()),
         ("tool_call", |data| {
@@ -65,6 +67,12 @@ pub fn on_event(input: String) -> FnResult<String> {
             format!("Observed tool call: {tool_name}")
         }),
     ])
+}
+
+/// Handle a plugin lifecycle event.
+#[plugin_fn]
+pub fn on_event(input: String) -> FnResult<String> {
+    dispatch_test_event(&input)
 }
 
 // ── Plugin metadata ──────────────────────────────────────────────────
@@ -108,4 +116,39 @@ pub fn parse_json(input: String) -> FnResult<String> {
         .map_err(|e| Error::msg(format!("JSON parse error: {e}")))?;
     Ok(clanker_plugin_sdk::serde_json::to_string_pretty(&value)
         .map_err(|e| Error::msg(format!("JSON serialize error: {e}")))?)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn event_dispatch_handles_agent_start() {
+        let input = clanker_plugin_sdk::serde_json::json!({
+            "event": "agent_start",
+            "data": {},
+        })
+        .to_string();
+        let output = dispatch_test_event(&input).expect("agent_start event should dispatch");
+        let result: Value = clanker_plugin_sdk::serde_json::from_str(&output).expect("event result should be JSON");
+
+        assert_eq!(result["event"], "agent_start");
+        assert_eq!(result["handled"], true);
+        assert_eq!(result["message"], "Test plugin initialized");
+    }
+
+    #[test]
+    fn tool_dispatch_reverses_text() {
+        let input = clanker_plugin_sdk::serde_json::json!({
+            "tool": "test_reverse",
+            "args": { "text": "abc" },
+        })
+        .to_string();
+        let output = dispatch_test_tool_call(&input).expect("test_reverse should dispatch");
+        let result: Value = clanker_plugin_sdk::serde_json::from_str(&output).expect("tool result should be JSON");
+
+        assert_eq!(result["tool"], "test_reverse");
+        assert_eq!(result["status"], "ok");
+        assert_eq!(result["result"], "cba");
+    }
 }
