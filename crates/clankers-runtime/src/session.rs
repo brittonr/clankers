@@ -532,8 +532,8 @@ fn replace_record_replay_messages(
 impl SessionHandle {
     pub(crate) fn new(runtime: Arc<RuntimeInner>, options: SessionOptions) -> Result<Self, RuntimeError> {
         let session_id = options.session_id.unwrap_or_default();
-        let persist_session = save_initial_session_record(&runtime, &session_id)?;
-        Self::from_parts(runtime, session_id, options.model, false, persist_session)
+        let should_persist_session = save_initial_session_record(&runtime, &session_id)?;
+        Self::from_parts(runtime, session_id, options.model, false, should_persist_session)
     }
 
     pub(crate) fn resume(

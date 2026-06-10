@@ -560,7 +560,7 @@ fn steel_execution_host_call_receipt(
     runtime_receipt: &SteelRuntimeReceipt,
 ) -> SteelTurnExecutionHostCallReceipt {
     let output = runtime_receipt.output.as_deref();
-    let payload_valid = output.is_some_and(|payload| steel_execution_host_call_payload_is_valid(input, payload));
+    let is_payload_valid = output.is_some_and(|payload| steel_execution_host_call_payload_is_valid(input, payload));
     let host_call_outcome = runtime_receipt.host_calls.first().map(|call| call.outcome.clone());
     let mut receipt = SteelTurnExecutionHostCallReceipt {
         schema: STEEL_TURN_EXECUTION_HOST_CALL_SCHEMA.to_string(),
@@ -571,8 +571,8 @@ fn steel_execution_host_call_receipt(
         runtime_reason: runtime_receipt.reason_code.clone(),
         host_call_outcome,
         payload_hash: output.map(|payload| ArtifactHash::digest(payload.as_bytes())),
-        payload_valid,
-        safe_summary: steel_execution_host_call_summary(runtime_receipt, payload_valid),
+        payload_valid: is_payload_valid,
+        safe_summary: steel_execution_host_call_summary(runtime_receipt, is_payload_valid),
         receipt_hash: ArtifactHash::digest(b"pending"),
     };
     receipt.receipt_hash = steel_execution_host_call_receipt_hash(&receipt);
@@ -947,8 +947,8 @@ fn authorize_plan_receipt(
         .iter()
         .map(|decision| authorize_dynamic_runtime_action(&decision.action, &context))
         .collect::<Vec<_>>();
-    let authorized = authorization_receipts.iter().all(|receipt| receipt.status == DynamicRuntimeActionStatus::Allowed);
-    let (status, issue_code) = if authorized {
+    let is_authorized = authorization_receipts.iter().all(|receipt| receipt.status == DynamicRuntimeActionStatus::Allowed);
+    let (status, issue_code) = if is_authorized {
         let status = if fallback_status == RustNativeFallbackStatus::Used {
             OrchestrationPlanStatus::FallbackUsed
         } else {

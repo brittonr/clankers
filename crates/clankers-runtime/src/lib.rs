@@ -13,7 +13,6 @@
         tigerstyle::numeric_units,
         tigerstyle::explicit_defaults,
         tigerstyle::unbounded_collection_growth,
-        tigerstyle::bool_naming,
         tigerstyle::raw_arithmetic_overflow,
         tigerstyle::too_many_parameters,
         tigerstyle::ambient_clock,
