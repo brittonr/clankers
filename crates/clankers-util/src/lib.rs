@@ -7,7 +7,6 @@
         tigerstyle::assertion_density,
         tigerstyle::function_length,
         tigerstyle::unbounded_loop,
-        tigerstyle::unbounded_collection_growth,
         tigerstyle::raw_arithmetic_overflow,
         tigerstyle::ambiguous_params,
         tigerstyle::usize_in_public_api,

@@ -179,7 +179,7 @@ pub struct ExpandedContent {
 
 /// Find all @file references in a prompt string
 pub fn find_at_refs(text: &str) -> Vec<AtFileRef> {
-    let mut refs = Vec::new();
+    let mut refs = Vec::with_capacity(text.matches('@').count());
 
     // Simple state-machine approach (avoids lookbehind):
     // Walk through the text character by character, looking for `@` preceded
@@ -285,11 +285,11 @@ pub fn expand_at_refs_with_policy(text: &str, cwd: &str, policy: &ContextReferen
     }
 
     let mut result = text.to_string();
-    let mut images = Vec::new();
-    let mut references = Vec::new();
 
     // Process in reverse order so indices stay valid
     let mut sorted_refs = refs;
+    let mut images = Vec::with_capacity(sorted_refs.len());
+    let mut references = Vec::with_capacity(sorted_refs.len());
     sorted_refs.sort_by_key(|r| Reverse(r.start));
 
     for at_ref in sorted_refs {

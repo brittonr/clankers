@@ -288,7 +288,7 @@ pub fn highlight(code: &str, language: &str) -> Vec<HighlightSpan> {
     };
 
     let mut h = HighlightLines::new(syntax, &THEME);
-    let mut spans = Vec::new();
+    let mut spans = Vec::with_capacity(code.lines().count());
 
     for line in LinesWithEndings::from(code) {
         match h.highlight_line(line, &SYNTAX_SET) {
