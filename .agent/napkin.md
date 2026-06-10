@@ -17,6 +17,7 @@
 - 2026-06-09: For TUI conversation-block IDs, an input bag (`ConversationBlockInit`) removed public constructor `usize` parameters without forcing a full tree-ID migration. Imports used only from test helpers need `#[cfg(test)]` or `cargo check --tests` warns in library builds.
 - 2026-06-09: Tool progress ambient time is best threaded from `ToolProgress` event timestamps through throttle state; tests can use synthetic `Instant + Duration` values instead of sleeping.
 - 2026-06-09: clankers-ucan Tigerstyle cleanup reached zero crate-level Tigerstyle allows by replacing private same-`&str` helper args with small named structs and reserving bounded Vec capacity from already-known component/revocation limits.
+- 2026-06-09: clankers-session raw arithmetic/unbounded collection/compound-condition drain worked with saturating index/capacity math, pre-counting JSONL lines from `read_to_string`, and pre-sizing traversal vectors from `message_count()`.
 
 ## Corrections
 | Date | Source | What Went Wrong | What To Do Instead |

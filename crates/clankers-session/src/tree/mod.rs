@@ -21,8 +21,8 @@ pub struct SessionTree {
 impl SessionTree {
     // r[impl session.index.consistent]
     pub fn build(entries: Vec<SessionEntry>) -> Self {
-        let mut children: HashMap<Option<MessageId>, Vec<usize>> = HashMap::new();
-        let mut index: HashMap<MessageId, usize> = HashMap::new();
+        let mut children: HashMap<Option<MessageId>, Vec<usize>> = HashMap::with_capacity(entries.len());
+        let mut index: HashMap<MessageId, usize> = HashMap::with_capacity(entries.len());
         for (i, entry) in entries.iter().enumerate() {
             if let SessionEntry::Message(msg) = entry {
                 children.entry(msg.parent_id.clone()).or_default().push(i);

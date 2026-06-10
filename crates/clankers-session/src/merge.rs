@@ -169,8 +169,9 @@ impl SessionManager {
 
         let messages_to_copy = if with_children {
             // Walk children iteratively via the tree's child index.
-            let mut collected = Vec::new();
-            let mut stack = vec![message_id.clone()];
+            let mut collected = Vec::with_capacity(tree.message_count());
+            let mut stack = Vec::with_capacity(tree.message_count());
+            stack.push(message_id.clone());
             while let Some(id) = stack.pop() {
                 if let Some(msg) = tree.find_message_public(&id) {
                     collected.push(msg.clone());

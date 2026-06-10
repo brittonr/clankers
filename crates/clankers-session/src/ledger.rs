@@ -6,8 +6,6 @@
 
 use std::collections::BTreeMap;
 use std::fs::OpenOptions;
-use std::io::BufRead;
-use std::io::BufReader;
 use std::io::Write;
 use std::path::Path;
 
@@ -550,11 +548,9 @@ pub fn read_ledger_records(path: &Path) -> Result<Vec<LedgerRecord>> {
     if !path.exists() {
         return Ok(Vec::new());
     }
-    let file = OpenOptions::new().read(true).open(path).map_err(session_err)?;
-    let reader = BufReader::new(file);
-    let mut records = Vec::new();
-    for line in reader.lines() {
-        let line = line.map_err(session_err)?;
+    let contents = std::fs::read_to_string(path).map_err(session_err)?;
+    let mut records = Vec::with_capacity(contents.lines().count());
+    for line in contents.lines() {
         if line.trim().is_empty() {
             continue;
         }

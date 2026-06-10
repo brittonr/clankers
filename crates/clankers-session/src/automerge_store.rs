@@ -216,8 +216,8 @@ pub fn read_messages(doc: &AutoCommit) -> Result<Vec<MessageEntry>> {
         })
         .ok_or_else(|| session_err("messages map not found in document"))?;
 
-    let mut entries = Vec::new();
     let keys: Vec<String> = doc.keys(&messages_obj).collect();
+    let mut entries = Vec::with_capacity(keys.len());
 
     for key in &keys {
         let msg_obj = doc
@@ -337,7 +337,11 @@ pub fn to_session_entries(doc: &AutoCommit) -> Result<Vec<SessionEntry>> {
     let messages = read_messages(doc)?;
     let annotations = read_annotations(doc)?;
 
-    let mut entries = Vec::with_capacity(1 + messages.len() + annotations.len());
+    let mut entries = Vec::with_capacity(
+        1usize
+            .saturating_add(messages.len())
+            .saturating_add(annotations.len()),
+    );
     entries.push(SessionEntry::Header(header));
 
     for msg in messages {

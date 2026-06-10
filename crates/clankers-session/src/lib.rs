@@ -9,9 +9,6 @@
     dylint_lib = "tigerstyle",
     allow(
         tigerstyle::assertion_density,
-        tigerstyle::compound_condition,
-        tigerstyle::unbounded_collection_growth,
-        tigerstyle::raw_arithmetic_overflow,
         tigerstyle::explicit_defaults,
         tigerstyle::ambient_clock,
         tigerstyle::usize_in_public_api,
@@ -342,7 +339,7 @@ impl SessionManager {
         let tree = SessionTree::build(entries.clone());
         let leaves = tree.find_all_leaves();
 
-        let mut branches = Vec::new();
+        let mut branches = Vec::with_capacity(leaves.len());
 
         for leaf in leaves {
             let leaf_id = leaf.id.clone();
@@ -384,13 +381,19 @@ impl SessionManager {
         }
 
         for entry in entries.iter().rev() {
-            if let SessionEntry::Branch(branch) = entry
-                && branch_ids.contains(&branch.from_message_id)
-                && !branch.reason.is_empty()
-                && branch.reason.len() < 50
-            {
-                return branch.reason.clone();
+            let SessionEntry::Branch(branch) = entry else {
+                continue;
+            };
+            if !branch_ids.contains(&branch.from_message_id) {
+                continue;
             }
+            if branch.reason.is_empty() {
+                continue;
+            }
+            if branch.reason.len() >= 50 {
+                continue;
+            }
+            return branch.reason.clone();
         }
 
         format!("branch-{}", leaf_id.0.chars().take(8).collect::<String>())
@@ -436,7 +439,7 @@ impl SessionManager {
             });
         }
 
-        let target_index = branch.len() - offset - 1;
+        let target_index = branch.len().saturating_sub(offset).saturating_sub(1);
         let new_head = branch[target_index].id.clone();
         self.active_leaf_id = Some(new_head.clone());
         Ok(new_head)
@@ -462,7 +465,7 @@ impl SessionManager {
             })?;
             let branch = tree.walk_branch(current_leaf);
             if offset < branch.len() {
-                let target_index = branch.len() - offset - 1;
+                let target_index = branch.len().saturating_sub(offset).saturating_sub(1);
                 return Ok(branch[target_index].id.clone());
             }
         }

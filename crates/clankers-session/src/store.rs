@@ -1,7 +1,5 @@
 //! JSONL append-only file I/O for sessions
 
-use std::io::BufRead;
-use std::io::BufReader;
 use std::io::Write;
 use std::path::Path;
 use std::path::PathBuf;
@@ -17,15 +15,13 @@ use crate::ledger::read_ledger_records;
 
 /// Read all entries from a session JSONL file
 pub fn read_entries(path: &Path) -> Result<Vec<SessionEntry>> {
-    let file = std::fs::File::open(path).map_err(session_err)?;
-    let reader = BufReader::new(file);
-    let mut entries = Vec::new();
-    for line in reader.lines() {
-        let line = line.map_err(session_err)?;
+    let contents = std::fs::read_to_string(path).map_err(session_err)?;
+    let mut entries = Vec::with_capacity(contents.lines().count());
+    for line in contents.lines() {
         if line.trim().is_empty() {
             continue;
         }
-        let entry: SessionEntry = serde_json::from_str(&line).map_err(session_err)?;
+        let entry: SessionEntry = serde_json::from_str(line).map_err(session_err)?;
         entries.push(entry);
     }
     Ok(entries)
