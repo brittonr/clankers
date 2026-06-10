@@ -90,7 +90,6 @@
         tigerstyle::unbounded_loop,
         tigerstyle::usize_in_public_api,
         tigerstyle::unchecked_division,
-        tigerstyle::float_for_currency,
         tigerstyle::contradictory_time,
         tigerstyle::unchecked_narrowing,
         tigerstyle::catch_all_on_enum,
@@ -101,6 +100,7 @@
 pub mod auth;
 pub mod backends;
 pub mod catalog;
+mod cost_units;
 pub mod credential;
 pub mod credential_pool;
 pub mod db;

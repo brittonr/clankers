@@ -2,6 +2,7 @@
 
 ## Working Notes
 
+- 2026-06-09: Router cost drain pattern: migrate stored/request-log usage fields to `estimated_cost_micros`, keep f64 input APIs (`with_cost`, model `estimate_cost`) as boundary conversions, and add legacy `estimated_cost_usd` deserializers that treat even integer JSON values as major units.
 - 2026-06-09: Model-selection fixed-point slice: `ComplexitySignals.current_cost` can be `CostMicros` while preserving `CostTracker::record_usage`/`total_cost` f64 API for older callers; store per-model usage and threshold state internally as `CostMicros` and convert only at config/display boundaries.
 - 2026-06-09: DB registry cost fixed-point drain: store the public Rust field as `total_cost_micros: u64`, expose a `total_cost() -> CostMicros` accessor, and add a deserializer alias for old `total_cost` major-unit JSON so persisted entries migrate when rewritten.
 - 2026-06-09: TUI cost display can keep all currency state fixed-point by storing `App::total_cost` / `StatusBarData::total_cost` as `CostMicros` and formatting through `format_major_units`; a tiny `cost_badge` helper makes the display behavior unit-testable.

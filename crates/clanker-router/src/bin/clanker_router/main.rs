@@ -32,6 +32,7 @@ use clanker_router::provider::CompletionRequest;
 use clanker_router::provider::Provider;
 use clanker_router::streaming::ContentDelta;
 use clanker_router::streaming::StreamEvent;
+use clanker_message::CostMicros;
 use clap::Parser;
 use clap::Subcommand;
 use clap::ValueEnum;
@@ -1346,21 +1347,21 @@ fn run_usage(days: usize, total_only: bool, json: bool) {
     let mut total_requests: u32 = 0;
     let mut total_input: u64 = 0;
     let mut total_output: u64 = 0;
-    let mut total_cost: f64 = 0.0;
+    let mut total_cost_micros: u64 = 0;
 
     for day in &recent {
         total_requests += day.requests;
         total_input += day.input_tokens;
         total_output += day.output_tokens;
-        total_cost += day.estimated_cost_usd;
+        total_cost_micros = total_cost_micros.saturating_add(day.estimated_cost_micros);
 
         println!(
-            "{:<12} {:>8} {:>9}K {:>9}K ${:>8.4}",
+            "{:<12} {:>8} {:>9}K {:>9}K ${:>8}",
             day.date,
             day.requests,
             day.input_tokens / 1000,
             day.output_tokens / 1000,
-            day.estimated_cost_usd,
+            format_cost_micros(day.estimated_cost_micros, 4),
         );
     }
 
@@ -1371,7 +1372,7 @@ fn run_usage(days: usize, total_only: bool, json: bool) {
         total_requests,
         total_input / 1000,
         total_output / 1000,
-        total_cost,
+        format_cost_micros(total_cost_micros, 4),
     );
 
     // Per-provider breakdown for most recent day
@@ -1385,7 +1386,7 @@ fn run_usage(days: usize, total_only: bool, json: bool) {
                     prov.requests,
                     prov.input_tokens / 1000,
                     prov.output_tokens / 1000,
-                    prov.estimated_cost_usd,
+                    format_cost_micros(prov.estimated_cost_micros, 4),
                 );
                 for (model, mu) in &prov.by_model {
                     println!(
@@ -1394,12 +1395,16 @@ fn run_usage(days: usize, total_only: bool, json: bool) {
                         mu.requests,
                         mu.input_tokens / 1000,
                         mu.output_tokens / 1000,
-                        mu.estimated_cost_usd,
+                        format_cost_micros(mu.estimated_cost_micros, 4),
                     );
                 }
             }
         }
     }
+}
+
+fn format_cost_micros(micros: u64, precision: u32) -> String {
+    CostMicros::from_micros(micros).format_major_units(precision)
 }
 
 fn print_usage_summary(label: &str, usage: &clanker_router::db::usage::DailyUsage) {
@@ -1409,7 +1414,7 @@ fn print_usage_summary(label: &str, usage: &clanker_router::db::usage::DailyUsag
     println!("  Output tokens: {}K", usage.output_tokens / 1000);
     println!("  Cache created: {}K", usage.cache_creation_tokens / 1000);
     println!("  Cache reads:   {}K", usage.cache_read_tokens / 1000);
-    println!("  Est. cost:     ${:.4}", usage.estimated_cost_usd);
+    println!("  Est. cost:     ${}", format_cost_micros(usage.estimated_cost_micros, 4));
 
     if !usage.by_provider.is_empty() {
         println!("\n  By provider:");
@@ -1419,7 +1424,7 @@ fn print_usage_summary(label: &str, usage: &clanker_router::db::usage::DailyUsag
                 name,
                 prov.requests,
                 (prov.input_tokens + prov.output_tokens) / 1000,
-                prov.estimated_cost_usd,
+                format_cost_micros(prov.estimated_cost_micros, 4),
             );
         }
     }

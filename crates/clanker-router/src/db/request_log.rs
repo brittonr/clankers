@@ -12,11 +12,16 @@ use redb::ReadableTable;
 use redb::ReadableTableMetadata;
 use redb::TableDefinition;
 use serde::Deserialize;
+use serde::Deserializer;
 use serde::Serialize;
+use serde::de::Error as DeError;
 
 use super::RouterDb;
 use super::db_err;
 use super::generate_id;
+use crate::cost_units::major_units_from_micros;
+use crate::cost_units::micros_from_major_units;
+use crate::cost_units::micros_from_stored_fields;
 use crate::error::Result;
 
 /// Table: timestamp_micros (u64) → serialized LogEntry
@@ -40,7 +45,7 @@ pub enum RequestOutcome {
 }
 
 /// A single logged request.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize)]
 pub struct LogEntry {
     /// Unique ID (microsecond timestamp).
     pub id: u64,
@@ -62,8 +67,8 @@ pub struct LogEntry {
     pub cache_read_tokens: u64,
     /// Request duration in milliseconds.
     pub duration_ms: u64,
-    /// Estimated cost in USD.
-    pub estimated_cost_usd: f64,
+    /// Estimated cost in micros of one USD.
+    pub estimated_cost_micros: u64,
     /// Outcome of the request.
     pub outcome: RequestOutcome,
     /// Stop reason from the model.
@@ -93,7 +98,7 @@ impl LogEntry {
             cache_creation_tokens: 0,
             cache_read_tokens: 0,
             duration_ms,
-            estimated_cost_usd: 0.0,
+            estimated_cost_micros: 0,
             outcome: RequestOutcome::Success,
             stop_reason: None,
             cache_hit: false,
@@ -113,7 +118,7 @@ impl LogEntry {
             cache_creation_tokens: 0,
             cache_read_tokens: 0,
             duration_ms,
-            estimated_cost_usd: 0.0,
+            estimated_cost_micros: 0,
             outcome: RequestOutcome::Error {
                 message: message.to_string(),
             },
@@ -131,8 +136,13 @@ impl LogEntry {
 
     /// Builder: set estimated cost.
     pub fn with_cost(mut self, cost: f64) -> Self {
-        self.estimated_cost_usd = cost;
+        self.estimated_cost_micros = micros_from_major_units(cost).unwrap_or(0);
         self
+    }
+
+    /// Estimated cost in USD major units for display only.
+    pub fn estimated_cost_major_units(&self) -> f64 {
+        major_units_from_micros(self.estimated_cost_micros)
     }
 
     /// Builder: set stop reason.
@@ -146,6 +156,54 @@ impl LogEntry {
         self.cache_hit = hit;
         self
     }
+}
+
+impl<'de> Deserialize<'de> for LogEntry {
+    fn deserialize<D>(deserializer: D) -> std::result::Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let wire = LogEntryWire::deserialize(deserializer)?;
+        let estimated_cost_micros =
+            micros_from_stored_fields(wire.estimated_cost_micros, wire.estimated_cost_usd).map_err(D::Error::custom)?;
+        Ok(Self {
+            id: wire.id,
+            timestamp: wire.timestamp,
+            provider: wire.provider,
+            model: wire.model,
+            resolved_model: wire.resolved_model,
+            input_tokens: wire.input_tokens,
+            output_tokens: wire.output_tokens,
+            cache_creation_tokens: wire.cache_creation_tokens,
+            cache_read_tokens: wire.cache_read_tokens,
+            duration_ms: wire.duration_ms,
+            estimated_cost_micros,
+            outcome: wire.outcome,
+            stop_reason: wire.stop_reason,
+            cache_hit: wire.cache_hit,
+        })
+    }
+}
+
+#[derive(Deserialize)]
+struct LogEntryWire {
+    id: u64,
+    timestamp: DateTime<Utc>,
+    provider: String,
+    model: String,
+    resolved_model: Option<String>,
+    input_tokens: u64,
+    output_tokens: u64,
+    cache_creation_tokens: u64,
+    cache_read_tokens: u64,
+    duration_ms: u64,
+    #[serde(default)]
+    estimated_cost_micros: Option<u64>,
+    #[serde(default)]
+    estimated_cost_usd: Option<serde_json::Value>,
+    outcome: RequestOutcome,
+    stop_reason: Option<String>,
+    cache_hit: bool,
 }
 
 /// Accessor for the request log table.
@@ -347,10 +405,34 @@ mod tests {
 
         assert_eq!(entry.cache_creation_tokens, 500);
         assert_eq!(entry.cache_read_tokens, 200);
-        assert!((entry.estimated_cost_usd - 0.45).abs() < 0.001);
+        assert_eq!(entry.estimated_cost_micros, 450_000);
         assert_eq!(entry.stop_reason.as_deref(), Some("end_turn"));
         assert!(!entry.cache_hit);
         assert_eq!(entry.resolved_model.as_deref(), Some("claude-sonnet-4-5"));
+    }
+
+    #[test]
+    fn test_reads_legacy_major_unit_cost() {
+        let json = r#"{
+            "id": 1,
+            "timestamp": "2026-01-01T00:00:00Z",
+            "provider": "anthropic",
+            "model": "sonnet",
+            "resolved_model": null,
+            "input_tokens": 100,
+            "output_tokens": 50,
+            "cache_creation_tokens": 0,
+            "cache_read_tokens": 0,
+            "duration_ms": 1000,
+            "estimated_cost_usd": 1,
+            "outcome": "Success",
+            "stop_reason": null,
+            "cache_hit": false
+        }"#;
+
+        let entry: LogEntry = serde_json::from_str(json).expect("legacy log entry deserializes");
+
+        assert_eq!(entry.estimated_cost_micros, 1_000_000);
     }
 
     #[test]

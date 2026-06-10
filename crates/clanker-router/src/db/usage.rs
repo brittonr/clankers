@@ -11,17 +11,22 @@ use redb::ReadableTable;
 use redb::ReadableTableMetadata;
 use redb::TableDefinition;
 use serde::Deserialize;
+use serde::Deserializer;
 use serde::Serialize;
+use serde::de::Error as DeError;
 
 use super::RouterDb;
 use super::db_err;
+use crate::cost_units::major_units_from_micros;
+use crate::cost_units::micros_from_major_units_or_zero;
+use crate::cost_units::micros_from_stored_fields;
 use crate::error::Result;
 
 /// Table: date string "2026-02-27" → serialized DailyUsage
 pub(crate) const TABLE: TableDefinition<&str, &[u8]> = TableDefinition::new("router_usage_daily");
 
 /// Aggregated usage for a single day.
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, Serialize)]
 pub struct DailyUsage {
     /// Date string (YYYY-MM-DD).
     pub date: String,
@@ -35,8 +40,8 @@ pub struct DailyUsage {
     pub cache_read_tokens: u64,
     /// Number of API requests.
     pub requests: u32,
-    /// Estimated cost in USD.
-    pub estimated_cost_usd: f64,
+    /// Estimated cost in micros of one USD.
+    pub estimated_cost_micros: u64,
     /// Breakdown by provider.
     pub by_provider: HashMap<String, ProviderUsage>,
 }
@@ -46,26 +51,153 @@ impl DailyUsage {
     pub fn total_tokens(&self) -> u64 {
         self.input_tokens + self.output_tokens
     }
+
+    /// Estimated cost in USD major units for display only.
+    pub fn estimated_cost_major_units(&self) -> f64 {
+        major_units_from_micros(self.estimated_cost_micros)
+    }
+}
+
+impl<'de> Deserialize<'de> for DailyUsage {
+    fn deserialize<D>(deserializer: D) -> std::result::Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let wire = DailyUsageWire::deserialize(deserializer)?;
+        let estimated_cost_micros =
+            micros_from_stored_fields(wire.estimated_cost_micros, wire.estimated_cost_usd).map_err(D::Error::custom)?;
+        Ok(Self {
+            date: wire.date,
+            input_tokens: wire.input_tokens,
+            output_tokens: wire.output_tokens,
+            cache_creation_tokens: wire.cache_creation_tokens,
+            cache_read_tokens: wire.cache_read_tokens,
+            requests: wire.requests,
+            estimated_cost_micros,
+            by_provider: wire.by_provider,
+        })
+    }
+}
+
+#[derive(Deserialize)]
+struct DailyUsageWire {
+    #[serde(default)]
+    date: String,
+    #[serde(default)]
+    input_tokens: u64,
+    #[serde(default)]
+    output_tokens: u64,
+    #[serde(default)]
+    cache_creation_tokens: u64,
+    #[serde(default)]
+    cache_read_tokens: u64,
+    #[serde(default)]
+    requests: u32,
+    #[serde(default)]
+    estimated_cost_micros: Option<u64>,
+    #[serde(default)]
+    estimated_cost_usd: Option<serde_json::Value>,
+    #[serde(default)]
+    by_provider: HashMap<String, ProviderUsage>,
 }
 
 /// Per-provider usage within a day.
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, Serialize)]
 pub struct ProviderUsage {
     pub input_tokens: u64,
     pub output_tokens: u64,
     pub requests: u32,
-    pub estimated_cost_usd: f64,
+    pub estimated_cost_micros: u64,
     /// Further breakdown by model.
     pub by_model: HashMap<String, ModelUsage>,
 }
 
+impl ProviderUsage {
+    /// Estimated cost in USD major units for display only.
+    pub fn estimated_cost_major_units(&self) -> f64 {
+        major_units_from_micros(self.estimated_cost_micros)
+    }
+}
+
+impl<'de> Deserialize<'de> for ProviderUsage {
+    fn deserialize<D>(deserializer: D) -> std::result::Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let wire = ProviderUsageWire::deserialize(deserializer)?;
+        let estimated_cost_micros =
+            micros_from_stored_fields(wire.estimated_cost_micros, wire.estimated_cost_usd).map_err(D::Error::custom)?;
+        Ok(Self {
+            input_tokens: wire.input_tokens,
+            output_tokens: wire.output_tokens,
+            requests: wire.requests,
+            estimated_cost_micros,
+            by_model: wire.by_model,
+        })
+    }
+}
+
+#[derive(Deserialize)]
+struct ProviderUsageWire {
+    #[serde(default)]
+    input_tokens: u64,
+    #[serde(default)]
+    output_tokens: u64,
+    #[serde(default)]
+    requests: u32,
+    #[serde(default)]
+    estimated_cost_micros: Option<u64>,
+    #[serde(default)]
+    estimated_cost_usd: Option<serde_json::Value>,
+    #[serde(default)]
+    by_model: HashMap<String, ModelUsage>,
+}
+
 /// Per-model usage within a provider within a day.
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, Serialize)]
 pub struct ModelUsage {
     pub input_tokens: u64,
     pub output_tokens: u64,
     pub requests: u32,
-    pub estimated_cost_usd: f64,
+    pub estimated_cost_micros: u64,
+}
+
+impl ModelUsage {
+    /// Estimated cost in USD major units for display only.
+    pub fn estimated_cost_major_units(&self) -> f64 {
+        major_units_from_micros(self.estimated_cost_micros)
+    }
+}
+
+impl<'de> Deserialize<'de> for ModelUsage {
+    fn deserialize<D>(deserializer: D) -> std::result::Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let wire = ModelUsageWire::deserialize(deserializer)?;
+        let estimated_cost_micros =
+            micros_from_stored_fields(wire.estimated_cost_micros, wire.estimated_cost_usd).map_err(D::Error::custom)?;
+        Ok(Self {
+            input_tokens: wire.input_tokens,
+            output_tokens: wire.output_tokens,
+            requests: wire.requests,
+            estimated_cost_micros,
+        })
+    }
+}
+
+#[derive(Deserialize)]
+struct ModelUsageWire {
+    #[serde(default)]
+    input_tokens: u64,
+    #[serde(default)]
+    output_tokens: u64,
+    #[serde(default)]
+    requests: u32,
+    #[serde(default)]
+    estimated_cost_micros: Option<u64>,
+    #[serde(default)]
+    estimated_cost_usd: Option<serde_json::Value>,
 }
 
 /// A single request's usage, to be recorded.
@@ -76,11 +208,16 @@ pub struct RequestUsage {
     pub output_tokens: u64,
     pub cache_creation_tokens: u64,
     pub cache_read_tokens: u64,
-    pub estimated_cost_usd: f64,
+    pub estimated_cost_micros: u64,
     pub timestamp: DateTime<Utc>,
 }
 
 impl RequestUsage {
+    /// Estimated cost in USD major units for display only.
+    pub fn estimated_cost_major_units(&self) -> f64 {
+        major_units_from_micros(self.estimated_cost_micros)
+    }
+
     /// Create from a provider Usage struct with cost estimation.
     pub fn from_provider_usage(provider: &str, model: &str, usage: &crate::provider::Usage, cost: Option<f64>) -> Self {
         Self {
@@ -90,7 +227,7 @@ impl RequestUsage {
             output_tokens: usage.output_tokens as u64,
             cache_creation_tokens: usage.cache_creation_input_tokens as u64,
             cache_read_tokens: usage.cache_read_input_tokens as u64,
-            estimated_cost_usd: cost.unwrap_or(0.0),
+            estimated_cost_micros: micros_from_major_units_or_zero(cost),
             timestamp: Utc::now(),
         }
     }
@@ -129,21 +266,21 @@ impl<'db> UsageTracker<'db> {
             daily.cache_creation_tokens += req.cache_creation_tokens;
             daily.cache_read_tokens += req.cache_read_tokens;
             daily.requests += 1;
-            daily.estimated_cost_usd += req.estimated_cost_usd;
+            daily.estimated_cost_micros = daily.estimated_cost_micros.saturating_add(req.estimated_cost_micros);
 
             // Aggregate at the provider level
             let prov = daily.by_provider.entry(req.provider.clone()).or_default();
             prov.input_tokens += req.input_tokens;
             prov.output_tokens += req.output_tokens;
             prov.requests += 1;
-            prov.estimated_cost_usd += req.estimated_cost_usd;
+            prov.estimated_cost_micros = prov.estimated_cost_micros.saturating_add(req.estimated_cost_micros);
 
             // Aggregate at the model level
             let model = prov.by_model.entry(req.model.clone()).or_default();
             model.input_tokens += req.input_tokens;
             model.output_tokens += req.output_tokens;
             model.requests += 1;
-            model.estimated_cost_usd += req.estimated_cost_usd;
+            model.estimated_cost_micros = model.estimated_cost_micros.saturating_add(req.estimated_cost_micros);
 
             let bytes = serde_json::to_vec(&daily).map_err(|e| crate::Error::Config {
                 message: format!("failed to serialize usage: {e}"),
@@ -211,21 +348,21 @@ impl<'db> UsageTracker<'db> {
                 total.cache_creation_tokens += day.cache_creation_tokens;
                 total.cache_read_tokens += day.cache_read_tokens;
                 total.requests += day.requests;
-                total.estimated_cost_usd += day.estimated_cost_usd;
+                total.estimated_cost_micros = total.estimated_cost_micros.saturating_add(day.estimated_cost_micros);
 
                 for (prov_name, prov) in &day.by_provider {
                     let entry = total.by_provider.entry(prov_name.clone()).or_default();
                     entry.input_tokens += prov.input_tokens;
                     entry.output_tokens += prov.output_tokens;
                     entry.requests += prov.requests;
-                    entry.estimated_cost_usd += prov.estimated_cost_usd;
+                    entry.estimated_cost_micros = entry.estimated_cost_micros.saturating_add(prov.estimated_cost_micros);
 
                     for (model_name, mu) in &prov.by_model {
                         let me = entry.by_model.entry(model_name.clone()).or_default();
                         me.input_tokens += mu.input_tokens;
                         me.output_tokens += mu.output_tokens;
                         me.requests += mu.requests;
-                        me.estimated_cost_usd += mu.estimated_cost_usd;
+                        me.estimated_cost_micros = me.estimated_cost_micros.saturating_add(mu.estimated_cost_micros);
                     }
                 }
             }
@@ -263,7 +400,7 @@ mod tests {
             output_tokens: output,
             cache_creation_tokens: 0,
             cache_read_tokens: 0,
-            estimated_cost_usd: 0.0,
+            estimated_cost_micros: 0,
             timestamp: Utc::now(),
         }
     }
@@ -318,20 +455,55 @@ mod tests {
             output_tokens: 10_000,
             cache_creation_tokens: 0,
             cache_read_tokens: 0,
-            estimated_cost_usd: 3.15,
+            estimated_cost_micros: 3_150_000,
             timestamp: Utc::now(),
         };
         usage.record(&req).unwrap();
 
         let today = usage.today().unwrap().unwrap();
-        assert!((today.estimated_cost_usd - 3.15).abs() < 0.001);
-        assert!((today.by_provider["anthropic"].estimated_cost_usd - 3.15).abs() < 0.001);
+        assert_eq!(today.estimated_cost_micros, 3_150_000);
+        assert_eq!(today.by_provider["anthropic"].estimated_cost_micros, 3_150_000);
     }
 
     #[test]
     fn test_today_empty() {
         let db = test_db();
         assert!(db.usage().today().unwrap().is_none());
+    }
+
+    #[test]
+    fn test_reads_legacy_major_unit_costs() {
+        let json = r#"{
+            "date": "2026-01-01",
+            "input_tokens": 100,
+            "output_tokens": 50,
+            "cache_creation_tokens": 0,
+            "cache_read_tokens": 0,
+            "requests": 1,
+            "estimated_cost_usd": 1,
+            "by_provider": {
+                "anthropic": {
+                    "input_tokens": 100,
+                    "output_tokens": 50,
+                    "requests": 1,
+                    "estimated_cost_usd": 0.25,
+                    "by_model": {
+                        "sonnet": {
+                            "input_tokens": 100,
+                            "output_tokens": 50,
+                            "requests": 1,
+                            "estimated_cost_usd": 0.25
+                        }
+                    }
+                }
+            }
+        }"#;
+
+        let usage: DailyUsage = serde_json::from_str(json).expect("legacy usage deserializes");
+
+        assert_eq!(usage.estimated_cost_micros, 1_000_000);
+        assert_eq!(usage.by_provider["anthropic"].estimated_cost_micros, 250_000);
+        assert_eq!(usage.by_provider["anthropic"].by_model["sonnet"].estimated_cost_micros, 250_000);
     }
 
     #[test]
@@ -379,7 +551,7 @@ mod tests {
             output_tokens: 50,
             cache_creation_tokens: 500,
             cache_read_tokens: 200,
-            estimated_cost_usd: 0.0,
+            estimated_cost_micros: 0,
             timestamp: Utc::now(),
         };
         usage.record(&req).unwrap();

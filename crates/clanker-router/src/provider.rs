@@ -83,10 +83,10 @@ pub struct CompletionRequest {
     pub extra_params: std::collections::HashMap<String, serde_json::Value>,
 }
 
-/// Cost breakdown for a completion.
+/// Cost breakdown for a completion, stored in micros of one USD.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct Cost {
-    pub input_cost: f64,
-    pub output_cost: f64,
-    pub total_cost: f64,
+    pub input_cost_micros: u64,
+    pub output_cost_micros: u64,
+    pub total_cost_micros: u64,
 }
