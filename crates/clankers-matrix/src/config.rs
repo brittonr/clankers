@@ -30,7 +30,7 @@ pub struct MatrixConfig {
     pub device_id: Option<String>,
 
     /// Rooms to auto-join on startup
-    #[serde(default)]
+    #[serde(default = "empty_string_vec")]
     pub auto_join_rooms: Vec<String>,
 
     /// Whether to announce capabilities on join
@@ -42,12 +42,12 @@ pub struct MatrixConfig {
     pub accept_rpc: bool,
 
     /// Allowed user IDs for RPC (empty = allow all room members)
-    #[serde(default)]
+    #[serde(default = "empty_string_vec")]
     pub rpc_allowlist: Vec<String>,
 
     /// Users allowed to interact with the daemon (empty = allow all).
     /// Supports exact Matrix user IDs like `@alice:matrix.org`.
-    #[serde(default)]
+    #[serde(default = "empty_string_vec")]
     pub allowed_users: Vec<String>,
 
     /// Directory for Matrix SDK state/crypto store
@@ -62,6 +62,10 @@ fn default_device_name() -> String {
 
 fn default_true() -> bool {
     true
+}
+
+fn empty_string_vec() -> Vec<String> {
+    Vec::new()
 }
 
 impl Default for MatrixConfig {

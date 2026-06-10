@@ -44,11 +44,11 @@ pub struct Announce {
     pub user_id: String,
 
     /// Capability tags (e.g. "gpu", "code-review")
-    #[serde(default)]
+    #[serde(default = "empty_string_vec")]
     pub tags: Vec<String>,
 
     /// Available agent definitions
-    #[serde(default)]
+    #[serde(default = "empty_string_vec")]
     pub agents: Vec<String>,
 
     /// Whether this instance accepts prompts
@@ -56,7 +56,7 @@ pub struct Announce {
     pub accepts_prompts: bool,
 
     /// Available tool names
-    #[serde(default)]
+    #[serde(default = "empty_string_vec")]
     pub tools: Vec<String>,
 
     /// Current model name
@@ -101,7 +101,7 @@ pub struct RpcRequest {
     pub method: String,
 
     /// Method parameters
-    #[serde(default)]
+    #[serde(default = "empty_json_value")]
     pub params: Value,
 
     /// Target user ID (if addressing a specific clankers in the room)
@@ -219,6 +219,14 @@ impl ChatMessage {
             thread_id: None,
         }
     }
+}
+
+fn empty_string_vec() -> Vec<String> {
+    Vec::new()
+}
+
+fn empty_json_value() -> Value {
+    Value::Null
 }
 
 #[cfg_attr(

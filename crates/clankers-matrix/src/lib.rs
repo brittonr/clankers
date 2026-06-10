@@ -31,7 +31,6 @@
     dylint_lib = "tigerstyle",
     allow(
         tigerstyle::assertion_density,
-        tigerstyle::explicit_defaults,
         reason = "Matrix bridge preserves Matrix protocol wire shapes and message chunking behavior; bridge tests cover behavior during Tigerstyle drain"
     )
 )]

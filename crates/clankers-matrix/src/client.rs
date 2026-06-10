@@ -238,7 +238,7 @@ impl MatrixClient {
         // Spawn the sync loop
         tokio::spawn(async move {
             info!("Starting Matrix sync loop");
-            let settings = SyncSettings::default();
+            let settings = SyncSettings::new();
             client_clone.sync(settings).await.unwrap_or_else(|e| {
                 error!("Matrix sync failed: {e}");
             });
