@@ -466,12 +466,12 @@ impl MatrixClient {
         dylint_lib = "tigerstyle",
         allow(no_unwrap, reason = "UInt::new(20) is a constant that always succeeds")
     )]
-    pub async fn message_history(&self, room_id: &RoomId, limit: usize) -> Result<Vec<HistoryMessage>, MatrixError> {
+    pub async fn message_history(&self, room_id: &RoomId, limit: u32) -> Result<Vec<HistoryMessage>, MatrixError> {
         let client = self.client.as_ref().ok_or(MatrixError::NotLoggedIn)?;
         let room = client.get_room(room_id).ok_or_else(|| MatrixError::RoomNotFound(room_id.to_string()))?;
 
         let mut options = MessagesOptions::backward();
-        options.limit = UInt::new(limit as u64).unwrap_or_else(|| UInt::new(20).expect("20 fits in UInt"));
+        options.limit = UInt::new(u64::from(limit)).unwrap_or_else(|| UInt::new(20).expect("20 fits in UInt"));
 
         let response = room
             .messages(options)

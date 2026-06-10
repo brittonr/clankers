@@ -168,7 +168,7 @@ impl Tool for MatrixReadTool {
             None => return ToolResult::error("Missing required parameter: room_id"),
         };
 
-        let limit = usize::try_from(params.get("limit").and_then(|v| v.as_u64()).unwrap_or(20).min(100)).unwrap_or(20);
+        let limit = u32::try_from(params.get("limit").and_then(|v| v.as_u64()).unwrap_or(20).min(100)).unwrap_or(20);
 
         let room_id_parsed = match clankers_matrix::ruma::RoomId::parse(room_id) {
             Ok(id) => id.clone(),

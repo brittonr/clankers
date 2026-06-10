@@ -5,7 +5,7 @@ use pulldown_cmark::Parser;
 use pulldown_cmark::html;
 
 /// Matrix practical message size limit (32 KB).
-pub const MAX_MESSAGE_BYTES: usize = 32_768;
+pub const MAX_MESSAGE_BYTES: u32 = 32_768;
 
 /// Convert markdown text to HTML.
 ///
@@ -28,8 +28,12 @@ pub fn md_to_html(text: &str) -> String {
 /// Never splits inside fenced code blocks — a code block stays with its
 /// surrounding context. If a single block exceeds `max_bytes`, falls back
 /// to splitting at single newline boundaries.
-pub fn chunk_response(text: &str, max_bytes: usize) -> Vec<String> {
-    if text.len() <= max_bytes {
+pub fn chunk_response(text: &str, max_bytes: u32) -> Vec<String> {
+    let max_length_bytes = match usize::try_from(max_bytes) {
+        Ok(value) => value,
+        Err(_) => usize::MAX,
+    };
+    if text.len() <= max_length_bytes {
         return vec![text.to_string()];
     }
 
@@ -48,29 +52,29 @@ pub fn chunk_response(text: &str, max_bytes: usize) -> Vec<String> {
                 .len()
                 .saturating_add(block_size_bytes)
                 .saturating_add(2)
-                > max_bytes
+                > max_length_bytes
         {
             chunks.push(current_chunk.trim().to_string());
             current_chunk.clear();
         }
 
         // If this single block exceeds the limit, handle it specially
-        if block_size_bytes > max_bytes {
+        if block_size_bytes > max_length_bytes {
             // Try to split at line boundaries
             let lines: Vec<&str> = block.split('\n').collect();
             let mut temp = String::new();
 
             for line in lines {
                 if !temp.is_empty()
-                    && temp.len().saturating_add(line.len()).saturating_add(1) > max_bytes
+                    && temp.len().saturating_add(line.len()).saturating_add(1) > max_length_bytes
                 {
                     chunks.push(temp.trim().to_string());
                     temp.clear();
                 }
 
-                if line.len() > max_bytes {
+                if line.len() > max_length_bytes {
                     // Single line too long — truncate it
-                    chunks.push(line[..max_bytes].to_string());
+                    chunks.push(line[..max_length_bytes].to_string());
                 } else {
                     if !temp.is_empty() {
                         temp.push('\n');
