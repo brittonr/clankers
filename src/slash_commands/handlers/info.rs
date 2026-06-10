@@ -40,8 +40,12 @@ impl SlashHandler for StatusHandler {
 
     fn handle(&self, _args: &str, ctx: &mut SlashContext<'_>) {
         let status = format!(
-            "Model: {}\nTokens used: {}\nCost: ${:.4}\nSession: {}\nCWD: {}",
-            ctx.app.model, ctx.app.total_tokens, ctx.app.total_cost, ctx.app.session_id, ctx.app.cwd,
+            "Model: {}\nTokens used: {}\nCost: ${}\nSession: {}\nCWD: {}",
+            ctx.app.model,
+            ctx.app.total_tokens,
+            ctx.app.total_cost.format_major_units(4),
+            ctx.app.session_id,
+            ctx.app.cwd,
         );
         ctx.app.push_system(status, false);
     }
@@ -62,8 +66,9 @@ impl SlashHandler for UsageHandler {
 
     fn handle(&self, _args: &str, ctx: &mut SlashContext<'_>) {
         let usage = format!(
-            "Token usage:\n  Total tokens: {}\n  Estimated cost: ${:.4}",
-            ctx.app.total_tokens, ctx.app.total_cost,
+            "Token usage:\n  Total tokens: {}\n  Estimated cost: ${}",
+            ctx.app.total_tokens,
+            ctx.app.total_cost.format_major_units(4),
         );
         ctx.app.push_system(usage, false);
     }

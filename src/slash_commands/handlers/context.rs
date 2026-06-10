@@ -47,7 +47,7 @@ impl SlashHandler for ResetHandler {
         ctx.app.streaming.text.clear();
         ctx.app.streaming.thinking.clear();
         ctx.app.total_tokens = 0;
-        ctx.app.total_cost = 0.0;
+        ctx.app.total_cost = clanker_tui_types::CostMicros::ZERO;
         ctx.app.conversation.focused_block = None;
         ctx.cmd_tx.send(AgentCommand::ClearHistory).ok();
         ctx.cmd_tx.send(AgentCommand::ResetCancel).ok();

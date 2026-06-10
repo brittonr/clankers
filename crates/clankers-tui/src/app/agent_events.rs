@@ -278,8 +278,7 @@ impl App {
     ) {
         self.total_tokens = total_tokens;
         if let Some(ref ct) = self.cost_tracker {
-            let total_cost = ct.total_cost();
-            self.total_cost = total_cost.micros() as f64 / clanker_tui_types::COST_MICROS_PER_UNIT as f64;
+            self.total_cost = ct.total_cost();
         }
         if let Some(ref mut block) = self.conversation.active_block {
             block.tokens = block.tokens.saturating_add(turn_tokens);

@@ -992,7 +992,7 @@ mod tests {
         let mut app = App::new("test-model".to_string(), "/tmp".to_string(), crate::tui_config::detect_theme());
         app.session_id = "session-123".to_string();
         app.total_tokens = 321;
-        app.total_cost = 1.25;
+        app.total_cost = clanker_tui_types::CostMicros::from_micros(1_250_000);
         app
     }
 

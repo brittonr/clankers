@@ -19,7 +19,6 @@
         tigerstyle::unbounded_collection_growth,
         tigerstyle::ambient_clock,
         tigerstyle::too_many_parameters,
-        tigerstyle::float_for_currency,
         tigerstyle::compound_condition,
         tigerstyle::bool_naming,
         tigerstyle::no_panic,

@@ -2,6 +2,7 @@
 
 use clanker_tui_types::BudgetStatus;
 use clanker_tui_types::ConnectionMode;
+use clanker_tui_types::CostMicros;
 use clanker_tui_types::InputMode;
 use ratatui::Frame;
 use ratatui::layout::Rect;
@@ -21,7 +22,7 @@ pub struct StatusBarData<'a> {
     pub cwd: &'a str,
     pub model: &'a str,
     pub total_tokens: usize,
-    pub total_cost: f64,
+    pub total_cost: CostMicros,
     pub state: &'a AppState,
     pub session_id: &'a str,
     pub input_mode: InputMode,
@@ -195,24 +196,7 @@ fn render_status_badges<'a>(spans: &mut Vec<Span<'a>>, data: &StatusBarData<'a>)
 
     // Cost / budget badge (color-coded)
     if data.total_tokens > 0 {
-        let (cost_text, cost_color) = match &data.budget_status {
-            BudgetStatus::NoBudget => (format!(" ${:.4} ", data.total_cost), Color::DarkGray),
-            BudgetStatus::Ok { remaining } => {
-                (format!(" ${:.2} (${} left) ", data.total_cost, remaining.format_major_units(2)), Color::Green)
-            }
-            BudgetStatus::Warning {
-                over_soft_by: _,
-                hard_limit_remaining: Some(hard_limit_remaining),
-            } => (
-                format!(" ${:.2} ⚠ (${} to hard) ", data.total_cost, hard_limit_remaining.format_major_units(2)),
-                Color::Yellow,
-            ),
-            BudgetStatus::Warning {
-                over_soft_by: _,
-                hard_limit_remaining: None,
-            } => (format!(" ${:.2} ⚠ over budget ", data.total_cost), Color::Yellow),
-            BudgetStatus::Exceeded { .. } => (format!(" ${:.2} ✖ exceeded ", data.total_cost), Color::Red),
-        };
+        let (cost_text, cost_color) = cost_badge(data.total_cost, &data.budget_status);
         spans.push(Span::styled(
             cost_text,
             Style::default().fg(Color::Black).bg(cost_color).add_modifier(Modifier::BOLD),
@@ -222,6 +206,30 @@ fn render_status_badges<'a>(spans: &mut Vec<Span<'a>>, data: &StatusBarData<'a>)
     // Plugin status segments
     for span in &data.plugin_spans {
         spans.push(span.clone());
+    }
+}
+
+fn cost_badge(total_cost: CostMicros, budget_status: &BudgetStatus) -> (String, Color) {
+    let total_cost_precise = total_cost.format_major_units(4);
+    let total_cost_rounded = total_cost.format_major_units(2);
+    match budget_status {
+        BudgetStatus::NoBudget => (format!(" ${total_cost_precise} "), Color::DarkGray),
+        BudgetStatus::Ok { remaining } => (
+            format!(" ${total_cost_rounded} (${} left) ", remaining.format_major_units(2)),
+            Color::Green,
+        ),
+        BudgetStatus::Warning {
+            over_soft_by: _,
+            hard_limit_remaining: Some(hard_limit_remaining),
+        } => (
+            format!(" ${total_cost_rounded} ⚠ (${} to hard) ", hard_limit_remaining.format_major_units(2)),
+            Color::Yellow,
+        ),
+        BudgetStatus::Warning {
+            over_soft_by: _,
+            hard_limit_remaining: None,
+        } => (format!(" ${total_cost_rounded} ⚠ over budget "), Color::Yellow),
+        BudgetStatus::Exceeded { .. } => (format!(" ${total_cost_rounded} ✖ exceeded "), Color::Red),
     }
 }
 
@@ -240,4 +248,28 @@ fn render_trailing_info<'a>(spans: &mut Vec<Span<'a>>, data: &StatusBarData<'a>,
         format!(" {} | {} | {}", state_str, data.model, data.cwd)
     };
     spans.push(Span::styled(info, Style::default().fg(theme.fg).bg(theme.bg)));
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn cost_badge_formats_fixed_point_costs() {
+        let (text, color) = cost_badge(CostMicros::from_micros(12_345), &BudgetStatus::NoBudget);
+        assert_eq!(text, " $0.0123 ");
+        assert_eq!(color, Color::DarkGray);
+    }
+
+    #[test]
+    fn cost_badge_includes_fixed_point_budget_remaining() {
+        let (text, color) = cost_badge(
+            CostMicros::from_micros(1_234_567),
+            &BudgetStatus::Ok {
+                remaining: CostMicros::from_micros(2_000_000),
+            },
+        );
+        assert_eq!(text, " $1.23 ($2.00 left) ");
+        assert_eq!(color, Color::Green);
+    }
 }

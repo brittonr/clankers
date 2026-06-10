@@ -2,6 +2,7 @@
 
 ## Working Notes
 
+- 2026-06-09: TUI cost display can keep all currency state fixed-point by storing `App::total_cost` / `StatusBarData::total_cost` as `CostMicros` and formatting through `format_major_units`; a tiny `cost_badge` helper makes the display behavior unit-testable.
 - 2026-06-09: Config `tail_budget_fraction` was a Tigerstyle currency false-positive by Rust identifier only; rename the Rust field to `tail_context_fraction` but pin serde `rename = "tailBudgetFraction"` plus `alias = "tail_budget_fraction"`, and add a wire-compat test before removing the crate allow.
 - 2026-06-09: Agent routing `float_for_currency` burn-down works by carrying `CostMicros` through `AgentRoutingSignals` and `AgentCostRecorder`, then converting back to model-selection's `f64` only inside `src/agent_config.rs` at the app edge.
 - 2026-06-09: Cost fixed-point burn-down: if `CostMicros::format_major_units` rounds via micro-unit division, tests should expect rounded display (`1.234567` at precision 4 -> `1.2346`), not truncation. Keep model-selection's internal pricing math in f64 but convert shared summaries/events/statuses at the boundary.
