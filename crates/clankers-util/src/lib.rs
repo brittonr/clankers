@@ -10,7 +10,6 @@
         tigerstyle::unbounded_collection_growth,
         tigerstyle::raw_arithmetic_overflow,
         tigerstyle::ambiguous_params,
-        tigerstyle::sentinel_fallback,
         tigerstyle::explicit_defaults,
         tigerstyle::usize_in_public_api,
         tigerstyle::ambient_clock,

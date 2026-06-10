@@ -393,7 +393,7 @@ pub fn expand_at_refs_with_policy(text: &str, cwd: &str, policy: &ContextReferen
         }
     }
 
-    references.sort_by_key(|m| sorted_position(text, &m.raw));
+    references.sort_by_key(|m| sorted_position_key(text, &m.raw));
 
     ExpandedContent {
         text: result,
@@ -514,8 +514,11 @@ fn display_target(path: &Path) -> String {
     path.display().to_string()
 }
 
-fn sorted_position(text: &str, raw: &str) -> usize {
-    text.find(raw).unwrap_or(usize::MAX)
+fn sorted_position_key(text: &str, raw: &str) -> (bool, usize) {
+    match text.find(raw) {
+        Some(position) => (false, position),
+        None => (true, 0),
+    }
 }
 
 fn is_context_reference_candidate(candidate: &str) -> bool {
