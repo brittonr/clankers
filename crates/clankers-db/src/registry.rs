@@ -29,9 +29,13 @@ use redb::ReadableTable;
 use redb::ReadableTableMetadata;
 use redb::TableDefinition;
 use serde::Deserialize;
+use serde::Deserializer;
 use serde::Serialize;
+use serde::de::Error as DeError;
 
 use super::Db;
+use clanker_message::CostMicros;
+use clanker_message::cost::COST_MICROS_PER_UNIT;
 use crate::error::Result;
 use crate::error::db_err;
 
@@ -82,7 +86,7 @@ impl std::fmt::Display for ResourceKind {
 }
 
 /// Metadata about a resource. Content lives on disk — this is just stats.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize)]
 pub struct RegistryEntry {
     /// Resource kind (skill, prompt, agent).
     pub kind: ResourceKind,
@@ -104,8 +108,8 @@ pub struct RegistryEntry {
     pub last_error: Option<String>,
     /// Total tokens consumed (agents only, 0 for skills/prompts).
     pub total_tokens: u64,
-    /// Total cost in USD (agents only, 0.0 for skills/prompts).
-    pub total_cost: f64,
+    /// Total cost in micros of one USD (agents only, zero for skills/prompts).
+    pub total_cost_micros: u64,
 }
 
 impl RegistryEntry {
@@ -123,9 +127,89 @@ impl RegistryEntry {
             updated_at: now,
             last_error: None,
             total_tokens: 0,
-            total_cost: 0.0,
+            total_cost_micros: 0,
         }
     }
+
+    pub fn total_cost(&self) -> CostMicros {
+        CostMicros::from_micros(self.total_cost_micros)
+    }
+}
+
+impl<'de> Deserialize<'de> for RegistryEntry {
+    fn deserialize<D>(deserializer: D) -> std::result::Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let wire = RegistryEntryWire::deserialize(deserializer)?;
+        let total_cost_micros = match (wire.total_cost_micros, wire.total_cost) {
+            (Some(micros), _) => micros,
+            (None, Some(value)) => legacy_major_units_to_micros(value).map_err(D::Error::custom)?,
+            (None, None) => 0,
+        };
+
+        Ok(Self {
+            kind: wire.kind,
+            name: wire.name,
+            path: wire.path,
+            enabled: wire.enabled,
+            use_count: wire.use_count,
+            last_used: wire.last_used,
+            created_at: wire.created_at,
+            updated_at: wire.updated_at,
+            last_error: wire.last_error,
+            total_tokens: wire.total_tokens,
+            total_cost_micros,
+        })
+    }
+}
+
+#[derive(Deserialize)]
+struct RegistryEntryWire {
+    kind: ResourceKind,
+    name: String,
+    path: String,
+    enabled: bool,
+    use_count: u64,
+    last_used: Option<DateTime<Utc>>,
+    created_at: DateTime<Utc>,
+    updated_at: DateTime<Utc>,
+    last_error: Option<String>,
+    total_tokens: u64,
+    #[serde(default)]
+    total_cost_micros: Option<u64>,
+    #[serde(default)]
+    total_cost: Option<serde_json::Value>,
+}
+
+fn legacy_major_units_to_micros(value: serde_json::Value) -> std::result::Result<u64, String> {
+    match value {
+        serde_json::Value::Number(number) => {
+            let units = number
+                .as_f64()
+                .ok_or_else(|| "total cost must be a non-negative number".to_string())?;
+            major_units_to_micros(units)
+        }
+        serde_json::Value::Null
+        | serde_json::Value::Bool(_)
+        | serde_json::Value::String(_)
+        | serde_json::Value::Array(_)
+        | serde_json::Value::Object(_) => Err("total cost must be numeric".to_string()),
+    }
+}
+
+fn major_units_to_micros(units: f64) -> std::result::Result<u64, String> {
+    if !units.is_finite() {
+        return Err("total cost must be finite".to_string());
+    }
+    if units < 0.0 {
+        return Err("total cost must be non-negative".to_string());
+    }
+    let micros = units * COST_MICROS_PER_UNIT as f64;
+    if micros > u64::MAX as f64 {
+        return Err("total cost is too large".to_string());
+    }
+    Ok(micros.round() as u64)
 }
 
 /// Build the table key from kind and name.
@@ -176,7 +260,7 @@ impl<'db> Registry<'db> {
     }
 
     /// Record token usage and cost (for agent entries).
-    pub fn record_tokens(&self, name: &str, tokens: u64, cost: f64) -> Result<()> {
+    pub fn record_tokens(&self, name: &str, tokens: u64, cost: CostMicros) -> Result<()> {
         let key = make_key("agent", name);
 
         let Some(mut entry) = self.get_by_key(&key)? else {
@@ -184,7 +268,7 @@ impl<'db> Registry<'db> {
         };
 
         entry.total_tokens += tokens;
-        entry.total_cost += cost;
+        entry.total_cost_micros = entry.total_cost_micros.saturating_add(cost.micros());
         entry.updated_at = Utc::now();
 
         self.put(&key, &entry)
@@ -492,13 +576,44 @@ mod tests {
         let reg = db.registry();
 
         reg.upsert(ResourceKind::Agent, "worker", "/path/worker.md")?;
-        reg.record_tokens("worker", 1000, 0.05)?;
-        reg.record_tokens("worker", 2000, 0.10)?;
+        reg.record_tokens("worker", 1000, CostMicros::from_micros(50_000))?;
+        reg.record_tokens("worker", 2000, CostMicros::from_micros(100_000))?;
 
         let entry = reg.get("agent", "worker")?.expect("should exist");
         assert_eq!(entry.total_tokens, 3000);
-        assert!((entry.total_cost - 0.15).abs() < f64::EPSILON);
+        assert_eq!(entry.total_cost(), CostMicros::from_micros(150_000));
         Ok(())
+    }
+
+    #[test]
+    fn registry_entry_reads_legacy_major_unit_cost() {
+        let json = r#"{
+            "kind": "agent",
+            "name": "worker",
+            "path": "/path/worker.md",
+            "enabled": true,
+            "use_count": 0,
+            "last_used": null,
+            "created_at": "2026-01-01T00:00:00Z",
+            "updated_at": "2026-01-01T00:00:00Z",
+            "last_error": null,
+            "total_tokens": 100,
+            "total_cost": 1
+        }"#;
+
+        let entry: RegistryEntry = serde_json::from_str(json).expect("legacy registry entry deserializes");
+
+        assert_eq!(entry.total_cost(), CostMicros::from_micros(1_000_000));
+    }
+
+    #[test]
+    fn registry_entry_reads_native_micro_unit_cost() {
+        let mut entry = RegistryEntry::new(ResourceKind::Agent, "worker", "/path/worker.md");
+        entry.total_cost_micros = 125_000;
+        let json = serde_json::to_string(&entry).expect("registry entry serializes");
+        let decoded: RegistryEntry = serde_json::from_str(&json).expect("registry entry deserializes");
+
+        assert_eq!(decoded.total_cost(), CostMicros::from_micros(125_000));
     }
 
     #[test]
