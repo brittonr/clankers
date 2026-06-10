@@ -3,7 +3,7 @@ use super::*;
 #[test]
 fn test_active_leaf_tracking() {
     let tmp = tempfile::TempDir::new().unwrap();
-    let mut mgr = SessionManager::create(tmp.path(), "/tmp/test", "claude-sonnet", None, None, None).unwrap();
+    let mut mgr = SessionManager::create(CreateSessionRequest { sessions_dir: tmp.path(), cwd: "/tmp/test", model: "claude-sonnet", agent: None, worktree_path: None, worktree_branch: None }).unwrap();
 
     assert!(mgr.active_leaf_id().is_none());
 
@@ -33,7 +33,7 @@ fn test_active_leaf_tracking() {
 #[test]
 fn test_record_branch() {
     let tmp = tempfile::TempDir::new().unwrap();
-    let mut mgr = SessionManager::create(tmp.path(), "/tmp/test", "claude-sonnet", None, None, None).unwrap();
+    let mut mgr = SessionManager::create(CreateSessionRequest { sessions_dir: tmp.path(), cwd: "/tmp/test", model: "claude-sonnet", agent: None, worktree_path: None, worktree_branch: None }).unwrap();
 
     // Create a linear conversation: msg1 -> msg2 -> msg3
     let id1 = MessageId::generate();
@@ -81,7 +81,7 @@ fn test_record_branch() {
 #[test]
 fn test_open_resumes_latest_branch() {
     let tmp = tempfile::TempDir::new().unwrap();
-    let mut mgr = SessionManager::create(tmp.path(), "/tmp/test", "claude-sonnet", None, None, None).unwrap();
+    let mut mgr = SessionManager::create(CreateSessionRequest { sessions_dir: tmp.path(), cwd: "/tmp/test", model: "claude-sonnet", agent: None, worktree_path: None, worktree_branch: None }).unwrap();
 
     // Create: root -> branch_a, root -> branch_b -> branch_b2
     let root = MessageId::generate();
@@ -115,7 +115,7 @@ fn test_open_resumes_latest_branch() {
 #[test]
 fn test_find_branches_linear() {
     let tmp = tempfile::TempDir::new().unwrap();
-    let mut mgr = SessionManager::create(tmp.path(), "/tmp/test", "claude-sonnet", None, None, None).unwrap();
+    let mut mgr = SessionManager::create(CreateSessionRequest { sessions_dir: tmp.path(), cwd: "/tmp/test", model: "claude-sonnet", agent: None, worktree_path: None, worktree_branch: None }).unwrap();
 
     // Create a linear conversation
     let id1 = MessageId::generate();
@@ -148,7 +148,7 @@ fn test_find_branches_linear() {
 #[test]
 fn test_find_branches_with_fork() {
     let tmp = tempfile::TempDir::new().unwrap();
-    let mut mgr = SessionManager::create(tmp.path(), "/tmp/test", "claude-sonnet", None, None, None).unwrap();
+    let mut mgr = SessionManager::create(CreateSessionRequest { sessions_dir: tmp.path(), cwd: "/tmp/test", model: "claude-sonnet", agent: None, worktree_path: None, worktree_branch: None }).unwrap();
 
     // Create: root -> branch_a, root -> branch_b
     let root = MessageId::generate();
@@ -197,7 +197,7 @@ fn test_find_branches_with_fork() {
 #[test]
 fn test_find_branches_with_labels() {
     let tmp = tempfile::TempDir::new().unwrap();
-    let mut mgr = SessionManager::create(tmp.path(), "/tmp/test", "claude-sonnet", None, None, None).unwrap();
+    let mut mgr = SessionManager::create(CreateSessionRequest { sessions_dir: tmp.path(), cwd: "/tmp/test", model: "claude-sonnet", agent: None, worktree_path: None, worktree_branch: None }).unwrap();
 
     let id1 = MessageId::generate();
     let msg1 = AgentMessage::User(UserMessage {
@@ -220,7 +220,7 @@ fn test_find_branches_with_labels() {
 #[test]
 fn test_branch_name_from_branch_entry() {
     let tmp = tempfile::TempDir::new().unwrap();
-    let mut mgr = SessionManager::create(tmp.path(), "/tmp/test", "claude-sonnet", None, None, None).unwrap();
+    let mut mgr = SessionManager::create(CreateSessionRequest { sessions_dir: tmp.path(), cwd: "/tmp/test", model: "claude-sonnet", agent: None, worktree_path: None, worktree_branch: None }).unwrap();
 
     // Create root and first branch
     let root = MessageId::generate();

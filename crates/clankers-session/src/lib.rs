@@ -11,8 +11,6 @@
         tigerstyle::assertion_density,
         tigerstyle::explicit_defaults,
         tigerstyle::usize_in_public_api,
-        tigerstyle::ambiguous_params,
-        tigerstyle::too_many_parameters,
         reason = "session persistence APIs and serialized records are compatibility contracts covered by migration/tree tests"
     )
 )]
@@ -61,6 +59,15 @@ pub struct BranchInfo {
     pub is_active: bool,
 }
 
+pub struct CreateSessionRequest<'a> {
+    pub sessions_dir: &'a Path,
+    pub cwd: &'a str,
+    pub model: &'a str,
+    pub agent: Option<&'a str>,
+    pub worktree_path: Option<&'a str>,
+    pub worktree_branch: Option<&'a str>,
+}
+
 /// Set the internal message ID on any AgentMessage variant.
 pub fn set_message_id(msg: &mut AgentMessage, new_id: MessageId) {
     match msg {
@@ -95,27 +102,24 @@ pub struct SessionManager {
 
 impl SessionManager {
     /// Create a new session backed by an Automerge document.
-    pub fn create(
-        sessions_dir: &Path,
-        cwd: &str,
-        model: &str,
-        agent: Option<&str>,
-        worktree_path: Option<&str>,
-        worktree_branch: Option<&str>,
-    ) -> Result<Self> {
+    pub fn create(request: CreateSessionRequest<'_>) -> Result<Self> {
         let session_id = clanker_message::transcript::generate_id();
-        let file_path = store::session_file_path_automerge(sessions_dir, cwd, &session_id);
+        let file_path = store::session_file_path_automerge(store::SessionFilePathRequest {
+            sessions_dir: request.sessions_dir,
+            cwd: request.cwd,
+            session_id: &session_id,
+        });
 
         let header = HeaderEntry {
             session_id: session_id.clone(),
             created_at: crate::session_clock_now(),
-            cwd: cwd.to_string(),
-            model: model.to_string(),
+            cwd: request.cwd.to_string(),
+            model: request.model.to_string(),
             version: env!("CARGO_PKG_VERSION").to_string(),
-            agent: agent.map(String::from),
+            agent: request.agent.map(String::from),
             parent_session_id: None,
-            worktree_path: worktree_path.map(String::from),
-            worktree_branch: worktree_branch.map(String::from),
+            worktree_path: request.worktree_path.map(String::from),
+            worktree_branch: request.worktree_branch.map(String::from),
         };
 
         let mut doc = automerge_store::create_document(&header)?;
@@ -124,14 +128,14 @@ impl SessionManager {
         Ok(Self {
             session_id,
             file_path,
-            cwd: cwd.to_string(),
-            model: model.to_string(),
+            cwd: request.cwd.to_string(),
+            model: request.model.to_string(),
             doc,
             persisted_ids: std::collections::HashSet::new(),
             active_leaf_id: None,
             latest_compaction_summary: None,
-            worktree_path: worktree_path.map(String::from),
-            worktree_branch: worktree_branch.map(String::from),
+            worktree_path: request.worktree_path.map(String::from),
+            worktree_branch: request.worktree_branch.map(String::from),
         })
     }
 

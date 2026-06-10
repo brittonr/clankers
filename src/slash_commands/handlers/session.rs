@@ -178,7 +178,11 @@ fn handle_delete(ctx: &mut SlashContext<'_>, args: &str) {
     }
 
     let paths = clankers_config::ClankersPaths::get();
-    let found = clankers_session::store::find_session_by_id(&paths.global_sessions_dir, &ctx.app.cwd, args);
+    let found = clankers_session::store::find_session_by_id(clankers_session::store::FindSessionRequest {
+        sessions_dir: &paths.global_sessions_dir,
+        cwd: &ctx.app.cwd,
+        partial_id: args,
+    });
 
     if let Some(file) = found {
         match std::fs::remove_file(&file) {

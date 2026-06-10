@@ -3,7 +3,7 @@ use super::*;
 #[test]
 fn test_record_label() {
     let tmp = tempfile::TempDir::new().unwrap();
-    let mut mgr = SessionManager::create(tmp.path(), "/tmp/test", "claude-sonnet", None, None, None).unwrap();
+    let mut mgr = SessionManager::create(CreateSessionRequest { sessions_dir: tmp.path(), cwd: "/tmp/test", model: "claude-sonnet", agent: None, worktree_path: None, worktree_branch: None }).unwrap();
 
     let id = MessageId::generate();
     let msg = AgentMessage::User(UserMessage {
@@ -31,7 +31,7 @@ fn test_record_label() {
 #[test]
 fn test_record_label_persisted_in_annotations() {
     let tmp = tempfile::TempDir::new().unwrap();
-    let mut mgr = SessionManager::create(tmp.path(), "/tmp/test", "claude-sonnet", None, None, None).unwrap();
+    let mut mgr = SessionManager::create(CreateSessionRequest { sessions_dir: tmp.path(), cwd: "/tmp/test", model: "claude-sonnet", agent: None, worktree_path: None, worktree_branch: None }).unwrap();
 
     let id = MessageId::generate();
     let msg = AgentMessage::User(UserMessage {
@@ -64,7 +64,7 @@ fn test_record_label_persisted_in_annotations() {
 #[test]
 fn test_record_label_no_active_leaf() {
     let tmp = tempfile::TempDir::new().unwrap();
-    let mut mgr = SessionManager::create(tmp.path(), "/tmp/test", "claude-sonnet", None, None, None).unwrap();
+    let mut mgr = SessionManager::create(CreateSessionRequest { sessions_dir: tmp.path(), cwd: "/tmp/test", model: "claude-sonnet", agent: None, worktree_path: None, worktree_branch: None }).unwrap();
 
     // Try to record a label without any messages
     let result = mgr.record_label("test");

@@ -87,18 +87,30 @@ pub fn inspect_typed_ledger_facts(
     })
 }
 
+pub struct SessionFilePathRequest<'a> {
+    pub sessions_dir: &'a Path,
+    pub cwd: &'a str,
+    pub session_id: &'a str,
+}
+
 /// Generate session file path (JSONL format — legacy).
-pub fn session_file_path(sessions_dir: &Path, cwd: &str, session_id: &str) -> PathBuf {
-    let encoded_cwd = encode_cwd(cwd);
+pub fn session_file_path(request: SessionFilePathRequest<'_>) -> PathBuf {
+    let encoded_cwd = encode_cwd(request.cwd);
     let timestamp = crate::session_clock_now().format("%Y%m%d_%H%M%S");
-    sessions_dir.join(&encoded_cwd).join(format!("{}_{}.jsonl", timestamp, session_id))
+    request
+        .sessions_dir
+        .join(&encoded_cwd)
+        .join(format!("{}_{}.jsonl", timestamp, request.session_id))
 }
 
 /// Generate session file path (Automerge format).
-pub fn session_file_path_automerge(sessions_dir: &Path, cwd: &str, session_id: &str) -> PathBuf {
-    let encoded_cwd = encode_cwd(cwd);
+pub fn session_file_path_automerge(request: SessionFilePathRequest<'_>) -> PathBuf {
+    let encoded_cwd = encode_cwd(request.cwd);
     let timestamp = crate::session_clock_now().format("%Y%m%d_%H%M%S");
-    sessions_dir.join(&encoded_cwd).join(format!("{}_{}.automerge", timestamp, session_id))
+    request
+        .sessions_dir
+        .join(&encoded_cwd)
+        .join(format!("{}_{}.automerge", timestamp, request.session_id))
 }
 
 /// Encode a cwd path into a safe directory name
@@ -230,10 +242,20 @@ pub fn import_session(sessions_dir: &Path, source: &Path) -> Result<PathBuf> {
 /// Find a session file by partial ID match.
 ///
 /// Prefers `.automerge` files over `.jsonl` when both exist for the same session.
-pub fn find_session_by_id(sessions_dir: &Path, cwd: &str, partial_id: &str) -> Option<PathBuf> {
-    let candidates: Vec<PathBuf> = list_sessions(sessions_dir, cwd)
+pub struct FindSessionRequest<'a> {
+    pub sessions_dir: &'a Path,
+    pub cwd: &'a str,
+    pub partial_id: &'a str,
+}
+
+pub fn find_session_by_id(request: FindSessionRequest<'_>) -> Option<PathBuf> {
+    let candidates: Vec<PathBuf> = list_sessions(request.sessions_dir, request.cwd)
         .into_iter()
-        .filter(|f| f.file_name().and_then(|n| n.to_str()).is_some_and(|n| n.contains(partial_id)))
+        .filter(|f| {
+            f.file_name()
+                .and_then(|n| n.to_str())
+                .is_some_and(|n| n.contains(request.partial_id))
+        })
         .collect();
 
     // Prefer .automerge over .jsonl
@@ -409,7 +431,11 @@ mod tests {
         let cwd = "/home/user/project";
         let session_id = "abc123";
 
-        let path = session_file_path(sessions_dir, cwd, session_id);
+        let path = session_file_path(SessionFilePathRequest {
+            sessions_dir,
+            cwd,
+            session_id,
+        });
         let path_str = path.to_string_lossy();
 
         assert!(path_str.contains("_home_user_project"));
@@ -559,11 +585,19 @@ mod tests {
         std::fs::write(cwd_dir.join("20240101_abc123.jsonl"), "{}").expect("test: failed to write session file");
         std::fs::write(cwd_dir.join("20240102_def456.jsonl"), "{}").expect("test: failed to write session file");
 
-        let found = find_session_by_id(temp.path(), cwd, "abc123");
+        let found = find_session_by_id(FindSessionRequest {
+            sessions_dir: temp.path(),
+            cwd,
+            partial_id: "abc123",
+        });
         assert!(found.is_some());
         assert!(found.expect("test: session should be found").to_string_lossy().contains("abc123"));
 
-        let not_found = find_session_by_id(temp.path(), cwd, "zzz999");
+        let not_found = find_session_by_id(FindSessionRequest {
+            sessions_dir: temp.path(),
+            cwd,
+            partial_id: "zzz999",
+        });
         assert!(not_found.is_none());
     }
 

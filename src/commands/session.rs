@@ -163,7 +163,12 @@ fn handle_migrate(ctx: &CommandContext, session_id: Option<&str>, all: bool) -> 
             .collect()
     } else {
         let id = session_id.expect("checked above");
-        let path = store::find_session_by_id(&ctx.paths.global_sessions_dir, &ctx.cwd, id).ok_or_else(|| {
+        let path = store::find_session_by_id(store::FindSessionRequest {
+            sessions_dir: &ctx.paths.global_sessions_dir,
+            cwd: &ctx.cwd,
+            partial_id: id,
+        })
+        .ok_or_else(|| {
             crate::error::Error::Session {
                 message: format!("session not found: {}", id),
             }
@@ -208,7 +213,12 @@ fn handle_migrate(ctx: &CommandContext, session_id: Option<&str>, all: bool) -> 
 
 /// Find a session file by ID prefix, or return an error.
 fn find_session(ctx: &CommandContext, session_id: &str) -> Result<std::path::PathBuf> {
-    store::find_session_by_id(&ctx.paths.global_sessions_dir, &ctx.cwd, session_id).ok_or_else(|| {
+    store::find_session_by_id(store::FindSessionRequest {
+        sessions_dir: &ctx.paths.global_sessions_dir,
+        cwd: &ctx.cwd,
+        partial_id: session_id,
+    })
+    .ok_or_else(|| {
         crate::error::Error::Session {
             message: format!("session not found: {}", session_id),
         }

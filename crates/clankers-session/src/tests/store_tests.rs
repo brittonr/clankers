@@ -6,7 +6,7 @@ fn test_create_and_open_session() {
     let sessions_dir = tmp.path();
     let cwd = "/tmp/test";
 
-    let mgr = SessionManager::create(sessions_dir, cwd, "claude-sonnet", None, None, None).unwrap();
+    let mgr = SessionManager::create(CreateSessionRequest { sessions_dir: sessions_dir, cwd: cwd, model: "claude-sonnet", agent: None, worktree_path: None, worktree_branch: None }).unwrap();
     assert!(!mgr.session_id().is_empty());
     assert!(mgr.file_path().exists());
     assert_eq!(mgr.file_path().extension().unwrap(), "automerge");
@@ -24,8 +24,8 @@ fn test_list_and_find_sessions() {
     let cwd = "/tmp/test";
 
     // Create two sessions
-    let mgr1 = SessionManager::create(sessions_dir, cwd, "model-a", None, None, None).unwrap();
-    let mgr2 = SessionManager::create(sessions_dir, cwd, "model-b", None, None, None).unwrap();
+    let mgr1 = SessionManager::create(CreateSessionRequest { sessions_dir: sessions_dir, cwd: cwd, model: "model-a", agent: None, worktree_path: None, worktree_branch: None }).unwrap();
+    let mgr2 = SessionManager::create(CreateSessionRequest { sessions_dir: sessions_dir, cwd: cwd, model: "model-b", agent: None, worktree_path: None, worktree_branch: None }).unwrap();
 
     let files = store::list_sessions(sessions_dir, cwd);
     assert_eq!(files.len(), 2);
@@ -42,7 +42,7 @@ fn test_duplicate_append_is_idempotent() {
     let tmp = tempfile::TempDir::new().unwrap();
     let sessions_dir = tmp.path();
 
-    let mut mgr = SessionManager::create(sessions_dir, "/tmp/test", "claude-sonnet", None, None, None).unwrap();
+    let mut mgr = SessionManager::create(CreateSessionRequest { sessions_dir: sessions_dir, cwd: "/tmp/test", model: "claude-sonnet", agent: None, worktree_path: None, worktree_branch: None }).unwrap();
 
     let user_id = MessageId::generate();
     let user_msg = AgentMessage::User(UserMessage {
@@ -67,7 +67,7 @@ fn test_is_persisted() {
     let tmp = tempfile::TempDir::new().unwrap();
     let sessions_dir = tmp.path();
 
-    let mut mgr = SessionManager::create(sessions_dir, "/tmp/test", "claude-sonnet", None, None, None).unwrap();
+    let mut mgr = SessionManager::create(CreateSessionRequest { sessions_dir: sessions_dir, cwd: "/tmp/test", model: "claude-sonnet", agent: None, worktree_path: None, worktree_branch: None }).unwrap();
 
     let user_id = MessageId::generate();
     assert!(!mgr.is_persisted(&user_id));
@@ -88,7 +88,7 @@ fn test_open_tracks_existing_persisted_ids() {
     let tmp = tempfile::TempDir::new().unwrap();
     let sessions_dir = tmp.path();
 
-    let mut mgr = SessionManager::create(sessions_dir, "/tmp/test", "claude-sonnet", None, None, None).unwrap();
+    let mut mgr = SessionManager::create(CreateSessionRequest { sessions_dir: sessions_dir, cwd: "/tmp/test", model: "claude-sonnet", agent: None, worktree_path: None, worktree_branch: None }).unwrap();
 
     let user_id = MessageId::generate();
     let user_msg = AgentMessage::User(UserMessage {
@@ -109,14 +109,14 @@ fn test_open_tracks_existing_persisted_ids() {
 #[test]
 fn test_model_accessor() {
     let tmp = tempfile::TempDir::new().unwrap();
-    let mgr = SessionManager::create(tmp.path(), "/tmp/test", "claude-opus", None, None, None).unwrap();
+    let mgr = SessionManager::create(CreateSessionRequest { sessions_dir: tmp.path(), cwd: "/tmp/test", model: "claude-opus", agent: None, worktree_path: None, worktree_branch: None }).unwrap();
     assert_eq!(mgr.model(), "claude-opus");
 }
 
 #[test]
 fn test_save_compact() {
     let tmp = tempfile::TempDir::new().unwrap();
-    let mut mgr = SessionManager::create(tmp.path(), "/tmp/test", "claude-sonnet", None, None, None).unwrap();
+    let mut mgr = SessionManager::create(CreateSessionRequest { sessions_dir: tmp.path(), cwd: "/tmp/test", model: "claude-sonnet", agent: None, worktree_path: None, worktree_branch: None }).unwrap();
 
     let id = MessageId::generate();
     let msg = AgentMessage::User(UserMessage {
@@ -140,7 +140,7 @@ fn test_save_compact() {
 #[test]
 fn test_read_session_summary_automerge() {
     let tmp = tempfile::TempDir::new().unwrap();
-    let mut mgr = SessionManager::create(tmp.path(), "/tmp/test", "test-model", None, None, None).unwrap();
+    let mut mgr = SessionManager::create(CreateSessionRequest { sessions_dir: tmp.path(), cwd: "/tmp/test", model: "test-model", agent: None, worktree_path: None, worktree_branch: None }).unwrap();
 
     let id = MessageId::generate();
     let msg = AgentMessage::User(UserMessage {

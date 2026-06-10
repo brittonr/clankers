@@ -77,7 +77,11 @@ impl SessionFormat for AutomergeSessionFormat {
     fn import_destination(&self, sessions_dir: &Path, source: &Path) -> Result<PathBuf> {
         let doc = automerge_store::load_document(source)?;
         let header = automerge_store::read_header(&doc)?;
-        Ok(store::session_file_path_automerge(sessions_dir, &header.cwd, &header.session_id))
+        Ok(store::session_file_path_automerge(store::SessionFilePathRequest {
+            sessions_dir,
+            cwd: &header.cwd,
+            session_id: &header.session_id,
+        }))
     }
 }
 
@@ -118,7 +122,11 @@ impl SessionFormat for JsonlSessionFormat {
             .ok_or_else(|| SessionError {
                 message: "Import file has no header entry".into(),
             })?;
-        Ok(store::session_file_path(sessions_dir, &header.cwd, &header.session_id))
+        Ok(store::session_file_path(store::SessionFilePathRequest {
+            sessions_dir,
+            cwd: &header.cwd,
+            session_id: &header.session_id,
+        }))
     }
 }
 

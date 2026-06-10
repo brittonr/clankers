@@ -3,7 +3,7 @@ use super::*;
 #[test]
 fn test_merge_branch_records_annotation() {
     let tmp = tempfile::TempDir::new().unwrap();
-    let mut mgr = SessionManager::create(tmp.path(), "/tmp/test", "claude-sonnet", None, None, None).unwrap();
+    let mut mgr = SessionManager::create(CreateSessionRequest { sessions_dir: tmp.path(), cwd: "/tmp/test", model: "claude-sonnet", agent: None, worktree_path: None, worktree_branch: None }).unwrap();
 
     let make_msg = |id: &MessageId, text: &str| -> AgentMessage {
         AgentMessage::User(UserMessage {
@@ -44,7 +44,7 @@ fn test_merge_branch_records_annotation() {
 #[test]
 fn test_merge_branch_same_branch_error() {
     let tmp = tempfile::TempDir::new().unwrap();
-    let mut mgr = SessionManager::create(tmp.path(), "/tmp/test", "claude-sonnet", None, None, None).unwrap();
+    let mut mgr = SessionManager::create(CreateSessionRequest { sessions_dir: tmp.path(), cwd: "/tmp/test", model: "claude-sonnet", agent: None, worktree_path: None, worktree_branch: None }).unwrap();
 
     let id = MessageId::generate();
     let msg = AgentMessage::User(UserMessage {
@@ -64,7 +64,7 @@ fn test_merge_branch_same_branch_error() {
 #[test]
 fn test_merge_branch_no_unique_messages() {
     let tmp = tempfile::TempDir::new().unwrap();
-    let mut mgr = SessionManager::create(tmp.path(), "/tmp/test", "claude-sonnet", None, None, None).unwrap();
+    let mut mgr = SessionManager::create(CreateSessionRequest { sessions_dir: tmp.path(), cwd: "/tmp/test", model: "claude-sonnet", agent: None, worktree_path: None, worktree_branch: None }).unwrap();
 
     let make_msg = |id: &MessageId, text: &str| -> AgentMessage {
         AgentMessage::User(UserMessage {
@@ -89,7 +89,7 @@ fn test_merge_branch_no_unique_messages() {
 #[test]
 fn test_merge_records_metadata() {
     let tmp = tempfile::TempDir::new().unwrap();
-    let mut mgr = SessionManager::create(tmp.path(), "/tmp/test", "claude-sonnet", None, None, None).unwrap();
+    let mut mgr = SessionManager::create(CreateSessionRequest { sessions_dir: tmp.path(), cwd: "/tmp/test", model: "claude-sonnet", agent: None, worktree_path: None, worktree_branch: None }).unwrap();
 
     let make_msg = |id: &MessageId, text: &str| -> AgentMessage {
         AgentMessage::User(UserMessage {
@@ -119,7 +119,7 @@ fn test_merge_records_metadata() {
 #[test]
 fn test_merge_branch_nonexistent_source() {
     let tmp = tempfile::TempDir::new().unwrap();
-    let mut mgr = SessionManager::create(tmp.path(), "/tmp/test", "claude-sonnet", None, None, None).unwrap();
+    let mut mgr = SessionManager::create(CreateSessionRequest { sessions_dir: tmp.path(), cwd: "/tmp/test", model: "claude-sonnet", agent: None, worktree_path: None, worktree_branch: None }).unwrap();
 
     let id = MessageId::generate();
     let msg = AgentMessage::User(UserMessage {
@@ -139,7 +139,7 @@ fn test_merge_branch_nonexistent_source() {
 #[test]
 fn test_merge_selective() {
     let tmp = tempfile::TempDir::new().unwrap();
-    let mut mgr = SessionManager::create(tmp.path(), "/tmp/test", "claude-sonnet", None, None, None).unwrap();
+    let mut mgr = SessionManager::create(CreateSessionRequest { sessions_dir: tmp.path(), cwd: "/tmp/test", model: "claude-sonnet", agent: None, worktree_path: None, worktree_branch: None }).unwrap();
 
     let make_msg = |id: &MessageId, text: &str| -> AgentMessage {
         AgentMessage::User(UserMessage {
@@ -173,7 +173,7 @@ fn test_merge_selective() {
 #[test]
 fn test_merge_selective_empty_selection() {
     let tmp = tempfile::TempDir::new().unwrap();
-    let mut mgr = SessionManager::create(tmp.path(), "/tmp/test", "claude-sonnet", None, None, None).unwrap();
+    let mut mgr = SessionManager::create(CreateSessionRequest { sessions_dir: tmp.path(), cwd: "/tmp/test", model: "claude-sonnet", agent: None, worktree_path: None, worktree_branch: None }).unwrap();
 
     let make_msg = |id: &MessageId, text: &str| -> AgentMessage {
         AgentMessage::User(UserMessage {
@@ -199,7 +199,7 @@ fn test_merge_selective_empty_selection() {
 #[test]
 fn test_cherry_pick_single() {
     let tmp = tempfile::TempDir::new().unwrap();
-    let mut mgr = SessionManager::create(tmp.path(), "/tmp/test", "claude-sonnet", None, None, None).unwrap();
+    let mut mgr = SessionManager::create(CreateSessionRequest { sessions_dir: tmp.path(), cwd: "/tmp/test", model: "claude-sonnet", agent: None, worktree_path: None, worktree_branch: None }).unwrap();
 
     let make_msg = |id: &MessageId, text: &str| -> AgentMessage {
         AgentMessage::User(UserMessage {
@@ -230,7 +230,7 @@ fn test_cherry_pick_single() {
 #[test]
 fn test_cherry_pick_with_children() {
     let tmp = tempfile::TempDir::new().unwrap();
-    let mut mgr = SessionManager::create(tmp.path(), "/tmp/test", "claude-sonnet", None, None, None).unwrap();
+    let mut mgr = SessionManager::create(CreateSessionRequest { sessions_dir: tmp.path(), cwd: "/tmp/test", model: "claude-sonnet", agent: None, worktree_path: None, worktree_branch: None }).unwrap();
 
     let make_msg = |id: &MessageId, text: &str| -> AgentMessage {
         AgentMessage::User(UserMessage {
@@ -262,7 +262,7 @@ fn test_cherry_pick_with_children() {
 #[test]
 fn test_cherry_pick_nonexistent_message() {
     let tmp = tempfile::TempDir::new().unwrap();
-    let mut mgr = SessionManager::create(tmp.path(), "/tmp/test", "claude-sonnet", None, None, None).unwrap();
+    let mut mgr = SessionManager::create(CreateSessionRequest { sessions_dir: tmp.path(), cwd: "/tmp/test", model: "claude-sonnet", agent: None, worktree_path: None, worktree_branch: None }).unwrap();
 
     let id = MessageId::generate();
     let msg = AgentMessage::User(UserMessage {
@@ -282,7 +282,7 @@ fn test_cherry_pick_nonexistent_message() {
 #[test]
 fn test_cherry_pick_records_metadata() {
     let tmp = tempfile::TempDir::new().unwrap();
-    let mut mgr = SessionManager::create(tmp.path(), "/tmp/test", "claude-sonnet", None, None, None).unwrap();
+    let mut mgr = SessionManager::create(CreateSessionRequest { sessions_dir: tmp.path(), cwd: "/tmp/test", model: "claude-sonnet", agent: None, worktree_path: None, worktree_branch: None }).unwrap();
 
     let make_msg = |id: &MessageId, text: &str| -> AgentMessage {
         AgentMessage::User(UserMessage {
@@ -311,7 +311,7 @@ fn test_cherry_pick_records_metadata() {
 #[test]
 fn test_merge_selective_preserves_message_content() {
     let tmp = tempfile::TempDir::new().unwrap();
-    let mut mgr = SessionManager::create(tmp.path(), "/tmp/test", "claude-sonnet", None, None, None).unwrap();
+    let mut mgr = SessionManager::create(CreateSessionRequest { sessions_dir: tmp.path(), cwd: "/tmp/test", model: "claude-sonnet", agent: None, worktree_path: None, worktree_branch: None }).unwrap();
 
     let make_msg = |id: &MessageId, text: &str| -> AgentMessage {
         AgentMessage::User(UserMessage {

@@ -5,7 +5,7 @@ fn test_append_and_build_context() {
     let tmp = tempfile::TempDir::new().unwrap();
     let sessions_dir = tmp.path();
 
-    let mut mgr = SessionManager::create(sessions_dir, "/tmp/test", "claude-sonnet", None, None, None).unwrap();
+    let mut mgr = SessionManager::create(CreateSessionRequest { sessions_dir: sessions_dir, cwd: "/tmp/test", model: "claude-sonnet", agent: None, worktree_path: None, worktree_branch: None }).unwrap();
 
     // Append a user message
     let user_id = MessageId::generate();
@@ -44,7 +44,7 @@ fn test_session_resume_with_resume_entry() {
     let tmp = tempfile::TempDir::new().unwrap();
     let sessions_dir = tmp.path();
 
-    let mut mgr = SessionManager::create(sessions_dir, "/tmp/test", "claude-sonnet", None, None, None).unwrap();
+    let mut mgr = SessionManager::create(CreateSessionRequest { sessions_dir: sessions_dir, cwd: "/tmp/test", model: "claude-sonnet", agent: None, worktree_path: None, worktree_branch: None }).unwrap();
 
     // Add a message
     let user_id = MessageId::generate();
@@ -71,7 +71,7 @@ fn test_session_persists_latest_compaction_summary() {
     let tmp = tempfile::TempDir::new().unwrap();
     let sessions_dir = tmp.path();
 
-    let mut mgr = SessionManager::create(sessions_dir, "/tmp/test", "claude-sonnet", None, None, None).unwrap();
+    let mut mgr = SessionManager::create(CreateSessionRequest { sessions_dir: sessions_dir, cwd: "/tmp/test", model: "claude-sonnet", agent: None, worktree_path: None, worktree_branch: None }).unwrap();
     assert!(mgr.latest_compaction_summary().is_none());
 
     mgr.record_compaction_summary("## Active Task\n- continue".to_string()).unwrap();

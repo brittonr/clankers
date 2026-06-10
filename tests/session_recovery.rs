@@ -377,7 +377,14 @@ async fn keyed_matrix_prompt_recovers_suspended_session_before_replying() {
     std::fs::create_dir_all(&sessions_dir).unwrap();
 
     let mut mgr =
-        clankers_session::SessionManager::create(&sessions_dir, "/tmp/matrix-recovery", "test-model", None, None, None)
+        clankers_session::SessionManager::create(clankers_session::CreateSessionRequest {
+            sessions_dir: &sessions_dir,
+            cwd: "/tmp/matrix-recovery",
+            model: "test-model",
+            agent: None,
+            worktree_path: None,
+            worktree_branch: None,
+        })
             .unwrap();
     let session_id = mgr.session_id().to_string();
     let user_id = MessageId::new("user-1");

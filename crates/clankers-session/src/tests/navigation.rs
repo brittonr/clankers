@@ -3,7 +3,7 @@ use super::*;
 #[test]
 fn test_set_active_head() {
     let tmp = tempfile::TempDir::new().unwrap();
-    let mut mgr = SessionManager::create(tmp.path(), "/tmp/test", "claude-sonnet", None, None, None).unwrap();
+    let mut mgr = SessionManager::create(CreateSessionRequest { sessions_dir: tmp.path(), cwd: "/tmp/test", model: "claude-sonnet", agent: None, worktree_path: None, worktree_branch: None }).unwrap();
 
     let id1 = MessageId::generate();
     let id2 = MessageId::generate();
@@ -37,7 +37,7 @@ fn test_set_active_head() {
 #[test]
 fn test_set_active_head_invalid() {
     let tmp = tempfile::TempDir::new().unwrap();
-    let mut mgr = SessionManager::create(tmp.path(), "/tmp/test", "claude-sonnet", None, None, None).unwrap();
+    let mut mgr = SessionManager::create(CreateSessionRequest { sessions_dir: tmp.path(), cwd: "/tmp/test", model: "claude-sonnet", agent: None, worktree_path: None, worktree_branch: None }).unwrap();
 
     let fake_id = MessageId::new("nonexistent");
     let result = mgr.set_active_head(fake_id);
@@ -47,7 +47,7 @@ fn test_set_active_head_invalid() {
 #[test]
 fn test_rewind() {
     let tmp = tempfile::TempDir::new().unwrap();
-    let mut mgr = SessionManager::create(tmp.path(), "/tmp/test", "claude-sonnet", None, None, None).unwrap();
+    let mut mgr = SessionManager::create(CreateSessionRequest { sessions_dir: tmp.path(), cwd: "/tmp/test", model: "claude-sonnet", agent: None, worktree_path: None, worktree_branch: None }).unwrap();
 
     // Create 3 messages
     let mut ids: Vec<MessageId> = Vec::new();
@@ -78,7 +78,7 @@ fn test_rewind() {
 #[test]
 fn test_rewind_too_far() {
     let tmp = tempfile::TempDir::new().unwrap();
-    let mut mgr = SessionManager::create(tmp.path(), "/tmp/test", "claude-sonnet", None, None, None).unwrap();
+    let mut mgr = SessionManager::create(CreateSessionRequest { sessions_dir: tmp.path(), cwd: "/tmp/test", model: "claude-sonnet", agent: None, worktree_path: None, worktree_branch: None }).unwrap();
 
     let id = MessageId::generate();
     let msg = AgentMessage::User(UserMessage {
@@ -98,7 +98,7 @@ fn test_rewind_too_far() {
 #[test]
 fn test_resolve_target_numeric() {
     let tmp = tempfile::TempDir::new().unwrap();
-    let mut mgr = SessionManager::create(tmp.path(), "/tmp/test", "claude-sonnet", None, None, None).unwrap();
+    let mut mgr = SessionManager::create(CreateSessionRequest { sessions_dir: tmp.path(), cwd: "/tmp/test", model: "claude-sonnet", agent: None, worktree_path: None, worktree_branch: None }).unwrap();
 
     let mut ids: Vec<MessageId> = Vec::new();
     for i in 0..3 {
@@ -127,7 +127,7 @@ fn test_resolve_target_numeric() {
 #[test]
 fn test_resolve_target_message_id() {
     let tmp = tempfile::TempDir::new().unwrap();
-    let mut mgr = SessionManager::create(tmp.path(), "/tmp/test", "claude-sonnet", None, None, None).unwrap();
+    let mut mgr = SessionManager::create(CreateSessionRequest { sessions_dir: tmp.path(), cwd: "/tmp/test", model: "claude-sonnet", agent: None, worktree_path: None, worktree_branch: None }).unwrap();
 
     let id = MessageId::generate();
     let msg = AgentMessage::User(UserMessage {
@@ -147,7 +147,7 @@ fn test_resolve_target_message_id() {
 #[test]
 fn test_resolve_target_label() {
     let tmp = tempfile::TempDir::new().unwrap();
-    let mut mgr = SessionManager::create(tmp.path(), "/tmp/test", "claude-sonnet", None, None, None).unwrap();
+    let mut mgr = SessionManager::create(CreateSessionRequest { sessions_dir: tmp.path(), cwd: "/tmp/test", model: "claude-sonnet", agent: None, worktree_path: None, worktree_branch: None }).unwrap();
 
     let id = MessageId::generate();
     let msg = AgentMessage::User(UserMessage {
@@ -168,7 +168,7 @@ fn test_resolve_target_label() {
 #[test]
 fn test_resolve_target_branch_name() {
     let tmp = tempfile::TempDir::new().unwrap();
-    let mut mgr = SessionManager::create(tmp.path(), "/tmp/test", "claude-sonnet", None, None, None).unwrap();
+    let mut mgr = SessionManager::create(CreateSessionRequest { sessions_dir: tmp.path(), cwd: "/tmp/test", model: "claude-sonnet", agent: None, worktree_path: None, worktree_branch: None }).unwrap();
 
     let root = MessageId::generate();
     let branch_a = MessageId::generate();
@@ -200,7 +200,7 @@ fn test_resolve_target_branch_name() {
 #[test]
 fn test_resolve_target_invalid() {
     let tmp = tempfile::TempDir::new().unwrap();
-    let mgr = SessionManager::create(tmp.path(), "/tmp/test", "claude-sonnet", None, None, None).unwrap();
+    let mgr = SessionManager::create(CreateSessionRequest { sessions_dir: tmp.path(), cwd: "/tmp/test", model: "claude-sonnet", agent: None, worktree_path: None, worktree_branch: None }).unwrap();
 
     let result = mgr.resolve_target("nonexistent");
     assert!(result.is_err());

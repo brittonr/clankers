@@ -243,7 +243,14 @@ fn build_session_manager(
     model: &str,
 ) -> (Option<clankers_session::SessionManager>, Option<PathBuf>) {
     let cwd = std::env::current_dir().unwrap_or_default().to_string_lossy().into_owned();
-    match clankers_session::SessionManager::create(sessions_dir, &cwd, model, None, None, None) {
+    match clankers_session::SessionManager::create(clankers_session::CreateSessionRequest {
+        sessions_dir,
+        cwd: &cwd,
+        model,
+        agent: None,
+        worktree_path: None,
+        worktree_branch: None,
+    }) {
         Ok(mgr) => {
             let path = mgr.file_path().to_path_buf();
             tracing::info!("session {session_id}: persistence enabled at {path:?}");
@@ -675,7 +682,14 @@ mod tests {
         let cwd = dir.path().join("project");
         let cwd_text = cwd.to_string_lossy().to_string();
         let mut session =
-            clankers_session::SessionManager::create(&sessions_dir, &cwd_text, "fixture-model", None, None, None)
+            clankers_session::SessionManager::create(clankers_session::CreateSessionRequest {
+                sessions_dir: &sessions_dir,
+                cwd: &cwd_text,
+                model: "fixture-model",
+                agent: None,
+                worktree_path: None,
+                worktree_branch: None,
+            })
                 .unwrap();
         append_resume_fixture(&mut session);
         let resume_id = session.session_id().to_string();
@@ -707,7 +721,14 @@ mod tests {
         let cwd = dir.path().join("project");
         let cwd_text = cwd.to_string_lossy().to_string();
         let mut session =
-            clankers_session::SessionManager::create(&sessions_dir, &cwd_text, "catalog-model", None, None, None)
+            clankers_session::SessionManager::create(clankers_session::CreateSessionRequest {
+                sessions_dir: &sessions_dir,
+                cwd: &cwd_text,
+                model: "catalog-model",
+                agent: None,
+                worktree_path: None,
+                worktree_branch: None,
+            })
                 .unwrap();
         append_resume_fixture(&mut session);
         let entry = SessionCatalogEntry {

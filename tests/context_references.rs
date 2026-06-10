@@ -4,6 +4,7 @@ use std::net::TcpListener;
 use std::process::Command;
 use std::thread;
 
+use clankers_session::CreateSessionRequest;
 use clankers_session::SessionManager;
 use clankers_session::entry::SessionEntry;
 use clankers_util::at_file::ContextReferenceKind;
@@ -28,8 +29,15 @@ fn context_reference_primary_path_expands_file_and_persists_metadata() {
     assert_eq!(expanded.references[0].status, ContextReferenceStatus::Expanded);
 
     let session_dir = tmp.path().join("sessions");
-    let mut manager =
-        SessionManager::create(&session_dir, cwd.to_str().unwrap(), "test-model", None, None, None).unwrap();
+    let mut manager = SessionManager::create(CreateSessionRequest {
+        sessions_dir: &session_dir,
+        cwd: cwd.to_str().unwrap(),
+        model: "test-model",
+        agent: None,
+        worktree_path: None,
+        worktree_branch: None,
+    })
+    .unwrap();
     manager
         .record_custom(
             "context_references",

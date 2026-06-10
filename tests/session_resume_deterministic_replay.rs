@@ -18,6 +18,7 @@ use clankers_protocol::DaemonEvent;
 use clankers_protocol::SessionCommand;
 use clankers_provider::CompletionRequest;
 use clankers_provider::Model;
+use clankers_session::CreateSessionRequest;
 use clankers_session::SessionManager;
 use serde_json::Value;
 use serde_json::json;
@@ -161,8 +162,15 @@ async fn persisted_session_resume_replay_restores_context_and_session_metadata()
 async fn run_resume_replay_once() -> Value {
     let tmp = TempDir::new().expect("tempdir should exist");
     let cwd = tmp.path().to_string_lossy().to_string();
-    let session_manager =
-        SessionManager::create(tmp.path(), &cwd, MODEL, None, None, None).expect("session manager should create");
+    let session_manager = SessionManager::create(CreateSessionRequest {
+        sessions_dir: tmp.path(),
+        cwd: &cwd,
+        model: MODEL,
+        agent: None,
+        worktree_path: None,
+        worktree_branch: None,
+    })
+    .expect("session manager should create");
     let session_id = session_manager.session_id().to_string();
     let session_file = session_manager.file_path().to_path_buf();
 

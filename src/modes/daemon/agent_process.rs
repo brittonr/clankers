@@ -1457,7 +1457,14 @@ mod factory_plugin_tests {
         let cwd = dir.path().join("project");
         let cwd_text = cwd.to_string_lossy().to_string();
         let session =
-            clankers_session::SessionManager::create(&sessions_dir, &cwd_text, "catalog-model", None, None, None)
+            clankers_session::SessionManager::create(clankers_session::CreateSessionRequest {
+                sessions_dir: &sessions_dir,
+                cwd: &cwd_text,
+                model: "catalog-model",
+                agent: None,
+                worktree_path: None,
+                worktree_branch: None,
+            })
                 .expect("fixture session should be created");
         let session_id = session.session_id().to_string();
         let entry = super::super::session_store::SessionCatalogEntry {

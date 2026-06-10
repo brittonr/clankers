@@ -67,14 +67,14 @@ fn create_new_session(
         Some(s) => (Some(s.working_dir.to_string_lossy().to_string()), Some(s.branch.clone())),
         None => (None, None),
     };
-    match clankers_session::SessionManager::create(
+    match clankers_session::SessionManager::create(clankers_session::CreateSessionRequest {
         sessions_dir,
         cwd,
         model,
-        None,
-        wt_path.as_deref(),
-        wt_branch.as_deref(),
-    ) {
+        agent: None,
+        worktree_path: wt_path.as_deref(),
+        worktree_branch: wt_branch.as_deref(),
+    }) {
         Ok(mgr) => {
             app.session_id = mgr.session_id().to_string();
             if let Some(ref s) = wt_setup {

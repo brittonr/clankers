@@ -315,7 +315,14 @@ fn make_persisted_session(
     message_count: usize,
 ) -> clankers_session::SessionManager {
     let cwd = tmp.path().to_string_lossy().to_string();
-    let mut mgr = clankers_session::SessionManager::create(tmp.path(), &cwd, "test-model", None, None, None)
+    let mut mgr = clankers_session::SessionManager::create(clankers_session::CreateSessionRequest {
+        sessions_dir: tmp.path(),
+        cwd: &cwd,
+        model: "test-model",
+        agent: None,
+        worktree_path: None,
+        worktree_branch: None,
+    })
         .expect("session should create");
     for index in 0..message_count {
         mgr.append_message(user_text_message(&"x".repeat((index + 1) * 120)), None)

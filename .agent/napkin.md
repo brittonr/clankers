@@ -19,6 +19,7 @@
 - 2026-06-09: clankers-ucan Tigerstyle cleanup reached zero crate-level Tigerstyle allows by replacing private same-`&str` helper args with small named structs and reserving bounded Vec capacity from already-known component/revocation limits.
 - 2026-06-09: clankers-session raw arithmetic/unbounded collection/compound-condition drain worked with saturating index/capacity math, pre-counting JSONL lines from `read_to_string`, and pre-sizing traversal vectors from `message_count()`.
 - 2026-06-09: clankers-session ambient clock drain can centralize timestamp reads through `session_clock_now()` with one narrow shell-boundary allow; avoid broad crate-level ambient-clock suppression.
+- 2026-06-09: clankers-session ambiguous/too-many parameter cleanup was tractable by introducing `CreateSessionRequest`, `SessionFilePathRequest`, and `FindSessionRequest`; remember to grep `tests/` as well as `src`/`crates` for public API call sites.
 
 ## Corrections
 | Date | Source | What Went Wrong | What To Do Instead |

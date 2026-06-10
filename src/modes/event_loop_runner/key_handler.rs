@@ -662,7 +662,14 @@ mod tests {
 
     fn persisted_session_file(tmp: &tempfile::TempDir) -> (std::path::PathBuf, String, String) {
         let cwd = tmp.path().to_string_lossy().to_string();
-        let mut mgr = clankers_session::SessionManager::create(tmp.path(), &cwd, "test-model", None, None, None)
+        let mut mgr = clankers_session::SessionManager::create(clankers_session::CreateSessionRequest {
+            sessions_dir: tmp.path(),
+            cwd: &cwd,
+            model: "test-model",
+            agent: None,
+            worktree_path: None,
+            worktree_branch: None,
+        })
             .expect("session create should succeed");
         let session_id = mgr.session_id().to_string();
         mgr.append_message(
