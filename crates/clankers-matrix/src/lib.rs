@@ -31,7 +31,6 @@
     dylint_lib = "tigerstyle",
     allow(
         tigerstyle::assertion_density,
-        tigerstyle::numeric_units,
         tigerstyle::explicit_defaults,
         tigerstyle::ambient_clock,
         tigerstyle::usize_in_public_api,

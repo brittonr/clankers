@@ -40,13 +40,13 @@ pub fn chunk_response(text: &str, max_bytes: usize) -> Vec<String> {
     let mut chunks = Vec::with_capacity(blocks.len());
 
     for block in blocks {
-        let block_size = block.len();
+        let block_size_bytes = block.len();
 
         // If adding this block would exceed the limit, finalize current chunk
         if !current_chunk.is_empty()
             && current_chunk
                 .len()
-                .saturating_add(block_size)
+                .saturating_add(block_size_bytes)
                 .saturating_add(2)
                 > max_bytes
         {
@@ -55,7 +55,7 @@ pub fn chunk_response(text: &str, max_bytes: usize) -> Vec<String> {
         }
 
         // If this single block exceeds the limit, handle it specially
-        if block_size > max_bytes {
+        if block_size_bytes > max_bytes {
             // Try to split at line boundaries
             let lines: Vec<&str> = block.split('\n').collect();
             let mut temp = String::new();

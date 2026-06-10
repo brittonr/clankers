@@ -470,9 +470,8 @@ impl MatrixClient {
         let client = self.client.as_ref().ok_or(MatrixError::NotLoggedIn)?;
         let room = client.get_room(room_id).ok_or_else(|| MatrixError::RoomNotFound(room_id.to_string()))?;
 
-        let limit_uint = UInt::new(limit as u64).unwrap_or_else(|| UInt::new(20).expect("20 fits in UInt"));
         let mut options = MessagesOptions::backward();
-        options.limit = limit_uint;
+        options.limit = UInt::new(limit as u64).unwrap_or_else(|| UInt::new(20).expect("20 fits in UInt"));
 
         let response = room
             .messages(options)
