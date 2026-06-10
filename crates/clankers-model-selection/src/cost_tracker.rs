@@ -109,7 +109,7 @@ struct ModelUsage {
     input_tokens: u64,
     output_tokens: u64,
     total_turns: u64,
-    cost_usd: f64,
+    cost_micros: CostMicros,
 }
 
 // ── Budget status ───────────────────────────────────────────────────────────
@@ -121,12 +121,36 @@ pub use clanker_message::CostMicros;
 pub use clanker_message::CostSummary;
 pub use clanker_message::ModelCostBreakdown;
 
-fn cost_micros_from_major_units(amount: f64) -> CostMicros {
+pub(crate) fn cost_micros_from_major_units(amount: f64) -> CostMicros {
     assert!(amount.is_finite(), "cost amount must be finite");
     assert!(amount >= 0.0, "cost amount must be non-negative");
     let scaled = (amount * clanker_message::COST_MICROS_PER_UNIT as f64).round();
     assert!(scaled <= u64::MAX as f64, "cost amount must fit in fixed-point storage");
     CostMicros::from_micros(scaled as u64)
+}
+
+fn major_units_from_cost_micros(amount: CostMicros) -> f64 {
+    amount.micros() as f64 / clanker_message::COST_MICROS_PER_UNIT as f64
+}
+
+fn total_usage_cost(usage: &HashMap<String, ModelUsage>) -> CostMicros {
+    usage
+        .values()
+        .fold(CostMicros::ZERO, |total, item| total.saturating_add(item.cost_micros))
+}
+
+struct TokenUsage {
+    input_tokens: u64,
+    output_tokens: u64,
+}
+
+fn usage_cost(usage: TokenUsage, pricing: &ModelPricing) -> (CostMicros, CostMicros) {
+    let input_amount = (usage.input_tokens as f64 / 1_000_000.0) * pricing.input_per_mtok;
+    let output_amount = (usage.output_tokens as f64 / 1_000_000.0) * pricing.output_per_mtok;
+    (
+        cost_micros_from_major_units(input_amount),
+        cost_micros_from_major_units(output_amount),
+    )
 }
 
 // ── CostTracker ─────────────────────────────────────────────────────────────
@@ -140,7 +164,7 @@ pub struct CostTracker {
     pricing: HashMap<String, ModelPricing>,
     config: CostTrackerConfig,
     /// Previous total before last record_usage — for milestone detection
-    prev_total: RwLock<f64>,
+    prev_total: RwLock<CostMicros>,
 }
 
 impl std::fmt::Debug for CostTracker {
@@ -159,7 +183,7 @@ impl CostTracker {
             usage: RwLock::new(HashMap::new()),
             pricing,
             config,
-            prev_total: RwLock::new(0.0),
+            prev_total: RwLock::new(CostMicros::ZERO),
         }
     }
 
@@ -184,30 +208,24 @@ impl CostTracker {
         allow(no_unwrap, reason = "mutex poisoning is unrecoverable")
     )]
     pub fn record_usage(&self, model_id: &str, input_tokens: u64, output_tokens: u64) -> (f64, Vec<BudgetEvent>) {
+        let token_usage = TokenUsage {
+            input_tokens,
+            output_tokens,
+        };
         let (input_cost, output_cost) = if let Some(pricing) = self.pricing.get(model_id) {
-            (
-                (input_tokens as f64 / 1_000_000.0) * pricing.input_per_mtok,
-                (output_tokens as f64 / 1_000_000.0) * pricing.output_per_mtok,
-            )
+            usage_cost(token_usage, pricing)
         } else {
             // Try prefix matching (e.g., "claude-sonnet-4-5-20250514" matches "claude-sonnet-4-5")
             let fallback = self.pricing.iter().find(|(k, _)| model_id.starts_with(k.as_str()));
             if let Some((_, pricing)) = fallback {
-                (
-                    (input_tokens as f64 / 1_000_000.0) * pricing.input_per_mtok,
-                    (output_tokens as f64 / 1_000_000.0) * pricing.output_per_mtok,
-                )
+                usage_cost(token_usage, pricing)
             } else {
                 tracing::debug!("No pricing for model '{}', tracking at $0", model_id);
-                (0.0, 0.0)
+                (CostMicros::ZERO, CostMicros::ZERO)
             }
         };
 
-        // Tiger Style: costs must be non-negative
-        assert!(input_cost >= 0.0, "input cost must be non-negative");
-        assert!(output_cost >= 0.0, "output cost must be non-negative");
-
-        let turn_cost = input_cost + output_cost;
+        let turn_cost = input_cost.saturating_add(output_cost);
 
         let total_cost = {
             let mut usage = self.usage.write().expect("usage lock not poisoned");
@@ -215,15 +233,12 @@ impl CostTracker {
             entry.input_tokens += input_tokens;
             entry.output_tokens += output_tokens;
             entry.total_turns += 1;
-            entry.cost_usd += turn_cost;
-            usage.values().map(|u| u.cost_usd).sum::<f64>()
+            entry.cost_micros = entry.cost_micros.saturating_add(turn_cost);
+            total_usage_cost(&usage)
         };
 
-        // Tiger Style: total cost must be monotonically non-decreasing
-        assert!(total_cost >= 0.0, "total cost must be non-negative");
-
         let events = self.check_thresholds(total_cost);
-        (total_cost, events)
+        (major_units_from_cost_micros(total_cost), events)
     }
 
     /// Get total cost across all models.
@@ -233,7 +248,7 @@ impl CostTracker {
     )]
     pub fn total_cost(&self) -> f64 {
         let usage = self.usage.read().expect("usage lock not poisoned");
-        usage.values().map(|u| u.cost_usd).sum()
+        major_units_from_cost_micros(total_usage_cost(&usage))
     }
 
     #[cfg_attr(
@@ -242,7 +257,8 @@ impl CostTracker {
     )]
     /// Get current budget status.
     pub fn budget_status(&self) -> BudgetStatus {
-        self.compute_budget_status(self.total_cost())
+        let usage = self.usage.read().expect("usage lock not poisoned");
+        self.compute_budget_status(total_usage_cost(&usage))
     }
     /// Generate a full cost summary.
     #[cfg_attr(
@@ -251,15 +267,15 @@ impl CostTracker {
     )]
     pub fn summary(&self) -> CostSummary {
         let usage = self.usage.read().expect("usage lock not poisoned");
-        let total_cost: f64 = usage.values().map(|u| u.cost_usd).sum();
+        let total_cost = total_usage_cost(&usage);
 
         let by_model: Vec<ModelCostBreakdown> = usage
             .iter()
             .map(|(model_id, u)| {
                 let display_name =
                     self.pricing.get(model_id).map(|p| p.display_name.clone()).unwrap_or_else(|| model_id.clone());
-                let percentage = if total_cost > 0.0 {
-                    (u.cost_usd / total_cost * 100.0) as f32
+                let percentage = if !total_cost.is_zero() {
+                    (u.cost_micros.micros() as f32 / total_cost.micros() as f32) * 100.0
                 } else {
                     0.0
                 };
@@ -268,7 +284,7 @@ impl CostTracker {
                     display_name,
                     input_tokens: u.input_tokens,
                     output_tokens: u.output_tokens,
-                    cost_usd: cost_micros_from_major_units(u.cost_usd),
+                    cost_usd: u.cost_micros,
                     percentage,
                 }
             })
@@ -277,7 +293,7 @@ impl CostTracker {
         let most_expensive = by_model.iter().max_by_key(|model| model.cost_usd).map(|m| m.model_id.clone());
 
         CostSummary {
-            total_cost: cost_micros_from_major_units(total_cost),
+            total_cost,
             by_model,
             budget_status: self.compute_budget_status(total_cost),
             most_expensive,
@@ -291,24 +307,32 @@ impl CostTracker {
     )]
     pub fn status_line(&self, current_model: &str) -> String {
         let usage = self.usage.read().expect("usage lock not poisoned");
-        let total_cost: f64 = usage.values().map(|u| u.cost_usd).sum();
+        let total_cost = total_usage_cost(&usage);
         let total_in: u64 = usage.values().map(|u| u.input_tokens).sum();
         let total_out: u64 = usage.values().map(|u| u.output_tokens).sum();
 
         let model_short = self.pricing.get(current_model).map(|p| p.display_name.as_str()).unwrap_or(current_model);
 
         let budget_part = match (&self.config.soft_limit, &self.config.hard_limit) {
-            (_, Some(hard)) => format!(" | Budget: ${:.2} / ${:.2}", total_cost, hard),
-            (Some(soft), None) => format!(" | Budget: ${:.2} / ${:.2}", total_cost, soft),
+            (_, Some(hard)) => format!(
+                " | Budget: ${} / ${}",
+                total_cost.format_major_units(2),
+                cost_micros_from_major_units(*hard).format_major_units(2)
+            ),
+            (Some(soft), None) => format!(
+                " | Budget: ${} / ${}",
+                total_cost.format_major_units(2),
+                cost_micros_from_major_units(*soft).format_major_units(2)
+            ),
             _ => String::new(),
         };
 
         format!(
-            "[{}] {}k in / {}k out | ${:.3}{}",
+            "[{}] {}k in / {}k out | ${}{}",
             model_short,
             total_in / 1000,
             total_out / 1000,
-            total_cost,
+            total_cost.format_major_units(3),
             budget_part,
         )
     }
@@ -321,7 +345,7 @@ impl CostTracker {
         dylint_lib = "tigerstyle",
         allow(no_unwrap, reason = "mutex poisoning is unrecoverable")
     )]
-    fn check_thresholds(&self, total: f64) -> Vec<BudgetEvent> {
+    fn check_thresholds(&self, total: CostMicros) -> Vec<BudgetEvent> {
         let mut events = Vec::new();
         let prev = {
             let mut prev = self.prev_total.write().expect("prev_total lock not poisoned");
@@ -332,22 +356,24 @@ impl CostTracker {
 
         // Hard limit — decomposed: check existence, then crossing.
         if let Some(hard) = self.config.hard_limit {
-            let has_just_crossed = total >= hard && prev < hard;
+            let hard_limit_micros = cost_micros_from_major_units(hard);
+            let has_just_crossed = total >= hard_limit_micros && prev < hard_limit_micros;
             if has_just_crossed {
                 events.push(BudgetEvent::Exceeded {
-                    limit: cost_micros_from_major_units(hard),
-                    current: cost_micros_from_major_units(total),
+                    limit: hard_limit_micros,
+                    current: total,
                 });
             }
         }
 
         // Soft limit — decomposed: check existence, then crossing.
         if let Some(soft) = self.config.soft_limit {
-            let has_just_crossed = total >= soft && prev < soft;
+            let soft_limit_micros = cost_micros_from_major_units(soft);
+            let has_just_crossed = total >= soft_limit_micros && prev < soft_limit_micros;
             if has_just_crossed {
                 events.push(BudgetEvent::Warning {
-                    threshold: cost_micros_from_major_units(soft),
-                    current: cost_micros_from_major_units(total),
+                    threshold: soft_limit_micros,
+                    current: total,
                 });
             }
         }
@@ -356,58 +382,67 @@ impl CostTracker {
         if let Some(interval) = self.config.warning_interval
             && interval > 0.0
         {
-            let prev_milestone = (prev / interval).floor() as u64;
-            let curr_milestone = (total / interval).floor() as u64;
-            for m in (prev_milestone + 1)..=curr_milestone {
-                events.push(BudgetEvent::Milestone {
-                    milestone: cost_micros_from_major_units(m as f64 * interval),
-                    total: cost_micros_from_major_units(total),
-                });
+            let interval_cost_micros = cost_micros_from_major_units(interval);
+            if !interval_cost_micros.is_zero() {
+                let interval_micros = interval_cost_micros.micros();
+                assert!(interval_micros != 0, "milestone interval must be non-zero");
+                let prev_milestone = prev.micros() / interval_micros;
+                let curr_milestone = total.micros() / interval_micros;
+                for m in (prev_milestone + 1)..=curr_milestone {
+                    events.push(BudgetEvent::Milestone {
+                        milestone: CostMicros::from_micros(m.saturating_mul(interval_micros)),
+                        total,
+                    });
+                }
             }
         }
 
         events
     }
 
-    fn compute_budget_status(&self, total: f64) -> BudgetStatus {
+    fn compute_budget_status(&self, total: CostMicros) -> BudgetStatus {
         match (self.config.soft_limit, self.config.hard_limit) {
             (None, None) => BudgetStatus::NoBudget,
             (Some(soft), None) => {
-                if total < soft {
+                let soft_limit_micros = cost_micros_from_major_units(soft);
+                if total < soft_limit_micros {
                     BudgetStatus::Ok {
-                        remaining: cost_micros_from_major_units(soft - total),
+                        remaining: soft_limit_micros.saturating_sub(total),
                     }
                 } else {
                     BudgetStatus::Warning {
-                        over_soft_by: cost_micros_from_major_units(total - soft),
+                        over_soft_by: total.saturating_sub(soft_limit_micros),
                         hard_limit_remaining: None,
                     }
                 }
             }
             (Some(soft), Some(hard)) => {
-                if total < soft {
+                let soft_limit_micros = cost_micros_from_major_units(soft);
+                let hard_limit_micros = cost_micros_from_major_units(hard);
+                if total < soft_limit_micros {
                     BudgetStatus::Ok {
-                        remaining: cost_micros_from_major_units(soft - total),
+                        remaining: soft_limit_micros.saturating_sub(total),
                     }
-                } else if total < hard {
+                } else if total < hard_limit_micros {
                     BudgetStatus::Warning {
-                        over_soft_by: cost_micros_from_major_units(total - soft),
-                        hard_limit_remaining: Some(cost_micros_from_major_units(hard - total)),
+                        over_soft_by: total.saturating_sub(soft_limit_micros),
+                        hard_limit_remaining: Some(hard_limit_micros.saturating_sub(total)),
                     }
                 } else {
                     BudgetStatus::Exceeded {
-                        over_hard_by: cost_micros_from_major_units(total - hard),
+                        over_hard_by: total.saturating_sub(hard_limit_micros),
                     }
                 }
             }
             (None, Some(hard)) => {
-                if total < hard {
+                let hard_limit_micros = cost_micros_from_major_units(hard);
+                if total < hard_limit_micros {
                     BudgetStatus::Ok {
-                        remaining: cost_micros_from_major_units(hard - total),
+                        remaining: hard_limit_micros.saturating_sub(total),
                     }
                 } else {
                     BudgetStatus::Exceeded {
-                        over_hard_by: cost_micros_from_major_units(total - hard),
+                        over_hard_by: total.saturating_sub(hard_limit_micros),
                     }
                 }
             }
@@ -425,7 +460,7 @@ impl CostProvider for CostTracker {
     }
 
     fn total_cost(&self) -> CostMicros {
-        cost_micros_from_major_units(CostTracker::total_cost(self))
+        self.summary().total_cost
     }
 }
 

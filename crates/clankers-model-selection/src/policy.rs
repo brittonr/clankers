@@ -2,7 +2,10 @@
 
 use std::fmt;
 
+use clanker_message::CostMicros;
+
 use super::config::RoutingPolicyConfig;
+use super::cost_tracker::cost_micros_from_major_units;
 use super::orchestration::OrchestrationPlan;
 use super::signals::ComplexitySignals;
 use super::signals::ModelRoleHint;
@@ -38,18 +41,19 @@ impl RoutingPolicy {
         }
 
         // Hard budget limit — force smol regardless of complexity
-        if let Some(hard) = self.config.budget_hard_limit
-            && signals.current_cost >= hard
-        {
-            return ModelSelectionResult {
-                role: "smol".to_string(),
-                score: 0.0,
-                reason: SelectionReason::BudgetThreshold {
-                    limit: hard,
-                    current: signals.current_cost,
-                },
-                orchestration: None,
-            };
+        if let Some(hard) = self.config.budget_hard_limit {
+            let hard_limit_micros = cost_micros_from_major_units(hard);
+            if signals.current_cost >= hard_limit_micros {
+                return ModelSelectionResult {
+                    role: "smol".to_string(),
+                    score: 0.0,
+                    reason: SelectionReason::BudgetThreshold {
+                        limit: hard_limit_micros,
+                        current: signals.current_cost,
+                    },
+                    orchestration: None,
+                };
+            }
         }
 
         // User hints override complexity scoring (but not hard budget)
@@ -72,7 +76,8 @@ impl RoutingPolicy {
 
         // Apply soft budget pressure — reduce score to bias toward cheaper models
         let adjusted_score = if let Some(soft) = self.config.budget_soft_limit {
-            if signals.current_cost >= soft {
+            let soft_limit_micros = cost_micros_from_major_units(soft);
+            if signals.current_cost >= soft_limit_micros {
                 score * 0.5 // halve the score — shifts selection toward smol/default
             } else {
                 score
@@ -212,7 +217,7 @@ pub enum SelectionReason {
     /// Policy is disabled, using default
     Default,
     /// Budget threshold forced downgrade
-    BudgetThreshold { limit: f64, current: f64 },
+    BudgetThreshold { limit: CostMicros, current: CostMicros },
 }
 
 impl fmt::Display for SelectionReason {
@@ -221,9 +226,12 @@ impl fmt::Display for SelectionReason {
             Self::ComplexityScore(score) => write!(f, "complexity_score={:.1}", score),
             Self::UserRequested => write!(f, "user_requested"),
             Self::Default => write!(f, "default"),
-            Self::BudgetThreshold { limit, current } => {
-                write!(f, "budget_threshold(${:.2}/${:.2})", current, limit)
-            }
+            Self::BudgetThreshold { limit, current } => write!(
+                f,
+                "budget_threshold(${}/${})",
+                current.format_major_units(2),
+                limit.format_major_units(2)
+            ),
         }
     }
 }
@@ -265,7 +273,7 @@ mod tests {
             recent_tools: vec![],
             keywords: vec![("simple".to_string(), -8.0)],
             user_hint: None,
-            current_cost: 0.0,
+            current_cost: CostMicros::ZERO,
             prompt_text: None,
         };
 
@@ -283,7 +291,7 @@ mod tests {
             recent_tools: vec![],
             keywords: vec![("architecture".to_string(), 15.0), ("refactor".to_string(), 10.0)],
             user_hint: None,
-            current_cost: 0.0,
+            current_cost: CostMicros::ZERO,
             prompt_text: None,
         };
 
@@ -303,7 +311,7 @@ mod tests {
             recent_tools: vec![],
             keywords: vec![("optimize".to_string(), 8.0)],
             user_hint: None,
-            current_cost: 0.0,
+            current_cost: CostMicros::ZERO,
             prompt_text: None,
         };
 
@@ -321,7 +329,7 @@ mod tests {
             recent_tools: vec![],
             keywords: vec![("architecture".to_string(), 15.0)],
             user_hint: Some(ModelRoleHint::Fast),
-            current_cost: 0.0,
+            current_cost: CostMicros::ZERO,
             prompt_text: None,
         };
 
@@ -339,7 +347,7 @@ mod tests {
             recent_tools: vec![],
             keywords: vec![],
             user_hint: Some(ModelRoleHint::Thorough),
-            current_cost: 0.0,
+            current_cost: CostMicros::ZERO,
             prompt_text: None,
         };
 
@@ -357,7 +365,7 @@ mod tests {
             recent_tools: vec![],
             keywords: vec![],
             user_hint: Some(ModelRoleHint::Explicit("slow".to_string())),
-            current_cost: 0.0,
+            current_cost: CostMicros::ZERO,
             prompt_text: None,
         };
 
@@ -438,7 +446,7 @@ mod tests {
         let signals = ComplexitySignals {
             token_count: 5000, // Would normally be slow
             keywords: vec![("architecture".to_string(), 15.0)],
-            current_cost: 6.0, // Over hard limit
+            current_cost: CostMicros::from_micros(6_000_000), // Over hard limit
             ..Default::default()
         };
 
@@ -459,7 +467,7 @@ mod tests {
         let signals_no_budget = ComplexitySignals {
             token_count: 2000,
             keywords: vec![("architecture".to_string(), 15.0), ("refactor".to_string(), 10.0)],
-            current_cost: 0.0,
+            current_cost: CostMicros::ZERO,
             prompt_text: None,
             ..Default::default()
         };
@@ -468,7 +476,7 @@ mod tests {
 
         // With soft budget pressure, score is halved → should downgrade
         let signals_over_soft = ComplexitySignals {
-            current_cost: 2.0, // Over soft limit
+            current_cost: CostMicros::from_micros(2_000_000), // Over soft limit
             ..signals_no_budget
         };
         let result_over_soft = policy.select_model(&signals_over_soft);
@@ -485,8 +493,8 @@ mod tests {
         let policy = RoutingPolicy::new(config);
 
         let signals = ComplexitySignals {
-            user_hint: Some(ModelRoleHint::Thorough), // User wants slow
-            current_cost: 6.0,                        // But over hard limit
+            user_hint: Some(ModelRoleHint::Thorough),        // User wants slow
+            current_cost: CostMicros::from_micros(6_000_000), // But over hard limit
             ..Default::default()
         };
 
@@ -504,7 +512,7 @@ mod tests {
             recent_tools: vec![],
             keywords: vec![],
             user_hint: None,
-            current_cost: 0.0,
+            current_cost: CostMicros::ZERO,
             prompt_text: None,
         };
         let score = policy.compute_complexity_score(&signals);
@@ -516,7 +524,7 @@ mod tests {
             recent_tools: vec![],
             keywords: vec![("refactor".to_string(), 10.0)],
             user_hint: None,
-            current_cost: 0.0,
+            current_cost: CostMicros::ZERO,
             prompt_text: None,
         };
         let score_with_keyword = policy.compute_complexity_score(&signals);

@@ -6,7 +6,6 @@ use std::sync::Arc;
 
 use clanker_message::BudgetEvent;
 use clanker_message::CostProvider;
-use clanker_message::cost::COST_MICROS_PER_UNIT;
 use clanker_message::cost::CostMicros;
 use clankers_agent::AgentCostRecorder;
 use clankers_agent::AgentMemorySettings;
@@ -79,7 +78,7 @@ impl AgentRoutingPolicy for ModelSelectionRoutingPolicyAdapter {
                 .collect(),
             keywords: self.policy.extract_keywords(&prompt_text),
             user_hint: self.policy.parse_user_hint(&prompt_text),
-            current_cost: cost_micros_to_major_units(signals.current_cost),
+            current_cost: signals.current_cost,
             prompt_text: Some(prompt_text),
         });
 
@@ -132,10 +131,6 @@ impl AgentCostRecorder for ModelSelectionCostRecorder {
     fn total_cost(&self) -> CostMicros {
         CostProvider::total_cost(self.tracker.as_ref())
     }
-}
-
-fn cost_micros_to_major_units(amount: CostMicros) -> f64 {
-    amount.micros() as f64 / COST_MICROS_PER_UNIT as f64
 }
 
 /// Convert desktop Clankers settings into agent-owned runtime settings.

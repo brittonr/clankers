@@ -1,5 +1,6 @@
 //! Complexity signals for model routing decisions
 
+use clanker_message::CostMicros;
 use serde::Deserialize;
 use serde::Serialize;
 
@@ -15,7 +16,7 @@ pub struct ComplexitySignals {
     /// User hint extracted from prompt (e.g. "quick answer", "think deeply")
     pub user_hint: Option<ModelRoleHint>,
     /// Cumulative cost so far (for budget awareness in later phases)
-    pub current_cost: f64,
+    pub current_cost: CostMicros,
     /// Raw prompt text (for orchestration pattern detection)
     pub prompt_text: Option<String>,
 }

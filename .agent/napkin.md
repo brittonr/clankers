@@ -2,6 +2,7 @@
 
 ## Working Notes
 
+- 2026-06-09: Model-selection fixed-point slice: `ComplexitySignals.current_cost` can be `CostMicros` while preserving `CostTracker::record_usage`/`total_cost` f64 API for older callers; store per-model usage and threshold state internally as `CostMicros` and convert only at config/display boundaries.
 - 2026-06-09: DB registry cost fixed-point drain: store the public Rust field as `total_cost_micros: u64`, expose a `total_cost() -> CostMicros` accessor, and add a deserializer alias for old `total_cost` major-unit JSON so persisted entries migrate when rewritten.
 - 2026-06-09: TUI cost display can keep all currency state fixed-point by storing `App::total_cost` / `StatusBarData::total_cost` as `CostMicros` and formatting through `format_major_units`; a tiny `cost_badge` helper makes the display behavior unit-testable.
 - 2026-06-09: Config `tail_budget_fraction` was a Tigerstyle currency false-positive by Rust identifier only; rename the Rust field to `tail_context_fraction` but pin serde `rename = "tailBudgetFraction"` plus `alias = "tail_budget_fraction"`, and add a wire-compat test before removing the crate allow.

@@ -17,6 +17,7 @@ use clankers::tools::switch_model::model_switch_slot;
 use clankers_config::model_roles::ModelRoles;
 use clankers_model_selection::config::RoutingPolicyConfig;
 use clankers_model_selection::cost_tracker::BudgetStatus;
+use clankers_model_selection::cost_tracker::CostMicros;
 use clankers_model_selection::cost_tracker::CostTracker;
 use clankers_model_selection::cost_tracker::CostTrackerConfig;
 use clankers_model_selection::cost_tracker::ModelPricing;
@@ -91,7 +92,7 @@ fn test_full_routing_pipeline_simple() {
         }],
         keywords: vec![("simple".to_string(), -8.0)],
         user_hint: None,
-        current_cost: 0.0,
+        current_cost: CostMicros::ZERO,
         prompt_text: None,
     };
 
@@ -119,7 +120,7 @@ fn test_full_routing_pipeline_complex() {
         ],
         keywords: vec![("architecture".to_string(), 15.0), ("refactor".to_string(), 10.0)],
         user_hint: None,
-        current_cost: 0.0,
+        current_cost: CostMicros::ZERO,
         prompt_text: None,
     };
 
@@ -141,7 +142,7 @@ fn test_full_routing_pipeline_medium() {
         }],
         keywords: vec![("optimize".to_string(), 8.0)],
         user_hint: None,
-        current_cost: 0.0,
+        current_cost: CostMicros::ZERO,
         prompt_text: None,
     };
 
@@ -160,7 +161,7 @@ fn test_full_routing_pipeline_user_hint_opus() {
         recent_tools: vec![],
         keywords: vec![],
         user_hint: Some(ModelRoleHint::Explicit("slow".to_string())),
-        current_cost: 0.0,
+        current_cost: CostMicros::ZERO,
         prompt_text: None,
     };
 
@@ -179,7 +180,7 @@ fn test_full_routing_pipeline_user_hint_quick() {
         recent_tools: vec![],
         keywords: vec![("architecture".to_string(), 15.0)],
         user_hint: Some(ModelRoleHint::Fast),
-        current_cost: 0.0,
+        current_cost: CostMicros::ZERO,
         prompt_text: None,
     };
 
@@ -201,7 +202,7 @@ fn test_budget_soft_limit_biases_cheaper() {
     let signals_no_budget = ComplexitySignals {
         token_count: 2000,
         keywords: vec![("architecture".to_string(), 15.0), ("refactor".to_string(), 10.0)],
-        current_cost: 0.0,
+        current_cost: CostMicros::ZERO,
         ..Default::default()
     };
     let result_no_budget = policy.select_model(&signals_no_budget);
@@ -209,7 +210,7 @@ fn test_budget_soft_limit_biases_cheaper() {
 
     // With cost at $6 (over soft, under hard), score should be halved
     let signals_over_soft = ComplexitySignals {
-        current_cost: 6.0,
+        current_cost: CostMicros::from_micros(6_000_000),
         ..signals_no_budget
     };
     let result_over_soft = policy.select_model(&signals_over_soft);
@@ -229,7 +230,7 @@ fn test_budget_hard_limit_forces_smol() {
     let signals = ComplexitySignals {
         token_count: 5000,
         keywords: vec![("architecture".to_string(), 15.0)],
-        current_cost: 11.0,
+        current_cost: CostMicros::from_micros(11_000_000),
         ..Default::default()
     };
 
@@ -502,7 +503,7 @@ fn test_routing_performance() {
         }],
         keywords: vec![("optimize".to_string(), 8.0)],
         user_hint: None,
-        current_cost: 0.0,
+        current_cost: CostMicros::ZERO,
         prompt_text: None,
     };
 
@@ -561,7 +562,7 @@ async fn test_end_to_end_routing_cost_switch() {
     let signals1 = ComplexitySignals {
         token_count: 2000,
         keywords: vec![("architecture".to_string(), 15.0)],
-        current_cost: 0.0,
+        current_cost: CostMicros::ZERO,
         ..Default::default()
     };
     let result1 = policy.select_model(&signals1);
@@ -576,7 +577,7 @@ async fn test_end_to_end_routing_cost_switch() {
     let signals2 = ComplexitySignals {
         token_count: 2000,
         keywords: vec![("architecture".to_string(), 15.0)],
-        current_cost: tracker.total_cost(),
+        current_cost: tracker.summary().total_cost,
         ..Default::default()
     };
     let result2 = policy.select_model(&signals2);
@@ -627,8 +628,8 @@ fn test_hard_budget_overrides_user_hint() {
     let policy = RoutingPolicy::new(config);
 
     let signals = ComplexitySignals {
-        user_hint: Some(ModelRoleHint::Thorough), // User wants slow
-        current_cost: 6.0,                        // But over hard limit
+        user_hint: Some(ModelRoleHint::Thorough),        // User wants slow
+        current_cost: CostMicros::from_micros(6_000_000), // But over hard limit
         ..Default::default()
     };
 
@@ -779,7 +780,7 @@ async fn test_switch_model_with_routing_policy_interaction() {
         recent_tools: vec![],
         keywords: vec![],
         user_hint: None,
-        current_cost: 0.0,
+        current_cost: CostMicros::ZERO,
         prompt_text: None,
     };
     let selection = policy.select_model(&signals);

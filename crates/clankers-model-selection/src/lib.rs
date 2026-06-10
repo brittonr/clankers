@@ -10,7 +10,6 @@
         tigerstyle::assertion_density,
         tigerstyle::multi_lock_ordering,
         tigerstyle::explicit_defaults,
-        tigerstyle::float_for_currency,
         tigerstyle::raw_arithmetic_overflow,
         tigerstyle::compound_condition,
         tigerstyle::unbounded_collection_growth,
