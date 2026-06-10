@@ -57,7 +57,11 @@ impl SessionTree {
     }
 
     /// Number of indexed messages (not total entries — excludes headers etc).
-    pub fn message_count(&self) -> usize {
+    pub fn message_count(&self) -> u64 {
+        self.index.len() as u64
+    }
+
+    pub(crate) fn message_capacity(&self) -> usize {
         self.index.len()
     }
 

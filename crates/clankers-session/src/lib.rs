@@ -10,7 +10,6 @@
     allow(
         tigerstyle::assertion_density,
         tigerstyle::explicit_defaults,
-        tigerstyle::usize_in_public_api,
         reason = "session persistence APIs and serialized records are compatibility contracts covered by migration/tree tests"
     )
 )]
@@ -53,7 +52,7 @@ use self::tree::SessionTree;
 pub struct BranchInfo {
     pub leaf_id: MessageId,
     pub name: String,
-    pub message_count: usize,
+    pub message_count: u64,
     pub last_activity: chrono::DateTime<chrono::Utc>,
     pub divergence_point: Option<MessageId>,
     pub is_active: bool,
@@ -328,8 +327,8 @@ impl SessionManager {
     pub fn model(&self) -> &str {
         &self.model
     }
-    pub fn message_count(&self) -> usize {
-        self.persisted_ids.len()
+    pub fn message_count(&self) -> u64 {
+        self.persisted_ids.len() as u64
     }
     pub fn worktree_path(&self) -> Option<&str> {
         self.worktree_path.as_deref()
@@ -356,7 +355,7 @@ impl SessionManager {
         for leaf in leaves {
             let leaf_id = leaf.id.clone();
             let branch_messages = tree.walk_branch(&leaf_id);
-            let message_count = branch_messages.len();
+            let message_count = branch_messages.len() as u64;
             let last_activity = leaf.timestamp;
             let is_active = self.active_leaf_id.as_ref() == Some(&leaf_id);
 
@@ -438,20 +437,25 @@ impl SessionManager {
     }
 
     /// Rewind the active branch by a number of messages.
-    pub fn rewind(&mut self, offset: usize) -> Result<MessageId> {
+    pub fn rewind(&mut self, offset: u64) -> Result<MessageId> {
         let tree = self.load_tree()?;
         let current_leaf = self.active_leaf_id.as_ref().ok_or_else(|| SessionError {
             message: "No active branch to rewind".to_string(),
         })?;
 
         let branch = tree.walk_branch(current_leaf);
-        if offset >= branch.len() {
+        let Ok(offset_messages) = usize::try_from(offset) else {
+            return Err(SessionError {
+                message: format!("Cannot rewind {offset} messages on this platform"),
+            });
+        };
+        if offset_messages >= branch.len() {
             return Err(SessionError {
                 message: format!("Cannot rewind {} messages from a branch of length {}", offset, branch.len()),
             });
         }
 
-        let target_index = branch.len().saturating_sub(offset).saturating_sub(1);
+        let target_index = branch.len().saturating_sub(offset_messages).saturating_sub(1);
         let new_head = branch[target_index].id.clone();
         self.active_leaf_id = Some(new_head.clone());
         Ok(new_head)

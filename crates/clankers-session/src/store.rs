@@ -173,9 +173,9 @@ pub fn list_all_sessions(sessions_dir: &Path) -> Vec<PathBuf> {
 /// Delete all sessions for a given cwd.
 ///
 /// Also removes `.jsonl.bak` files left by migration.
-pub fn purge_sessions(sessions_dir: &Path, cwd: &str) -> std::io::Result<usize> {
+pub fn purge_sessions(sessions_dir: &Path, cwd: &str) -> std::io::Result<u64> {
     let files = list_sessions(sessions_dir, cwd);
-    let count = files.len();
+    let count = files.len() as u64;
     for f in &files {
         std::fs::remove_file(f)?;
         // Clean up migration backup if present
@@ -188,9 +188,9 @@ pub fn purge_sessions(sessions_dir: &Path, cwd: &str) -> std::io::Result<usize> 
 /// Delete all sessions across all cwds.
 ///
 /// Also removes `.jsonl.bak` files left by migration.
-pub fn purge_all_sessions(sessions_dir: &Path) -> std::io::Result<usize> {
+pub fn purge_all_sessions(sessions_dir: &Path) -> std::io::Result<u64> {
     let files = list_all_sessions(sessions_dir);
-    let count = files.len();
+    let count = files.len() as u64;
     for f in &files {
         std::fs::remove_file(f)?;
         let bak = f.with_extension("jsonl.bak");

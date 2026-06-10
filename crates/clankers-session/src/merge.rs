@@ -19,13 +19,17 @@ use super::set_message_id;
 use crate::error::Result;
 use crate::error::SessionError;
 
+fn count_to_u64(count: usize) -> u64 {
+    count as u64
+}
+
 impl SessionManager {
     /// Merge two branches by recording an annotation.
     ///
     /// Both branches remain visible in the DAG — no messages are cloned.
     /// The active head moves to `target_leaf`. Returns the number of
     /// messages unique to the source branch (informational).
-    pub fn merge_branch(&mut self, source_leaf: MessageId, target_leaf: MessageId) -> Result<(usize, MessageId)> {
+    pub fn merge_branch(&mut self, source_leaf: MessageId, target_leaf: MessageId) -> Result<(u64, MessageId)> {
         if source_leaf == target_leaf {
             return Err(SessionError {
                 message: "Cannot merge a branch into itself".into(),
@@ -49,7 +53,7 @@ impl SessionManager {
             });
         }
 
-        let merged_count = unique.len();
+        let merged_count = count_to_u64(unique.len());
         let source_ids: Vec<&str> = unique.iter().map(|m| m.id.0.as_str()).collect();
 
         let annotation = AnnotationEntry::Custom(CustomEntry {
@@ -81,7 +85,7 @@ impl SessionManager {
         source_leaf: MessageId,
         target_leaf: MessageId,
         selected_ids: &[MessageId],
-    ) -> Result<(usize, MessageId)> {
+    ) -> Result<(u64, MessageId)> {
         if source_leaf == target_leaf {
             return Err(SessionError {
                 message: "Cannot merge a branch into itself".into(),
@@ -112,7 +116,7 @@ impl SessionManager {
             });
         }
 
-        let merged_count = to_merge.len();
+        let merged_count = count_to_u64(to_merge.len());
         let mut current_parent = target_leaf.clone();
 
         for msg in &to_merge {
@@ -156,7 +160,7 @@ impl SessionManager {
         message_id: MessageId,
         target_leaf: MessageId,
         with_children: bool,
-    ) -> Result<(usize, MessageId)> {
+    ) -> Result<(u64, MessageId)> {
         let tree = self.load_tree()?;
 
         tree.find_message_public(&message_id).ok_or_else(|| SessionError {
@@ -168,8 +172,8 @@ impl SessionManager {
 
         let messages_to_copy = if with_children {
             // Walk children iteratively via the tree's child index.
-            let mut collected = Vec::with_capacity(tree.message_count());
-            let mut stack = Vec::with_capacity(tree.message_count());
+            let mut collected = Vec::with_capacity(tree.message_capacity());
+            let mut stack = Vec::with_capacity(tree.message_capacity());
             stack.push(message_id.clone());
             while let Some(id) = stack.pop() {
                 if let Some(msg) = tree.find_message_public(&id) {
@@ -193,7 +197,7 @@ impl SessionManager {
             });
         }
 
-        let count = messages_to_copy.len();
+        let count = count_to_u64(messages_to_copy.len());
         let mut current_parent = target_leaf.clone();
 
         for msg in &messages_to_copy {

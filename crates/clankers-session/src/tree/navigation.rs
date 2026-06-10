@@ -34,7 +34,7 @@ impl SessionTree {
     // r[impl session.walk.root-anchored]
     // r[impl session.walk.terminates]
     pub fn walk_branch(&self, leaf_id: &MessageId) -> Vec<&MessageEntry> {
-        let mut path = Vec::with_capacity(self.message_count());
+        let mut path = Vec::with_capacity(self.message_capacity());
         let mut current_id = Some(leaf_id.clone());
         let mut steps: u32 = 0;
         while let Some(id) = current_id.as_ref() {
@@ -129,8 +129,8 @@ impl SessionTree {
     /// Uses an explicit stack instead of recursion to avoid stack overflow
     /// on deep trees. Bounded by total entry count (each node visited once).
     pub fn find_all_leaves(&self) -> Vec<&MessageEntry> {
-        let mut leaves = Vec::with_capacity(self.message_count());
-        let mut visited = std::collections::HashSet::with_capacity(self.message_count());
+        let mut leaves = Vec::with_capacity(self.message_capacity());
+        let mut visited = std::collections::HashSet::with_capacity(self.message_capacity());
 
         // Tiger Style: use iterative DFS with explicit stack, not recursion.
         let mut stack: Vec<&MessageEntry> = self.get_children(&None);
