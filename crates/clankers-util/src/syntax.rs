@@ -97,7 +97,7 @@ impl TokenKind {
         use ratatui::style::Style;
         match self {
             TokenKind::Syntect { r, g, b, bold, italic } => {
-                let mut s = Style::default().fg(Color::Rgb(r, g, b));
+                let mut s = Style::new().fg(Color::Rgb(r, g, b));
                 if bold {
                     s = s.add_modifier(Modifier::BOLD);
                 }
@@ -106,15 +106,15 @@ impl TokenKind {
                 }
                 s
             }
-            TokenKind::Keyword => Style::default().fg(Color::Indexed(198)),
-            TokenKind::String => Style::default().fg(Color::Indexed(113)),
-            TokenKind::Comment => Style::default().fg(Color::Indexed(244)),
-            TokenKind::Number => Style::default().fg(Color::Indexed(141)),
-            TokenKind::Type => Style::default().fg(Color::Indexed(81)),
-            TokenKind::Function => Style::default().fg(Color::Indexed(222)),
-            TokenKind::Operator => Style::default().fg(Color::Indexed(215)),
-            TokenKind::Punctuation => Style::default().fg(Color::Indexed(248)),
-            TokenKind::Plain => Style::default(),
+            TokenKind::Keyword => Style::new().fg(Color::Indexed(198)),
+            TokenKind::String => Style::new().fg(Color::Indexed(113)),
+            TokenKind::Comment => Style::new().fg(Color::Indexed(244)),
+            TokenKind::Number => Style::new().fg(Color::Indexed(141)),
+            TokenKind::Type => Style::new().fg(Color::Indexed(81)),
+            TokenKind::Function => Style::new().fg(Color::Indexed(222)),
+            TokenKind::Operator => Style::new().fg(Color::Indexed(215)),
+            TokenKind::Punctuation => Style::new().fg(Color::Indexed(248)),
+            TokenKind::Plain => Style::new(),
         }
     }
 }
