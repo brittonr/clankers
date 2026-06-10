@@ -172,11 +172,7 @@ impl RoutingPolicy {
         if lower.contains("quick answer") || lower.contains("quickly") || lower.contains("fast response") {
             return Some(ModelRoleHint::Fast);
         }
-        if lower.contains("think deeply")
-            || lower.contains("carefully")
-            || lower.contains("thorough")
-            || lower.contains("detailed analysis")
-        {
+        if contains_thorough_hint(&lower) {
             return Some(ModelRoleHint::Thorough);
         }
 
@@ -234,6 +230,12 @@ impl fmt::Display for SelectionReason {
             ),
         }
     }
+}
+
+fn contains_thorough_hint(text: &str) -> bool {
+    const THOROUGH_HINTS: [&str; 4] = ["think deeply", "carefully", "thorough", "detailed analysis"];
+
+    THOROUGH_HINTS.iter().any(|hint| text.contains(hint))
 }
 
 #[cfg(test)]

@@ -11,7 +11,6 @@
         tigerstyle::multi_lock_ordering,
         tigerstyle::explicit_defaults,
         tigerstyle::raw_arithmetic_overflow,
-        tigerstyle::compound_condition,
         tigerstyle::unbounded_collection_growth,
         reason = "model selection preserves public cost/routing policy shapes; focused tests cover routing behavior during Tigerstyle drain"
     )

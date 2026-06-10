@@ -21,6 +21,8 @@
 - 2026-06-09: clankers-session ambient clock drain can centralize timestamp reads through `session_clock_now()` with one narrow shell-boundary allow; avoid broad crate-level ambient-clock suppression.
 - 2026-06-09: clankers-session ambiguous/too-many parameter cleanup was tractable by introducing `CreateSessionRequest`, `SessionFilePathRequest`, and `FindSessionRequest`; remember to grep `tests/` as well as `src`/`crates` for public API call sites.
 - 2026-06-09: clankers-session `usize_in_public_api` cleanup can use `u64` for public counts/offsets and keep internal `usize` capacities via `message_capacity()`; avoid `try_from(...).expect(...)` because Tigerstyle no-unwrap is active once the broad crate allow is removed.
+- 2026-06-09: Removing `clankers-session` assertion-density allow opens a larger assertion sweep in Automerge/export/session-format paths; keep that as its own slice instead of mixing with public-count API churn.
+- 2026-06-09: clankers-model-selection compound-condition cleanup had a single prompt-hint OR chain; a private `contains_thorough_hint()` over a fixed hint array removes the crate-level allow cleanly.
 
 ## Corrections
 | Date | Source | What Went Wrong | What To Do Instead |
