@@ -22,7 +22,7 @@
 - 2026-06-09: clankers-session ambiguous/too-many parameter cleanup was tractable by introducing `CreateSessionRequest`, `SessionFilePathRequest`, and `FindSessionRequest`; remember to grep `tests/` as well as `src`/`crates` for public API call sites.
 - 2026-06-09: clankers-session `usize_in_public_api` cleanup can use `u64` for public counts/offsets and keep internal `usize` capacities via `message_capacity()`; avoid `try_from(...).expect(...)` because Tigerstyle no-unwrap is active once the broad crate allow is removed.
 - 2026-06-09: Removing `clankers-session` assertion-density allow opens a larger assertion sweep in Automerge/export/session-format paths; keep that as its own slice instead of mixing with public-count API churn.
-- 2026-06-09: clankers-model-selection compound/unbounded cleanup: use fixed hint arrays for OR chains and reserve keyword extraction output from `keyword_hints.len()` before pushing matches.
+- 2026-06-09: clankers-model-selection compound/unbounded/raw-arithmetic cleanup: use fixed hint arrays for OR chains, reserve keyword extraction output from `keyword_hints.len()`, and use `saturating_add` for milestone range starts.
 
 ## Corrections
 | Date | Source | What Went Wrong | What To Do Instead |

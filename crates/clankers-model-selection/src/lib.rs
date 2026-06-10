@@ -10,7 +10,6 @@
         tigerstyle::assertion_density,
         tigerstyle::multi_lock_ordering,
         tigerstyle::explicit_defaults,
-        tigerstyle::raw_arithmetic_overflow,
         reason = "model selection preserves public cost/routing policy shapes; focused tests cover routing behavior during Tigerstyle drain"
     )
 )]

@@ -388,7 +388,7 @@ impl CostTracker {
                 assert!(interval_micros != 0, "milestone interval must be non-zero");
                 let prev_milestone = prev.micros() / interval_micros;
                 let curr_milestone = total.micros() / interval_micros;
-                for m in (prev_milestone + 1)..=curr_milestone {
+                for m in prev_milestone.saturating_add(1)..=curr_milestone {
                     events.push(BudgetEvent::Milestone {
                         milestone: CostMicros::from_micros(m.saturating_mul(interval_micros)),
                         total,
