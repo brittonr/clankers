@@ -142,7 +142,7 @@ impl RoutingPolicy {
     /// Extract keywords and their weights from prompt text
     pub fn extract_keywords(&self, text: &str) -> Vec<(String, f32)> {
         let lower = text.to_lowercase();
-        let mut found = Vec::new();
+        let mut found = Vec::with_capacity(self.config.keyword_hints.len());
 
         for (keyword, weight) in &self.config.keyword_hints {
             if lower.contains(keyword.as_str()) {
