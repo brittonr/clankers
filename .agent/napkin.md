@@ -2,6 +2,7 @@
 
 ## Working Notes
 
+- 2026-06-09: Agent routing `float_for_currency` burn-down works by carrying `CostMicros` through `AgentRoutingSignals` and `AgentCostRecorder`, then converting back to model-selection's `f64` only inside `src/agent_config.rs` at the app edge.
 - 2026-06-09: Cost fixed-point burn-down: if `CostMicros::format_major_units` rounds via micro-unit division, tests should expect rounded display (`1.234567` at precision 4 -> `1.2346`), not truncation. Keep model-selection's internal pricing math in f64 but convert shared summaries/events/statuses at the boundary.
 - 2026-06-09: Tigerstyle accepted fixed-point formatting only after the divisor was wrapped in a distinct `CostDivisor` type plus local divisor-value assertions before `/` and `%`; an upfront `assert!(precision <= 6)` alone does not satisfy raw-arithmetic/unchecked-division lints.
 - 2026-06-09: For cross-crate constant shims, prefer re-exporting from the defining module path (for example `clanker_message::cost::COST_MICROS_PER_UNIT`) instead of depending on a new crate-root re-export; auto-test can otherwise expose root-shim drift before downstream crates compile.
@@ -14,6 +15,7 @@
 ## Corrections
 | Date | Source | What Went Wrong | What To Do Instead |
 |------|--------|----------------|-------------------|
+| 2026-06-09 | self | Let the first root `cargo nextest run -p clankers agent_config` Steel wrapper time out just after a passing summary, leaving no exit status | Rerun warmed focused tests when the tool times out; do not cite output without a final status line as validation evidence. |
 | 2026-06-09 | self | After compaction I again started commands/edits before re-reading the always-on napkin in the live turn | Read `.agent/napkin.md` as the first live action after every compaction/resume, even when the handoff summary says it was already read. |
 | 2026-06-09 | self | Repeated the module-root rustfmt problem by running rustfmt on `crates/clanker-message/src/lib.rs`, which recursed into `metrics.rs` and created unrelated churn | Do not rustfmt module roots like `lib.rs` during narrow slices; if it happens, restore child-module churn immediately and log it. |
 | 2026-06-09 | self | Repeated the known multi-root grep mistake by passing `"crates src"` / `"crates src tests"` as one path during Tigerstyle burn-down, later used `path="."` for register-call greps which pulled `.git/clankers-checkpoints` noise into results, and missed root `src/` UCAN call sites by only grepping `crates/` | Use one real source root per grep (`src`, `crates/<crate>`, or `tests`) or separate grep calls; never space-join multiple roots, avoid broad `.` when checkpoint/worktree dirs can match, and grep both `crates` and `src` before changing public workspace APIs. |

@@ -5,6 +5,7 @@
 //! usage accounting.
 
 use clanker_message::BudgetEvent;
+use clanker_message::CostMicros;
 use clanker_message::Usage;
 
 /// Recent tool usage signal passed to routing implementations.
@@ -18,7 +19,7 @@ pub struct AgentRoutingToolUse {
 pub struct AgentRoutingSignals {
     pub token_count: usize,
     pub recent_tools: Vec<AgentRoutingToolUse>,
-    pub current_cost: f64,
+    pub current_cost: CostMicros,
     pub prompt_text: Option<String>,
 }
 
@@ -52,8 +53,13 @@ pub trait AgentRoutingPolicy: Send + Sync {
 
 /// Cost recorder contract injected by app-edge adapters.
 pub trait AgentCostRecorder: Send + Sync {
-    fn record_usage(&self, model_id: &str, input_tokens: u64, output_tokens: u64) -> (f64, Vec<BudgetEvent>);
-    fn total_cost(&self) -> f64;
+    fn record_usage(
+        &self,
+        model_id: &str,
+        input_tokens: u64,
+        output_tokens: u64,
+    ) -> (CostMicros, Vec<BudgetEvent>);
+    fn total_cost(&self) -> CostMicros;
 }
 
 /// Cost recorder that ignores all usage; used when cost tracking is disabled.
@@ -61,12 +67,17 @@ pub trait AgentCostRecorder: Send + Sync {
 pub struct NoopCostRecorder;
 
 impl AgentCostRecorder for NoopCostRecorder {
-    fn record_usage(&self, _model_id: &str, _input_tokens: u64, _output_tokens: u64) -> (f64, Vec<BudgetEvent>) {
-        (0.0, Vec::new())
+    fn record_usage(
+        &self,
+        _model_id: &str,
+        _input_tokens: u64,
+        _output_tokens: u64,
+    ) -> (CostMicros, Vec<BudgetEvent>) {
+        (CostMicros::ZERO, Vec::new())
     }
 
-    fn total_cost(&self) -> f64 {
-        0.0
+    fn total_cost(&self) -> CostMicros {
+        CostMicros::ZERO
     }
 }
 
@@ -75,10 +86,13 @@ pub(crate) fn record_turn_cost(
     recorder: Option<&dyn AgentCostRecorder>,
     active_model: &str,
     turn_usage: &Usage,
-) -> Option<f64> {
+) -> Option<CostMicros> {
     let recorder = recorder?;
-    let (total_cost, budget_events) =
-        recorder.record_usage(active_model, turn_usage.input_tokens as u64, turn_usage.output_tokens as u64);
+    let (total_cost, budget_events) = recorder.record_usage(
+        active_model,
+        turn_usage.input_tokens as u64,
+        turn_usage.output_tokens as u64,
+    );
 
     for event in budget_events {
         match event {
@@ -103,11 +117,11 @@ pub(crate) fn record_turn_cost(
     }
 
     tracing::debug!(
-        "Turn cost recorded: model={}, in={}, out={}, total=${:.4}",
+        "Turn cost recorded: model={}, in={}, out={}, total=${}",
         active_model,
         turn_usage.input_tokens,
         turn_usage.output_tokens,
-        total_cost,
+        total_cost.format_major_units(4),
     );
 
     Some(total_cost)

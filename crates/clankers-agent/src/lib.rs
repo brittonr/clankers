@@ -8,7 +8,6 @@
         tigerstyle::numeric_units,
         tigerstyle::usize_in_public_api,
         tigerstyle::ambiguous_params,
-        tigerstyle::float_for_currency,
         tigerstyle::too_many_parameters,
         tigerstyle::raw_arithmetic_overflow,
         tigerstyle::ambient_clock,
@@ -119,7 +118,7 @@ impl Default for AgentSettings {
             memory: AgentMemorySettings::default(),
             skills: AgentSkillSettings::default(),
             compression: compaction::AutoCompactSettings {
-                tail_budget_fraction: 0.40,
+                tail_context_fraction: 0.40,
                 keep_recent: 4,
                 summary_model: Some("haiku".to_string()),
             },
@@ -836,7 +835,7 @@ impl Agent {
                 compaction::compact_structured(
                     &self.messages,
                     max_input,
-                    auto_compact_config.tail_budget_fraction,
+                    auto_compact_config.tail_context_fraction,
                     self.provider.as_ref(),
                     auto_compact_config.summary_model.as_deref().unwrap_or(&self.model),
                     &self.session_id,
@@ -845,8 +844,8 @@ impl Agent {
                 .await
             }
             compaction::CompactionStrategy::Truncation | compaction::CompactionStrategy::LlmSummary => {
-                let tail_budget_tokens = (max_input as f64 * auto_compact_config.tail_budget_fraction) as usize;
-                let tail_start_idx = compaction::select_tail_by_budget(&self.messages, tail_budget_tokens);
+                let tail_context_tokens = (max_input as f64 * auto_compact_config.tail_context_fraction) as usize;
+                let tail_start_idx = compaction::select_tail_by_budget(&self.messages, tail_context_tokens);
                 let keep_recent = self.messages.len().saturating_sub(tail_start_idx);
                 compaction::compact_with_llm(
                     &self.messages,
@@ -885,7 +884,10 @@ impl Agent {
         let signals = AgentRoutingSignals {
             token_count: text.len() / 4,
             recent_tools: self.recent_tool_summaries(),
-            current_cost: self.cost_recorder.as_ref().map_or(0.0, |recorder| recorder.total_cost()),
+            current_cost: self
+                .cost_recorder
+                .as_ref()
+                .map_or(clanker_message::CostMicros::ZERO, |recorder| recorder.total_cost()),
             prompt_text: Some(text.to_string()),
         };
         let selection = policy.select_model(&signals);

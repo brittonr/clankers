@@ -5,6 +5,9 @@ use std::path::Path;
 use std::sync::Arc;
 
 use clanker_message::BudgetEvent;
+use clanker_message::CostProvider;
+use clanker_message::cost::COST_MICROS_PER_UNIT;
+use clanker_message::cost::CostMicros;
 use clankers_agent::AgentCostRecorder;
 use clankers_agent::AgentMemorySettings;
 use clankers_agent::AgentModelRoles;
@@ -76,7 +79,7 @@ impl AgentRoutingPolicy for ModelSelectionRoutingPolicyAdapter {
                 .collect(),
             keywords: self.policy.extract_keywords(&prompt_text),
             user_hint: self.policy.parse_user_hint(&prompt_text),
-            current_cost: signals.current_cost,
+            current_cost: cost_micros_to_major_units(signals.current_cost),
             prompt_text: Some(prompt_text),
         });
 
@@ -116,13 +119,23 @@ impl ModelSelectionCostRecorder {
 }
 
 impl AgentCostRecorder for ModelSelectionCostRecorder {
-    fn record_usage(&self, model_id: &str, input_tokens: u64, output_tokens: u64) -> (f64, Vec<BudgetEvent>) {
-        self.tracker.record_usage(model_id, input_tokens, output_tokens)
+    fn record_usage(
+        &self,
+        model_id: &str,
+        input_tokens: u64,
+        output_tokens: u64,
+    ) -> (CostMicros, Vec<BudgetEvent>) {
+        let (_total_cost, budget_events) = self.tracker.record_usage(model_id, input_tokens, output_tokens);
+        (self.total_cost(), budget_events)
     }
 
-    fn total_cost(&self) -> f64 {
-        self.tracker.total_cost()
+    fn total_cost(&self) -> CostMicros {
+        CostProvider::total_cost(self.tracker.as_ref())
     }
+}
+
+fn cost_micros_to_major_units(amount: CostMicros) -> f64 {
+    amount.micros() as f64 / COST_MICROS_PER_UNIT as f64
 }
 
 /// Convert desktop Clankers settings into agent-owned runtime settings.
@@ -160,7 +173,7 @@ fn auto_compact_settings_from_config(
 ) -> compaction::AutoCompactSettings {
     let summary_model = settings.summary_model.trim();
     compaction::AutoCompactSettings {
-        tail_budget_fraction: settings.tail_budget_fraction,
+        tail_context_fraction: settings.tail_budget_fraction,
         keep_recent: settings.keep_recent,
         summary_model: (!summary_model.is_empty()).then(|| summary_model.to_string()),
     }
@@ -353,7 +366,7 @@ mod tests {
         assert_eq!(agent_settings.memory.project_char_limit, 222);
         assert_eq!(agent_settings.skills.creation_nudge_interval, 3);
         assert_eq!(agent_settings.compression.keep_recent, 6);
-        assert!((agent_settings.compression.tail_budget_fraction - 0.25).abs() < f64::EPSILON);
+        assert!((agent_settings.compression.tail_context_fraction - 0.25).abs() < f64::EPSILON);
         assert_eq!(agent_settings.compression.summary_model.as_deref(), Some("compact-model"));
     }
 

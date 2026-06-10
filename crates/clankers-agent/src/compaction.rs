@@ -32,7 +32,7 @@ pub const SUMMARY_PREFIX: &str = "[Background handoff summary from earlier conte
 const KEEP_FIRST_MESSAGE_COUNT: usize = 1;
 const DEFAULT_AUTO_COMPACT_THRESHOLD: f64 = 0.80;
 const DEFAULT_AUTO_COMPACT_KEEP_RECENT: usize = 10;
-const DEFAULT_TAIL_BUDGET_FRACTION: f64 = 0.40;
+const DEFAULT_TAIL_CONTEXT_FRACTION: f64 = 0.40;
 const SUMMARY_MAX_TOKENS: usize = 2000;
 const SUMMARY_TEMPERATURE: f64 = 0.3;
 const SUMMARY_TIMEOUT_SECONDS: u64 = 30;
@@ -65,7 +65,7 @@ pub enum CompactionStrategy {
 #[derive(Debug, Clone, PartialEq)]
 pub struct AutoCompactSettings {
     /// Fraction of the context window reserved for recent-message tail protection.
-    pub tail_budget_fraction: f64,
+    pub tail_context_fraction: f64,
     /// Number of recent messages to preserve for manual/fallback flows.
     pub keep_recent: usize,
     /// Auxiliary summary model for structured summarization.
@@ -75,7 +75,7 @@ pub struct AutoCompactSettings {
 impl Default for AutoCompactSettings {
     fn default() -> Self {
         Self {
-            tail_budget_fraction: DEFAULT_TAIL_BUDGET_FRACTION,
+            tail_context_fraction: DEFAULT_TAIL_CONTEXT_FRACTION,
             keep_recent: DEFAULT_AUTO_COMPACT_KEEP_RECENT,
             summary_model: None,
         }
@@ -88,7 +88,7 @@ pub struct AutoCompactConfig {
     /// Trigger compaction when token usage exceeds this fraction of context window (0.0-1.0)
     pub threshold: f64,
     /// Fraction of the context window reserved for recent-message tail protection.
-    pub tail_budget_fraction: f64,
+    pub tail_context_fraction: f64,
     /// Number of recent messages to preserve for manual/fallback flows.
     pub keep_recent: usize,
     /// Auxiliary summary model for structured summarization.
@@ -103,7 +103,7 @@ impl Default for AutoCompactConfig {
     fn default() -> Self {
         Self {
             threshold: DEFAULT_AUTO_COMPACT_THRESHOLD,
-            tail_budget_fraction: DEFAULT_TAIL_BUDGET_FRACTION,
+            tail_context_fraction: DEFAULT_TAIL_CONTEXT_FRACTION,
             keep_recent: DEFAULT_AUTO_COMPACT_KEEP_RECENT,
             summary_model: None,
             strategy: CompactionStrategy::Truncation,
@@ -119,7 +119,7 @@ impl AutoCompactConfig {
 
         Self {
             threshold: DEFAULT_AUTO_COMPACT_THRESHOLD,
-            tail_budget_fraction: settings.tail_budget_fraction,
+            tail_context_fraction: settings.tail_context_fraction,
             keep_recent: settings.keep_recent,
             summary_model: configured_summary_model,
             strategy: if summary_model.is_some() {
@@ -265,17 +265,17 @@ pub async fn summarize_middle(
 pub async fn compact_structured(
     messages: &[AgentMessage],
     max_tokens: usize,
-    tail_budget_fraction: f64,
+    tail_context_fraction: f64,
     provider: &dyn AgentModelService,
     model: &str,
     session_id: &str,
     previous_summary: Option<&str>,
 ) -> CompactionResult {
-    let tail_budget_tokens = (max_tokens as f64 * tail_budget_fraction) as usize;
+    let tail_context_tokens = (max_tokens as f64 * tail_context_fraction) as usize;
     let pruned_result =
         compact_tool_results(messages, tail_start_for_recent_tool_results(messages, RECENT_TOOL_RESULTS_TO_KEEP));
     let pruned_messages = pruned_result.messages;
-    let tail_start_idx = select_tail_by_budget(&pruned_messages, tail_budget_tokens);
+    let tail_start_idx = select_tail_by_budget(&pruned_messages, tail_context_tokens);
     let keep_recent = pruned_messages.len().saturating_sub(tail_start_idx);
 
     summarize_middle(&pruned_messages, max_tokens, keep_recent, previous_summary, provider, model, session_id).await
@@ -740,7 +740,7 @@ mod tests {
     #[test]
     fn test_auto_compact_config_selects_structured_only_when_summary_model_configured() {
         let structured_settings = AutoCompactSettings {
-            tail_budget_fraction: 0.40,
+            tail_context_fraction: 0.40,
             keep_recent: 4,
             summary_model: Some("haiku".to_string()),
         };
