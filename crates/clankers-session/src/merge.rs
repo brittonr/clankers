@@ -9,7 +9,6 @@
 //! - `cherry_pick`: Copies a message (and optionally its children) to a target branch via plain
 //!   `append_message` calls.
 
-use chrono::Utc;
 use clanker_message::transcript::MessageId;
 use serde_json::json;
 
@@ -63,7 +62,7 @@ impl SessionManager {
                 "merged_count": merged_count,
                 "strategy": "full",
             }),
-            timestamp: Utc::now(),
+            timestamp: crate::session_clock_now(),
         });
 
         crate::automerge_store::put_annotation(&mut self.doc, &annotation)?;
@@ -135,7 +134,7 @@ impl SessionManager {
                 "merged_count": merged_count,
                 "strategy": "selective",
             }),
-            timestamp: Utc::now(),
+            timestamp: crate::session_clock_now(),
         });
 
         crate::automerge_store::put_annotation(&mut self.doc, &annotation)?;
@@ -216,7 +215,7 @@ impl SessionManager {
                 "with_children": with_children,
                 "copied_count": count,
             }),
-            timestamp: Utc::now(),
+            timestamp: crate::session_clock_now(),
         });
 
         crate::automerge_store::put_annotation(&mut self.doc, &annotation)?;

@@ -177,7 +177,7 @@ mod tests {
     fn make_header(session_id: &str) -> SessionEntry {
         SessionEntry::Header(crate::entry::HeaderEntry {
             session_id: session_id.to_string(),
-            created_at: chrono::Utc::now(),
+            created_at: crate::session_clock_now(),
             cwd: "/tmp/test".to_string(),
             model: "test-model".to_string(),
             version: "1.0.0".to_string(),
@@ -197,9 +197,9 @@ mod tests {
                 content: vec![Content::Text {
                     text: "Test".to_string(),
                 }],
-                timestamp: chrono::Utc::now(),
+                timestamp: crate::session_clock_now(),
             }),
-            timestamp: chrono::Utc::now(),
+            timestamp: crate::session_clock_now(),
         })
     }
 

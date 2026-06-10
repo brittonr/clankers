@@ -518,7 +518,6 @@ pub enum MigrateResult {
 
 #[cfg(test)]
 mod tests {
-    use chrono::Utc;
     use clanker_message::Content;
     use clanker_message::transcript::AgentMessage;
     use clanker_message::transcript::UserMessage;
@@ -528,7 +527,7 @@ mod tests {
     fn test_header() -> HeaderEntry {
         HeaderEntry {
             session_id: "test-session-123".to_string(),
-            created_at: Utc::now(),
+            created_at: crate::session_clock_now(),
             cwd: "/home/user/project".to_string(),
             model: "claude-sonnet-4-20250514".to_string(),
             version: "0.1.0".to_string(),
@@ -547,9 +546,9 @@ mod tests {
             message: AgentMessage::User(UserMessage {
                 id: msg_id,
                 content: vec![Content::Text { text: text.to_string() }],
-                timestamp: Utc::now(),
+                timestamp: crate::session_clock_now(),
             }),
-            timestamp: Utc::now(),
+            timestamp: crate::session_clock_now(),
         }
     }
 
@@ -573,7 +572,7 @@ mod tests {
     fn test_create_document_header_no_optionals() {
         let header = HeaderEntry {
             session_id: "minimal".to_string(),
-            created_at: Utc::now(),
+            created_at: crate::session_clock_now(),
             cwd: "/tmp".to_string(),
             model: "test".to_string(),
             version: "1.0".to_string(),
@@ -647,7 +646,7 @@ mod tests {
             id: MessageId::new("lbl-1"),
             target_message_id: MessageId::new("msg-1"),
             label: "important".to_string(),
-            timestamp: Utc::now(),
+            timestamp: crate::session_clock_now(),
         });
         put_annotation(&mut doc, &label).unwrap();
 
@@ -673,7 +672,7 @@ mod tests {
             summary: "summarized 2 messages".to_string(),
             tokens_before: 1000,
             tokens_after: 100,
-            timestamp: Utc::now(),
+            timestamp: crate::session_clock_now(),
         });
         put_annotation(&mut doc, &compaction).unwrap();
 
@@ -699,7 +698,7 @@ mod tests {
             from_model: "haiku".to_string(),
             to_model: "sonnet".to_string(),
             reason: "user_request".to_string(),
-            timestamp: Utc::now(),
+            timestamp: crate::session_clock_now(),
         });
         put_annotation(&mut doc, &mc).unwrap();
 
@@ -723,7 +722,7 @@ mod tests {
             id: MessageId::new("br-1"),
             from_message_id: MessageId::new("msg-3"),
             reason: "try alternate approach".to_string(),
-            timestamp: Utc::now(),
+            timestamp: crate::session_clock_now(),
         });
         put_annotation(&mut doc, &branch).unwrap();
 
@@ -747,19 +746,19 @@ mod tests {
             id: MessageId::new("l1"),
             target_message_id: MessageId::new("m1"),
             label: "first".to_string(),
-            timestamp: Utc::now(),
+            timestamp: crate::session_clock_now(),
         });
         let a2 = AnnotationEntry::Branch(BranchEntry {
             id: MessageId::new("b1"),
             from_message_id: MessageId::new("m2"),
             reason: "branch".to_string(),
-            timestamp: Utc::now(),
+            timestamp: crate::session_clock_now(),
         });
         let a3 = AnnotationEntry::Label(LabelEntry {
             id: MessageId::new("l2"),
             target_message_id: MessageId::new("m3"),
             label: "third".to_string(),
-            timestamp: Utc::now(),
+            timestamp: crate::session_clock_now(),
         });
 
         put_annotation(&mut doc, &a1).unwrap();
@@ -790,7 +789,7 @@ mod tests {
             id: MessageId::new("lbl-1"),
             target_message_id: MessageId::new("msg-1"),
             label: "checkpoint".to_string(),
-            timestamp: Utc::now(),
+            timestamp: crate::session_clock_now(),
         });
         put_annotation(&mut doc, &label).unwrap();
 
@@ -859,7 +858,7 @@ mod tests {
             id: MessageId::new("lbl-1"),
             target_message_id: MessageId::new("branch-a"),
             label: "important".to_string(),
-            timestamp: Utc::now(),
+            timestamp: crate::session_clock_now(),
         });
         put_annotation(&mut doc, &label).unwrap();
 
@@ -904,7 +903,7 @@ mod tests {
             id: MessageId::new("l1"),
             target_message_id: MessageId::new("m1"),
             label: "test".to_string(),
-            timestamp: Utc::now(),
+            timestamp: crate::session_clock_now(),
         });
         assert!(AnnotationEntry::from_session_entry(&label).is_some());
 
@@ -922,7 +921,7 @@ mod tests {
             from_model: "haiku".to_string(),
             to_model: "sonnet".to_string(),
             reason: "cost".to_string(),
-            timestamp: Utc::now(),
+            timestamp: crate::session_clock_now(),
         });
 
         let session_entry = original.clone().into_session_entry();
@@ -1029,7 +1028,7 @@ mod tests {
             id: MessageId::new("lbl-1"),
             target_message_id: MessageId::new("a1"),
             label: "checkpoint".to_string(),
-            timestamp: Utc::now(),
+            timestamp: crate::session_clock_now(),
         });
         crate::store::append_entry(&jsonl_path, &label).unwrap();
 

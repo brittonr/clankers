@@ -90,14 +90,14 @@ pub fn inspect_typed_ledger_facts(
 /// Generate session file path (JSONL format — legacy).
 pub fn session_file_path(sessions_dir: &Path, cwd: &str, session_id: &str) -> PathBuf {
     let encoded_cwd = encode_cwd(cwd);
-    let timestamp = chrono::Utc::now().format("%Y%m%d_%H%M%S");
+    let timestamp = crate::session_clock_now().format("%Y%m%d_%H%M%S");
     sessions_dir.join(&encoded_cwd).join(format!("{}_{}.jsonl", timestamp, session_id))
 }
 
 /// Generate session file path (Automerge format).
 pub fn session_file_path_automerge(sessions_dir: &Path, cwd: &str, session_id: &str) -> PathBuf {
     let encoded_cwd = encode_cwd(cwd);
-    let timestamp = chrono::Utc::now().format("%Y%m%d_%H%M%S");
+    let timestamp = crate::session_clock_now().format("%Y%m%d_%H%M%S");
     sessions_dir.join(&encoded_cwd).join(format!("{}_{}.automerge", timestamp, session_id))
 }
 
@@ -246,7 +246,6 @@ pub fn find_session_by_id(sessions_dir: &Path, cwd: &str, partial_id: &str) -> O
 
 #[cfg(test)]
 mod tests {
-    use chrono::Utc;
     use clanker_message::Content;
     use clanker_message::transcript::AgentMessage;
     use clanker_message::transcript::MessageId;
@@ -259,7 +258,7 @@ mod tests {
     fn make_header(session_id: &str) -> SessionEntry {
         SessionEntry::Header(crate::entry::HeaderEntry {
             session_id: session_id.to_string(),
-            created_at: Utc::now(),
+            created_at: crate::session_clock_now(),
             cwd: "/tmp/test".to_string(),
             model: "test-model".to_string(),
             version: "1.0.0".to_string(),
@@ -279,9 +278,9 @@ mod tests {
                 content: vec![Content::Text {
                     text: "Test".to_string(),
                 }],
-                timestamp: Utc::now(),
+                timestamp: crate::session_clock_now(),
             }),
-            timestamp: Utc::now(),
+            timestamp: crate::session_clock_now(),
         })
     }
 

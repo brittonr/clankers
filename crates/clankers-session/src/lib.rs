@@ -10,7 +10,6 @@
     allow(
         tigerstyle::assertion_density,
         tigerstyle::explicit_defaults,
-        tigerstyle::ambient_clock,
         tigerstyle::usize_in_public_api,
         tigerstyle::ambiguous_params,
         tigerstyle::too_many_parameters,
@@ -35,6 +34,15 @@ use std::path::PathBuf;
 use automerge::AutoCommit;
 use chrono::Utc;
 use clanker_message::transcript::AgentMessage;
+
+#[cfg_attr(
+    dylint_lib = "tigerstyle",
+    allow(tigerstyle::ambient_clock, reason = "session persistence shell-boundary timestamp source")
+)]
+pub(crate) fn session_clock_now() -> chrono::DateTime<Utc> {
+    Utc::now()
+}
+
 use clanker_message::transcript::MessageId;
 
 use self::automerge_store::AnnotationEntry;
@@ -100,7 +108,7 @@ impl SessionManager {
 
         let header = HeaderEntry {
             session_id: session_id.clone(),
-            created_at: Utc::now(),
+            created_at: crate::session_clock_now(),
             cwd: cwd.to_string(),
             model: model.to_string(),
             version: env!("CARGO_PKG_VERSION").to_string(),
@@ -186,7 +194,7 @@ impl SessionManager {
             id: id.clone(),
             parent_id,
             message,
-            timestamp: Utc::now(),
+            timestamp: crate::session_clock_now(),
         };
 
         automerge_store::put_message(&mut self.doc, &entry)?;
@@ -202,7 +210,7 @@ impl SessionManager {
             id: MessageId::generate(),
             from_message_id: from_message_id.clone(),
             reason: reason.to_string(),
-            timestamp: Utc::now(),
+            timestamp: crate::session_clock_now(),
         });
 
         automerge_store::put_annotation(&mut self.doc, &annotation)?;
@@ -221,7 +229,7 @@ impl SessionManager {
             id: MessageId::generate(),
             target_message_id: target_id.clone(),
             label: label.to_string(),
-            timestamp: Utc::now(),
+            timestamp: crate::session_clock_now(),
         });
 
         automerge_store::put_annotation(&mut self.doc, &annotation)?;
@@ -233,7 +241,7 @@ impl SessionManager {
     pub fn record_resume(&mut self, from_entry_id: MessageId) -> Result<()> {
         let annotation = AnnotationEntry::Resume(ResumeEntry {
             id: MessageId::generate(),
-            resumed_at: Utc::now(),
+            resumed_at: crate::session_clock_now(),
             from_entry_id,
         });
 
@@ -250,7 +258,7 @@ impl SessionManager {
             summary: summary.clone(),
             tokens_before: 0,
             tokens_after: 0,
-            timestamp: Utc::now(),
+            timestamp: crate::session_clock_now(),
         });
 
         automerge_store::put_annotation(&mut self.doc, &annotation)?;
@@ -265,7 +273,7 @@ impl SessionManager {
             id: MessageId::generate(),
             kind: kind.into(),
             data,
-            timestamp: Utc::now(),
+            timestamp: crate::session_clock_now(),
         });
 
         automerge_store::put_annotation(&mut self.doc, &annotation)?;

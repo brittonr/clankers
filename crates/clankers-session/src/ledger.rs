@@ -59,7 +59,7 @@ impl LedgerRecord {
             original_kind: sanitize_ledger_text(original_kind.into()),
             schema_version,
             safe_metadata: sanitize_metadata_map(safe_metadata),
-            observed_at: Utc::now(),
+            observed_at: crate::session_clock_now(),
         })
     }
 
@@ -99,7 +99,7 @@ impl TypedLedgerRecord {
         Self {
             id: sanitize_ledger_text(id.into()),
             schema_version: LEDGER_SCHEMA_VERSION,
-            observed_at: Utc::now(),
+            observed_at: crate::session_clock_now(),
             payload: payload.sanitized(),
         }
     }

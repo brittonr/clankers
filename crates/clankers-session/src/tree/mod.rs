@@ -69,7 +69,6 @@ impl SessionTree {
 
 #[cfg(test)]
 mod tests {
-    use chrono::Utc;
     use clanker_message::Content;
     use clanker_message::transcript::AgentMessage;
     use clanker_message::transcript::UserMessage;
@@ -83,9 +82,9 @@ mod tests {
             message: AgentMessage::User(UserMessage {
                 id: id.clone(),
                 content: vec![Content::Text { text: text.to_string() }],
-                timestamp: Utc::now(),
+                timestamp: crate::session_clock_now(),
             }),
-            timestamp: Utc::now(),
+            timestamp: crate::session_clock_now(),
         })
     }
 

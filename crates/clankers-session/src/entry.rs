@@ -118,7 +118,7 @@ mod tests {
     fn test_header_entry_serialize() {
         let header = HeaderEntry {
             session_id: "test123".to_string(),
-            created_at: Utc::now(),
+            created_at: crate::session_clock_now(),
             cwd: "/tmp/test".to_string(),
             model: "claude-sonnet".to_string(),
             version: "1.0.0".to_string(),
@@ -144,9 +144,9 @@ mod tests {
                 content: vec![Content::Text {
                     text: "Hello".to_string(),
                 }],
-                timestamp: Utc::now(),
+                timestamp: crate::session_clock_now(),
             }),
-            timestamp: Utc::now(),
+            timestamp: crate::session_clock_now(),
         };
         let entry = SessionEntry::Message(msg.clone());
         let json = serde_json::to_string(&entry).expect("failed to serialize message entry");
@@ -169,7 +169,7 @@ mod tests {
             summary: "Compacted 2 messages".to_string(),
             tokens_before: 1000,
             tokens_after: 100,
-            timestamp: Utc::now(),
+            timestamp: crate::session_clock_now(),
         };
         let entry = SessionEntry::Compaction(compaction);
         let json = serde_json::to_string(&entry).expect("failed to serialize compaction entry");
@@ -183,7 +183,7 @@ mod tests {
             id: MessageId::new("test-id"),
             from_message_id: MessageId::new("test-id"),
             reason: "User requested alternate approach".to_string(),
-            timestamp: Utc::now(),
+            timestamp: crate::session_clock_now(),
         };
         let entry = SessionEntry::Branch(branch);
         let json = serde_json::to_string(&entry).expect("failed to serialize branch entry");
@@ -197,7 +197,7 @@ mod tests {
             id: MessageId::new("test-id"),
             target_message_id: MessageId::new("test-id"),
             label: "important".to_string(),
-            timestamp: Utc::now(),
+            timestamp: crate::session_clock_now(),
         };
         let entry = SessionEntry::Label(label);
         let json = serde_json::to_string(&entry).expect("failed to serialize label entry");
@@ -212,7 +212,7 @@ mod tests {
             from_model: "claude-haiku".to_string(),
             to_model: "claude-sonnet".to_string(),
             reason: "user_request".to_string(),
-            timestamp: Utc::now(),
+            timestamp: crate::session_clock_now(),
         };
         let entry = SessionEntry::ModelChange(change);
         let json = serde_json::to_string(&entry).expect("failed to serialize model change entry");
@@ -227,7 +227,7 @@ mod tests {
             id: MessageId::new("test-id"),
             kind: "test_event".to_string(),
             data: serde_json::json!({"key": "value"}),
-            timestamp: Utc::now(),
+            timestamp: crate::session_clock_now(),
         };
         let entry = SessionEntry::Custom(custom);
         let json = serde_json::to_string(&entry).expect("failed to serialize custom entry");
