@@ -314,7 +314,7 @@ impl MatrixBridge {
         let (response_tx, response_rx) = tokio::sync::oneshot::channel();
         self.pending.write().await.insert(id_str.clone(), PendingRequest {
             response_tx,
-            sent_at: std::time::Instant::now(),
+            sent_at: matrix_bridge_clock_now(),
         });
 
         // Send the request
@@ -336,9 +336,17 @@ impl MatrixBridge {
 
     /// Clean up stale pending requests.
     pub async fn gc_pending(&self, max_age: std::time::Duration) {
-        let now = std::time::Instant::now();
+        let now = matrix_bridge_clock_now();
         self.pending.write().await.retain(|_, req| now.duration_since(req.sent_at) < max_age);
     }
+}
+
+#[cfg_attr(
+    dylint_lib = "tigerstyle",
+    allow(tigerstyle::ambient_clock, reason = "Matrix bridge shell-boundary timeout clock source")
+)]
+fn matrix_bridge_clock_now() -> std::time::Instant {
+    std::time::Instant::now()
 }
 
 impl Default for MatrixBridge {

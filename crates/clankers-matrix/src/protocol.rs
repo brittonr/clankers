@@ -78,7 +78,7 @@ impl Announce {
             accepts_prompts: false,
             tools: Vec::new(),
             model: None,
-            timestamp: Utc::now(),
+            timestamp: matrix_protocol_clock_now(),
         }
     }
 }
@@ -215,10 +215,18 @@ impl ChatMessage {
             body: body.into(),
             instance_name: instance_name.into(),
             user_id: user_id.into(),
-            timestamp: Utc::now(),
+            timestamp: matrix_protocol_clock_now(),
             thread_id: None,
         }
     }
+}
+
+#[cfg_attr(
+    dylint_lib = "tigerstyle",
+    allow(tigerstyle::ambient_clock, reason = "Matrix protocol shell-boundary message timestamp source")
+)]
+fn matrix_protocol_clock_now() -> DateTime<Utc> {
+    Utc::now()
 }
 
 // ── Parsed incoming message ────────────────────────────────────────

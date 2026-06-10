@@ -32,7 +32,6 @@
     allow(
         tigerstyle::assertion_density,
         tigerstyle::explicit_defaults,
-        tigerstyle::ambient_clock,
         reason = "Matrix bridge preserves Matrix protocol wire shapes and message chunking behavior; bridge tests cover behavior during Tigerstyle drain"
     )
 )]
