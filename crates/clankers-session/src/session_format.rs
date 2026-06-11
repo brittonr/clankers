@@ -32,6 +32,9 @@ struct JsonlSessionFormat;
 static AUTOMERGE_FORMAT: AutomergeSessionFormat = AutomergeSessionFormat;
 static JSONL_FORMAT: JsonlSessionFormat = JsonlSessionFormat;
 
+const MESSAGE_PREVIEW_MAX_BYTES: usize = 80;
+const MESSAGE_PREVIEW_SUFFIX_BYTES: usize = "…".len();
+
 fn format_for_path(path: &Path) -> &'static dyn SessionFormat {
     if path.extension().is_some_and(|ext| ext == "automerge") {
         &AUTOMERGE_FORMAT
@@ -131,6 +134,9 @@ impl SessionFormat for JsonlSessionFormat {
 }
 
 fn build_automerge_doc_from_entries(entries: &[SessionEntry]) -> Result<AutoCommit> {
+    assert!(!entries.is_empty(), "Automerge import requires at least one session entry");
+    assert!(entries.iter().any(|entry| matches!(entry, SessionEntry::Header(_))), "Automerge import requires a header entry");
+
     let header = entries.iter().find_map(header_entry).cloned().ok_or_else(|| SessionError {
         message: "No header entry".into(),
     })?;
@@ -197,6 +203,9 @@ fn summary_from_header_and_messages(
 }
 
 fn first_user_preview(message: &AgentMessage) -> Option<String> {
+    assert!(MESSAGE_PREVIEW_MAX_BYTES > 0, "message preview budget must be non-zero");
+    assert!(MESSAGE_PREVIEW_SUFFIX_BYTES > 0, "message preview suffix must be non-empty");
+
     let AgentMessage::User(user) = message else {
         return None;
     };
@@ -214,8 +223,8 @@ fn first_user_preview(message: &AgentMessage) -> Option<String> {
         .join(" ");
     if text.is_empty() {
         None
-    } else if text.len() > 80 {
-        Some(format!("{}…", &text[..80]))
+    } else if text.len() > MESSAGE_PREVIEW_MAX_BYTES {
+        Some(format!("{}…", &text[..MESSAGE_PREVIEW_MAX_BYTES]))
     } else {
         Some(text)
     }

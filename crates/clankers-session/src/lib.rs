@@ -8,7 +8,6 @@
 #![cfg_attr(
     dylint_lib = "tigerstyle",
     allow(
-        tigerstyle::assertion_density,
         tigerstyle::explicit_defaults,
         reason = "session persistence APIs and serialized records are compatibility contracts covered by migration/tree tests"
     )

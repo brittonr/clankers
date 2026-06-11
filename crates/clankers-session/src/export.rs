@@ -12,6 +12,9 @@ use crate::error::SessionError;
 
 /// Export a session to markdown format
 pub fn export_markdown(path: &Path) -> Result<String> {
+    assert!(path.file_name().is_some(), "markdown export source must name a session file");
+    assert!(!path.as_os_str().is_empty(), "markdown export source path must not be empty");
+
     let entries = crate::session_format::load_entries(path)?;
     let mut out = String::new();
 
@@ -85,6 +88,9 @@ pub fn export_markdown(path: &Path) -> Result<String> {
 
 /// Export a session to plain text format
 pub fn export_text(path: &Path) -> Result<String> {
+    assert!(path.file_name().is_some(), "text export source must name a session file");
+    assert!(!path.as_os_str().is_empty(), "text export source path must not be empty");
+
     let entries = crate::session_format::load_entries(path)?;
     let mut out = String::new();
 

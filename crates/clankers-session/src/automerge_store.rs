@@ -60,6 +60,9 @@ const A_KIND: &str = "kind";
 
 /// Create a new Automerge document initialized with the session header.
 pub fn create_document(header: &HeaderEntry) -> Result<AutoCommit> {
+    assert!(!header.session_id.is_empty(), "session id must be present in Automerge header");
+    assert!(!header.version.is_empty(), "session format version must be present in Automerge header");
+
     let mut doc = AutoCommit::new();
 
     // Root-level maps
@@ -92,6 +95,9 @@ pub fn create_document(header: &HeaderEntry) -> Result<AutoCommit> {
 
 /// Insert a message into the Automerge document's messages map.
 pub fn put_message(doc: &mut AutoCommit, entry: &MessageEntry) -> Result<()> {
+    assert!(!entry.id.0.is_empty(), "message id must be present before Automerge insert");
+    assert!(!entry.timestamp.to_rfc3339().is_empty(), "message timestamp must format for Automerge insert");
+
     let messages_obj = doc
         .get(automerge::ROOT, KEY_MESSAGES)
         .map_err(session_err)?
@@ -146,6 +152,9 @@ pub fn put_annotation(doc: &mut AutoCommit, annotation: &AnnotationEntry) -> Res
 
 /// Read the session header from an Automerge document.
 pub fn read_header(doc: &AutoCommit) -> Result<HeaderEntry> {
+    assert_ne!(KEY_HEADER, KEY_MESSAGES, "header and messages keys must be distinct");
+    assert_ne!(KEY_HEADER, KEY_ANNOTATIONS, "header and annotations keys must be distinct");
+
     let header_obj = doc
         .get(automerge::ROOT, KEY_HEADER)
         .map_err(session_err)?
@@ -204,6 +213,9 @@ pub fn read_header(doc: &AutoCommit) -> Result<HeaderEntry> {
     allow(catch_all_on_enum, reason = "default handler covers many variants uniformly")
 )]
 pub fn read_messages(doc: &AutoCommit) -> Result<Vec<MessageEntry>> {
+    assert_ne!(KEY_MESSAGES, KEY_ANNOTATIONS, "messages and annotations keys must be distinct");
+    assert_ne!(M_MESSAGE_JSON, M_TIMESTAMP, "message payload and timestamp fields must be distinct");
+
     let messages_obj = doc
         .get(automerge::ROOT, KEY_MESSAGES)
         .map_err(session_err)?
@@ -280,6 +292,9 @@ pub fn read_messages(doc: &AutoCommit) -> Result<Vec<MessageEntry>> {
 
 /// Read all annotations from the Automerge document.
 pub fn read_annotations(doc: &AutoCommit) -> Result<Vec<AnnotationEntry>> {
+    assert_ne!(KEY_ANNOTATIONS, KEY_MESSAGES, "annotations and messages keys must be distinct");
+    assert_ne!(A_KIND, "data", "annotation kind and data fields must be distinct");
+
     let annotations_obj = doc
         .get(automerge::ROOT, KEY_ANNOTATIONS)
         .map_err(session_err)?
@@ -456,6 +471,9 @@ impl AnnotationEntry {
 ///
 /// Skips (returns Ok) if an `.automerge` file already exists for this session.
 pub fn migrate_jsonl_to_automerge(jsonl_path: &Path) -> Result<MigrateResult> {
+    assert!(jsonl_path.file_name().is_some(), "migration source must name a file");
+    assert_ne!(jsonl_path.extension().and_then(|ext| ext.to_str()), Some("automerge"), "migration source must not already be Automerge");
+
     let automerge_path = jsonl_path.with_extension("automerge");
     if automerge_path.exists() {
         return Ok(MigrateResult::Skipped);

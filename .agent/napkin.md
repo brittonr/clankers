@@ -2,6 +2,7 @@
 
 ## Working Notes
 
+- 2026-06-11: clankers-session assertion-density drain: package lint reported only 11 functions after removing the crate-level assertion allow. Stable fixes were local invariant assertions on Automerge schema keys, input paths, import header presence, and post-list session-file filtering; keep the crate-level explicit-defaults allow separate for a later slice.
 - 2026-06-11: clankers-config explicit-defaults drain: removing the crate-level allow exposes many serde field defaults; a line-aware transform works if `Option<T>` defaults are removed, collection defaults become explicit `Vec::new`/`BTreeMap::new`/`HashMap::new`, and external defaults like `AgentScope`/`HooksConfig` get local helper constructors. Watch for accidentally rewriting existing custom Vec defaults into invalid `default = "Vec::new" = "..."`.
 - 2026-06-11: clankers-model-selection explicit-defaults drain: replace production `Default::default()` / `unwrap_or_default()` / `or_default()` with named `new()` constructors or explicit insertion helpers, and prefer serde `default = "..."` functions for non-Option fields while letting missing `Option<T>` deserialize to `None`.
 - 2026-06-09: Router cost drain pattern: migrate stored/request-log usage fields to `estimated_cost_micros`, keep f64 input APIs (`with_cost`, model `estimate_cost`) as boundary conversions, and add legacy `estimated_cost_usd` deserializers that treat even integer JSON values as major units.

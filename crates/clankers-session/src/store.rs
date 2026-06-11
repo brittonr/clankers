@@ -146,6 +146,9 @@ pub fn list_sessions(sessions_dir: &Path, cwd: &str) -> Vec<PathBuf> {
 
 /// List all session directories (all cwds)
 pub fn list_all_sessions(sessions_dir: &Path) -> Vec<PathBuf> {
+    assert!(!sessions_dir.as_os_str().is_empty(), "sessions directory path must not be empty");
+    assert!(sessions_dir.components().next().is_some(), "sessions directory must have at least one path component");
+
     if !sessions_dir.is_dir() {
         return vec![];
     }
@@ -167,6 +170,7 @@ pub fn list_all_sessions(sessions_dir: &Path) -> Vec<PathBuf> {
     }
     all_files.sort();
     all_files.reverse();
+    assert!(all_files.iter().all(|path| is_session_file(path)), "all listed paths must be session files");
     all_files
 }
 
