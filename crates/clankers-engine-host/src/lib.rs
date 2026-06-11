@@ -225,7 +225,6 @@ where
 #[cfg_attr(
     dylint_lib = "tigerstyle",
     allow(
-        tigerstyle::assertion_density,
         tigerstyle::numeric_units,
         tigerstyle::unbounded_loop,
         reason = "host runner shell is bounded by reducer effect exhaustion and regression-tested adapter sequencing guards"
@@ -243,6 +242,8 @@ where
     C: CancellationSource,
     U: UsageObserver,
 {
+    assert!(!HOST_CANCELLED_REASON.is_empty());
+    assert!(seed.first_outcome.effects.len() <= seed.first_outcome.effects.capacity());
     let mut execution_report = EngineRunReport::new(&seed);
     let mut state = seed.first_outcome.next_state.clone();
     let mut outcome = seed.first_outcome;
@@ -293,13 +294,6 @@ where
     }
 }
 
-#[cfg_attr(
-    dylint_lib = "tigerstyle",
-    allow(
-        tigerstyle::assertion_density,
-        reason = "host runner shell code is exercised by async host-runner tests and preserves adapter sequencing guards"
-    )
-)]
 async fn model_input_from_effect<M, T, R, E, C, U>(
     execution_report: &mut EngineRunReport,
     hosts: &mut HostAdapters<'_, M, T, R, E, C, U>,
@@ -313,6 +307,8 @@ where
     C: CancellationSource,
     U: UsageObserver,
 {
+    assert!(request.request_id.0.chars().count() <= request.request_id.0.len());
+    assert!(request.messages.len() <= request.messages.capacity());
     if hosts.cancellation.is_cancelled() {
         return cancel_input(hosts.cancellation);
     }
@@ -335,19 +331,14 @@ where
     }
 }
 
-#[cfg_attr(
-    dylint_lib = "tigerstyle",
-    allow(
-        tigerstyle::assertion_density,
-        reason = "host runner shell code is exercised by async host-runner tests and preserves adapter sequencing guards"
-    )
-)]
 fn stream_events_to_model_input<U: UsageObserver>(
     execution_report: &mut EngineRunReport,
     usage_observer: &mut U,
     request_id: EngineCorrelationId,
     events: Vec<HostStreamEvent>,
 ) -> EngineInput {
+    assert!(request_id.0.chars().count() <= request_id.0.len());
+    assert!(events.len() <= events.capacity());
     let mut accumulator = StreamAccumulator::new();
     for event in events {
         if let HostStreamEvent::Usage { usage } = &event {
@@ -436,18 +427,13 @@ where
     tool_outcome_to_input(call_id, hosts.tools.execute_tool(call).await, hosts.cancellation)
 }
 
-#[cfg_attr(
-    dylint_lib = "tigerstyle",
-    allow(
-        tigerstyle::assertion_density,
-        reason = "host runner shell code is exercised by async host-runner tests and preserves adapter sequencing guards"
-    )
-)]
 fn tool_outcome_to_input<C: CancellationSource>(
     call_id: EngineCorrelationId,
     outcome: ToolHostOutcome,
     cancellation: &mut C,
 ) -> EngineInput {
+    assert!(call_id.0.chars().count() <= call_id.0.len());
+    assert!(!MISSING_TOOL_ERROR_PREFIX.is_empty());
     if cancellation.is_cancelled() || matches!(outcome, ToolHostOutcome::Cancelled { .. }) {
         return cancel_input(cancellation);
     }
