@@ -2,7 +2,7 @@
 
 ## Daemon mode
 
-The daemon runs agent sessions as actor processes. Clients attach via Unix sockets (local) or iroh QUIC (remote).
+The daemon runs agent sessions as actor processes. Clients attach via Unix sockets (local) or iroh QUIC (remote). Remote attach/chat/Matrix admission uses public UCAN credentials plus Basalt policy checks; see [Remote Auth: Public UCAN + Basalt](./remote-auth.md) before exposing a daemon over iroh.
 
 ```bash
 clankers daemon start -d        # start background daemon

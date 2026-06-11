@@ -43,14 +43,14 @@ clankers auth status --provider openai-codex
 
 Pool selection defaults to `fill_first`. For in-process pools, set `CLANKERS_CREDENTIAL_POOL_STRATEGY` to `round_robin`, `least_used`, or `random` to change selection.
 
-## Capability tokens
+## Remote capability tokens
 
-UCAN-based tokens for scoping access to daemon sessions:
+Remote daemon access uses public UCAN credentials plus Basalt policy admission. Legacy `clanker-auth` compatibility is local-only context; remote attach/chat/Matrix admission should use public UCAN envelopes targeted at the daemon audience. See [Remote Auth: Public UCAN + Basalt](../reference/remote-auth.md) for delegation, revocation, Matrix/chat storage, receipt redaction, and the Basalt source boundary.
 
 ```bash
-clankers token create --read-only
-clankers token create --tools "read,grep,bash" --expire 24h
-clankers token create --root
+clankers token create --read-only --for <REMOTE_IROH_PUBLIC_KEY> --expire 24h
+clankers token create --tools "read,grep,bash" --for <REMOTE_IROH_PUBLIC_KEY> --expire 24h
+clankers token create --root --delegate --for <REMOTE_IROH_PUBLIC_KEY> --expire 24h
 clankers token list
-clankers token revoke <hash>
+clankers token revoke <TOKEN_HASH>
 ```

@@ -346,7 +346,7 @@ clankers rpc discover --mdns            # find peers on the LAN
 
 ### Remote Daemon Access
 
-Attach to a daemon running on another machine:
+Attach to a daemon running on another machine. Remote admission uses public UCAN credentials plus Basalt policy checks; see [`docs/src/reference/remote-auth.md`](docs/src/reference/remote-auth.md) for credential creation, delegation, Matrix/chat use, revocation, redacted receipts, and the Basalt source boundary.
 
 ```
 clankers attach --remote <node-id>      # attach to remote daemon via iroh QUIC
@@ -380,14 +380,14 @@ clankers --agent researcher --agent-scope project
 
 ## Capability Tokens
 
-Public UCAN authorization tokens for scoping access to daemon sessions. Remote daemon/session/tool admission combines OnixResearch `ucan` credentials with Basalt policy checks and redacted receipts; legacy `clanker-auth` tokens remain a local compatibility substrate only.
+Public UCAN authorization tokens scope remote daemon/session/tool access. Remote admission combines OnixResearch `ucan` credentials with Basalt policy checks and redacted receipts; legacy `clanker-auth` tokens remain a local compatibility substrate only. See the [remote auth reference](docs/src/reference/remote-auth.md) for the full workflow.
 
 ```
-clankers token create --read-only       # read-only token
-clankers token create --tools "read,grep,bash" --expire 24h
-clankers token create --root            # full access
-clankers token list                     # list issued tokens
-clankers token revoke <hash>            # revoke a token
+clankers token create --read-only --for <REMOTE_IROH_PUBLIC_KEY> --expire 24h
+clankers token create --tools "read,grep,bash" --for <REMOTE_IROH_PUBLIC_KEY> --expire 24h
+clankers token create --root --delegate --for <REMOTE_IROH_PUBLIC_KEY> --expire 24h
+clankers token list
+clankers token revoke <TOKEN_HASH>
 ```
 
 ## Batch Trajectory Runs

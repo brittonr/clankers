@@ -14,6 +14,7 @@
 - [Multi-Model Routing](./reference/multi-model.md)
 - [Session Format](./reference/session-format.md)
 - [Daemon & Actors](./reference/daemon.md)
+- [Remote Auth: Public UCAN + Basalt](./reference/remote-auth.md)
 - [Request Lifecycle](./reference/request-lifecycle.md)
 - [Hooks](./reference/hooks.md)
 - [Durable Process Jobs](./reference/process-jobs.md)
