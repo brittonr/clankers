@@ -2,6 +2,7 @@
 
 ## Working Notes
 
+- 2026-06-11: clankers-db assertion-density crate allow drain exposed 8 functions. Stable fixes were bounded insights-window/schema invariants, report consistency assertions in metrics/insights formatting, non-empty session/skill invariants, and schema migration count checks. Avoid sentinel fallbacks like `unwrap_or(usize::MAX)` in assertions; Tigerstyle still flags them.
 - 2026-06-11: clankers-matrix assertion-density crate allow drain was small: remove the lib allow, add room/sender invariants in `parse_room_message`, and byte-budget invariants in `chunk_response` / `split_into_blocks`. Validate both package and full Tigerstyle because package-local green can miss workspace interactions.
 - 2026-06-11: clankers-session ambient-clock final drain: keep test-only convenience wrappers under `#[cfg(test)]`, add production `*_at` APIs taking `SessionTimestamp`, thread `crate::session_clock_now()` from the root shell, and derive import/session filenames from header/creation timestamps. Integration tests compile clankers-session as a normal dependency, so update root `tests/` to call `create_at`/`append_message_at` rather than relying on cfg(test) wrappers.
 - 2026-06-11: clankers-model-selection assertion-density final drain only needed two functions after removing the crate allow: add local path invariants in `try_load_user_pricing`, and move orchestration score thresholds into named constants with assertions in `detect_pattern`. Re-run package Tigerstyle after removing the allow.

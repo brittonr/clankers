@@ -6,6 +6,8 @@ use super::query::CurrentSessionReport;
 use super::query::HistoricalReport;
 
 pub fn format_current_session(r: &CurrentSessionReport) -> String {
+    assert_eq!(r.total_tokens, r.input_tokens + r.output_tokens);
+    assert!(r.turns_cancelled <= r.turns);
     let mut out = String::new();
     writeln!(out, "## Current Session: {}", r.session_id).ok();
     if let Some(dur) = r.duration_secs {
@@ -80,6 +82,8 @@ pub fn format_current_session(r: &CurrentSessionReport) -> String {
 }
 
 pub fn format_historical(r: &HistoricalReport) -> String {
+    assert!(r.total_sessions >= r.days.iter().map(|day| day.sessions).max().unwrap_or(0));
+    assert!(u64::try_from(r.days.len()).ok().is_some());
     let mut out = String::new();
     writeln!(out, "## History ({} days, {} sessions)", r.days.len(), r.total_sessions).ok();
     writeln!(

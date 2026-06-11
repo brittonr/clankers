@@ -236,6 +236,8 @@ impl<'db> SkillUsageStore<'db> {
 }
 
 fn compute_stats(skill_name: &str, entries: &[SkillUsageEntry]) -> SkillStats {
+    assert!(!skill_name.is_empty(), "skill usage stats require a skill name");
+    assert!(entries.iter().all(|entry| entry.skill_name == skill_name));
     let mut stats = SkillStats {
         skill_name: skill_name.to_string(),
         total_loads: entries.len(),

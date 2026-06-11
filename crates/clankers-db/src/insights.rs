@@ -76,6 +76,8 @@ pub struct SessionEntry {
 // ── Query functions ─────────────────────────────────────────────────
 
 pub fn generate_insights(db: &Db, days: u32) -> Result<InsightsReport> {
+    assert!(days <= 3650, "insights window should stay bounded");
+    assert!(Duration::days(i64::from(days)) >= Duration::zero());
     let cutoff = Utc::now() - Duration::days(i64::from(days));
 
     let usage_data = query_usage_in_window(db, &cutoff)?;
@@ -221,6 +223,8 @@ fn build_top_sessions(
 // ── Terminal rendering ──────────────────────────────────────────────
 
 pub fn format_insights_terminal(report: &InsightsReport) -> String {
+    assert_eq!(report.overview.total_tokens(), report.overview.total_input_tokens + report.overview.total_output_tokens);
+    assert!(report.model_breakdown.iter().all(|entry| entry.requests > 0));
     let mut out = String::new();
     use std::fmt::Write;
 

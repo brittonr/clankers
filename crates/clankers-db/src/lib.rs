@@ -17,7 +17,6 @@
 #![cfg_attr(
     dylint_lib = "tigerstyle",
     allow(
-        tigerstyle::assertion_density,
         tigerstyle::numeric_units,
         tigerstyle::acronym_style,
         tigerstyle::unbounded_collection_growth,

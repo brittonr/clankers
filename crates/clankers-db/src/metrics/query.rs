@@ -106,6 +106,8 @@ impl MetricsStore<'_> {
 }
 
 fn session_to_report(s: &SessionMetricsSummary) -> CurrentSessionReport {
+    assert_eq!(s.total_tokens(), s.input_tokens + s.output_tokens);
+    assert!(s.turns_cancelled <= s.turns_total);
     let mut top_models: Vec<_> = s.models.top().iter().map(|(k, v)| (k.clone(), *v)).collect();
     top_models.sort_by_key(|entry| Reverse(entry.1));
     let mut top_tools: Vec<_> = s.tools.top().iter().map(|(k, v)| (k.clone(), *v)).collect();
@@ -136,6 +138,8 @@ fn session_to_report(s: &SessionMetricsSummary) -> CurrentSessionReport {
 }
 
 fn event_to_report(e: &MetricEventRecord) -> RecentEvent {
+    assert!(!e.session_id.is_empty(), "metric event must belong to a session");
+    assert!(e.timestamp.timestamp_subsec_nanos() < 1_000_000_000);
     let (kind, detail) = match &e.kind {
         MetricEventKind::SessionStart => ("session_start", String::new()),
         MetricEventKind::SessionEnd => ("session_end", String::new()),

@@ -53,6 +53,8 @@ const MIGRATIONS: &[fn(&WriteTransaction) -> Result<()>] = &[
 /// - Up-to-date database: no-op.
 /// - Database newer than this binary: returns an error.
 pub fn migrate(db: &redb::Database) -> Result<()> {
+    assert!(CURRENT_VERSION > 0);
+    assert_eq!(u32::try_from(MIGRATIONS.len()).ok(), Some(CURRENT_VERSION));
     let current = read_version(db)?;
 
     if current == CURRENT_VERSION {
