@@ -35,7 +35,7 @@ pub struct Settings {
     pub max_tokens: usize,
 
     /// Agent scope for discovery
-    #[serde(default)]
+    #[serde(default = "default_agent_scope")]
     pub agent_scope: AgentScope,
 
     /// Whether to confirm before running project agents
@@ -48,15 +48,12 @@ pub struct Settings {
     pub use_worktrees: bool,
 
     /// Custom system prompt prefix
-    #[serde(default)]
     pub system_prompt_prefix: Option<String>,
 
     /// Custom system prompt suffix
-    #[serde(default)]
     pub system_prompt_suffix: Option<String>,
 
     /// Theme name
-    #[serde(default)]
     pub theme: Option<String>,
 
     /// Max output lines before truncation
@@ -72,7 +69,6 @@ pub struct Settings {
     pub bash_timeout: u64,
 
     /// Auto-launch inside Zellij when available
-    #[serde(default)]
     pub zellij: Option<bool>,
 
     /// Keymap configuration (preset + overrides)
@@ -104,11 +100,9 @@ pub struct Settings {
     pub compression: CompressionSettings,
 
     /// Routing policy configuration (auto model selection by complexity)
-    #[serde(default)]
     pub routing: Option<clankers_model_selection::config::RoutingPolicyConfig>,
 
     /// Cost tracking configuration (budget limits and warnings)
-    #[serde(default)]
     pub cost_tracking: Option<clankers_model_selection::cost_tracker::CostTrackerConfig>,
 
     /// Max number of subagent panes to auto-create in the BSP tiling.
@@ -119,7 +113,7 @@ pub struct Settings {
 
     /// Tools to disable (by name). Merged from global + project settings.
     /// Tools in this list are not registered with the agent.
-    #[serde(default)]
+    #[serde(default = "Vec::new")]
     pub disabled_tools: Vec<String>,
 
     /// Model Context Protocol server configuration.
@@ -154,13 +148,12 @@ pub struct Settings {
     pub steel_tool_substrate: SteelToolSubstrateSettings,
 
     /// Hook system configuration.
-    #[serde(default)]
+    #[serde(default = "default_hooks_config")]
     pub hooks: clankers_hooks::HooksConfig,
 
     /// Command to run automatically after the agent finishes a turn.
     /// When set, enables auto-test mode (e.g. "cargo nextest run", "npm test").
     /// Use `/autotest` to toggle on/off during a session.
-    #[serde(default)]
     pub auto_test_command: Option<String>,
 
     /// Disable prompt caching (send requests without cache_control breakpoints).
@@ -172,7 +165,6 @@ pub struct Settings {
     /// Cache TTL for prompt caching. Default is "5m" (ephemeral).
     /// Set to "1h" for 1-hour cache at 2× base input cost (useful for
     /// long-running agentic tasks where turns exceed the 5-minute window).
-    #[serde(default)]
     pub cache_ttl: Option<String>,
 
     /// When true, scan nix/bash tool output for /nix/store/ paths and append
@@ -189,7 +181,7 @@ pub struct Settings {
     /// Whether the TUI should dump recent conversation blocks to terminal
     /// scrollback after leaving the alternate screen. `None` keeps the default
     /// enabled behavior while `Some(false)` disables the dump explicitly.
-    #[serde(default, alias = "scrollback_on_exit")]
+    #[serde(alias = "scrollback_on_exit")]
     pub scrollback_on_exit: Option<bool>,
 
     /// Default capability restrictions for all sessions (including local).
@@ -209,7 +201,6 @@ pub struct Settings {
     ///
     /// When absent (default), local sessions have full access. Remote sessions
     /// are still constrained by their UCAN token capabilities.
-    #[serde(default)]
     pub default_capabilities: Option<Vec<clankers_ucan::Capability>>,
 }
 
@@ -218,7 +209,7 @@ pub struct Settings {
 #[serde(rename_all = "camelCase")]
 pub struct McpSettings {
     /// Named MCP servers. Global and project settings deep-merge by server name.
-    #[serde(default)]
+    #[serde(default = "BTreeMap::new")]
     pub servers: BTreeMap<String, McpServerConfig>,
 }
 
@@ -232,31 +223,27 @@ pub struct McpServerConfig {
     /// Server transport.
     pub transport: McpTransport,
     /// Stdio executable. Required when `transport = "stdio"`.
-    #[serde(default)]
     pub command: Option<String>,
     /// Stdio arguments.
-    #[serde(default)]
+    #[serde(default = "Vec::new")]
     pub args: Vec<String>,
     /// HTTP endpoint. Required when `transport = "http"`.
-    #[serde(default)]
     pub url: Option<String>,
     /// Environment variables forwarded to stdio servers.
-    #[serde(default)]
+    #[serde(default = "Vec::new")]
     pub env_allowlist: Vec<String>,
     /// HTTP header names mapped to environment variables containing values.
-    #[serde(default)]
+    #[serde(default = "BTreeMap::new")]
     pub header_env: BTreeMap<String, String>,
     /// Allow only these MCP tool names before publication. Empty means all.
-    #[serde(default)]
+    #[serde(default = "Vec::new")]
     pub include_tools: Vec<String>,
     /// Exclude these MCP tool names after include filtering.
-    #[serde(default)]
+    #[serde(default = "Vec::new")]
     pub exclude_tools: Vec<String>,
     /// Optional visible tool-name prefix. Defaults to `mcp_<server>`.
-    #[serde(default)]
     pub tool_prefix: Option<String>,
     /// Request timeout in milliseconds.
-    #[serde(default)]
     pub timeout_ms: Option<u64>,
 }
 
@@ -350,13 +337,10 @@ pub struct BrowserAutomationSettings {
     #[serde(default)]
     pub backend: BrowserAutomationBackend,
     /// Existing CDP endpoint, for example `http://127.0.0.1:9222`.
-    #[serde(default)]
     pub cdp_url: Option<String>,
     /// Browser executable to launch when no CDP URL is supplied.
-    #[serde(default)]
     pub browser_binary: Option<String>,
     /// Optional browser profile directory.
-    #[serde(default)]
     pub user_data_dir: Option<String>,
     /// Launch browser headless when clankers owns the browser process.
     #[serde(default = "default_true")]
@@ -368,10 +352,9 @@ pub struct BrowserAutomationSettings {
     #[serde(default = "default_true")]
     pub allow_screenshots: bool,
     /// Request/action timeout in milliseconds.
-    #[serde(default)]
     pub timeout_ms: Option<u64>,
     /// Optional URL origin allowlist. Empty means all origins are allowed.
-    #[serde(default)]
+    #[serde(default = "Vec::new")]
     pub allowed_origins: Vec<String>,
 }
 
@@ -500,16 +483,12 @@ pub struct ExternalMemorySettings {
     #[serde(default)]
     pub provider: ExternalMemoryProvider,
     /// Safe provider label for user-visible output and metadata.
-    #[serde(default)]
     pub name: Option<String>,
     /// Provider endpoint when required by a provider kind.
-    #[serde(default)]
     pub endpoint: Option<String>,
     /// Environment variable name containing credentials. Values are never serialized in metadata.
-    #[serde(default)]
     pub credential_env: Option<String>,
     /// Request timeout in milliseconds.
-    #[serde(default)]
     pub timeout_ms: Option<u64>,
     /// Maximum result count returned to the agent.
     #[serde(default = "default_external_memory_max_results")]
@@ -635,7 +614,7 @@ pub struct SteelEvalSettings {
     #[serde(default)]
     pub profile: SteelEvalProfileSettings,
     /// Additional named profile material available to explicit tool requests.
-    #[serde(default)]
+    #[serde(default = "Vec::new")]
     pub profiles: Vec<SteelEvalProfileSettings>,
 }
 
@@ -669,10 +648,10 @@ pub struct SteelEvalProfileSettings {
     #[serde(default = "default_steel_eval_max_steps")]
     pub max_steps: u64,
     /// Capabilities granted to this reviewed eval profile.
-    #[serde(default)]
+    #[serde(default = "Vec::new")]
     pub session_capabilities: Vec<String>,
     /// Explicitly registered host functions for this reviewed profile.
-    #[serde(default)]
+    #[serde(default = "Vec::new")]
     pub host_functions: Vec<SteelEvalHostFunctionSettings>,
 }
 
@@ -730,44 +709,35 @@ pub struct SteelTurnPlanningSettings {
     #[serde(default = "default_steel_turn_planning_enabled")]
     pub enabled: bool,
     /// Reviewed Nickel-exported profile JSON path.
-    #[serde(default)]
     pub profile_path: Option<String>,
     /// Reviewed Steel Scheme script path.
-    #[serde(default)]
     pub script_path: Option<String>,
     /// Expected BLAKE3 hash for the script source (`b3:<hex>`).
-    #[serde(default)]
     pub script_blake3: Option<String>,
     /// Expected BLAKE3 hash for the profile JSON (`b3:<hex>`). When absent,
     /// Rust computes and records the profile hash without treating config as authority.
-    #[serde(default)]
     pub profile_blake3: Option<String>,
     /// Optional rollout override. Missing means use the reviewed profile.
-    #[serde(default)]
     pub rollout_stage: Option<SteelTurnPlanningRolloutStage>,
     /// Optional fallback override. Missing means use the reviewed profile.
-    #[serde(default)]
     pub fallback_mode: Option<SteelTurnPlanningFallbackMode>,
     /// Optional seam override. The only supported value is `steel.host.plan_turn`.
-    #[serde(default)]
     pub planning_seam: Option<String>,
     /// Session capabilities actually available to this session.
-    #[serde(default)]
+    #[serde(default = "Vec::new")]
     pub session_capabilities: Vec<String>,
     /// UCAN abilities actually granted to this session/script context.
-    #[serde(default)]
+    #[serde(default = "Vec::new")]
     pub granted_ucan_abilities: Vec<String>,
     /// Basalt-backed UCAN authority grants for invoking the reviewed Steel planner.
-    #[serde(default)]
+    #[serde(default = "Vec::new")]
     pub ucan_authority_grants: Vec<SteelTurnPlanningAuthorityGrantSettings>,
     /// Host actions disabled by user/session policy.
-    #[serde(default)]
+    #[serde(default = "Vec::new")]
     pub disabled_actions: Vec<String>,
     /// Optional receipt destination prefix. Must remain under `target/`.
-    #[serde(default)]
     pub receipt_prefix: Option<String>,
     /// Optional max turn input bytes override.
-    #[serde(default)]
     pub max_input_bytes: Option<u64>,
     /// Optional max script bytes guard.
     #[serde(default = "default_steel_turn_planning_max_source_bytes")]
@@ -802,13 +772,11 @@ pub struct SteelTurnPlanningAuthorityGrantSettings {
     pub resource: String,
     pub ability: String,
     pub audience: String,
-    #[serde(default)]
     pub proof_reference: Option<String>,
-    #[serde(default)]
     pub expires_at: Option<chrono::DateTime<chrono::Utc>>,
     #[serde(default)]
     pub revoked: bool,
-    #[serde(default)]
+    #[serde(default = "Vec::new")]
     pub caveats: Vec<String>,
 }
 
@@ -963,10 +931,8 @@ pub struct SteelToolSubstrateSettings {
     #[serde(default = "default_steel_tool_substrate_enabled")]
     pub enabled: bool,
     /// Rollout stage for substrate dispatch.
-    #[serde(default)]
     pub rollout_stage: Option<SteelToolSubstrateRolloutStage>,
     /// Fallback behavior when Steel does not authorize a typed plan.
-    #[serde(default)]
     pub fallback_mode: Option<SteelToolSubstrateFallbackMode>,
     /// Session capabilities available to Steel host functions.
     #[serde(default = "default_steel_tool_substrate_session_capabilities")]
@@ -975,16 +941,14 @@ pub struct SteelToolSubstrateSettings {
     #[serde(default = "default_steel_tool_substrate_ucan_abilities")]
     pub granted_ucan_abilities: Vec<String>,
     /// Executor kinds disabled for substrate authorization.
-    #[serde(default)]
+    #[serde(default = "Vec::new")]
     pub disabled_executors: Vec<String>,
     /// Host actions disabled by user/session policy.
-    #[serde(default)]
+    #[serde(default = "Vec::new")]
     pub disabled_actions: Vec<String>,
     /// Optional receipt destination prefix. Must remain under `target/`.
-    #[serde(default)]
     pub receipt_prefix: Option<String>,
     /// Optional max input bytes override.
-    #[serde(default)]
     pub max_input_bytes: Option<u64>,
     /// Optional max script bytes guard.
     #[serde(default = "default_steel_tool_substrate_max_source_bytes")]
@@ -1111,10 +1075,10 @@ fn default_steel_tool_substrate_max_source_bytes() -> u64 {
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct LeaderMenuConfig {
     /// Items to add or override in the leader menu.
-    #[serde(default)]
+    #[serde(default = "Vec::new")]
     pub items: Vec<LeaderMenuItemConfig>,
     /// Items to hide from the leader menu.
-    #[serde(default)]
+    #[serde(default = "Vec::new")]
     pub hide: Vec<LeaderMenuHideConfig>,
 }
 
@@ -1128,7 +1092,6 @@ pub struct LeaderMenuItemConfig {
     /// Slash command to execute (e.g. "/shell git status").
     pub command: String,
     /// Submenu name. If omitted, goes to root.
-    #[serde(default)]
     pub submenu: Option<String>,
 }
 
@@ -1138,7 +1101,6 @@ pub struct LeaderMenuHideConfig {
     /// Key to hide.
     pub key: char,
     /// Submenu name. If omitted, hides from root.
-    #[serde(default)]
     pub submenu: Option<String>,
 }
 
@@ -1215,7 +1177,6 @@ impl Default for SkillSettings {
 pub struct CompressionSettings {
     /// Model to use for manual compression requests.
     /// When absent, uses the cheapest available model from the active provider.
-    #[serde(default)]
     pub model: Option<String>,
     /// Cheap/fast model to use for automatic structured summary generation.
     #[serde(default = "default_summary_model")]
@@ -1287,13 +1248,27 @@ fn default_max_subagent_panes() -> usize {
     4
 }
 
+fn default_agent_scope() -> AgentScope {
+    AgentScope::User
+}
+
+fn default_hooks_config() -> clankers_hooks::HooksConfig {
+    clankers_hooks::HooksConfig {
+        enabled: true,
+        hooks_dir: None,
+        disabled_hooks: Vec::new(),
+        script_timeout_secs: 10,
+        manage_git_hooks: false,
+    }
+}
+
 impl Default for Settings {
     fn default() -> Self {
         Self {
             model: default_model(),
             thinking_level: default_thinking_level(),
             max_tokens: default_max_tokens(),
-            agent_scope: AgentScope::default(),
+            agent_scope: default_agent_scope(),
             confirm_project_agents: true,
             use_worktrees: false,
             system_prompt_prefix: None,
@@ -1320,7 +1295,7 @@ impl Default for Settings {
             steel_turn_planning: SteelTurnPlanningSettings::default(),
             steel_eval: SteelEvalSettings::default(),
             steel_tool_substrate: SteelToolSubstrateSettings::default(),
-            hooks: clankers_hooks::HooksConfig::default(),
+            hooks: default_hooks_config(),
             auto_test_command: None,
             no_cache: false,
             cache_ttl: None,

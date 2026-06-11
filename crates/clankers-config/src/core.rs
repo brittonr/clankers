@@ -44,9 +44,9 @@ impl ThemeSelection {
 #[serde(rename_all = "camelCase")]
 pub struct NeutralKeymapConfig {
     pub preset: String,
-    #[serde(default)]
+    #[serde(default = "BTreeMap::new")]
     pub normal: BTreeMap<String, String>,
-    #[serde(default)]
+    #[serde(default = "BTreeMap::new")]
     pub insert: BTreeMap<String, String>,
 }
 
@@ -65,7 +65,7 @@ pub struct PromptServiceConfig {
 pub struct SkillServiceConfig {
     #[serde(default)]
     pub enabled: bool,
-    #[serde(default)]
+    #[serde(default = "Vec::new")]
     pub requested: Vec<String>,
 }
 

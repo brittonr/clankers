@@ -29,10 +29,9 @@ pub struct ModelRoleDef {
     pub description: String,
     /// Assigned model ID. `None` means inherit from the "default" role,
     /// then fall back to the active model.
-    #[serde(default)]
     pub model: Option<String>,
     /// Keywords used by `infer_role()` to auto-select this role from task text.
-    #[serde(default)]
+    #[serde(default = "Vec::new")]
     pub keywords: Vec<String>,
 }
 

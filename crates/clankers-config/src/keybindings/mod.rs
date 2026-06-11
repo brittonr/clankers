@@ -52,11 +52,11 @@ pub struct KeymapConfig {
     pub preset: KeymapPreset,
 
     /// Per-key overrides for normal mode.
-    #[serde(default)]
+    #[serde(default = "HashMap::new")]
     pub normal: HashMap<String, String>,
 
     /// Per-key overrides for insert mode.
-    #[serde(default)]
+    #[serde(default = "HashMap::new")]
     pub insert: HashMap<String, String>,
 }
 
