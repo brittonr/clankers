@@ -24,11 +24,10 @@ use automerge::AutoCommit;
 use chrono::Utc;
 use clanker_message::transcript::AgentMessage;
 
-#[cfg_attr(
-    dylint_lib = "tigerstyle",
-    allow(tigerstyle::ambient_clock, reason = "session persistence shell-boundary timestamp source")
-)]
-pub(crate) fn session_clock_now() -> chrono::DateTime<Utc> {
+pub type SessionTimestamp = chrono::DateTime<Utc>;
+
+#[cfg(test)]
+pub(crate) fn session_clock_now() -> SessionTimestamp {
     Utc::now()
 }
 
@@ -93,17 +92,26 @@ pub struct SessionManager {
 
 impl SessionManager {
     /// Create a new session backed by an Automerge document.
+    #[cfg(test)]
     pub fn create(request: CreateSessionRequest<'_>) -> Result<Self> {
+        Self::create_at(request, crate::session_clock_now())
+    }
+
+    /// Create a new session with an externally supplied creation timestamp.
+    pub fn create_at(request: CreateSessionRequest<'_>, created_at: SessionTimestamp) -> Result<Self> {
         let session_id = clanker_message::transcript::generate_id();
-        let file_path = store::session_file_path_automerge(store::SessionFilePathRequest {
-            sessions_dir: request.sessions_dir,
-            cwd: request.cwd,
-            session_id: &session_id,
-        });
+        let file_path = store::session_file_path_automerge_at(
+            store::SessionFilePathRequest {
+                sessions_dir: request.sessions_dir,
+                cwd: request.cwd,
+                session_id: &session_id,
+            },
+            created_at,
+        );
 
         let header = HeaderEntry {
             session_id: session_id.clone(),
-            created_at: crate::session_clock_now(),
+            created_at,
             cwd: request.cwd.to_string(),
             model: request.model.to_string(),
             version: env!("CARGO_PKG_VERSION").to_string(),
@@ -179,7 +187,18 @@ impl SessionManager {
     }
 
     /// Append a message to the session (skips if already persisted).
+    #[cfg(test)]
     pub fn append_message(&mut self, message: AgentMessage, parent_id: Option<MessageId>) -> Result<()> {
+        self.append_message_at(message, parent_id, crate::session_clock_now())
+    }
+
+    /// Append a message using an externally supplied persistence timestamp.
+    pub fn append_message_at(
+        &mut self,
+        message: AgentMessage,
+        parent_id: Option<MessageId>,
+        timestamp: SessionTimestamp,
+    ) -> Result<()> {
         let id = message.id().clone();
         if self.persisted_ids.contains(&id) {
             return Ok(());
@@ -189,7 +208,7 @@ impl SessionManager {
             id: id.clone(),
             parent_id,
             message,
-            timestamp: crate::session_clock_now(),
+            timestamp,
         };
 
         automerge_store::put_message(&mut self.doc, &entry)?;
@@ -200,12 +219,23 @@ impl SessionManager {
     }
 
     /// Record a branch point and update the active leaf.
+    #[cfg(test)]
     pub fn record_branch(&mut self, from_message_id: MessageId, reason: &str) -> Result<()> {
+        self.record_branch_at(from_message_id, reason, crate::session_clock_now())
+    }
+
+    /// Record a branch point using an externally supplied timestamp.
+    pub fn record_branch_at(
+        &mut self,
+        from_message_id: MessageId,
+        reason: &str,
+        timestamp: SessionTimestamp,
+    ) -> Result<()> {
         let annotation = AnnotationEntry::Branch(BranchEntry {
             id: MessageId::generate(),
             from_message_id: from_message_id.clone(),
             reason: reason.to_string(),
-            timestamp: crate::session_clock_now(),
+            timestamp,
         });
 
         automerge_store::put_annotation(&mut self.doc, &annotation)?;
@@ -215,7 +245,13 @@ impl SessionManager {
     }
 
     /// Record a label for the current active leaf.
+    #[cfg(test)]
     pub fn record_label(&mut self, label: &str) -> Result<()> {
+        self.record_label_at(label, crate::session_clock_now())
+    }
+
+    /// Record a label using an externally supplied timestamp.
+    pub fn record_label_at(&mut self, label: &str, timestamp: SessionTimestamp) -> Result<()> {
         let target_id = self.active_leaf_id.as_ref().ok_or_else(|| SessionError {
             message: "No active leaf to label".to_string(),
         })?;
@@ -224,7 +260,7 @@ impl SessionManager {
             id: MessageId::generate(),
             target_message_id: target_id.clone(),
             label: label.to_string(),
-            timestamp: crate::session_clock_now(),
+            timestamp,
         });
 
         automerge_store::put_annotation(&mut self.doc, &annotation)?;
@@ -233,10 +269,16 @@ impl SessionManager {
     }
 
     /// Record a session resume event.
+    #[cfg(test)]
     pub fn record_resume(&mut self, from_entry_id: MessageId) -> Result<()> {
+        self.record_resume_at(from_entry_id, crate::session_clock_now())
+    }
+
+    /// Record a session resume event using an externally supplied timestamp.
+    pub fn record_resume_at(&mut self, from_entry_id: MessageId, resumed_at: SessionTimestamp) -> Result<()> {
         let annotation = AnnotationEntry::Resume(ResumeEntry {
             id: MessageId::generate(),
-            resumed_at: crate::session_clock_now(),
+            resumed_at,
             from_entry_id,
         });
 
@@ -246,14 +288,20 @@ impl SessionManager {
     }
 
     /// Record a compaction summary annotation for iterative reuse.
+    #[cfg(test)]
     pub fn record_compaction_summary(&mut self, summary: String) -> Result<()> {
+        self.record_compaction_summary_at(summary, crate::session_clock_now())
+    }
+
+    /// Record a compaction summary using an externally supplied timestamp.
+    pub fn record_compaction_summary_at(&mut self, summary: String, timestamp: SessionTimestamp) -> Result<()> {
         let annotation = AnnotationEntry::Compaction(CompactionEntry {
             id: MessageId::generate(),
             compacted_range: Vec::new(),
             summary: summary.clone(),
             tokens_before: 0,
             tokens_after: 0,
-            timestamp: crate::session_clock_now(),
+            timestamp,
         });
 
         automerge_store::put_annotation(&mut self.doc, &annotation)?;
@@ -263,12 +311,17 @@ impl SessionManager {
     }
 
     /// Record a custom audit/replay annotation.
-    pub fn record_custom(&mut self, kind: impl Into<String>, data: serde_json::Value) -> Result<()> {
+    pub fn record_custom_at(
+        &mut self,
+        kind: impl Into<String>,
+        data: serde_json::Value,
+        timestamp: SessionTimestamp,
+    ) -> Result<()> {
         let annotation = AnnotationEntry::Custom(CustomEntry {
             id: MessageId::generate(),
             kind: kind.into(),
             data,
-            timestamp: crate::session_clock_now(),
+            timestamp,
         });
 
         automerge_store::put_annotation(&mut self.doc, &annotation)?;

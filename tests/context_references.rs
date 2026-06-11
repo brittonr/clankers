@@ -29,23 +29,27 @@ fn context_reference_primary_path_expands_file_and_persists_metadata() {
     assert_eq!(expanded.references[0].status, ContextReferenceStatus::Expanded);
 
     let session_dir = tmp.path().join("sessions");
-    let mut manager = SessionManager::create(CreateSessionRequest {
-        sessions_dir: &session_dir,
-        cwd: cwd.to_str().unwrap(),
-        model: "test-model",
-        agent: None,
-        worktree_path: None,
-        worktree_branch: None,
-    })
+    let mut manager = SessionManager::create_at(
+        CreateSessionRequest {
+            sessions_dir: &session_dir,
+            cwd: cwd.to_str().unwrap(),
+            model: "test-model",
+            agent: None,
+            worktree_path: None,
+            worktree_branch: None,
+        },
+        chrono::Utc::now(),
+    )
     .unwrap();
     manager
-        .record_custom(
+        .record_custom_at(
             "context_references",
             serde_json::json!({
                 "source": "context_references",
                 "cwd": cwd,
                 "references": expanded.references,
             }),
+            chrono::Utc::now(),
         )
         .unwrap();
 

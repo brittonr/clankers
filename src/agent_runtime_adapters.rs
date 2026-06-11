@@ -313,14 +313,18 @@ impl clankers_controller::ControllerSessionLedger for SessionManagerControllerSe
             return Err("session manager unavailable".to_string());
         };
         let parent = manager.active_leaf_id().cloned();
-        manager.append_message(message, parent).map_err(|error| error.to_string())
+        manager
+            .append_message_at(message, parent, crate::session_clock_now())
+            .map_err(|error| error.to_string())
     }
 
     fn record_compaction_summary(&mut self, summary: String) -> Result<(), String> {
         let Some(manager) = self.manager.as_mut() else {
             return Err("session manager unavailable".to_string());
         };
-        manager.record_compaction_summary(summary).map_err(|error| error.to_string())
+        manager
+            .record_compaction_summary_at(summary, crate::session_clock_now())
+            .map_err(|error| error.to_string())
     }
 }
 

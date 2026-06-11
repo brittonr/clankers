@@ -67,14 +67,17 @@ fn create_new_session(
         Some(s) => (Some(s.working_dir.to_string_lossy().to_string()), Some(s.branch.clone())),
         None => (None, None),
     };
-    match clankers_session::SessionManager::create(clankers_session::CreateSessionRequest {
-        sessions_dir,
-        cwd,
-        model,
-        agent: None,
-        worktree_path: wt_path.as_deref(),
-        worktree_branch: wt_branch.as_deref(),
-    }) {
+    match clankers_session::SessionManager::create_at(
+        clankers_session::CreateSessionRequest {
+            sessions_dir,
+            cwd,
+            model,
+            agent: None,
+            worktree_path: wt_path.as_deref(),
+            worktree_branch: wt_branch.as_deref(),
+        },
+        crate::session_clock_now(),
+    ) {
         Ok(mgr) => {
             app.session_id = mgr.session_id().to_string();
             if let Some(ref s) = wt_setup {
@@ -105,7 +108,8 @@ fn resume_session(
     let latest_compaction_summary = mgr.latest_compaction_summary().map(str::to_string);
     app.session_id = mgr.session_id().to_string();
 
-    mgr.record_resume(clanker_message::transcript::MessageId::new(from_label)).ok();
+    mgr.record_resume_at(clanker_message::transcript::MessageId::new(from_label), crate::session_clock_now())
+        .ok();
 
     let msg_count = msgs.len();
     app.push_system(format!("Resumed session {} ({} messages)", mgr.session_id(), msg_count), false);

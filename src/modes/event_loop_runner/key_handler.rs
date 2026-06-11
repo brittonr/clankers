@@ -187,7 +187,8 @@ impl<'a> EventLoopRunner<'a> {
                 let branch_msgs = clankers_session::context::build_messages_for_branch(&tree, active_leaf.as_ref());
                 if checkpoint > 0 && checkpoint <= branch_msgs.len() {
                     let fork_msg_id = branch_msgs[checkpoint - 1].id().clone();
-                    sm.record_branch(fork_msg_id, "User edited prompt").ok();
+                    sm.record_branch_at(fork_msg_id, "User edited prompt", crate::session_clock_now())
+                        .ok();
                 }
             }
         } else if self.app.input_mode == InputMode::Insert {
@@ -577,7 +578,7 @@ impl<'a> EventLoopRunner<'a> {
         if let (Some(src), Some(tgt)) = (source, target)
             && let Some(sm) = session_manager.as_mut()
         {
-            match sm.merge_selective(src, tgt, &selected) {
+            match sm.merge_selective_at(src, tgt, &selected, crate::session_clock_now()) {
                 Ok((count, _new_leaf)) => {
                     if let Ok(context) = sm.build_context() {
                         let msg_count = context.len();
@@ -662,17 +663,20 @@ mod tests {
 
     fn persisted_session_file(tmp: &tempfile::TempDir) -> (std::path::PathBuf, String, String) {
         let cwd = tmp.path().to_string_lossy().to_string();
-        let mut mgr = clankers_session::SessionManager::create(clankers_session::CreateSessionRequest {
-            sessions_dir: tmp.path(),
-            cwd: &cwd,
-            model: "test-model",
-            agent: None,
-            worktree_path: None,
-            worktree_branch: None,
-        })
-            .expect("session create should succeed");
+        let mut mgr = clankers_session::SessionManager::create_at(
+            clankers_session::CreateSessionRequest {
+                sessions_dir: tmp.path(),
+                cwd: &cwd,
+                model: "test-model",
+                agent: None,
+                worktree_path: None,
+                worktree_branch: None,
+            },
+            chrono::Utc::now(),
+        )
+        .expect("session create should succeed");
         let session_id = mgr.session_id().to_string();
-        mgr.append_message(
+        mgr.append_message_at(
             AgentMessage::User(UserMessage {
                 id: MessageId::new("persisted-user"),
                 content: vec![Content::Text {
@@ -681,9 +685,10 @@ mod tests {
                 timestamp: chrono::Utc::now(),
             }),
             None,
+            chrono::Utc::now(),
         )
         .expect("persisted message should save");
-        mgr.record_compaction_summary("## Active Task\n- resumed work".to_string())
+        mgr.record_compaction_summary_at("## Active Task\n- resumed work".to_string(), chrono::Utc::now())
             .expect("persisted compaction summary should save");
         (mgr.file_path().to_path_buf(), session_id, cwd)
     }

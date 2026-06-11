@@ -112,11 +112,16 @@ impl OrchestrationPlan {
 
 // ── Detection ───────────────────────────────────────────────────────────────
 
+const MIN_ORCHESTRATION_SCORE: f32 = 40.0;
+const HIGH_ORCHESTRATION_SCORE: f32 = 60.0;
+
 /// Decide whether to orchestrate and which pattern to use.
 ///
 /// Returns `None` if orchestration is not warranted.
 pub fn detect_pattern(prompt: &str, complexity_score: f32) -> Option<OrchestrationPlan> {
-    if complexity_score < 40.0 {
+    assert!(MIN_ORCHESTRATION_SCORE < HIGH_ORCHESTRATION_SCORE);
+    assert_eq!(prompt.len(), prompt.as_bytes().len());
+    if complexity_score < MIN_ORCHESTRATION_SCORE {
         return None;
     }
 
@@ -134,7 +139,7 @@ pub fn detect_pattern(prompt: &str, complexity_score: f32) -> Option<Orchestrati
     }
 
     // Heuristic detection at high complexity
-    if complexity_score < 60.0 {
+    if complexity_score < HIGH_ORCHESTRATION_SCORE {
         return None;
     }
 

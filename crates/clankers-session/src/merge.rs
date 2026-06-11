@@ -29,7 +29,18 @@ impl SessionManager {
     /// Both branches remain visible in the DAG — no messages are cloned.
     /// The active head moves to `target_leaf`. Returns the number of
     /// messages unique to the source branch (informational).
+    #[cfg(test)]
     pub fn merge_branch(&mut self, source_leaf: MessageId, target_leaf: MessageId) -> Result<(u64, MessageId)> {
+        self.merge_branch_at(source_leaf, target_leaf, crate::session_clock_now())
+    }
+
+    /// Merge two branches using an externally supplied timestamp.
+    pub fn merge_branch_at(
+        &mut self,
+        source_leaf: MessageId,
+        target_leaf: MessageId,
+        timestamp: crate::SessionTimestamp,
+    ) -> Result<(u64, MessageId)> {
         if source_leaf == target_leaf {
             return Err(SessionError {
                 message: "Cannot merge a branch into itself".into(),
@@ -66,7 +77,7 @@ impl SessionManager {
                 "merged_count": merged_count,
                 "strategy": "full",
             }),
-            timestamp: crate::session_clock_now(),
+            timestamp,
         });
 
         crate::automerge_store::put_annotation(&mut self.doc, &annotation)?;
@@ -80,11 +91,23 @@ impl SessionManager {
     ///
     /// Copies the selected messages (by ID) into the target branch, each
     /// appended as a new message with a fresh ID.
+    #[cfg(test)]
     pub fn merge_selective(
         &mut self,
         source_leaf: MessageId,
         target_leaf: MessageId,
         selected_ids: &[MessageId],
+    ) -> Result<(u64, MessageId)> {
+        self.merge_selective_at(source_leaf, target_leaf, selected_ids, crate::session_clock_now())
+    }
+
+    /// Selectively merge messages using an externally supplied timestamp.
+    pub fn merge_selective_at(
+        &mut self,
+        source_leaf: MessageId,
+        target_leaf: MessageId,
+        selected_ids: &[MessageId],
+        timestamp: crate::SessionTimestamp,
     ) -> Result<(u64, MessageId)> {
         if source_leaf == target_leaf {
             return Err(SessionError {
@@ -123,7 +146,7 @@ impl SessionManager {
             let new_id = MessageId::generate();
             let mut cloned_message = msg.message.clone();
             set_message_id(&mut cloned_message, new_id.clone());
-            self.append_message(cloned_message, Some(current_parent))?;
+            self.append_message_at(cloned_message, Some(current_parent), timestamp)?;
             current_parent = new_id;
         }
 
@@ -138,7 +161,7 @@ impl SessionManager {
                 "merged_count": merged_count,
                 "strategy": "selective",
             }),
-            timestamp: crate::session_clock_now(),
+            timestamp,
         });
 
         crate::automerge_store::put_annotation(&mut self.doc, &annotation)?;
@@ -151,6 +174,7 @@ impl SessionManager {
     /// Cherry-pick a message (and optionally its children) into a target branch.
     ///
     /// Each message is copied with a fresh ID via `append_message`.
+    #[cfg(test)]
     #[cfg_attr(
         dylint_lib = "tigerstyle",
         allow(no_unwrap, reason = "message ID verified to exist before lookup")
@@ -160,6 +184,21 @@ impl SessionManager {
         message_id: MessageId,
         target_leaf: MessageId,
         with_children: bool,
+    ) -> Result<(u64, MessageId)> {
+        self.cherry_pick_at(message_id, target_leaf, with_children, crate::session_clock_now())
+    }
+
+    /// Cherry-pick a message using an externally supplied timestamp.
+    #[cfg_attr(
+        dylint_lib = "tigerstyle",
+        allow(no_unwrap, reason = "message ID verified to exist before lookup")
+    )]
+    pub fn cherry_pick_at(
+        &mut self,
+        message_id: MessageId,
+        target_leaf: MessageId,
+        with_children: bool,
+        timestamp: crate::SessionTimestamp,
     ) -> Result<(u64, MessageId)> {
         let tree = self.load_tree()?;
 
@@ -204,7 +243,7 @@ impl SessionManager {
             let new_id = MessageId::generate();
             let mut cloned_message = msg.message.clone();
             set_message_id(&mut cloned_message, new_id.clone());
-            self.append_message(cloned_message, Some(current_parent))?;
+            self.append_message_at(cloned_message, Some(current_parent), timestamp)?;
             current_parent = new_id;
         }
 
@@ -219,7 +258,7 @@ impl SessionManager {
                 "with_children": with_children,
                 "copied_count": count,
             }),
-            timestamp: crate::session_clock_now(),
+            timestamp,
         });
 
         crate::automerge_store::put_annotation(&mut self.doc, &annotation)?;

@@ -94,9 +94,15 @@ pub struct SessionFilePathRequest<'a> {
 }
 
 /// Generate session file path (JSONL format — legacy).
+#[cfg(test)]
 pub fn session_file_path(request: SessionFilePathRequest<'_>) -> PathBuf {
+    session_file_path_at(request, crate::session_clock_now())
+}
+
+/// Generate session file path (JSONL format — legacy) using an external timestamp.
+pub fn session_file_path_at(request: SessionFilePathRequest<'_>, created_at: crate::SessionTimestamp) -> PathBuf {
     let encoded_cwd = encode_cwd(request.cwd);
-    let timestamp = crate::session_clock_now().format("%Y%m%d_%H%M%S");
+    let timestamp = created_at.format("%Y%m%d_%H%M%S");
     request
         .sessions_dir
         .join(&encoded_cwd)
@@ -104,9 +110,18 @@ pub fn session_file_path(request: SessionFilePathRequest<'_>) -> PathBuf {
 }
 
 /// Generate session file path (Automerge format).
+#[cfg(test)]
 pub fn session_file_path_automerge(request: SessionFilePathRequest<'_>) -> PathBuf {
+    session_file_path_automerge_at(request, crate::session_clock_now())
+}
+
+/// Generate session file path (Automerge format) using an external timestamp.
+pub fn session_file_path_automerge_at(
+    request: SessionFilePathRequest<'_>,
+    created_at: crate::SessionTimestamp,
+) -> PathBuf {
     let encoded_cwd = encode_cwd(request.cwd);
-    let timestamp = crate::session_clock_now().format("%Y%m%d_%H%M%S");
+    let timestamp = created_at.format("%Y%m%d_%H%M%S");
     request
         .sessions_dir
         .join(&encoded_cwd)

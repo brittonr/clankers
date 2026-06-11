@@ -4,14 +4,6 @@
 //! signals: token count, tool usage, keyword hints, and user preferences.
 #![allow(unexpected_cfgs)]
 #![cfg_attr(dylint_lib = "tigerstyle", feature(register_tool), register_tool(tigerstyle))]
-#![cfg_attr(
-    dylint_lib = "tigerstyle",
-    allow(
-        tigerstyle::assertion_density,
-        reason = "model selection preserves public cost/routing policy shapes; focused tests cover routing behavior during Tigerstyle drain"
-    )
-)]
-
 pub mod config;
 pub mod cost_tracker;
 pub mod orchestration;

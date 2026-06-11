@@ -376,19 +376,21 @@ async fn keyed_matrix_prompt_recovers_suspended_session_before_replying() {
     let sessions_dir = home.join(".clankers").join("agent").join("sessions");
     std::fs::create_dir_all(&sessions_dir).unwrap();
 
-    let mut mgr =
-        clankers_session::SessionManager::create(clankers_session::CreateSessionRequest {
+    let mut mgr = clankers_session::SessionManager::create_at(
+        clankers_session::CreateSessionRequest {
             sessions_dir: &sessions_dir,
             cwd: "/tmp/matrix-recovery",
             model: "test-model",
             agent: None,
             worktree_path: None,
             worktree_branch: None,
-        })
-            .unwrap();
+        },
+        chrono::Utc::now(),
+    )
+    .unwrap();
     let session_id = mgr.session_id().to_string();
     let user_id = MessageId::new("user-1");
-    mgr.append_message(
+    mgr.append_message_at(
         AgentMessage::User(UserMessage {
             id: user_id.clone(),
             content: vec![Content::Text {
@@ -397,9 +399,10 @@ async fn keyed_matrix_prompt_recovers_suspended_session_before_replying() {
             timestamp: chrono::Utc::now(),
         }),
         None,
+        chrono::Utc::now(),
     )
     .unwrap();
-    mgr.append_message(
+    mgr.append_message_at(
         AgentMessage::Assistant(AssistantMessage {
             id: MessageId::new("assistant-1"),
             content: vec![Content::Text {
@@ -411,6 +414,7 @@ async fn keyed_matrix_prompt_recovers_suspended_session_before_replying() {
             timestamp: chrono::Utc::now(),
         }),
         Some(user_id),
+        chrono::Utc::now(),
     )
     .unwrap();
     let automerge_path = mgr.file_path().to_path_buf();

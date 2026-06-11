@@ -247,14 +247,17 @@ fn build_session_manager(
     model: &str,
 ) -> (Option<clankers_session::SessionManager>, Option<PathBuf>) {
     let cwd = std::env::current_dir().unwrap_or_default().to_string_lossy().into_owned();
-    match clankers_session::SessionManager::create(clankers_session::CreateSessionRequest {
-        sessions_dir,
-        cwd: &cwd,
-        model,
-        agent: None,
-        worktree_path: None,
-        worktree_branch: None,
-    }) {
+    match clankers_session::SessionManager::create_at(
+        clankers_session::CreateSessionRequest {
+            sessions_dir,
+            cwd: &cwd,
+            model,
+            agent: None,
+            worktree_path: None,
+            worktree_branch: None,
+        },
+        crate::session_clock_now(),
+    ) {
         Ok(mgr) => {
             let path = mgr.file_path().to_path_buf();
             tracing::info!("session {session_id}: persistence enabled at {path:?}");
@@ -601,7 +604,7 @@ mod tests {
     fn append_resume_fixture(session: &mut clankers_session::SessionManager) {
         let user_id = MessageId::new("user-1");
         session
-            .append_message(
+            .append_message_at(
                 clanker_message::transcript::AgentMessage::User(UserMessage {
                     id: user_id.clone(),
                     content: vec![Content::Text {
@@ -610,10 +613,11 @@ mod tests {
                     timestamp: Utc::now(),
                 }),
                 None,
+                Utc::now(),
             )
             .unwrap();
         session
-            .append_message(
+            .append_message_at(
                 clanker_message::transcript::AgentMessage::Assistant(AssistantMessage {
                     id: MessageId::new("assistant-1"),
                     content: vec![Content::Text {
@@ -625,6 +629,7 @@ mod tests {
                     timestamp: Utc::now(),
                 }),
                 Some(user_id),
+                Utc::now(),
             )
             .unwrap();
     }
@@ -685,16 +690,18 @@ mod tests {
         let sessions_dir = dir.path().join("sessions");
         let cwd = dir.path().join("project");
         let cwd_text = cwd.to_string_lossy().to_string();
-        let mut session =
-            clankers_session::SessionManager::create(clankers_session::CreateSessionRequest {
+        let mut session = clankers_session::SessionManager::create_at(
+            clankers_session::CreateSessionRequest {
                 sessions_dir: &sessions_dir,
                 cwd: &cwd_text,
                 model: "fixture-model",
                 agent: None,
                 worktree_path: None,
                 worktree_branch: None,
-            })
-                .unwrap();
+            },
+            Utc::now(),
+        )
+        .unwrap();
         append_resume_fixture(&mut session);
         let resume_id = session.session_id().to_string();
 
@@ -724,16 +731,18 @@ mod tests {
         let sessions_dir = dir.path().join("sessions");
         let cwd = dir.path().join("project");
         let cwd_text = cwd.to_string_lossy().to_string();
-        let mut session =
-            clankers_session::SessionManager::create(clankers_session::CreateSessionRequest {
+        let mut session = clankers_session::SessionManager::create_at(
+            clankers_session::CreateSessionRequest {
                 sessions_dir: &sessions_dir,
                 cwd: &cwd_text,
                 model: "catalog-model",
                 agent: None,
                 worktree_path: None,
                 worktree_branch: None,
-            })
-                .unwrap();
+            },
+            Utc::now(),
+        )
+        .unwrap();
         append_resume_fixture(&mut session);
         let entry = SessionCatalogEntry {
             session_id: session.session_id().to_string(),

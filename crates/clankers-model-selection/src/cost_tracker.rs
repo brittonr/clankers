@@ -28,6 +28,8 @@ pub struct ModelPricing {
 fn try_load_user_pricing(config_dir: Option<&Path>) -> Option<HashMap<String, ModelPricing>> {
     let dir = config_dir?;
     let path = dir.join("pricing.json");
+    assert_eq!(path.file_name().and_then(|name| name.to_str()), Some("pricing.json"));
+    assert!(path.components().count() >= 1);
     if !path.exists() {
         return None;
     }

@@ -35,7 +35,7 @@ impl SlashHandler for ForkHandler {
                 };
                 // The fork point is the current active leaf
                 if let Some(fork_point) = sm.active_leaf_id().cloned() {
-                    match sm.record_branch(fork_point.clone(), &reason) {
+                    match sm.record_branch_at(fork_point.clone(), &reason, crate::session_clock_now()) {
                         Ok(()) => {
                             ctx.app.push_system(
                                 format!("Forked at message {}. Branch: \"{}\"", fork_point, reason),
@@ -356,7 +356,7 @@ impl SlashHandler for MergeHandler {
             return;
         };
 
-        match sm.merge_branch(source, target) {
+        match sm.merge_branch_at(source, target, crate::session_clock_now()) {
             Ok((count, _new_leaf)) => {
                 // Rebuild agent context from the merged branch
                 if let Ok(context) = sm.build_context() {
@@ -536,7 +536,7 @@ impl SlashHandler for CherryPickHandler {
             return;
         };
 
-        match sm.cherry_pick(msg_id, target, has_children) {
+        match sm.cherry_pick_at(msg_id, target, has_children, crate::session_clock_now()) {
             Ok((count, _new_leaf)) => {
                 if let Ok(context) = sm.build_context() {
                     let msg_count = context.len();
@@ -576,7 +576,7 @@ impl SlashHandler for LabelHandler {
         if args.is_empty() {
             ctx.app.push_system("Usage: /label <name>".to_string(), true);
         } else if let Some(sm) = ctx.session_manager {
-            match sm.record_label(args) {
+            match sm.record_label_at(args, crate::session_clock_now()) {
                 Ok(()) => {
                     if let Some(head) = sm.active_leaf_id() {
                         ctx.app.push_system(format!("Labeled message {} as \"{}\"", head, args), false);

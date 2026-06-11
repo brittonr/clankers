@@ -447,7 +447,7 @@ pub(crate) fn handle_input_with_plugins(
                 "references": expanded.references,
             });
             if let Some(manager) = session_manager.as_mut() {
-                if let Err(error) = manager.record_custom("context_references", data.clone()) {
+                if let Err(error) = manager.record_custom_at("context_references", data.clone(), crate::session_clock_now()) {
                     tracing::warn!(%error, "failed to record context reference metadata");
                 }
             } else {

@@ -42,11 +42,19 @@ pub enum LedgerRecord {
 impl LedgerRecord {
     /// Construct a current-schema typed record.
     #[must_use]
+    #[cfg(test)]
     pub fn typed(id: impl Into<String>, payload: LedgerPayload) -> Self {
-        Self::Typed(TypedLedgerRecord::new(id, payload))
+        Self::typed_at(id, payload, crate::session_clock_now())
+    }
+
+    /// Construct a current-schema typed record with an externally supplied observation time.
+    #[must_use]
+    pub fn typed_at(id: impl Into<String>, payload: LedgerPayload, observed_at: crate::SessionTimestamp) -> Self {
+        Self::Typed(TypedLedgerRecord::new_at(id, payload, observed_at))
     }
 
     /// Construct a safe opaque fallback for unknown record kinds or future versions.
+    #[cfg(test)]
     #[must_use]
     pub fn opaque(
         id: impl Into<String>,
@@ -54,12 +62,24 @@ impl LedgerRecord {
         schema_version: u32,
         safe_metadata: BTreeMap<String, String>,
     ) -> Self {
+        Self::opaque_at(id, original_kind, schema_version, safe_metadata, crate::session_clock_now())
+    }
+
+    /// Construct a safe opaque fallback with an externally supplied observation time.
+    #[must_use]
+    pub fn opaque_at(
+        id: impl Into<String>,
+        original_kind: impl Into<String>,
+        schema_version: u32,
+        safe_metadata: BTreeMap<String, String>,
+        observed_at: crate::SessionTimestamp,
+    ) -> Self {
         Self::Opaque(OpaqueLedgerRecord {
             id: sanitize_ledger_text(id.into()),
             original_kind: sanitize_ledger_text(original_kind.into()),
             schema_version,
             safe_metadata: sanitize_metadata_map(safe_metadata),
-            observed_at: crate::session_clock_now(),
+            observed_at,
         })
     }
 
@@ -95,11 +115,18 @@ pub struct TypedLedgerRecord {
 impl TypedLedgerRecord {
     /// Create a current-schema record and sanitize payload metadata.
     #[must_use]
+    #[cfg(test)]
     pub fn new(id: impl Into<String>, payload: LedgerPayload) -> Self {
+        Self::new_at(id, payload, crate::session_clock_now())
+    }
+
+    /// Create a current-schema record with an externally supplied observation time.
+    #[must_use]
+    pub fn new_at(id: impl Into<String>, payload: LedgerPayload, observed_at: crate::SessionTimestamp) -> Self {
         Self {
             id: sanitize_ledger_text(id.into()),
             schema_version: LEDGER_SCHEMA_VERSION,
-            observed_at: crate::session_clock_now(),
+            observed_at,
             payload: payload.sanitized(),
         }
     }
@@ -510,6 +537,10 @@ fn sanitize_ledger_text(value: String) -> String {
     }
 }
 
+fn unknown_record_observed_at() -> crate::SessionTimestamp {
+    DateTime::<Utc>::from(std::time::SystemTime::UNIX_EPOCH)
+}
+
 /// Convert unknown raw JSON into an opaque safe fallback record.
 #[must_use]
 pub fn opaque_from_unknown_json(id: impl Into<String>, value: &Value) -> LedgerRecord {
@@ -529,7 +560,7 @@ pub fn opaque_from_unknown_json(id: impl Into<String>, value: &Value) -> LedgerR
                 .collect()
         })
         .unwrap_or_else(BTreeMap::new);
-    LedgerRecord::opaque(id, original_kind, schema_version, safe_metadata)
+    LedgerRecord::opaque_at(id, original_kind, schema_version, safe_metadata, unknown_record_observed_at())
 }
 
 /// Append one typed ledger record to a JSONL ledger file.

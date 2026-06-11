@@ -162,14 +162,17 @@ async fn persisted_session_resume_replay_restores_context_and_session_metadata()
 async fn run_resume_replay_once() -> Value {
     let tmp = TempDir::new().expect("tempdir should exist");
     let cwd = tmp.path().to_string_lossy().to_string();
-    let session_manager = SessionManager::create(CreateSessionRequest {
-        sessions_dir: tmp.path(),
-        cwd: &cwd,
-        model: MODEL,
-        agent: None,
-        worktree_path: None,
-        worktree_branch: None,
-    })
+    let session_manager = SessionManager::create_at(
+        CreateSessionRequest {
+            sessions_dir: tmp.path(),
+            cwd: &cwd,
+            model: MODEL,
+            agent: None,
+            worktree_path: None,
+            worktree_branch: None,
+        },
+        chrono::Utc::now(),
+    )
     .expect("session manager should create");
     let session_id = session_manager.session_id().to_string();
     let session_file = session_manager.file_path().to_path_buf();
@@ -206,7 +209,9 @@ async fn run_resume_replay_once() -> Value {
     let mut resumed_manager = SessionManager::open(session_file.clone()).expect("persisted session should reopen");
     assert_eq!(resumed_manager.session_id(), session_id);
     let resume_from = resumed_manager.active_leaf_id().cloned().expect("persisted session has active leaf");
-    resumed_manager.record_resume(resume_from).expect("resume annotation persists");
+    resumed_manager
+        .record_resume_at(resume_from, chrono::Utc::now())
+        .expect("resume annotation persists");
     let resumed_context = resumed_manager.build_context().expect("resume context builds");
     let resumed_context_roles = resumed_context.iter().map(message_role).collect::<Vec<_>>();
 

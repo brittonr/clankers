@@ -385,7 +385,11 @@ pub(crate) fn resume_session_from_file(
             let resumed_session_id = mgr.session_id().to_string();
             let latest_compaction_summary = mgr.latest_compaction_summary().map(str::to_string);
             app.session_id.clone_from(&resumed_session_id);
-            mgr.record_resume(clanker_message::transcript::MessageId::new("slash-resume")).ok();
+            mgr.record_resume_at(
+                clanker_message::transcript::MessageId::new("slash-resume"),
+                crate::session_clock_now(),
+            )
+            .ok();
             *session_manager = Some(mgr);
 
             cmd_tx.send(AgentCommand::SetCompactionSummary(latest_compaction_summary)).ok();

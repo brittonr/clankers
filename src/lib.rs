@@ -31,6 +31,10 @@
 )]
 
 pub use clankers_agent_defs as agent_defs;
+
+pub(crate) fn session_clock_now() -> chrono::DateTime<chrono::Utc> {
+    chrono::Utc::now()
+}
 pub mod agent_config;
 pub mod agent_runtime_adapters;
 pub mod capability_gate;
