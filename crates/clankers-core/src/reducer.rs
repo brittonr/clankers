@@ -48,14 +48,9 @@ pub fn reduce(state: &CoreState, input: &CoreInput) -> CoreOutcome {
     }
 }
 
-#[cfg_attr(
-    dylint_lib = "tigerstyle",
-    allow(
-        tigerstyle::assertion_density,
-        reason = "core reducer transition function is covered by table-driven reducer tests and keeps local lifecycle guards explicit"
-    )
-)]
 fn reduce_prompt_requested(state: &CoreState, request: &PromptRequest) -> CoreOutcome {
+    assert!(request.text.chars().count() <= request.text.len());
+    assert!(state.disabled_tools.len() <= state.disabled_tools.capacity());
     if state.busy {
         return rejection(state, CoreError::Busy);
     }
@@ -80,14 +75,12 @@ fn reduce_prompt_requested(state: &CoreState, request: &PromptRequest) -> CoreOu
     ])
 }
 
-#[cfg_attr(
-    dylint_lib = "tigerstyle",
-    allow(
-        tigerstyle::assertion_density,
-        reason = "core reducer transition function is covered by table-driven reducer tests and keeps local lifecycle guards explicit"
-    )
-)]
 fn reduce_prompt_completed(state: &CoreState, completed: &PromptCompleted) -> CoreOutcome {
+    assert!(state.disabled_tools.len() <= state.disabled_tools.capacity());
+    assert!(matches!(
+        completed.completion_status,
+        CompletionStatus::Succeeded | CompletionStatus::Failed(_)
+    ));
     let Some(pending_prompt) = state.pending_prompt.as_ref() else {
         return if has_other_pending_work(state) {
             rejection(state, CoreError::OutOfOrderRuntimeResult)
@@ -98,6 +91,7 @@ fn reduce_prompt_completed(state: &CoreState, completed: &PromptCompleted) -> Co
         };
     };
 
+    assert!(pending_prompt.prompt_text.chars().count() <= pending_prompt.prompt_text.len());
     if pending_prompt.effect_id != completed.effect_id {
         return rejection(state, CoreError::PromptCompletionMismatch {
             effect_id: completed.effect_id,
@@ -126,14 +120,13 @@ fn reduce_prompt_completed(state: &CoreState, completed: &PromptCompleted) -> Co
     transitioned(next_state, effects)
 }
 
-#[cfg_attr(
-    dylint_lib = "tigerstyle",
-    allow(
-        tigerstyle::assertion_density,
-        reason = "core reducer transition function is covered by table-driven reducer tests and keeps local lifecycle guards explicit"
-    )
-)]
 fn reduce_post_prompt_evaluation(state: &CoreState, evaluation: &PostPromptEvaluation) -> CoreOutcome {
+    assert!(state.disabled_tools.len() <= state.disabled_tools.capacity());
+    if let Some(command) = evaluation.auto_test_command.as_ref() {
+        assert!(command.chars().count() <= command.len());
+    } else {
+        assert!(evaluation.auto_test_command.is_none());
+    }
     let mut next_state = state.clone();
     next_state.active_loop_state.clone_from(&evaluation.active_loop_state);
     next_state.pending_follow_up_state.clone_from(&evaluation.pending_follow_up_state);
@@ -199,17 +192,15 @@ fn reduce_post_prompt_evaluation(state: &CoreState, evaluation: &PostPromptEvalu
     transitioned(next_state, effects)
 }
 
-#[cfg_attr(
-    dylint_lib = "tigerstyle",
-    allow(
-        tigerstyle::assertion_density,
-        reason = "core reducer transition function is covered by table-driven reducer tests and keeps local lifecycle guards explicit"
-    )
-)]
 fn reduce_follow_up_dispatch_acknowledged(
     state: &CoreState,
     acknowledged: &FollowUpDispatchAcknowledged,
 ) -> CoreOutcome {
+    assert!(state.disabled_tools.len() <= state.disabled_tools.capacity());
+    assert!(matches!(
+        acknowledged.dispatch_status,
+        FollowUpDispatchStatus::Accepted | FollowUpDispatchStatus::Rejected(_)
+    ));
     let Some(pending_follow_up_state) = state.pending_follow_up_state.as_ref() else {
         return if has_pending_work_other_than_follow_up(state) {
             rejection(state, CoreError::OutOfOrderRuntimeResult)
@@ -220,6 +211,7 @@ fn reduce_follow_up_dispatch_acknowledged(
         };
     };
 
+    assert!(pending_follow_up_state.prompt_text.chars().count() <= pending_follow_up_state.prompt_text.len());
     if pending_follow_up_state.effect_id != acknowledged.effect_id {
         return rejection(state, CoreError::FollowUpDispatchMismatch {
             effect_id: acknowledged.effect_id,
@@ -304,14 +296,9 @@ fn reduce_set_disabled_tools(state: &CoreState, update: &DisabledToolsUpdate) ->
     }])
 }
 
-#[cfg_attr(
-    dylint_lib = "tigerstyle",
-    allow(
-        tigerstyle::assertion_density,
-        reason = "core reducer transition function is covered by table-driven reducer tests and keeps local lifecycle guards explicit"
-    )
-)]
 fn reduce_tool_filter_applied(state: &CoreState, applied: &ToolFilterApplied) -> CoreOutcome {
+    assert!(applied.applied_disabled_tool_set.len() <= applied.applied_disabled_tool_set.capacity());
+    assert!(state.disabled_tools.len() <= state.disabled_tools.capacity());
     let Some(pending_tool_filter) = state.pending_tool_filter.as_ref() else {
         return if has_pending_work_other_than_tool_filter(state) {
             rejection(state, CoreError::OutOfOrderRuntimeResult)
@@ -322,6 +309,9 @@ fn reduce_tool_filter_applied(state: &CoreState, applied: &ToolFilterApplied) ->
         };
     };
 
+    assert!(
+        pending_tool_filter.requested_disabled_tools.len() <= pending_tool_filter.requested_disabled_tools.capacity()
+    );
     if pending_tool_filter.effect_id != applied.effect_id
         || pending_tool_filter.requested_disabled_tools != applied.applied_disabled_tool_set
     {
@@ -338,14 +328,9 @@ fn reduce_tool_filter_applied(state: &CoreState, applied: &ToolFilterApplied) ->
     })])
 }
 
-#[cfg_attr(
-    dylint_lib = "tigerstyle",
-    allow(
-        tigerstyle::assertion_density,
-        reason = "core reducer transition function is covered by table-driven reducer tests and keeps local lifecycle guards explicit"
-    )
-)]
 fn reduce_start_loop(state: &CoreState, request: &LoopRequest) -> CoreOutcome {
+    assert!(request.loop_id.chars().count() <= request.loop_id.len());
+    assert!(request.prompt_text.chars().count() <= request.prompt_text.len());
     if state.pending_follow_up_state.is_some() {
         return rejection(state, CoreError::LoopFollowUpStillPending);
     }
@@ -384,14 +369,12 @@ fn reduce_stop_loop(state: &CoreState) -> CoreOutcome {
     })])
 }
 
-#[cfg_attr(
-    dylint_lib = "tigerstyle",
-    allow(
-        tigerstyle::assertion_density,
-        reason = "core reducer transition function is covered by table-driven reducer tests and keeps local lifecycle guards explicit"
-    )
-)]
 fn reduce_loop_follow_up_completed(state: &CoreState, completed: &LoopFollowUpCompleted) -> CoreOutcome {
+    assert!(state.disabled_tools.len() <= state.disabled_tools.capacity());
+    assert!(matches!(
+        completed.completion_status,
+        CompletionStatus::Succeeded | CompletionStatus::Failed(_)
+    ));
     let Some(pending_follow_up_state) = state.pending_follow_up_state.as_ref() else {
         return if has_pending_work_other_than_follow_up(state) {
             rejection(state, CoreError::OutOfOrderRuntimeResult)
@@ -402,6 +385,7 @@ fn reduce_loop_follow_up_completed(state: &CoreState, completed: &LoopFollowUpCo
         };
     };
 
+    assert!(pending_follow_up_state.prompt_text.chars().count() <= pending_follow_up_state.prompt_text.len());
     if pending_follow_up_state.effect_id != completed.effect_id {
         return rejection(state, CoreError::LoopFollowUpMismatch {
             effect_id: completed.effect_id,
