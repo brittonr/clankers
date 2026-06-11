@@ -329,6 +329,7 @@ pub async fn run_inline_with_options(
         builder = builder.with_capability_gate(gate);
     }
     let mut agent = builder.build();
+    agent.set_session_id("headless-inline".to_string());
     let mut rx = agent.subscribe();
 
     let show_tools = opts.show_tools;

@@ -179,7 +179,7 @@ proptest = { version = "1.0", optional = true }
 grep-regex = "0.1.14"
 grep-searcher = "0.1.16"
 similar = "2.7"
-git2 = "0.20"
+git2 = { version = "0.20", features = ["vendored-openssl"] }
 glob = "0.3"
 
 [dev-dependencies]

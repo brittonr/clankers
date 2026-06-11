@@ -56,10 +56,23 @@ static SCRUBBED_ENV_VARS: &[&str] = &[
 /// patterns (*_SECRET, *_TOKEN, *_PASSWORD, *_API_KEY, etc.).
 /// Sets `CLANKERS_SANDBOX=1` so scripts can detect sandboxed execution.
 pub fn sanitized_env() -> Vec<(String, String)> {
+    sanitized_env_for_command("")
+}
+
+/// Build a sanitized environment with a narrow SSH-agent exception for simple git commands.
+///
+/// The generic bash environment still strips `SSH_AUTH_SOCK`. A single-command `git ...`
+/// invocation gets the socket back so agent-driven commit/push workflows can use the
+/// user's already-running SSH agent without exposing it to arbitrary shell pipelines.
+pub fn sanitized_env_for_command(command: &str) -> Vec<(String, String)> {
+    let preserve_ssh_auth_sock = is_simple_git_command(command);
     let scrubbed: std::collections::HashSet<&str> = SCRUBBED_ENV_VARS.iter().copied().collect();
 
     let mut env: Vec<(String, String)> = std::env::vars()
         .filter(|(key, _)| {
+            if preserve_ssh_auth_sock && key == "SSH_AUTH_SOCK" {
+                return true;
+            }
             if scrubbed.contains(key.as_str()) {
                 return false;
             }
@@ -76,6 +89,16 @@ pub fn sanitized_env() -> Vec<(String, String)> {
 
     env.push(("CLANKERS_SANDBOX".to_string(), "1".to_string()));
     env
+}
+
+fn is_simple_git_command(command: &str) -> bool {
+    let trimmed = command.trim();
+    if trimmed.split_whitespace().next() != Some("git") {
+        return false;
+    }
+    !trimmed
+        .chars()
+        .any(|character| matches!(character, ';' | '&' | '|' | '`' | '$' | '<' | '>' | '\n' | '\r'))
 }
 
 #[cfg(test)]
@@ -199,6 +222,22 @@ mod tests {
         }
         let env = sanitized_env();
         assert!(!env.iter().any(|(k, _)| k == "SSH_AUTH_SOCK"));
+        unsafe {
+            std::env::remove_var("SSH_AUTH_SOCK");
+        }
+    }
+
+    #[test]
+    fn preserves_ssh_auth_sock_only_for_simple_git_commands() {
+        unsafe {
+            std::env::set_var("SSH_AUTH_SOCK", "/tmp/agent.123");
+        }
+        let git_env = sanitized_env_for_command("git -C ../repo status --short");
+        assert!(git_env.iter().any(|(k, v)| k == "SSH_AUTH_SOCK" && v == "/tmp/agent.123"));
+        let shell_env = sanitized_env_for_command("git status && ssh-add -L");
+        assert!(!shell_env.iter().any(|(k, _)| k == "SSH_AUTH_SOCK"));
+        let nongit_env = sanitized_env_for_command("echo ok");
+        assert!(!nongit_env.iter().any(|(k, _)| k == "SSH_AUTH_SOCK"));
         unsafe {
             std::env::remove_var("SSH_AUTH_SOCK");
         }

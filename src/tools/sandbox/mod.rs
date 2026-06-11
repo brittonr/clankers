@@ -19,3 +19,4 @@ pub use clankers_tool_host::path_policy::init_policy;
 pub use landlock::apply_landlock_to_current;
 // Environment sanitization — stays local
 pub use policy::sanitized_env;
+pub use policy::sanitized_env_for_command;

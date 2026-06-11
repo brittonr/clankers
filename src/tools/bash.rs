@@ -228,8 +228,8 @@ impl BashTool {
 
     /// Spawn a bash child process with sanitized environment and sandboxing.
     fn spawn_command(&self, command: &str) -> Result<tokio::process::Child, ToolResult> {
-        // Build sanitized environment (strips secrets, API keys, SSH agent, etc.)
-        let clean_env = crate::tools::sandbox::sanitized_env();
+        // Build sanitized environment (strips secrets and keeps SSH agent only for simple git commands).
+        let clean_env = crate::tools::sandbox::sanitized_env_for_command(command);
 
         let mut cmd = Command::new("bash");
         cmd.arg("-c")
