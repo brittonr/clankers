@@ -27,14 +27,6 @@
 //! - [`room`] — Room management (join, create, invite)
 #![allow(unexpected_cfgs)]
 #![cfg_attr(dylint_lib = "tigerstyle", feature(register_tool), register_tool(tigerstyle))]
-#![cfg_attr(
-    dylint_lib = "tigerstyle",
-    allow(
-        tigerstyle::assertion_density,
-        reason = "Matrix bridge preserves Matrix protocol wire shapes and message chunking behavior; bridge tests cover behavior during Tigerstyle drain"
-    )
-)]
-
 pub mod bridge;
 pub mod client;
 pub mod config;

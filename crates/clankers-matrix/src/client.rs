@@ -538,7 +538,9 @@ impl MatrixClient {
 
 /// Parse a Matrix room message into a ClankersEvent.
 fn parse_room_message(ev: &OriginalSyncRoomMessageEvent, room_id: &str) -> Option<ClankersEvent> {
+    assert!(!room_id.is_empty(), "Matrix room id must be present");
     let sender = ev.sender.to_string();
+    assert!(!sender.is_empty(), "Matrix sender id must be present");
     let timestamp =
         chrono::DateTime::from_timestamp(ev.origin_server_ts.as_secs().into(), 0).unwrap_or_else(chrono::Utc::now);
 

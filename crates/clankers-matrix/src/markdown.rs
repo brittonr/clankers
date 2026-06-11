@@ -29,6 +29,8 @@ pub fn md_to_html(text: &str) -> String {
 /// surrounding context. If a single block exceeds `max_bytes`, falls back
 /// to splitting at single newline boundaries.
 pub fn chunk_response(text: &str, max_bytes: u32) -> Vec<String> {
+    assert!(max_bytes > 0, "chunk size must be non-zero");
+    assert_eq!(text.len(), text.as_bytes().len(), "chunking budget is byte-based");
     let max_length_bytes = match usize::try_from(max_bytes) {
         Ok(value) => value,
         Err(_) => usize::MAX,
@@ -116,6 +118,8 @@ pub fn chunk_response(text: &str, max_bytes: u32) -> Vec<String> {
 /// A code block is a fenced block delimited by triple backticks.
 /// Paragraphs are separated by double newlines.
 fn split_into_blocks(text: &str) -> Vec<String> {
+    assert_eq!(text.len(), text.as_bytes().len(), "block splitting preserves byte offsets");
+    assert!(text.lines().count() <= text.len().saturating_add(1));
     let max_line_count = text.lines().count();
     let mut blocks = Vec::with_capacity(max_line_count);
     let mut current = String::new();

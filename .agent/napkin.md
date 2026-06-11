@@ -2,6 +2,7 @@
 
 ## Working Notes
 
+- 2026-06-11: clankers-matrix assertion-density crate allow drain was small: remove the lib allow, add room/sender invariants in `parse_room_message`, and byte-budget invariants in `chunk_response` / `split_into_blocks`. Validate both package and full Tigerstyle because package-local green can miss workspace interactions.
 - 2026-06-11: clankers-session ambient-clock final drain: keep test-only convenience wrappers under `#[cfg(test)]`, add production `*_at` APIs taking `SessionTimestamp`, thread `crate::session_clock_now()` from the root shell, and derive import/session filenames from header/creation timestamps. Integration tests compile clankers-session as a normal dependency, so update root `tests/` to call `create_at`/`append_message_at` rather than relying on cfg(test) wrappers.
 - 2026-06-11: clankers-model-selection assertion-density final drain only needed two functions after removing the crate allow: add local path invariants in `try_load_user_pricing`, and move orchestration score thresholds into named constants with assertions in `detect_pattern`. Re-run package Tigerstyle after removing the allow.
 - 2026-06-11: clankers-session explicit-defaults drain: after the assertion-density slice, removing the last crate allow only exposed entry/ledger serde defaults plus a few default convenience calls. Preserve serde `skip_serializing_if` while dropping `default` from `Option<T>` fields; use explicit `String::new`, `Vec::new`, `BTreeMap::new`, `or_insert_with(Vec::new)`, and `unwrap_or_else(...)` elsewhere.
