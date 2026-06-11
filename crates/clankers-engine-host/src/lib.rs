@@ -57,6 +57,7 @@ pub const HOST_CANCELLED_REASON: &str = "turn cancelled";
 pub const MISSING_TOOL_ERROR_PREFIX: &str = "missing tool";
 pub const CAPABILITY_DENIED_ERROR_PREFIX: &str = "capability denied";
 pub const TOOL_CANCELLED_ERROR_PREFIX: &str = "tool cancelled";
+const ENGINE_HOST_REDUCER_STEP_LIMIT_COUNT: u32 = 4096;
 
 #[derive(Debug, Clone)]
 pub struct EngineRunSeed {
@@ -222,14 +223,6 @@ where
     pub usage_observer: &'a mut U,
 }
 
-#[cfg_attr(
-    dylint_lib = "tigerstyle",
-    allow(
-        tigerstyle::numeric_units,
-        tigerstyle::unbounded_loop,
-        reason = "host runner shell is bounded by reducer effect exhaustion and regression-tested adapter sequencing guards"
-    )
-)]
 pub async fn run_engine_turn<M, T, R, E, C, U>(
     seed: EngineRunSeed,
     mut hosts: HostAdapters<'_, M, T, R, E, C, U>,
@@ -244,14 +237,15 @@ where
 {
     assert!(!HOST_CANCELLED_REASON.is_empty());
     assert!(seed.first_outcome.effects.len() <= seed.first_outcome.effects.capacity());
-    let mut execution_report = EngineRunReport::new(&seed);
+    let mut run_output = EngineRunReport::new(&seed);
     let mut state = seed.first_outcome.next_state.clone();
     let mut outcome = seed.first_outcome;
 
-    loop {
+    for reducer_step_index in 0..ENGINE_HOST_REDUCER_STEP_LIMIT_COUNT {
+        assert!(reducer_step_index < ENGINE_HOST_REDUCER_STEP_LIMIT_COUNT);
         if outcome.rejection.is_some() || outcome.terminal_failure.is_some() || outcome.effects.is_empty() {
-            execution_report.replace_reducer_outcome(outcome);
-            return execution_report;
+            run_output.replace_reducer_outcome(outcome);
+            return run_output;
         }
 
         let effects = outcome.effects.clone();
@@ -259,17 +253,17 @@ where
         for effect in effects {
             match effect {
                 EngineEffect::EmitEvent(event) => {
-                    observe_event(&mut execution_report, hosts.event_sink, event);
+                    observe_event(&mut run_output, hosts.event_sink, event);
                 }
                 EngineEffect::RequestModel(request) => {
-                    let input = model_input_from_effect(&mut execution_report, &mut hosts, request).await;
+                    let input = model_input_from_effect(&mut run_output, &mut hosts, request).await;
                     outcome = reduce(&state, &input);
                     state = outcome.next_state.clone();
                     is_reducer_advanced = true;
                     break;
                 }
                 EngineEffect::ScheduleRetry { request_id, delay } => {
-                    let input = retry_input_from_effect(&mut execution_report, &mut hosts, request_id, delay).await;
+                    let input = retry_input_from_effect(&mut run_output, &mut hosts, request_id, delay).await;
                     outcome = reduce(&state, &input);
                     state = outcome.next_state.clone();
                     is_reducer_advanced = true;
@@ -287,11 +281,21 @@ where
             }
         }
 
-        execution_report.replace_reducer_outcome(outcome.clone());
+        run_output.replace_reducer_outcome(outcome.clone());
         if !is_reducer_advanced {
-            return execution_report;
+            return run_output;
         }
     }
+
+    let mut bounded_outcome = outcome;
+    bounded_outcome.effects.clear();
+    bounded_outcome.terminal_failure = Some(EngineTerminalFailure {
+        message: "engine host reducer step limit exceeded".to_string(),
+        status: None,
+        retryable: false,
+    });
+    run_output.replace_reducer_outcome(bounded_outcome);
+    run_output
 }
 
 async fn model_input_from_effect<M, T, R, E, C, U>(
