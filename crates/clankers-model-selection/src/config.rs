@@ -33,20 +33,18 @@ pub struct RoutingPolicyConfig {
     pub keyword_hints: HashMap<String, f32>,
 
     /// Soft budget limit (USD) — bias toward cheaper models when exceeded
-    #[serde(default)]
     pub budget_soft_limit: Option<f64>,
 
     /// Hard budget limit (USD) — force cheapest model when exceeded
-    #[serde(default)]
     pub budget_hard_limit: Option<f64>,
 
     /// Enable multi-model orchestration (experimental, default: false)
-    #[serde(default)]
+    #[serde(default = "default_disabled")]
     pub enable_orchestration: bool,
 }
 
-impl Default for RoutingPolicyConfig {
-    fn default() -> Self {
+impl RoutingPolicyConfig {
+    pub fn new() -> Self {
         Self {
             enabled: default_enabled(),
             low_threshold: default_low_threshold(),
@@ -61,8 +59,18 @@ impl Default for RoutingPolicyConfig {
     }
 }
 
+impl Default for RoutingPolicyConfig {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 fn default_enabled() -> bool {
     true
+}
+
+fn default_disabled() -> bool {
+    false
 }
 
 fn default_low_threshold() -> f32 {
@@ -108,7 +116,7 @@ mod tests {
 
     #[test]
     fn test_default_config() {
-        let config = RoutingPolicyConfig::default();
+        let config = RoutingPolicyConfig::new();
         assert!(config.enabled);
         assert_eq!(config.low_threshold, 20.0);
         assert_eq!(config.high_threshold, 50.0);
@@ -128,7 +136,7 @@ mod tests {
 
     #[test]
     fn test_config_serialization() {
-        let config = RoutingPolicyConfig::default();
+        let config = RoutingPolicyConfig::new();
         let json = serde_json::to_string(&config).expect("config should serialize to JSON");
         let decoded: RoutingPolicyConfig = serde_json::from_str(&json).expect("JSON should deserialize to config");
         assert_eq!(decoded.enabled, config.enabled);

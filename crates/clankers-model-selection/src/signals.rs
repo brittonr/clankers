@@ -5,7 +5,7 @@ use serde::Deserialize;
 use serde::Serialize;
 
 /// All signals used to determine task complexity and route to appropriate model
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone)]
 pub struct ComplexitySignals {
     /// Estimated token count in the user prompt
     pub token_count: usize,
@@ -19,6 +19,25 @@ pub struct ComplexitySignals {
     pub current_cost: CostMicros,
     /// Raw prompt text (for orchestration pattern detection)
     pub prompt_text: Option<String>,
+}
+
+impl ComplexitySignals {
+    pub fn new() -> Self {
+        Self {
+            token_count: 0,
+            recent_tools: Vec::new(),
+            keywords: Vec::new(),
+            user_hint: None,
+            current_cost: CostMicros::ZERO,
+            prompt_text: None,
+        }
+    }
+}
+
+impl Default for ComplexitySignals {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 /// Summary of a tool call for complexity assessment

@@ -25,7 +25,7 @@ impl RoutingPolicy {
 
     /// Create a routing policy with default configuration
     pub fn default_policy() -> Self {
-        Self::new(RoutingPolicyConfig::default())
+        Self::new(RoutingPolicyConfig::new())
     }
 
     /// Select the appropriate model role based on complexity signals
@@ -252,13 +252,13 @@ mod tests {
     fn test_disabled_policy_returns_default() {
         let config = RoutingPolicyConfig {
             enabled: false,
-            ..Default::default()
+            ..RoutingPolicyConfig::new()
         };
         let policy = RoutingPolicy::new(config);
 
         let signals = ComplexitySignals {
             token_count: 10000,
-            ..Default::default()
+            ..ComplexitySignals::new()
         };
 
         let result = policy.select_model(&signals);
@@ -441,7 +441,7 @@ mod tests {
     fn test_hard_budget_forces_smol() {
         let config = RoutingPolicyConfig {
             budget_hard_limit: Some(5.0),
-            ..Default::default()
+            ..RoutingPolicyConfig::new()
         };
         let policy = RoutingPolicy::new(config);
 
@@ -449,7 +449,7 @@ mod tests {
             token_count: 5000, // Would normally be slow
             keywords: vec![("architecture".to_string(), 15.0)],
             current_cost: CostMicros::from_micros(6_000_000), // Over hard limit
-            ..Default::default()
+            ..ComplexitySignals::new()
         };
 
         let result = policy.select_model(&signals);
@@ -461,7 +461,7 @@ mod tests {
     fn test_soft_budget_biases_cheaper() {
         let config = RoutingPolicyConfig {
             budget_soft_limit: Some(1.0),
-            ..Default::default()
+            ..RoutingPolicyConfig::new()
         };
         let policy = RoutingPolicy::new(config);
 
@@ -471,7 +471,7 @@ mod tests {
             keywords: vec![("architecture".to_string(), 15.0), ("refactor".to_string(), 10.0)],
             current_cost: CostMicros::ZERO,
             prompt_text: None,
-            ..Default::default()
+            ..ComplexitySignals::new()
         };
         let result_no_budget = policy.select_model(&signals_no_budget);
         assert_eq!(result_no_budget.role, "slow");
@@ -490,14 +490,14 @@ mod tests {
     fn test_hard_budget_overrides_user_hint() {
         let config = RoutingPolicyConfig {
             budget_hard_limit: Some(5.0),
-            ..Default::default()
+            ..RoutingPolicyConfig::new()
         };
         let policy = RoutingPolicy::new(config);
 
         let signals = ComplexitySignals {
             user_hint: Some(ModelRoleHint::Thorough),        // User wants slow
             current_cost: CostMicros::from_micros(6_000_000), // But over hard limit
-            ..Default::default()
+            ..ComplexitySignals::new()
         };
 
         let result = policy.select_model(&signals);

@@ -8,7 +8,6 @@
     dylint_lib = "tigerstyle",
     allow(
         tigerstyle::assertion_density,
-        tigerstyle::explicit_defaults,
         reason = "model selection preserves public cost/routing policy shapes; focused tests cover routing behavior during Tigerstyle drain"
     )
 )]

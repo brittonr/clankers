@@ -83,33 +83,57 @@ pub fn pricing_from_models(
 /// Prefer [`pricing_from_models`] when a provider is available.
 /// This function is kept for test/headless contexts where no provider exists.
 pub fn load_pricing(config_dir: Option<&Path>) -> HashMap<String, ModelPricing> {
-    try_load_user_pricing(config_dir).unwrap_or_default()
+    try_load_user_pricing(config_dir).unwrap_or_else(HashMap::new)
 }
 
 // ── Configuration ───────────────────────────────────────────────────────────
 
 /// Budget configuration
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CostTrackerConfig {
     /// Soft budget limit — warn but don't enforce (USD)
-    #[serde(default)]
     pub soft_limit: Option<f64>,
     /// Hard budget limit — downgrade to cheaper models (USD)
-    #[serde(default)]
     pub hard_limit: Option<f64>,
     /// Warn at regular cost intervals (e.g., every $1.00)
-    #[serde(default)]
     pub warning_interval: Option<f64>,
+}
+
+impl CostTrackerConfig {
+    pub fn new() -> Self {
+        Self {
+            soft_limit: None,
+            hard_limit: None,
+            warning_interval: None,
+        }
+    }
+}
+
+impl Default for CostTrackerConfig {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 // ── Per-model usage ─────────────────────────────────────────────────────────
 
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone)]
 struct ModelUsage {
     input_tokens: u64,
     output_tokens: u64,
     total_turns: u64,
     cost_micros: CostMicros,
+}
+
+impl ModelUsage {
+    fn new() -> Self {
+        Self {
+            input_tokens: 0,
+            output_tokens: 0,
+            total_turns: 0,
+            cost_micros: CostMicros::ZERO,
+        }
+    }
 }
 
 // ── Budget status ───────────────────────────────────────────────────────────
@@ -194,7 +218,7 @@ impl CostTracker {
     /// Models will be tracked at $0 cost. In production, prefer creating
     /// via [`pricing_from_models`] to get real pricing from the model registry.
     pub fn with_defaults() -> Self {
-        Self::new(HashMap::new(), CostTrackerConfig::default())
+        Self::new(HashMap::new(), CostTrackerConfig::new())
     }
 
     /// Record token usage from an API response.
@@ -231,7 +255,7 @@ impl CostTracker {
 
         let total_cost = {
             let mut usage = self.usage.write().expect("usage lock not poisoned");
-            let entry = usage.entry(model_id.to_string()).or_default();
+            let entry = usage.entry(model_id.to_string()).or_insert_with(ModelUsage::new);
             entry.input_tokens += input_tokens;
             entry.output_tokens += output_tokens;
             entry.total_turns += 1;
@@ -492,7 +516,7 @@ mod tests {
     }
 
     fn test_tracker() -> CostTracker {
-        CostTracker::new(test_pricing(), CostTrackerConfig::default())
+        CostTracker::new(test_pricing(), CostTrackerConfig::new())
     }
 
     fn tracker_with_budget(soft: Option<f64>, hard: Option<f64>) -> CostTracker {
