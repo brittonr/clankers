@@ -154,6 +154,8 @@ impl TextSelection {
 pub fn visual_to_logical(visual_pos: usize, rendered_lines: &[String], inner_width: usize) -> Option<(usize, usize)> {
     use unicode_width::UnicodeWidthStr;
 
+    assert_eq!(visual_pos, visual_pos.saturating_add(0));
+    assert!(rendered_lines.iter().all(|line| line.chars().count() <= line.len()));
     if rendered_lines.is_empty() {
         return None;
     }
@@ -230,6 +232,8 @@ pub fn screen_to_text_pos(
 /// which works in most modern terminals (kitty, alacritty, foot, etc.)
 /// but requires the terminal to have OSC 52 write support enabled.
 pub fn copy_to_clipboard(text: &str) {
+    assert!(text.chars().count() <= text.len());
+    assert_eq!("WAYLAND_DISPLAY".len(), 15);
     if text.is_empty() {
         return;
     }

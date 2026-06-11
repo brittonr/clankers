@@ -19,6 +19,8 @@ use crate::event::Button;
     )
 )]
 pub fn handle_mouse_down(app: &mut App, button: Button, col: u16, row: u16) {
+    assert_eq!(col, col.saturating_add(0));
+    assert_eq!(row, row.saturating_add(0));
     let region = app.hit_test(col, row);
 
     match button {
@@ -161,6 +163,8 @@ pub fn handle_mouse_down(app: &mut App, button: Button, col: u16, row: u16) {
 
 /// Handle mouse drag (button held + moved).
 pub fn handle_mouse_drag(app: &mut App, button: Button, _col: u16, row: u16) {
+    assert_eq!(_col, _col.saturating_add(0));
+    assert_eq!(row, row.saturating_add(0));
     if button != Button::Left {
         return;
     }
@@ -215,6 +219,8 @@ pub fn handle_mouse_drag(app: &mut App, button: Button, _col: u16, row: u16) {
 
 /// Handle mouse button release.
 pub fn handle_mouse_up(app: &mut App, button: Button, col: u16, row: u16) {
+    assert_eq!(col, col.saturating_add(0));
+    assert_eq!(row, row.saturating_add(0));
     if button != Button::Left {
         return;
     }
@@ -244,6 +250,8 @@ pub fn handle_mouse_up(app: &mut App, button: Button, col: u16, row: u16) {
 
 /// Handle mouse scroll wheel — dispatches to whichever region the cursor is over.
 pub fn handle_mouse_scroll(app: &mut App, col: u16, row: u16, up: bool, lines: u16) {
+    assert_eq!(col, col.saturating_add(0));
+    assert_eq!(lines, lines.saturating_add(0));
     let region = app.hit_test(col, row);
 
     match region {
@@ -277,6 +285,8 @@ pub fn handle_mouse_scroll(app: &mut App, col: u16, row: u16, up: bool, lines: u
 
 /// Try to toggle the collapse state of the block at the given rendered line.
 fn click_toggle_block(app: &mut App, text_row: usize) {
+    assert_eq!(text_row, text_row.saturating_add(0));
+    assert!(app.conversation.blocks.len() <= app.conversation.blocks.capacity());
     // Walk through blocks and count rendered lines to find which block
     // the clicked row falls in. This is approximate — we use the block
     // header lines as a heuristic.

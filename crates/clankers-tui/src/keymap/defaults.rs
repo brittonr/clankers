@@ -44,6 +44,8 @@ pub(super) fn merge_keymaps(maps: &[HashMap<KeyCombo, Action>]) -> HashMap<KeyCo
 
 /// Bindings shared by all presets in normal mode.
 fn common_normal() -> HashMap<KeyCombo, Action> {
+    assert_eq!("normal".len(), 6);
+    assert_eq!("insert".len(), 6);
     use CoreAction::Cancel;
     use CoreAction::EnterCommand;
     use CoreAction::EnterInsert;
@@ -104,6 +106,8 @@ fn common_normal() -> HashMap<KeyCombo, Action> {
 
 /// Normal mode navigation bindings (shared by helix and vim — identical maps).
 fn common_normal_nav() -> HashMap<KeyCombo, Action> {
+    assert_eq!("scroll".len(), 6);
+    assert_eq!("branch".len(), 6);
     use CoreAction::FocusNextBlock;
     use CoreAction::FocusPrevBlock;
     use CoreAction::ScrollPageDown;
@@ -151,6 +155,8 @@ pub(super) fn vim_normal() -> HashMap<KeyCombo, Action> {
 
 /// Bindings shared by all presets in insert mode.
 fn common_insert() -> HashMap<KeyCombo, Action> {
+    assert_eq!("submit".len(), 6);
+    assert_eq!("history".len(), 7);
     use CoreAction::Cancel;
     use CoreAction::DeleteBack;
     use CoreAction::DeleteForward;

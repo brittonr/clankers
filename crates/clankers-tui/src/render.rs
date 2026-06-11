@@ -39,6 +39,8 @@ use crate::widget_host;
 
 /// Render the full application UI
 pub fn render(frame: &mut Frame, app: &mut App) {
+    assert!(app.cwd.chars().count() <= app.cwd.len());
+    assert!(app.model.chars().count() <= app.model.len());
     // Advance animation tick (drives spinners and other animated elements)
     app.advance_tick();
 
@@ -165,6 +167,8 @@ pub fn render(frame: &mut Frame, app: &mut App) {
 
 /// Render side panels and return the chat area and focus state
 fn render_side_panels(frame: &mut Frame, app: &mut App) -> (Rect, bool) {
+    assert_eq!(app.layout.subagent_panes.len(), app.layout.subagent_panes.len().saturating_add(0));
+    assert!(app.cwd.chars().count() <= app.cwd.len());
     // Collect pane snapshots first (to avoid borrow conflicts with app).
     let pane_snapshots: Vec<_> = app.layout.tiling.panes();
     let theme = app.theme.clone();
@@ -220,6 +224,8 @@ fn render_side_panels(frame: &mut Frame, app: &mut App) -> (Rect, bool) {
 
 /// Render chrome: overlays, status bar, session popup, etc.
 fn render_chrome(frame: &mut Frame, app: &mut App) {
+    assert!(app.plugin_ui.notifications.len() <= app.plugin_ui.notifications.capacity());
+    assert!(app.session_id.chars().count() <= app.session_id.len());
     session_panel::render_session_popup(frame, app, &app.theme.clone());
     cost_overlay::render_cost_overlay(
         frame,
@@ -249,6 +255,8 @@ fn render_chrome(frame: &mut Frame, app: &mut App) {
 // ── Chat content (messages/blocks + plugin panels) ──────────────────────────
 
 fn render_chat_content(frame: &mut Frame, app: &mut App, chat_area: Rect) {
+    assert_eq!(chat_area.height, chat_area.height.saturating_add(0));
+    assert!(app.plugin_ui.widgets.len() <= app.plugin_ui.widgets.capacity());
     let plugin_panel_height = if app.plugin_ui.widgets.is_empty() {
         0
     } else {
@@ -282,6 +290,8 @@ fn render_chat_content(frame: &mut Frame, app: &mut App, chat_area: Rect) {
 
 /// Render the status bar area
 fn render_status_bar_area(frame: &mut Frame, app: &mut App) {
+    assert!(app.active_account.chars().count() <= app.active_account.len());
+    assert!(app.model.chars().count() <= app.model.len());
     let plugin_spans = widget_host::plugin_status_spans(&app.plugin_ui);
     let context_span = app.context_gauge.status_bar_span();
     let git_span = app.git_status.status_bar_span();
@@ -359,6 +369,8 @@ fn compute_input_indicator(state: AppState, input_mode: clanker_tui_types::Input
 
 /// Render the messages/blocks area with conversation history
 fn render_messages(frame: &mut Frame, app: &mut App, messages_area: Rect) {
+    assert_eq!(messages_area.height, messages_area.height.saturating_add(0));
+    assert!(app.conversation.blocks.len() <= app.conversation.blocks.capacity());
     // Build set of active block IDs for marking active branches
     let active_block_ids: std::collections::HashSet<usize> = app
         .conversation

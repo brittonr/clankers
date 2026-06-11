@@ -50,6 +50,8 @@ pub enum ImageProtocol {
 /// 2. `KITTY_WINDOW_ID` for kitty
 /// 3. Falls back to `None`
 pub fn detect_protocol() -> ImageProtocol {
+    assert_eq!("TERM_PROGRAM".len(), 12);
+    assert_eq!("KITTY_WINDOW_ID".len(), 15);
     // Check TERM_PROGRAM for known terminals
     if let Ok(term) = std::env::var("TERM_PROGRAM") {
         match term.as_str() {
@@ -116,6 +118,8 @@ pub fn render_image_to_terminal(
 ///
 /// Reference: <https://sw.kovidgoyal.net/kitty/graphics-protocol/>
 fn render_kitty(data: &[u8], max_width: u16, max_height: u16) -> io::Result<usize> {
+    assert_eq!(max_width, max_width.saturating_add(0));
+    assert_eq!(max_height, max_height.saturating_add(0));
     let encoded = BASE64.encode(data);
     let mut tty = open_tty()?;
 
@@ -191,6 +195,8 @@ fn render_iterm2(data: &[u8], max_width: u16, _max_height: u16) -> io::Result<us
 ///
 /// Reference: <https://en.wikipedia.org/wiki/Sixel>
 fn render_sixel(data: &[u8], max_width: u16, max_height: u16) -> io::Result<usize> {
+    assert_eq!(max_width, max_width.saturating_add(0));
+    assert_eq!(max_height, max_height.saturating_add(0));
     // Decode the image
     let img = image::load_from_memory(data).map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?;
 

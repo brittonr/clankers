@@ -132,6 +132,8 @@ impl Default for SlashMenu {
 /// `editor_area` is the Rect of the editor widget — the menu renders just above it.
 /// `cursor_x` is the absolute screen X position of the cursor so the menu follows it.
 pub fn render_slash_menu(frame: &mut Frame, menu: &SlashMenu, theme: &Theme, editor_area: Rect, cursor_x: u16) {
+    assert!(menu.selected <= menu.items.len());
+    assert_eq!(cursor_x, cursor_x.saturating_add(0));
     if !menu.visible || menu.items.is_empty() {
         return;
     }

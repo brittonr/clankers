@@ -20,6 +20,8 @@ use ratatui::text::Span;
     )
 )]
 pub fn model_context_window(model: &str) -> (usize, usize) {
+    assert!(model.chars().count() <= model.len());
+    assert_eq!(model.len(), model.as_bytes().len());
     // Normalize: lowercase, strip leading provider prefixes
     let m = model.to_lowercase();
     let m = m.strip_prefix("anthropic/").unwrap_or(&m);

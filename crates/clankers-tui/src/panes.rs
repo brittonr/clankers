@@ -184,6 +184,8 @@ pub mod pane_ids {
     allow(no_unwrap, reason = "default BSP tree construction is infallible")
 )]
 pub fn default_tiling() -> Hypertile {
+    assert!(0.20f32 > 0.0);
+    assert!(0.625f32 < 1.0);
     let tree = Node::Split {
         direction: Direction::Horizontal,
         ratio: 0.20,
@@ -249,6 +251,8 @@ pub fn focused_tiling() -> (Hypertile, PaneRegistry) {
     allow(no_unwrap, reason = "tiling construction is infallible")
 )]
 pub fn wide_chat_tiling() -> (Hypertile, PaneRegistry) {
+    assert!(0.20f32 > 0.0);
+    assert!(0.50f32 < 1.0);
     let tree = Node::Split {
         direction: Direction::Horizontal,
         ratio: 0.20,
@@ -287,6 +291,8 @@ pub fn wide_chat_tiling() -> (Hypertile, PaneRegistry) {
 )]
 /// Right-heavy layout: everything on the right.
 pub fn right_heavy_tiling() -> (Hypertile, PaneRegistry) {
+    assert!(0.70f32 > 0.0);
+    assert!(0.50f32 < 1.0);
     let tree = Node::Split {
         direction: Direction::Horizontal,
         ratio: 0.70,

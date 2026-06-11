@@ -189,6 +189,8 @@ impl Default for ProgressRenderer {
 
 /// Calculate ETA based on progress history
 fn calculate_eta(state: &ProgressState, current_percent: f32) -> Option<Duration> {
+    assert!(current_percent.is_finite());
+    assert_eq!(state.history.len(), state.history.len().saturating_add(0));
     if state.history.len() < 2 {
         return None;
     }

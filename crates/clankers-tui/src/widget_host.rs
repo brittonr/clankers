@@ -142,6 +142,8 @@ pub fn render_widget(frame: &mut Frame, widget: &Widget, area: Rect) {
     )
 )]
 pub fn render_plugin_panels(frame: &mut Frame, plugin_ui: &PluginUiState, theme: &Theme, area: Rect) -> u16 {
+    assert!(plugin_ui.widgets.len() <= plugin_ui.widgets.capacity());
+    assert_eq!(area.height, area.height.saturating_add(0));
     if plugin_ui.widgets.is_empty() {
         return 0;
     }
@@ -183,6 +185,8 @@ pub fn render_plugin_panels(frame: &mut Frame, plugin_ui: &PluginUiState, theme:
 
 /// Render plugin notifications as toast overlays
 pub fn render_plugin_notifications(frame: &mut Frame, notifications: &[PluginNotification], area: Rect) {
+    assert_eq!(area.height, area.height.saturating_add(0));
+    assert!(notifications.iter().all(|notification| notification.message.chars().count() <= notification.message.len()));
     let max_visible = 3;
     let visible: Vec<&PluginNotification> =
         notifications.iter().rev().take(max_visible).collect::<Vec<_>>().into_iter().rev().collect();

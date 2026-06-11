@@ -19,6 +19,8 @@ use crate::app::BashConfirmState;
 
 /// Render a bash confirm dialog for attach mode protocol
 pub fn render_bash_confirm(frame: &mut Frame, area: Rect, state: &BashConfirmState) {
+    assert!(state.command.chars().count() <= state.command.len());
+    assert_eq!(area.width, area.width.saturating_add(0));
     let width = 60.min(area.width.saturating_sub(4));
     let height = 7;
     let x = (area.width.saturating_sub(width)) / 2;

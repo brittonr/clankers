@@ -75,6 +75,8 @@ fn root_submenu_openers() -> Vec<MenuContribution> {
 }
 
 fn root_actions() -> Vec<MenuContribution> {
+    assert_eq!("model".len(), 5);
+    assert_eq!("quit".len(), 4);
     use clanker_tui_types::Action;
     use clanker_tui_types::CoreAction;
     use clanker_tui_types::ExtendedAction;

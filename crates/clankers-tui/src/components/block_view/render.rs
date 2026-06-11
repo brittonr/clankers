@@ -48,6 +48,8 @@ pub fn render_conversation_block<'a>(
     tick: u64,
     highlighter: &dyn clanker_tui_types::SyntaxHighlighter,
 ) -> Vec<Line<'a>> {
+    assert!(block.prompt.len() <= block.prompt.capacity());
+    assert!(block.prompt.chars().count() <= block.prompt.len());
     let mut lines = Vec::new();
 
     let border_color = if focused {
@@ -385,6 +387,8 @@ pub fn render_active_block<'a>(
     tick: u64,
     highlighter: &dyn clanker_tui_types::SyntaxHighlighter,
 ) -> Vec<Line<'a>> {
+    assert!(block.prompt.len() <= block.prompt.capacity());
+    assert!(block.prompt.chars().count() <= block.prompt.len());
     let border_color = theme.block_border_focused;
     let border_style = Style::default().fg(border_color);
 

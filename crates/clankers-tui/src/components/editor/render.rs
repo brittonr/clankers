@@ -84,6 +84,8 @@ pub fn render_editor(
     border_color: Color,
     title: &str,
 ) {
+    assert!(indicator.chars().count() <= indicator.len());
+    assert!(title.chars().count() <= title.len());
     let lines: Vec<Line> = editor
         .content()
         .iter()

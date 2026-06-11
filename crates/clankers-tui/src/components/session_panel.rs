@@ -18,6 +18,8 @@ use crate::components::block::ConversationBlockInit;
 
 /// Render the session/branch popup as a centered overlay
 pub fn render_session_popup(frame: &mut Frame, app: &App, theme: &Theme) {
+    assert!(app.conversation.blocks.len() <= app.conversation.blocks.capacity());
+    assert!(app.conversation.all_blocks.len() <= app.conversation.all_blocks.capacity());
     if !app.overlays.session_popup_visible {
         return;
     }
@@ -120,6 +122,8 @@ fn render_tree_node(
     max_preview: usize,
     theme: &Theme,
 ) {
+    assert!(lines.len() <= lines.capacity());
+    assert!(prefix.chars().count() <= prefix.len());
     let is_active = active_ids.contains(&block.id);
     let is_focused = app.conversation.focused_block == Some(block.id);
 

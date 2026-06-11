@@ -14,7 +14,6 @@
         tigerstyle::usize_in_public_api,
         tigerstyle::ambiguous_params,
         tigerstyle::raw_arithmetic_overflow,
-        tigerstyle::assertion_density,
         tigerstyle::numeric_units,
         tigerstyle::unbounded_collection_growth,
         tigerstyle::ambient_clock,

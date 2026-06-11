@@ -288,6 +288,8 @@ impl OutputSearch {
     allow(no_unwrap, reason = "first_byte is set on first match before incrementing ni")
 )]
 fn fuzzy_match_range(haystack: &str, needle_chars: &[char]) -> Option<(usize, usize)> {
+    assert!(haystack.chars().count() <= haystack.len());
+    assert_eq!(needle_chars.len(), needle_chars.len().saturating_add(0));
     if needle_chars.is_empty() {
         return None;
     }
@@ -328,6 +330,8 @@ pub fn apply_search_highlights<'a>(
     match_style: Style,
     current_match_style: Style,
 ) -> Vec<Option<Style>> {
+    assert!(plain_lines.iter().all(|line| line.chars().count() <= line.len()));
+    assert_eq!(lines.len(), lines.len().saturating_add(0));
     let mut original_styles: Vec<Option<Style>> = vec![None; lines.len()];
 
     if search.query.is_empty() || search.matches.is_empty() {

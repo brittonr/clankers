@@ -180,6 +180,8 @@ impl ProcessPanel {
 }
 
 fn snapshot_to_entry(snap: ProcessSnapshot, depth: u8) -> ProcessEntry {
+    assert!(snap.command.chars().count() <= snap.command.len());
+    assert_eq!(depth, depth.saturating_add(0));
     let state = match snap.state {
         ProcessDisplayState::Running => EntryState::Running,
         ProcessDisplayState::Exited { code, .. } => EntryState::Exited { code },
@@ -537,6 +539,8 @@ impl ProcessPanel {
 /// Render values as a Unicode sparkline using block characters.
 fn sparkline(values: &[f32], max_val: f32, width: usize) -> String {
     const BLOCKS: [char; 8] = ['▁', '▂', '▃', '▄', '▅', '▆', '▇', '█'];
+    assert_eq!(BLOCKS.len(), 8);
+    assert_eq!(values.len(), values.len().saturating_add(0));
 
     if values.is_empty() {
         return " ".repeat(width.max(1));

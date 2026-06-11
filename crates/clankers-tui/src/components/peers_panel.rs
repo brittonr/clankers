@@ -247,6 +247,8 @@ impl Panel for PeersPanel {
 }
 
 fn render_list_view(frame: &mut Frame, panel: &PeersPanel, _theme: &Theme, area: Rect, _focused: bool) {
+    assert!(panel.selected <= panel.entries.len());
+    assert_eq!(area.height, area.height.saturating_add(0));
     if panel.entries.is_empty() {
         let msg = vec![
             Line::from(Span::styled("No peers known.", Style::default().fg(Color::DarkGray))),
@@ -330,6 +332,8 @@ fn render_list_view(frame: &mut Frame, panel: &PeersPanel, _theme: &Theme, area:
 }
 
 fn render_detail_view(frame: &mut Frame, panel: &PeersPanel, _theme: &Theme, area: Rect, _focused: bool) {
+    assert!(panel.selected <= panel.entries.len());
+    assert_eq!(area.width, area.width.saturating_add(0));
     let entry = match panel.selected_peer() {
         Some(e) => e,
         None => return,
@@ -415,6 +419,8 @@ pub fn entries_from_registry(
     peers: &[clanker_tui_types::PeerInfoView],
     stale_threshold: chrono::Duration,
 ) -> Vec<PeerEntry> {
+    assert_eq!(peers.len(), peers.len().saturating_add(0));
+    assert!(stale_threshold >= chrono::Duration::zero());
     let now = chrono::Utc::now();
 
     let mut entries: Vec<PeerEntry> = peers

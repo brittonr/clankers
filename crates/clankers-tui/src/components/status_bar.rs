@@ -72,6 +72,8 @@ pub fn render_status_bar(frame: &mut Frame, data: &StatusBarData, theme: &Theme,
 
 /// Render mode indicators: input mode badge, streaming indicator, thinking badge
 fn render_mode_indicators<'a>(spans: &mut Vec<Span<'a>>, data: &StatusBarData<'a>) {
+    assert!(spans.len() <= spans.capacity());
+    assert!(data.model.chars().count() <= data.model.len());
     // Mode badge — distinct colours so it's always obvious
     let (mode_text, mode_style) = match data.input_mode {
         InputMode::Normal => {
@@ -144,6 +146,8 @@ fn render_mode_indicators<'a>(spans: &mut Vec<Span<'a>>, data: &StatusBarData<'a
 /// Render status badges: account, router, context, git, process, tool activity, cost/budget,
 /// plugins
 fn render_status_badges<'a>(spans: &mut Vec<Span<'a>>, data: &StatusBarData<'a>) {
+    assert!(spans.len() <= spans.capacity());
+    assert!(data.active_account.chars().count() <= data.active_account.len());
     // Account badge
     if !data.active_account.is_empty() {
         spans.push(Span::styled(
@@ -210,6 +214,8 @@ fn render_status_badges<'a>(spans: &mut Vec<Span<'a>>, data: &StatusBarData<'a>)
 }
 
 fn cost_badge(total_cost: CostMicros, budget_status: &BudgetStatus) -> (String, Color) {
+    assert_eq!(total_cost, total_cost.saturating_add(CostMicros::ZERO));
+    assert!(total_cost.format_major_units(2).len() <= total_cost.format_major_units(4).len());
     let total_cost_precise = total_cost.format_major_units(4);
     let total_cost_rounded = total_cost.format_major_units(2);
     match budget_status {

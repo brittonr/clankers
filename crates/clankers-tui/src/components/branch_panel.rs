@@ -285,6 +285,8 @@ impl Panel for BranchPanel {
 // ── Rendering ───────────────────────────────────────────────────────────────
 
 fn render_list_view(frame: &mut Frame, panel: &BranchPanel, area: Rect, ctx: &DrawContext) {
+    assert!(panel.nav.selected <= panel.entries.len());
+    assert_eq!(area.height, area.height.saturating_add(0));
     let mut lines = Vec::new();
 
     for (i, entry) in panel.entries.iter().enumerate() {
@@ -327,6 +329,8 @@ fn render_list_view(frame: &mut Frame, panel: &BranchPanel, area: Rect, ctx: &Dr
 }
 
 fn render_detail_view(frame: &mut Frame, panel: &BranchPanel, area: Rect, ctx: &DrawContext) {
+    assert!(panel.nav.selected <= panel.entries.len());
+    assert_eq!(area.width, area.width.saturating_add(0));
     let entry = match panel.selected_entry() {
         Some(e) => e,
         None => return,

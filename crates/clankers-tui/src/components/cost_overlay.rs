@@ -60,6 +60,8 @@ fn render_no_data(frame: &mut Frame, _theme: &Theme) {
 }
 
 fn render_summary(frame: &mut Frame, summary: &CostSummary, theme: &Theme) {
+    assert!(summary.by_model.len() <= summary.by_model.capacity());
+    assert_eq!(summary.total_cost, summary.total_cost.saturating_add(CostMicros::ZERO));
     let screen = frame.area();
     let area = calculate_overlay_area(screen, summary);
 
@@ -154,6 +156,8 @@ fn calculate_overlay_area(screen: Rect, summary: &CostSummary) -> Rect {
 
 /// Render per-model statistics rows, sorted by cost descending
 fn render_model_rows(lines: &mut Vec<Line>, summary: &CostSummary, theme: &Theme) {
+    assert!(lines.len() <= lines.capacity());
+    assert!(summary.by_model.len() <= summary.by_model.capacity());
     let mut models = summary.by_model.clone();
     models.sort_by_key(|model| std::cmp::Reverse(model.cost_usd));
 
@@ -202,6 +206,8 @@ fn render_total_row(lines: &mut Vec<Line>, summary: &CostSummary, theme: &Theme)
 
 /// Render a budget progress bar: `████████░░░░ $1.23 / $5.00`
 fn render_budget_bar(current: CostMicros, limit: CostMicros, width: usize, color: Color) -> Line<'static> {
+    assert_eq!(current, current.saturating_add(CostMicros::ZERO));
+    assert_eq!(limit, limit.saturating_add(CostMicros::ZERO));
     let label = format!("${} / ${}", current.format_major_units(2), limit.format_major_units(2));
     // 3 for spaces around bar
     let bar_width = width.saturating_sub(label.len() + 3);

@@ -345,6 +345,8 @@ pub fn render_subagent_panel(frame: &mut Frame, panel: &mut SubagentPanel, theme
     )
 )]
 fn render_list_view(frame: &mut Frame, panel: &mut SubagentPanel, theme: &Theme, area: Rect, focused: bool) {
+    assert!(panel.selected <= panel.entries.len());
+    assert_eq!(area.height, area.height.saturating_add(0));
     use ratatui::layout::Constraint;
     use ratatui::layout::Direction;
     use ratatui::layout::Layout;
@@ -395,6 +397,8 @@ fn render_list_view(frame: &mut Frame, panel: &mut SubagentPanel, theme: &Theme,
 
 /// Render one entry in list view: header + tail of output
 fn render_list_entry(frame: &mut Frame, entry: &SubagentEntry, area: Rect, is_selected: bool, _theme: &Theme) {
+    assert!(entry.task.chars().count() <= entry.task.len());
+    assert_eq!(area.height, area.height.saturating_add(0));
     let (icon, color) = status_icon_color(&entry.status);
 
     let header_style = if is_selected {
@@ -448,6 +452,8 @@ fn render_list_entry(frame: &mut Frame, entry: &SubagentEntry, area: Rect, is_se
 // ── Detail view ─────────────────────────────────────────────────────────────
 
 fn render_detail_view(frame: &mut Frame, panel: &mut SubagentPanel, theme: &Theme, area: Rect, focused: bool) {
+    assert!(panel.selected <= panel.entries.len());
+    assert_eq!(area.height, area.height.saturating_add(0));
     let entry = match panel.entries.get(panel.selected) {
         Some(e) => e,
         None => {
@@ -511,6 +517,8 @@ fn render_detail_view(frame: &mut Frame, panel: &mut SubagentPanel, theme: &Them
     )
 )]
 fn render_list_view_immut(frame: &mut Frame, panel: &SubagentPanel, theme: &Theme, area: Rect, focused: bool) {
+    assert!(panel.selected <= panel.entries.len());
+    assert_eq!(area.height, area.height.saturating_add(0));
     use ratatui::layout::Constraint;
     use ratatui::layout::Direction;
     use ratatui::layout::Layout;
@@ -547,6 +555,8 @@ fn render_list_view_immut(frame: &mut Frame, panel: &SubagentPanel, theme: &Them
 
 /// Detail view — immutable (computes scroll without mutation)
 fn render_detail_view_immut(frame: &mut Frame, panel: &SubagentPanel, _theme: &Theme, area: Rect, _focused: bool) {
+    assert!(panel.selected <= panel.entries.len());
+    assert_eq!(area.height, area.height.saturating_add(0));
     let entry = match panel.entries.get(panel.selected) {
         Some(e) => e,
         None => return,

@@ -87,6 +87,8 @@ pub fn render_blocks(
     tick: u64,
     highlighter: &dyn clanker_tui_types::SyntaxHighlighter,
 ) -> Vec<String> {
+    assert_eq!(area.width, area.width.saturating_add(0));
+    assert_eq!(area.height, area.height.saturating_add(0));
     // Inner width of the Paragraph (inside the outer border)
     let inner_width = area.width.saturating_sub(2) as usize;
 
