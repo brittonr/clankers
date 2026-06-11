@@ -47,6 +47,8 @@ pub fn strip_ansi(s: &str) -> String {
             out.push(c);
         }
     }
+    assert!(out.len() <= s.len());
+    assert!(!out.contains('\x1b'));
     out
 }
 

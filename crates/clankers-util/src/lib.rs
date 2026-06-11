@@ -4,7 +4,6 @@
 #![cfg_attr(
     dylint_lib = "tigerstyle",
     allow(
-        tigerstyle::assertion_density,
         tigerstyle::function_length,
         tigerstyle::unbounded_loop,
         tigerstyle::raw_arithmetic_overflow,

@@ -16,7 +16,9 @@ use std::path::PathBuf;
 ///
 /// A tuple of (truncated_content, full_output_path)
 pub fn truncate_head(content: &str, max_lines: usize, max_bytes: usize) -> (String, Option<PathBuf>) {
+    assert!(content.chars().count() <= content.len());
     let lines: Vec<&str> = content.lines().collect();
+    assert!(lines.len() <= content.len().saturating_add(1));
 
     // Check if we need to truncate by line count
     let needs_line_truncation = lines.len() > max_lines;
@@ -72,7 +74,9 @@ pub fn truncate_head(content: &str, max_lines: usize, max_bytes: usize) -> (Stri
 ///
 /// A tuple of (truncated_content, full_output_path)
 pub fn truncate_tail(content: &str, max_lines: usize, max_bytes: usize) -> (String, Option<PathBuf>) {
+    assert!(content.chars().count() <= content.len());
     let lines: Vec<&str> = content.lines().collect();
+    assert!(lines.len() <= content.len().saturating_add(1));
 
     // Check if we need to truncate
     let needs_line_truncation = lines.len() > max_lines;

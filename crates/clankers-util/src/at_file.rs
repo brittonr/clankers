@@ -179,7 +179,9 @@ pub struct ExpandedContent {
 
 /// Find all @file references in a prompt string
 pub fn find_at_refs(text: &str) -> Vec<AtFileRef> {
-    let mut refs = Vec::with_capacity(text.matches('@').count());
+    let at_count = text.matches('@').count();
+    assert!(text.chars().count() <= text.len());
+    let mut refs = Vec::with_capacity(at_count);
 
     // Simple state-machine approach (avoids lookbehind):
     // Walk through the text character by character, looking for `@` preceded
@@ -248,6 +250,7 @@ pub fn find_at_refs(text: &str) -> Vec<AtFileRef> {
         }
     }
 
+    assert!(refs.len() <= at_count);
     refs
 }
 
@@ -275,6 +278,8 @@ pub fn expand_at_refs_with_images(text: &str, cwd: &str) -> ExpandedContent {
 
 /// Expand context references with explicit policy controls for bounded diffs and URL fetches.
 pub fn expand_at_refs_with_policy(text: &str, cwd: &str, policy: &ContextReferencePolicy) -> ExpandedContent {
+    assert!(text.chars().count() <= text.len());
+    assert!(cwd.chars().count() <= cwd.len());
     let refs = find_at_refs(text);
     if refs.is_empty() {
         return ExpandedContent {
@@ -291,6 +296,7 @@ pub fn expand_at_refs_with_policy(text: &str, cwd: &str, policy: &ContextReferen
     let mut images = Vec::with_capacity(sorted_refs.len());
     let mut references = Vec::with_capacity(sorted_refs.len());
     sorted_refs.sort_by_key(|r| Reverse(r.start));
+    let reference_count = sorted_refs.len();
 
     for at_ref in sorted_refs {
         if is_git_diff_reference(&at_ref.path) {
@@ -394,6 +400,8 @@ pub fn expand_at_refs_with_policy(text: &str, cwd: &str, policy: &ContextReferen
     }
 
     references.sort_by_key(|m| sorted_position_key(text, &m.raw));
+    assert!(images.len() <= references.len());
+    assert_eq!(references.len(), reference_count);
 
     ExpandedContent {
         text: result,
@@ -538,6 +546,8 @@ fn is_git_diff_reference(path: &str) -> bool {
 }
 
 fn read_git_diff_reference(path: &str, cwd: &str, max_bytes: usize) -> ReadContent {
+    assert!(path.chars().count() <= path.len());
+    assert!(cwd.chars().count() <= cwd.len());
     let target = if path == "diff" || path == "git:diff" {
         "git:diff".to_string()
     } else {
@@ -581,6 +591,8 @@ fn read_git_diff_reference(path: &str, cwd: &str, max_bytes: usize) -> ReadConte
 }
 
 fn read_url_reference(path: &str, policy: &ContextReferencePolicy) -> ReadContent {
+    assert!(path.chars().count() <= path.len());
+    assert_eq!(policy.url_timeout_ms, policy.url_timeout_ms.saturating_add(0));
     let target = unsupported_target(path);
     if !policy.allow_url_fetch {
         return ReadContent {
@@ -640,6 +652,8 @@ fn bounded_content(
     max_bytes: usize,
     limit_message: &'static str,
 ) -> ReadContent {
+    assert!(!limit_message.is_empty());
+    assert!(content.chars().count() <= content.len());
     if content.len() > max_bytes {
         return ReadContent {
             content: format!("[{}: {} > {} bytes]", limit_message, content.len(), max_bytes),

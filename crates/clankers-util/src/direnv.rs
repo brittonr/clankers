@@ -22,6 +22,9 @@ use tracing::warn;
 /// This is designed to be called once, early in `main()`, before any
 /// threads are spawned (so `set_var` is safe).
 pub fn load_direnv_if_needed(cwd: &Path) {
+    let cwd_display = cwd.display().to_string();
+    assert!(cwd_display.chars().count() <= cwd_display.len());
+    assert!(cwd_display.len() <= cwd_display.capacity());
     // If DIRENV_DIR is already set, the parent shell's direnv hook already
     // loaded the environment — skip to avoid double-loading.
     if std::env::var("DIRENV_DIR").is_ok() {

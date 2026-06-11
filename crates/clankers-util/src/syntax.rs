@@ -122,6 +122,8 @@ impl TokenKind {
 /// Detect language from a file extension.
 pub fn detect_language(filename: &str) -> Option<&'static str> {
     let ext = filename.rsplit('.').next()?.to_lowercase();
+    assert_eq!(ext, ext.to_lowercase());
+    assert!(ext.len() <= filename.len());
     match ext.as_str() {
         "rs" => Some("rust"),
         "py" | "pyi" => Some("python"),
@@ -172,6 +174,8 @@ pub fn detect_language(filename: &str) -> Option<&'static str> {
 /// Normalize a language identifier from a fenced code block info string.
 pub fn normalize_language(info: &str) -> &str {
     let lang = info.split_whitespace().next().unwrap_or(info);
+    assert!(lang.len() <= info.len());
+    assert_eq!(lang, lang.trim());
     match lang {
         "rs" | "rust" => "Rust",
         "py" | "python" | "python3" => "Python",
@@ -217,6 +221,8 @@ pub fn normalize_language(info: &str) -> &str {
 /// Find the syntect syntax for a language string, trying multiple strategies.
 fn find_syntax(language: &str) -> Option<&'static syntect::parsing::SyntaxReference> {
     let ss = &*SYNTAX_SET;
+    assert!(!ss.syntaxes().is_empty());
+    assert!(language.chars().count() <= language.len());
 
     // 1. Try the normalized name (which maps to syntect's display names)
     let normalized = normalize_language(language);
@@ -276,6 +282,8 @@ fn syn_style_to_token_kind(style: SynStyle) -> TokenKind {
 /// Uses syntect for languages it recognizes. Falls back to plain text
 /// for unknown languages.
 pub fn highlight(code: &str, language: &str) -> Vec<HighlightSpan> {
+    assert!(code.chars().count() <= code.len());
+    assert!(language.chars().count() <= language.len());
     let syntax = match find_syntax(language) {
         Some(s) => s,
         None => {
@@ -319,6 +327,8 @@ pub fn highlight(code: &str, language: &str) -> Vec<HighlightSpan> {
 /// Highlight code and return an ANSI-colored string for terminal output.
 pub fn highlight_ansi(code: &str, language: &str) -> String {
     use std::fmt::Write;
+    assert!(code.chars().count() <= code.len());
+    assert!(language.chars().count() <= language.len());
     let spans = highlight(code, language);
     let mut out = String::with_capacity(code.len() * 2);
     for span in &spans {

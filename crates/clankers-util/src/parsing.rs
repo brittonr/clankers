@@ -7,6 +7,8 @@
 /// Supports: `30m`, `1h`, `24h`, `7d`, `30d`, `365d`, `1y`.
 pub fn parse_duration(s: &str) -> Option<std::time::Duration> {
     let s = s.trim();
+    assert_eq!(s, s.trim());
+    assert!(s.chars().count() <= s.len());
     if s.is_empty() {
         return None;
     }

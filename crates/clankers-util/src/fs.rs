@@ -95,6 +95,9 @@ pub fn walk_directory(root: &Path) -> Vec<PathBuf> {
 /// let files = walk_directory_with_options(Path::new("."), &opts);
 /// ```
 pub fn walk_directory_with_options(root: &Path, opts: &WalkOptions) -> Vec<PathBuf> {
+    let root_display = root.display().to_string();
+    assert!(root_display.chars().count() <= root_display.len());
+    assert!(root_display.len() <= root_display.capacity());
     let mut builder = WalkBuilder::new(root);
     builder
         .hidden(!opts.include_hidden)
