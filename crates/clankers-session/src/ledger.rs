@@ -115,7 +115,7 @@ pub struct OpaqueLedgerRecord {
     /// Original schema version.
     pub schema_version: u32,
     /// Safe queryable metadata only; raw payload is intentionally not retained.
-    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    #[serde(default = "BTreeMap::new", skip_serializing_if = "BTreeMap::is_empty")]
     pub safe_metadata: BTreeMap<String, String>,
     /// Time the opaque record was observed.
     pub observed_at: DateTime<Utc>,
@@ -184,23 +184,23 @@ impl LedgerPayload {
 /// Shared query fields carried by typed facts.
 #[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
 pub struct LedgerQueryFields {
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    #[serde(default = "Vec::new", skip_serializing_if = "Vec::is_empty")]
     pub artifact_hashes: Vec<ArtifactHash>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub tool_kind: Option<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub error_class: Option<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub crate_path: Option<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub requirement_id: Option<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub request_shape: Option<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub authorization_status: Option<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub effect_ability: Option<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub effect_resource: Option<String>,
 }
 
@@ -456,13 +456,13 @@ pub struct AuthorizationLedgerFact {
     pub status: String,
     pub effect_ability: String,
     pub effect_resource: String,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub issuer_did: Option<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub audience_did: Option<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub proof_reference: Option<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub denial_class: Option<String>,
     pub query: LedgerQueryFields,
 }
@@ -528,7 +528,7 @@ pub fn opaque_from_unknown_json(id: impl Into<String>, value: &Value) -> LedgerR
                 .filter_map(|(key, value)| value.as_str().map(|text| (key.clone(), text.to_owned())))
                 .collect()
         })
-        .unwrap_or_default();
+        .unwrap_or_else(BTreeMap::new);
     LedgerRecord::opaque(id, original_kind, schema_version, safe_metadata)
 }
 

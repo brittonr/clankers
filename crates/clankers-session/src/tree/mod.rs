@@ -25,7 +25,7 @@ impl SessionTree {
         let mut index: HashMap<MessageId, usize> = HashMap::with_capacity(entries.len());
         for (i, entry) in entries.iter().enumerate() {
             if let SessionEntry::Message(msg) = entry {
-                children.entry(msg.parent_id.clone()).or_default().push(i);
+                children.entry(msg.parent_id.clone()).or_insert_with(Vec::new).push(i);
                 index.insert(msg.id.clone(), i);
             }
         }

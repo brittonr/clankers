@@ -95,7 +95,7 @@ pub struct ModelChangeEntry {
     pub id: MessageId,
     pub from_model: String,
     pub to_model: String,
-    #[serde(default)]
+    #[serde(default = "String::new")]
     pub reason: String,
     pub timestamp: DateTime<Utc>,
 }

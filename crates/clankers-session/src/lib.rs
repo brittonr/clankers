@@ -5,13 +5,6 @@
 //! Legacy JSONL files are auto-migrated to Automerge on open.
 #![allow(unexpected_cfgs)]
 #![cfg_attr(dylint_lib = "tigerstyle", feature(register_tool), register_tool(tigerstyle))]
-#![cfg_attr(
-    dylint_lib = "tigerstyle",
-    allow(
-        tigerstyle::explicit_defaults,
-        reason = "session persistence APIs and serialized records are compatibility contracts covered by migration/tree tests"
-    )
-)]
 
 pub mod automerge_store;
 pub mod context;

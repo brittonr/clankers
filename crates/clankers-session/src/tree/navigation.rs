@@ -82,7 +82,7 @@ impl SessionTree {
                     })
                     .collect()
             })
-            .unwrap_or_default()
+            .unwrap_or_else(Vec::new)
     }
 
     /// Find the latest leaf by following the last child at each level from a given starting

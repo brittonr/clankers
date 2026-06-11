@@ -49,7 +49,7 @@ pub fn export_markdown(path: &Path) -> Result<String> {
                                     out,
                                     "**Tool call**: `{}`\n```json\n{}\n```\n\n",
                                     name,
-                                    serde_json::to_string_pretty(input).unwrap_or_default()
+                                    serde_json::to_string_pretty(input).unwrap_or_else(|_| String::new())
                                 )
                                 .ok();
                             }
