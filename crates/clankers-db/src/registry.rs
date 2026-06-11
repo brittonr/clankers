@@ -176,9 +176,7 @@ struct RegistryEntryWire {
     updated_at: DateTime<Utc>,
     last_error: Option<String>,
     total_tokens: u64,
-    #[serde(default)]
     total_cost_micros: Option<u64>,
-    #[serde(default)]
     total_cost: Option<serde_json::Value>,
 }
 

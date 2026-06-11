@@ -24,7 +24,6 @@
         tigerstyle::usize_in_public_api,
         tigerstyle::ambiguous_params,
         tigerstyle::ambient_clock,
-        tigerstyle::explicit_defaults,
         reason = "embedded database APIs preserve stored schema/public query contracts; integration tests cover persistence behavior during Tigerstyle drain"
     )
 )]

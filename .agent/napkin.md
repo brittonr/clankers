@@ -2,6 +2,7 @@
 
 ## Working Notes
 
+- 2026-06-11: clankers-db explicit-defaults crate allow drain was tiny after prior work: remove only the crate-level explicit-defaults allow, drop `#[serde(default)]` from Option fields in `registry.rs` legacy cost wire type and `skill_usage.rs` note field; missing Option fields still deserialize as None and package/full Tigerstyle plus db lib tests stay green.
 - 2026-06-11: clankers-core reducer assertion-density drain: after removing the seven local allows, only those seven reducer functions failed. Lightweight stable assertions were UTF-8 char/byte bounds for prompt/loop strings, Vec len/capacity for disabled tool sets, and explicit enum-shape `matches!` assertions for completion/dispatch statuses; package and full Tigerstyle stayed green.
 - 2026-06-11: clankers-engine-host final local Tigerstyle allow drain: removing numeric/unbounded-loop from `run_engine_turn` only flagged the `execution_report` local (substring `sec`) and the bare `loop`. Rename the local to `run_output`, add a `ENGINE_HOST_REDUCER_STEP_LIMIT_COUNT` bounded `for`, assert the step index is in range, and fail closed with a terminal failure if the reducer advance cap is exceeded.
 - 2026-06-11: clankers-engine-host assertion-density drain only had four local assertion allows in `lib.rs`; remove just those assertion allowances, keep numeric/unbounded loop on `run_engine_turn`, and add adapter-shell invariants on non-empty host constants, effect/event Vec capacities, and correlation-id UTF-8 byte/char boundaries.

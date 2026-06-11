@@ -62,7 +62,7 @@ pub struct SkillUsageEntry {
     /// Outcome of the skill usage.
     pub outcome: SkillOutcome,
     /// Optional note about what happened (e.g., "user said to use X instead").
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub note: Option<String>,
 }
 
