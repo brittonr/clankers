@@ -30,11 +30,9 @@
         tigerstyle::unchecked_narrowing,
         tigerstyle::platform_dependent_cast,
         tigerstyle::no_recursion,
-        tigerstyle::catch_all_on_enum,
-        reason = "binary entrypoint is CLI/orchestration shell over existing library contracts; focused command tests cover behavior during Tigerstyle drain"
+        reason = "binary entrypoint remains CLI/orchestration shell; catch_all_on_enum had no remaining binary findings and is no longer allowed here"
     )
 )]
-
 use clankers::cli::AgentScopeArg;
 use clankers::cli::Cli;
 use clankers::cli::Commands;

@@ -2,6 +2,7 @@
 
 ## Working Notes
 
+- 2026-06-12: root `src/main.rs` Tigerstyle catch-all drain was a zero-code narrowing: temporarily removing the binary allow produced no `catch_all_on_enum` findings (only assertion/function-length/no-unwrap/params/defaults), so remove just `catch_all_on_enum` from the binary allow and validate package/full Tigerstyle plus no-run and Cairn tasks gate.
 - 2026-06-12: root `src/lib.rs` Tigerstyle narrowing can be valid as a per-lint slice: temporarily remove the root allow to discover exact findings, drain all occurrences of one lint family (`catch_all_on_enum` had 3: attach content conversion, slash `AgentCommand` projection, skill-manage required string), remove only that lint from the crate allow, then validate package/full Tigerstyle plus root lib tests/no-run and Cairn tasks gate.
 - 2026-06-11: clankers-util local truncation ambient-clock drain: replace timestamp temp filenames with `process::id()` plus static `AtomicU64` sequence (`fetch_add`) to avoid wall-clock reads while retaining per-process uniqueness. Package/full Tigerstyle and util lib tests passed.
 - 2026-06-11: clankers-util final crate-level drain: removing `usize_in_public_api` was zero-finding, `unbounded_loop` only hit `ansi::strip_ansi` (bounded index walks over collected chars fixed it), and `function_length` only hit `expand_at_refs_with_policy` (split by reference kind). Full Tigerstyle stayed green; only local util truncation ambient-clock allow remains as its own Cairn task.
