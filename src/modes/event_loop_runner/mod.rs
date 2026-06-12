@@ -500,8 +500,8 @@ impl<'a> EventLoopRunner<'a> {
         }
 
         self.cmd_tx.send(AgentCommand::ResetCancel).ok();
-        let sent_prompt = self.cmd_tx.send(AgentCommand::Prompt(prompt.clone())).is_ok();
-        let dispatch_status = if sent_prompt {
+        let is_prompt_sent = self.cmd_tx.send(AgentCommand::Prompt(prompt.clone())).is_ok();
+        let dispatch_status = if is_prompt_sent {
             if self.controller.start_embedded_prompt_with_follow_up(&prompt, 0, Some(pending_work_id)) {
                 clankers_controller::ShellFollowUpDispatch::Accepted
             } else {
@@ -518,7 +518,7 @@ impl<'a> EventLoopRunner<'a> {
             match result {
                 TaskResult::PromptDone(Some(e)) => {
                     let completion_status = clankers_controller::ShellPromptCompletion::failed(e.to_string());
-                    let completed_dispatched_follow_up =
+                    let is_dispatched_follow_up_completed =
                         if let Some(pending_work_id) = self.controller.pending_dispatched_follow_up_id() {
                             self.controller.complete_dispatched_follow_up(pending_work_id, completion_status);
                             true
@@ -533,7 +533,7 @@ impl<'a> EventLoopRunner<'a> {
                     self.app.finalize_active_block();
                     if !self.controller.has_active_loop() {
                         self.app.loop_status = None;
-                    } else if completed_dispatched_follow_up
+                    } else if is_dispatched_follow_up_completed
                         && let Some(iteration) = self.controller.loop_iteration()
                         && let Some(loop_status) = self.app.loop_status.as_mut()
                     {
@@ -563,7 +563,7 @@ impl<'a> EventLoopRunner<'a> {
                     self.drain_controller_messages();
                 }
                 TaskResult::PromptDone(None) => {
-                    let completed_dispatched_follow_up = if let Some(pending_work_id) =
+                    let is_dispatched_follow_up_completed = if let Some(pending_work_id) =
                         self.controller.pending_dispatched_follow_up_id()
                     {
                         self.controller.complete_dispatched_follow_up(
@@ -576,7 +576,7 @@ impl<'a> EventLoopRunner<'a> {
                         false
                     };
 
-                    if !completed_dispatched_follow_up {
+                    if !is_dispatched_follow_up_completed {
                         // Sync edge-projected TUI loop state to controller before post-prompt planning only for
                         // ordinary prompts.
                         let controller_loop_status =
@@ -590,7 +590,7 @@ impl<'a> EventLoopRunner<'a> {
                     }
                     if !self.controller.has_active_loop() {
                         self.app.loop_status = None;
-                    } else if completed_dispatched_follow_up
+                    } else if is_dispatched_follow_up_completed
                         && let Some(iteration) = self.controller.loop_iteration()
                         && let Some(loop_status) = self.app.loop_status.as_mut()
                     {

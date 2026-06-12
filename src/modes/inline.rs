@@ -332,8 +332,8 @@ pub async fn run_inline_with_options(
     agent.set_session_id("headless-inline".to_string());
     let mut rx = agent.subscribe();
 
-    let show_tools = opts.show_tools;
-    let show_stats = opts.show_stats;
+    let should_show_tools = opts.show_tools;
+    let should_show_stats = opts.show_stats;
     let output_file = opts.output_file.clone();
 
     // Spawn the agent on a Send-compatible task; render on the current
@@ -354,7 +354,7 @@ pub async fn run_inline_with_options(
     let width = crossterm::terminal::size().map(|(w, _)| w).unwrap_or(80);
 
     let mut renderer = InlineRenderer::new(width);
-    let mut state = InlineState::new(show_tools, show_stats);
+    let mut state = InlineState::new(should_show_tools, should_show_stats);
 
     let mut writer: Box<dyn Write> = if let Some(ref path) = output_file {
         match std::fs::File::create(path) {

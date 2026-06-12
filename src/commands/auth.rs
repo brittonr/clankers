@@ -367,7 +367,7 @@ fn handle_status(ctx: &CommandContext, provider: Option<String>, all: bool) -> R
 }
 
 fn handle_logout(ctx: &CommandContext, provider: Option<String>, account: Option<String>, all: bool) -> Result<()> {
-    let provider_was_explicit = provider.is_some();
+    let is_provider_explicit = provider.is_some();
     let provider = provider.unwrap_or_else(|| clankers_provider::auth::DEFAULT_OAUTH_PROVIDER.to_string());
     let mut store = clankers_provider::auth::AuthStore::load(&ctx.paths.global_auth);
     if all {
@@ -377,7 +377,7 @@ fn handle_logout(ctx: &CommandContext, provider: Option<String>, account: Option
         }
         store.save(&ctx.paths.global_auth)?;
         clankers_provider::openai_codex::reset_entitlement(&provider, None);
-        if provider_was_explicit {
+        if is_provider_explicit {
             println!("Removed all accounts for provider '{}'.", provider);
         } else {
             println!("Removed all accounts.");
@@ -387,12 +387,12 @@ fn handle_logout(ctx: &CommandContext, provider: Option<String>, account: Option
         if store.remove_provider_account(&provider, &name) {
             store.save(&ctx.paths.global_auth)?;
             clankers_provider::openai_codex::reset_entitlement(&provider, None);
-            if provider_was_explicit {
+            if is_provider_explicit {
                 println!("Removed account '{}' from provider '{}'.", name, provider);
             } else {
                 println!("Removed account '{}'.", name);
             }
-        } else if provider_was_explicit {
+        } else if is_provider_explicit {
             return Err(crate::error::Error::ProviderAuth {
                 message: format!("No account '{}' found for provider '{}'.", name, provider),
             });
@@ -406,20 +406,20 @@ fn handle_logout(ctx: &CommandContext, provider: Option<String>, account: Option
 }
 
 fn handle_switch(ctx: &CommandContext, provider: Option<String>, account: &str) -> Result<()> {
-    let provider_was_explicit = provider.is_some();
+    let is_provider_explicit = provider.is_some();
     let provider = provider.unwrap_or_else(|| clankers_provider::auth::DEFAULT_OAUTH_PROVIDER.to_string());
     let mut store = clankers_provider::auth::AuthStore::load(&ctx.paths.global_auth);
     if store.switch_provider_account(&provider, account) {
         store.save(&ctx.paths.global_auth)?;
         clankers_provider::openai_codex::reset_entitlement(&provider, None);
-        if provider_was_explicit {
+        if is_provider_explicit {
             println!("Switched provider '{}' to account '{}'.", provider, account);
         } else {
             println!("Switched to account '{}'.", account);
         }
     } else {
         let names: Vec<String> = store.list_provider_accounts(&provider).into_iter().map(|info| info.name).collect();
-        if provider_was_explicit {
+        if is_provider_explicit {
             return Err(crate::error::Error::ProviderAuth {
                 message: format!("No account '{}' for provider '{}'. Available: {:?}", account, provider, names),
             });
@@ -543,9 +543,9 @@ fn handle_import(ctx: &CommandContext, input: &str) -> Result<()> {
         })?;
 
     let mut store = clankers_provider::auth::AuthStore::load(&ctx.paths.global_auth);
-    let had_active = store.active_credential(&record.provider).is_some();
+    let has_active = store.active_credential(&record.provider).is_some();
     store.set_credential(&record.provider, &record.account, record.credential.clone());
-    if record.active || !had_active {
+    if record.active || !has_active {
         store.switch_provider_account(&record.provider, &record.account);
     }
     store.save(&ctx.paths.global_auth)?;

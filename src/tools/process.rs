@@ -825,13 +825,13 @@ impl ProcessTool {
         }
     }
 
-    async fn handle_write(params: &Value, newline: bool) -> ToolResult {
+    async fn handle_write(params: &Value, should_append_newline: bool) -> ToolResult {
         let request = match Self::process_job_tool_request(params) {
             Ok(ProcessJobToolRequest::WriteStdin(request)) => request,
             Ok(_) => return ToolResult::error("Parsed unexpected process job request for write_stdin action"),
             Err(result) => return result,
         };
-        debug_assert_eq!(request.newline, newline);
+        debug_assert_eq!(request.newline, should_append_newline);
         let session_id = request.id.0.clone();
         if let Some(id) = Self::pueue_id(&session_id) {
             return Self::pueue_receipt_result(

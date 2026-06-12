@@ -103,8 +103,8 @@ pub fn parse_personality(input: Option<&str>) -> Result<Option<PersonalityPreset
     if normalized.len() > 64 {
         return Err("personality preset name is too long".to_string());
     }
-    let valid = normalized.chars().all(|ch| ch.is_ascii_alphanumeric() || matches!(ch, '-' | '_' | '.'));
-    if !valid {
+    let is_valid = normalized.chars().all(|ch| ch.is_ascii_alphanumeric() || matches!(ch, '-' | '_' | '.'));
+    if !is_valid {
         return Err("personality preset name must use only ASCII letters, numbers, '.', '-', or '_'".to_string());
     }
     Ok(Some(PersonalityPreset {

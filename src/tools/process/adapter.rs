@@ -107,7 +107,7 @@ impl ProcessToolJsonAdapter {
     }
 
     fn notification_policy(params: &Value) -> Result<ProcessJobNotificationPolicy, ToolResult> {
-        let notify_on_complete = params.get("notify_on_complete").and_then(Value::as_bool).unwrap_or(false);
+        let should_notify_on_complete = params.get("notify_on_complete").and_then(Value::as_bool).unwrap_or(false);
         let watch_patterns = match params.get("watch_patterns") {
             Some(value) => {
                 let Some(values) = value.as_array() else {
@@ -125,7 +125,7 @@ impl ProcessToolJsonAdapter {
             None => Vec::new(),
         };
         Ok(ProcessJobNotificationPolicy {
-            notify_on_complete,
+            notify_on_complete: should_notify_on_complete,
             watch_patterns,
         })
     }

@@ -65,12 +65,12 @@ pub fn sanitized_env() -> Vec<(String, String)> {
 /// invocation gets the socket back so agent-driven commit/push workflows can use the
 /// user's already-running SSH agent without exposing it to arbitrary shell pipelines.
 pub fn sanitized_env_for_command(command: &str) -> Vec<(String, String)> {
-    let preserve_ssh_auth_sock = is_simple_git_command(command);
+    let should_preserve_ssh_auth_sock = is_simple_git_command(command);
     let scrubbed: std::collections::HashSet<&str> = SCRUBBED_ENV_VARS.iter().copied().collect();
 
     let mut env: Vec<(String, String)> = std::env::vars()
         .filter(|(key, _)| {
-            if preserve_ssh_auth_sock && key == "SSH_AUTH_SOCK" {
+            if should_preserve_ssh_auth_sock && key == "SSH_AUTH_SOCK" {
                 return true;
             }
             if scrubbed.contains(key.as_str()) {

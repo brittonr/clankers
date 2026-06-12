@@ -46,13 +46,13 @@ async fn run_serve(session: String) -> Result<()> {
 
 pub fn handle_json_line_for_client(line: &str, session_id: Option<&str>, client: &mut ClientAdapter) -> Result<String> {
     let mut dispatch = |cmd: SessionCommand| {
-        let submitted = client.send(cmd);
+        let is_submitted = client.send(cmd);
         let events = drain_session_events(client);
-        let disconnected = client.is_disconnected();
+        let is_disconnected = client.is_disconnected();
         crate::modes::mcp_control::McpDispatchEvidence {
-            submitted,
+            submitted: is_submitted,
             events,
-            disconnected,
+            disconnected: is_disconnected,
         }
     };
     crate::modes::mcp_control::handle_json_line_with_evidence_dispatch(line, session_id, &mut dispatch)

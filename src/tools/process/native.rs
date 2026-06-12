@@ -342,7 +342,7 @@ impl ProcessJobService for NativeProcessJobService {
         &self,
         id: ProcessJobId,
         data: Vec<u8>,
-        newline: bool,
+        should_append_newline: bool,
     ) -> Result<ProcessJobReceipt, RuntimeError> {
         let entry = native_entry(&id)?;
         if entry.status().is_done() {
@@ -353,14 +353,14 @@ impl ProcessJobService for NativeProcessJobService {
             return Err(RuntimeError::InvalidTool(format!("{} has no open stdin", entry.id)));
         };
         stdin.write_all(&data).await.map_err(|e| RuntimeError::InvalidTool(e.to_string()))?;
-        if newline {
+        if should_append_newline {
             stdin.write_all(b"\n").await.map_err(|e| RuntimeError::InvalidTool(e.to_string()))?;
         }
         stdin.flush().await.map_err(|e| RuntimeError::InvalidTool(e.to_string()))?;
         Ok(native_receipt(
             ProcessJobOperation::WriteStdin,
             &entry,
-            format!("Wrote {} bytes to {}", data.len() + usize::from(newline), entry.id),
+            format!("Wrote {} bytes to {}", data.len() + usize::from(should_append_newline), entry.id),
         ))
     }
 

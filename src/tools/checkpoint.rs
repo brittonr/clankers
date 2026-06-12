@@ -80,8 +80,8 @@ impl Tool for CheckpointTool {
                     Some(id) => id,
                     None => return ToolResult::error("Missing required parameter for rollback: checkpoint_id"),
                 };
-                let confirm = params.get("confirm").and_then(|v| v.as_bool()).unwrap_or(false);
-                crate::checkpoints::rollback_checkpoint(&cwd, checkpoint_id, confirm)
+                let is_confirmed = params.get("confirm").and_then(|v| v.as_bool()).unwrap_or(false);
+                crate::checkpoints::rollback_checkpoint(&cwd, checkpoint_id, is_confirmed)
             }
             other => return ToolResult::error(format!("Unknown checkpoint action: {other}")),
         };

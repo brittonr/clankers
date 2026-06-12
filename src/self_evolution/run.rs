@@ -31,8 +31,8 @@ pub fn run_self_evolution_dry_run(
 
     let candidate_hash = sha256_hex(candidate_body.as_bytes());
     let baseline_hash = baseline_body.as_deref().map(|body| sha256_hex(body.as_bytes()));
-    let changed = baseline_hash.as_deref() != Some(candidate_hash.as_str());
-    let eval = deterministic_evaluation(changed, options.simulate_eval_failure);
+    let is_candidate_changed = baseline_hash.as_deref() != Some(candidate_hash.as_str());
+    let eval = deterministic_evaluation(is_candidate_changed, options.simulate_eval_failure);
     let corpus = load_eval_corpus_manifest(options.corpus_manifest.as_deref())?;
 
     let prompt_receipt = executor.submit_tool(
@@ -49,16 +49,21 @@ pub fn run_self_evolution_dry_run(
         json!({ "purpose": "self_evolution_receipt_evidence" }),
     );
 
-    let readiness =
-        readiness_report(options, corpus.as_ref(), &eval, changed, &[prompt_receipt.clone(), history_receipt.clone()]);
-    let recommendation = promotion_recommendation_from_readiness(&readiness, &eval, changed);
+    let readiness = readiness_report(
+        options,
+        corpus.as_ref(),
+        &eval,
+        is_candidate_changed,
+        &[prompt_receipt.clone(), history_receipt.clone()],
+    );
+    let recommendation = promotion_recommendation_from_readiness(&readiness, &eval, is_candidate_changed);
 
     let candidate = CandidateRecord {
         output_dir: output_dir.display().to_string(),
         artifact_path: candidate_path.display().to_string(),
         sha256: candidate_hash,
         bytes: candidate_body.len() as u64,
-        changed_from_baseline: changed,
+        changed_from_baseline: is_candidate_changed,
         score: eval.candidate_score,
         status: eval.candidate_status.clone(),
         evidence: candidate_evidence(eval.failed),
@@ -138,12 +143,12 @@ fn readiness_report(
     receipts: &[McpOrchestrationReceipt],
 ) -> SelfEvolutionReadinessReport {
     let profile = normalized_profile(&options.production_profile);
-    let daemon_session_observable = receipts.iter().all(|receipt| receipt.submitted) && !receipts.is_empty();
+    let is_daemon_session_observable = receipts.iter().all(|receipt| receipt.submitted) && !receipts.is_empty();
     let improvement = eval.candidate_score - eval.baseline_score;
     let threshold = corpus.map(|manifest| manifest.min_improvement).unwrap_or(0.0);
-    let threshold_passed = !eval.failed && improvement >= threshold;
-    let regression_budget_passed = corpus.map(|manifest| manifest.regression_budget == 0).unwrap_or(false);
-    let unchanged_candidate_control_passed = changed;
+    let has_threshold_passed = !eval.failed && improvement >= threshold;
+    let has_regression_budget_passed = corpus.map(|manifest| manifest.regression_budget == 0).unwrap_or(false);
+    let has_unchanged_candidate_control_passed = changed;
     let corpus_cases = corpus.map(|manifest| manifest.cases.len()).unwrap_or(0);
 
     let mut reasons = Vec::new();
@@ -156,16 +161,16 @@ fn readiness_report(
     } else if corpus.is_none() {
         reasons.push("production profile requires a valid local eval corpus manifest".to_string());
         "blocked"
-    } else if !daemon_session_observable {
+    } else if !is_daemon_session_observable {
         reasons.push("run did not record observable daemon/session receipts".to_string());
         "blocked"
-    } else if !unchanged_candidate_control_passed {
+    } else if !has_unchanged_candidate_control_passed {
         reasons.push("candidate was unchanged from baseline; positive deltas are treated as noise".to_string());
         "controlled_dogfood"
-    } else if !threshold_passed {
+    } else if !has_threshold_passed {
         reasons.push("minimum improvement threshold was not met".to_string());
         "controlled_dogfood"
-    } else if !regression_budget_passed {
+    } else if !has_regression_budget_passed {
         reasons.push("regression budget was not fully satisfied".to_string());
         "controlled_dogfood"
     } else {
@@ -181,10 +186,10 @@ fn readiness_report(
         profile,
         corpus_manifest_path: options.corpus_manifest.as_ref().map(|path| path.display().to_string()),
         corpus_cases,
-        threshold_passed,
-        regression_budget_passed,
-        unchanged_candidate_control_passed,
-        daemon_session_observable,
+        threshold_passed: has_threshold_passed,
+        regression_budget_passed: has_regression_budget_passed,
+        unchanged_candidate_control_passed: has_unchanged_candidate_control_passed,
+        daemon_session_observable: is_daemon_session_observable,
         evidence_refs: receipts.iter().map(|receipt| format!("{}:{}", receipt.tool, receipt.status)).collect(),
         reasons,
         known_limitations: vec![

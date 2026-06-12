@@ -105,8 +105,8 @@ fn validate_params(params: &Value) -> ToolResult {
         Err(message) => return ToolResult::error(message),
     };
     let target = tool_gateway::parse_delivery_target(params.get("deliver").and_then(|value| value.as_str()));
-    let matrix_active = params.get("matrix_active").and_then(|value| value.as_bool()).unwrap_or(false);
-    validation_result(tool_gateway::validate(&toolsets, &target, matrix_active))
+    let is_matrix_active = params.get("matrix_active").and_then(|value| value.as_bool()).unwrap_or(false);
+    validation_result(tool_gateway::validate(&toolsets, &target, is_matrix_active))
 }
 
 fn deliver_params(params: &Value, record: bool) -> ToolResult {
@@ -119,8 +119,8 @@ fn deliver_params(params: &Value, record: bool) -> ToolResult {
     };
     let target = tool_gateway::parse_delivery_target(params.get("deliver").and_then(|value| value.as_str()));
     let path = params.get("path").and_then(|value| value.as_str()).map(std::path::Path::new);
-    let matrix_active = params.get("matrix_active").and_then(|value| value.as_bool()).unwrap_or(false);
-    let context = if matrix_active {
+    let is_matrix_active = params.get("matrix_active").and_then(|value| value.as_bool()).unwrap_or(false);
+    let context = if is_matrix_active {
         tool_gateway::DeliveryContext::matrix("active_matrix_session")
     } else {
         tool_gateway::DeliveryContext::local()

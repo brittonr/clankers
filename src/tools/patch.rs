@@ -79,8 +79,8 @@ impl PatchTool {
             Some(text) => text,
             None => return ToolResult::error("Missing required parameter: new_string"),
         };
-        let replace_all = params.get("replace_all").and_then(|v| v.as_bool()).unwrap_or(false);
-        apply_replacement(ctx, path_str, old_string, new_string, replace_all).await
+        let should_replace_all = params.get("replace_all").and_then(|v| v.as_bool()).unwrap_or(false);
+        apply_replacement(ctx, path_str, old_string, new_string, should_replace_all).await
     }
 
     async fn handle_patch(ctx: &ToolContext, params: &Value) -> ToolResult {
@@ -134,7 +134,7 @@ async fn apply_replacement(
     path_str: &str,
     old_string: &str,
     new_string: &str,
-    replace_all: bool,
+    should_replace_all: bool,
 ) -> ToolResult {
     if old_string.is_empty() {
         return ToolResult::error("old_string must not be empty.");
@@ -155,7 +155,7 @@ async fn apply_replacement(
         Err(err) => return ToolResult::error(format!("Failed to read file: {err}")),
     };
 
-    let new_content = match replace_content(&content, old_string, new_string, replace_all) {
+    let new_content = match replace_content(&content, old_string, new_string, should_replace_all) {
         Ok(content) => content,
         Err(err) => return ToolResult::error(err),
     };
@@ -176,8 +176,13 @@ async fn apply_replacement(
     ToolResult::text(format!("Patched {path_str}\n{stat}")).with_details(checkpoint_details)
 }
 
-fn replace_content(content: &str, old_string: &str, new_string: &str, replace_all: bool) -> Result<String, String> {
-    if replace_all {
+fn replace_content(
+    content: &str,
+    old_string: &str,
+    new_string: &str,
+    should_replace_all: bool,
+) -> Result<String, String> {
+    if should_replace_all {
         if !content.contains(old_string) {
             return fuzzy_replace(content, old_string, new_string, true);
         }
@@ -194,11 +199,11 @@ fn replace_content(content: &str, old_string: &str, new_string: &str, replace_al
     }
 }
 
-fn fuzzy_replace(content: &str, old_string: &str, new_string: &str, replace_all: bool) -> Result<String, String> {
+fn fuzzy_replace(content: &str, old_string: &str, new_string: &str, should_replace_all: bool) -> Result<String, String> {
     let normalized_old = normalize_newlines(old_string);
     let normalized_content = normalize_newlines(content);
     if normalized_old != old_string || normalized_content != content {
-        return replace_content(&normalized_content, &normalized_old, new_string, replace_all);
+        return replace_content(&normalized_content, &normalized_old, new_string, should_replace_all);
     }
 
     let trimmed_old = trim_trailing_ws_by_line(old_string);
@@ -208,13 +213,13 @@ fn fuzzy_replace(content: &str, old_string: &str, new_string: &str, replace_all:
             "old_string not found. Tried exact, CRLF/LF-normalized, and trailing-whitespace-normalized matching.\n\nSearching for:\n{old_string}"
         ));
     }
-    if !replace_all && ranges.len() > 1 {
+    if !should_replace_all && ranges.len() > 1 {
         return Err(format!(
             "old_string matched {} trailing-whitespace-normalized ranges. Provide more context or use replace_all=true.",
             ranges.len()
         ));
     }
-    Ok(replace_ranges(content, &ranges, new_string, replace_all))
+    Ok(replace_ranges(content, &ranges, new_string, should_replace_all))
 }
 
 fn normalize_newlines(value: &str) -> String {
@@ -261,8 +266,8 @@ fn find_trailing_ws_insensitive_ranges(content: &str, old_trimmed: &str) -> Vec<
     ranges
 }
 
-fn replace_ranges(content: &str, ranges: &[(usize, usize)], new_string: &str, replace_all: bool) -> String {
-    let selected: Vec<(usize, usize)> = if replace_all { ranges.to_vec() } else { vec![ranges[0]] };
+fn replace_ranges(content: &str, ranges: &[(usize, usize)], new_string: &str, should_replace_all: bool) -> String {
+    let selected: Vec<(usize, usize)> = if should_replace_all { ranges.to_vec() } else { vec![ranges[0]] };
     let mut out = String::new();
     let mut cursor = 0usize;
     for (start, end) in selected {

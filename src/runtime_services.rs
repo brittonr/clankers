@@ -331,8 +331,8 @@ fn provider_failure_response(
     session_id: Option<String>,
     error: clankers_provider::error::ProviderError,
 ) -> ProviderModelResponse {
-    let retryable = error.is_retryable();
-    let failure = if retryable {
+    let is_retryable = error.is_retryable();
+    let failure = if is_retryable {
         ProviderModelFailure::retryable(error.to_string(), error.status_code())
     } else {
         ProviderModelFailure::terminal(error.to_string(), error.status_code())
@@ -343,14 +343,14 @@ fn provider_failure_response(
             .with_metadata("provider", provider_name)
             .with_metadata("model", model)
             .with_metadata("route_source", route_source)
-            .with_metadata("retryable", retryable.to_string());
+            .with_metadata("retryable", is_retryable.to_string());
     if let Some(status) = error.status_code() {
         receipt = receipt.with_metadata("status", status.to_string());
     }
     if let Some(session_id) = session_id {
         receipt = receipt.with_metadata("session_id", session_id);
     }
-    let status = if retryable {
+    let status = if is_retryable {
         ProviderModelStatus::RetryableFailure
     } else {
         ProviderModelStatus::TerminalFailure

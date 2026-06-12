@@ -148,8 +148,8 @@ impl BatchJobExecutor for CliPromptExecutor {
     }
 }
 
-async fn write_output(path: &PathBuf, rendered: &str, resume: bool) -> Result<()> {
-    if resume && tokio::fs::try_exists(path).await.map_err(|source| Error::Io { source })? {
+async fn write_output(path: &PathBuf, rendered: &str, is_resume: bool) -> Result<()> {
+    if is_resume && tokio::fs::try_exists(path).await.map_err(|source| Error::Io { source })? {
         let mut existing = tokio::fs::read_to_string(path).await.map_err(|source| Error::Io { source })?;
         existing.push_str(rendered);
         tokio::fs::write(path, existing).await.map_err(|source| Error::Io { source })

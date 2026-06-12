@@ -219,7 +219,7 @@ pub(super) fn read_target_body(target: &Path) -> std::result::Result<Option<Stri
 }
 
 pub(super) fn artifact_identity(target: &Path, body: Option<&str>) -> std::result::Result<ArtifactIdentity, String> {
-    let exists = target.exists();
+    let is_target_present = target.exists();
     let kind = if target.is_file() {
         "file"
     } else if target.is_dir() {
@@ -233,7 +233,7 @@ pub(super) fn artifact_identity(target: &Path, body: Option<&str>) -> std::resul
     };
     Ok(ArtifactIdentity {
         path: target.display().to_string(),
-        exists,
+        exists: is_target_present,
         kind: kind.to_string(),
         sha256: body.map(|body| sha256_hex(body.as_bytes())),
         bytes,

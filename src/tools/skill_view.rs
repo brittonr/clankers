@@ -281,15 +281,15 @@ fn extract_frontmatter_field(content: &str, key: &str) -> Option<String> {
 }
 
 fn first_body_line(content: &str) -> String {
-    let mut in_frontmatter = false;
+    let mut is_in_frontmatter = false;
     for (idx, line) in content.lines().enumerate() {
         if idx == 0 && line.trim() == "---" {
-            in_frontmatter = true;
+            is_in_frontmatter = true;
             continue;
         }
-        if in_frontmatter {
+        if is_in_frontmatter {
             if line.trim() == "---" {
-                in_frontmatter = false;
+                is_in_frontmatter = false;
             }
             continue;
         }

@@ -406,17 +406,17 @@ fn format_results(title: &str, results: &[SessionResult]) -> String {
 fn split_or(query: &str) -> Vec<String> {
     let mut groups = Vec::new();
     let mut current = String::new();
-    let mut in_quote = false;
+    let mut is_in_quote = false;
     let chars: Vec<char> = query.chars().collect();
     let mut i = 0usize;
     while i < chars.len() {
         if chars[i] == '"' {
-            in_quote = !in_quote;
+            is_in_quote = !is_in_quote;
             current.push(chars[i]);
             i += 1;
             continue;
         }
-        if !in_quote && starts_or_at(&chars, i) {
+        if !is_in_quote && starts_or_at(&chars, i) {
             groups.push(current.trim().to_string());
             current.clear();
             i += 2;
@@ -433,38 +433,38 @@ fn starts_or_at(chars: &[char], i: usize) -> bool {
     if i + 1 >= chars.len() || !chars[i].eq_ignore_ascii_case(&'o') || !chars[i + 1].eq_ignore_ascii_case(&'r') {
         return false;
     }
-    let before_ok = i == 0 || chars[i - 1].is_whitespace();
-    let after_ok = i + 2 >= chars.len() || chars[i + 2].is_whitespace();
-    before_ok && after_ok
+    let is_before_boundary = i == 0 || chars[i - 1].is_whitespace();
+    let is_after_boundary = i + 2 >= chars.len() || chars[i + 2].is_whitespace();
+    is_before_boundary && is_after_boundary
 }
 
 fn parse_terms(query: &str) -> Vec<QueryTerm> {
     let mut terms = Vec::new();
     let mut current = String::new();
-    let mut in_quote = false;
+    let mut is_in_quote = false;
     for ch in query.chars() {
         match ch {
             '"' => {
-                if in_quote {
+                if is_in_quote {
                     push_term(&mut terms, &current, false);
                     current.clear();
-                    in_quote = false;
+                    is_in_quote = false;
                 } else {
                     if !current.trim().is_empty() {
                         push_term(&mut terms, &current, true);
                         current.clear();
                     }
-                    in_quote = true;
+                    is_in_quote = true;
                 }
             }
-            ch if ch.is_whitespace() && !in_quote => {
+            ch if ch.is_whitespace() && !is_in_quote => {
                 push_term(&mut terms, &current, true);
                 current.clear();
             }
             _ => current.push(ch),
         }
     }
-    push_term(&mut terms, &current, !in_quote);
+    push_term(&mut terms, &current, !is_in_quote);
     terms
 }
 

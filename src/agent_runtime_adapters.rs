@@ -83,10 +83,10 @@ fn provider_request_from_agent(request: AgentCompletionRequest) -> clankers_prov
 }
 
 fn agent_model_error_from_provider(error: clankers_provider::error::ProviderError) -> AgentModelError {
-    let retryable = error.is_retryable();
+    let is_retryable = error.is_retryable();
     let should_compress = error.should_compress();
     let status = error.status;
-    AgentModelError::new(error.message).with_status(status).retryable(retryable).should_compress(should_compress)
+    AgentModelError::new(error.message).with_status(status).retryable(is_retryable).should_compress(should_compress)
 }
 
 #[derive(Clone)]

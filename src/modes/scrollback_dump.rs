@@ -79,8 +79,8 @@ pub fn finalize_terminal_and_scrollback(
 }
 
 pub fn dump_conversation_to_scrollback(entries: &[BlockEntry], settings: &Settings) -> Result<()> {
-    let stdout_is_terminal = io::stdout().is_terminal();
-    if !scrollback_dump_enabled(settings.scrollback_on_exit, stdout_is_terminal) {
+    let is_stdout_terminal = io::stdout().is_terminal();
+    if !scrollback_dump_enabled(settings.scrollback_on_exit, is_stdout_terminal) {
         return Ok(());
     }
 

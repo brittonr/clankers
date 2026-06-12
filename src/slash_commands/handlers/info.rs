@@ -312,8 +312,8 @@ impl SlashHandler for InsightsHandler {
         };
 
         let trimmed = args.trim();
-        let json_mode = trimmed == "json" || trimmed.starts_with("json ");
-        let days_str = if json_mode {
+        let is_json_mode = trimmed == "json" || trimmed.starts_with("json ");
+        let days_str = if is_json_mode {
             trimmed.strip_prefix("json").unwrap_or("").trim()
         } else {
             trimmed
@@ -328,7 +328,7 @@ impl SlashHandler for InsightsHandler {
             }
         };
 
-        if json_mode {
+        if is_json_mode {
             let output = serde_json::to_string_pretty(&serde_json::json!({
                 "window_days": report.window_days,
                 "sessions": report.overview.sessions,
@@ -387,15 +387,15 @@ impl SlashHandler for MetricsHandler {
 
         let store = db.metrics();
         let trimmed = args.trim();
-        let json_mode = trimmed == "json" || trimmed.starts_with("json ");
-        let days_str = if json_mode {
+        let is_json_mode = trimmed == "json" || trimmed.starts_with("json ");
+        let days_str = if is_json_mode {
             trimmed.strip_prefix("json").unwrap_or("").trim()
         } else {
             trimmed
         };
         let days: u32 = days_str.parse().unwrap_or(7);
 
-        if json_mode {
+        if is_json_mode {
             let session_id = &ctx.app.session_id;
             let current = store.current_session_report(session_id).ok().flatten();
             let historical = store.historical_report(days).ok();

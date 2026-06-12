@@ -91,8 +91,8 @@ fn validate_params(params: &Value) -> ToolResult {
         Err(message) => return ToolResult::error(message),
     };
     let source = voice_mode::parse_input_source(input);
-    let matrix_active = params.get("matrix_active").and_then(|value| value.as_bool()).unwrap_or(false);
-    validation_result(voice_mode::validate(&source, reply, matrix_active))
+    let is_matrix_active = params.get("matrix_active").and_then(|value| value.as_bool()).unwrap_or(false);
+    validation_result(voice_mode::validate(&source, reply, is_matrix_active))
 }
 
 fn capture_params(params: &Value, start: bool) -> ToolResult {
@@ -129,8 +129,8 @@ fn transcript_params(params: &Value) -> ToolResult {
         Ok(mode) => mode,
         Err(message) => return ToolResult::error(message),
     };
-    let auto_submit = params.get("auto_submit").and_then(|value| value.as_bool()).unwrap_or(false);
-    match voice_mode::session_prompt_from_transcript(transcript, reply, auto_submit) {
+    let should_auto_submit = params.get("auto_submit").and_then(|value| value.as_bool()).unwrap_or(false);
+    match voice_mode::session_prompt_from_transcript(transcript, reply, should_auto_submit) {
         Ok(prompt) => prompt_result(prompt),
         Err(message) => ToolResult::error(message),
     }
