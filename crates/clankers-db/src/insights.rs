@@ -78,7 +78,7 @@ pub struct SessionEntry {
 pub fn generate_insights(db: &Db, days: u32) -> Result<InsightsReport> {
     assert!(days <= 3650, "insights window should stay bounded");
     assert!(Duration::days(i64::from(days)) >= Duration::zero());
-    let cutoff = Utc::now() - Duration::days(i64::from(days));
+    let cutoff = crate::db_clock_now() - Duration::days(i64::from(days));
 
     let usage_data = query_usage_in_window(db, &cutoff)?;
     let tool_data = query_tool_calls_in_window(db, &cutoff)?;
@@ -366,7 +366,7 @@ mod tests {
         db.usage().record(&RequestUsage::new("sonnet", 5_000, 2_000, 0, 0))?;
 
         // Add session index entries
-        let now = Utc::now();
+        let now = crate::db_clock_now();
         db.sessions().upsert(&SessionIndexEntry {
             session_id: "sess-001".into(),
             cwd: "/home/user".into(),

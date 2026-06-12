@@ -81,7 +81,7 @@ impl RequestUsage {
             output_tokens,
             cache_creation_tokens,
             cache_read_tokens,
-            timestamp: Utc::now(),
+            timestamp: crate::db_clock_now(),
         }
     }
 }
@@ -152,7 +152,7 @@ impl<'db> UsageTracker<'db> {
 
     /// Get today's usage.
     pub fn today(&self) -> Result<Option<DailyUsage>> {
-        let date = Utc::now().format("%Y-%m-%d").to_string();
+        let date = crate::db_clock_now().format("%Y-%m-%d").to_string();
         self.daily(&date)
     }
 
@@ -303,7 +303,7 @@ mod tests {
             output_tokens: output,
             cache_creation_tokens: 0,
             cache_read_tokens: 0,
-            timestamp: Utc::now(),
+            timestamp: crate::db_clock_now(),
         }
     }
 
@@ -354,7 +354,7 @@ mod tests {
         // Record for today
         usage.record(&make_request("sonnet", 100, 50))?;
 
-        let date = Utc::now().format("%Y-%m-%d").to_string();
+        let date = crate::db_clock_now().format("%Y-%m-%d").to_string();
         let daily = usage.daily(&date)?.expect("daily usage should exist");
         assert_eq!(daily.input_tokens, 100);
 
@@ -445,7 +445,7 @@ mod tests {
             output_tokens: 50,
             cache_creation_tokens: 500,
             cache_read_tokens: 200,
-            timestamp: Utc::now(),
+            timestamp: crate::db_clock_now(),
         };
         usage.record(&req)?;
 

@@ -128,7 +128,7 @@ impl StoredProcessJobRecord {
         command_preview: impl Into<String>,
         owner: StoredProcessJobOwnerScope,
     ) -> Self {
-        let now = Utc::now();
+        let now = crate::db_clock_now();
         Self {
             schema_version: PROCESS_JOB_RECORD_SCHEMA_VERSION,
             id: id.into(),

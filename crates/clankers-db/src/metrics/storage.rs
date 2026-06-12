@@ -202,8 +202,6 @@ impl<'db> MetricsStore<'db> {
 
 #[cfg(test)]
 mod tests {
-    use chrono::Utc;
-
     use super::*;
     use crate::metrics::types::MetricEventKind;
 
@@ -269,7 +267,7 @@ mod tests {
             store.append_recent_event(&MetricEventRecord {
                 session_id: "s1".into(),
                 seq: i,
-                timestamp: Utc::now(),
+                timestamp: crate::db_clock_now(),
                 kind: MetricEventKind::TurnStart { index: i },
             })?;
         }
@@ -286,13 +284,13 @@ mod tests {
         store.append_recent_event(&MetricEventRecord {
             session_id: "s1".into(),
             seq: 0,
-            timestamp: Utc::now(),
+            timestamp: crate::db_clock_now(),
             kind: MetricEventKind::SessionStart,
         })?;
         store.append_recent_event(&MetricEventRecord {
             session_id: "s2".into(),
             seq: 0,
-            timestamp: Utc::now(),
+            timestamp: crate::db_clock_now(),
             kind: MetricEventKind::SessionStart,
         })?;
         assert_eq!(store.recent_events_for_session("s1", 10)?.len(), 1);
@@ -309,7 +307,7 @@ mod tests {
         store.append_recent_event(&MetricEventRecord {
             session_id: "s1".into(),
             seq: 0,
-            timestamp: Utc::now(),
+            timestamp: crate::db_clock_now(),
             kind: MetricEventKind::SessionStart,
         })?;
         store.clear_all()?;

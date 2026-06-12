@@ -115,7 +115,7 @@ pub struct RegistryEntry {
 impl RegistryEntry {
     /// Create a new registry entry for a resource.
     pub fn new(kind: ResourceKind, name: impl Into<String>, path: impl Into<String>) -> Self {
-        let now = Utc::now();
+        let now = crate::db_clock_now();
         Self {
             kind,
             name: name.into(),
@@ -233,7 +233,7 @@ impl<'db> Registry<'db> {
         let entry = match self.get_by_key(&key)? {
             Some(mut existing) => {
                 existing.path = path.to_string();
-                existing.updated_at = Utc::now();
+                existing.updated_at = crate::db_clock_now();
                 existing
             }
             None => RegistryEntry::new(kind, name, path),
@@ -251,8 +251,8 @@ impl<'db> Registry<'db> {
         };
 
         entry.use_count += 1;
-        entry.last_used = Some(Utc::now());
-        entry.updated_at = Utc::now();
+        entry.last_used = Some(crate::db_clock_now());
+        entry.updated_at = crate::db_clock_now();
 
         self.put(&key, &entry)
     }
@@ -267,7 +267,7 @@ impl<'db> Registry<'db> {
 
         entry.total_tokens += tokens;
         entry.total_cost_micros = entry.total_cost_micros.saturating_add(cost.micros());
-        entry.updated_at = Utc::now();
+        entry.updated_at = crate::db_clock_now();
 
         self.put(&key, &entry)
     }
@@ -281,7 +281,7 @@ impl<'db> Registry<'db> {
         };
 
         entry.enabled = enabled;
-        entry.updated_at = Utc::now();
+        entry.updated_at = crate::db_clock_now();
 
         self.put(&key, &entry)?;
         Ok(true)
@@ -296,7 +296,7 @@ impl<'db> Registry<'db> {
         };
 
         entry.last_error = Some(error.to_string());
-        entry.updated_at = Utc::now();
+        entry.updated_at = crate::db_clock_now();
 
         self.put(&key, &entry)
     }
@@ -310,7 +310,7 @@ impl<'db> Registry<'db> {
         };
 
         entry.last_error = None;
-        entry.updated_at = Utc::now();
+        entry.updated_at = crate::db_clock_now();
 
         self.put(&key, &entry)
     }

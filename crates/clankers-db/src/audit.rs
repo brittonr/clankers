@@ -228,7 +228,7 @@ mod tests {
             is_error: false,
             result_preview: "ok".to_string(),
             duration_ms: 42,
-            timestamp: Utc::now(),
+            timestamp: crate::db_clock_now(),
             sandbox_blocked: None,
         }
     }
@@ -243,7 +243,7 @@ mod tests {
             is_error: false,
             result_preview: "".to_string(),
             duration_ms: 100,
-            timestamp: Utc::now(),
+            timestamp: crate::db_clock_now(),
             sandbox_blocked: None,
         }
     }
@@ -449,7 +449,7 @@ mod tests {
             is_error: false,
             result_preview: "total 42\ndrwxr-xr-x ...".into(),
             duration_ms: 123,
-            timestamp: Utc::now(),
+            timestamp: crate::db_clock_now(),
             sandbox_blocked: None,
         };
 
@@ -479,7 +479,7 @@ mod tests {
             is_error: true,
             result_preview: "".into(),
             duration_ms: 0,
-            timestamp: Utc::now(),
+            timestamp: crate::db_clock_now(),
             sandbox_blocked: Some("sensitive path".into()),
         };
 

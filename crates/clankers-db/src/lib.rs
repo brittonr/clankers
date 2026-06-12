@@ -23,7 +23,6 @@
         tigerstyle::raw_arithmetic_overflow,
         tigerstyle::usize_in_public_api,
         tigerstyle::ambiguous_params,
-        tigerstyle::ambient_clock,
         reason = "embedded database APIs preserve stored schema/public query contracts; integration tests cover persistence behavior during Tigerstyle drain"
     )
 )]
@@ -37,6 +36,14 @@ pub mod registry;
 
 pub use error::DbError;
 pub use error::db_err;
+
+#[cfg_attr(
+    dylint_lib = "tigerstyle",
+    allow(tigerstyle::ambient_clock, reason = "database shell-boundary timestamp source")
+)]
+pub(crate) fn db_clock_now() -> DateTime<Utc> {
+    Utc::now()
+}
 pub mod insights;
 pub mod memory;
 pub mod metrics;
@@ -50,6 +57,8 @@ pub mod usage;
 use std::path::Path;
 use std::sync::Arc;
 
+use chrono::DateTime;
+use chrono::Utc;
 use redb::Database;
 
 use crate::error::Result;

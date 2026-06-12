@@ -130,7 +130,7 @@ impl<'db> SkillUsageStore<'db> {
             id,
             skill_name: skill_name.to_string(),
             session_id: session_id.to_string(),
-            loaded_at: Utc::now(),
+            loaded_at: crate::db_clock_now(),
             outcome: SkillOutcome::Pending,
             note: None,
         };

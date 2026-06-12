@@ -252,7 +252,7 @@ mod tests {
         store.append_recent_event(&MetricEventRecord {
             session_id: "s1".into(),
             seq: 0,
-            timestamp: chrono::Utc::now(),
+            timestamp: crate::db_clock_now(),
             kind: MetricEventKind::ToolExec {
                 tool: "bash".into(),
                 duration_ms: 150,

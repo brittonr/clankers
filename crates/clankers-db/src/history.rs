@@ -58,7 +58,7 @@ impl<'db> HistoryDb<'db> {
 
         let entry = HistoryEntry {
             text: text.to_string(),
-            timestamp: Utc::now(),
+            timestamp: crate::db_clock_now(),
             session_id: session_id.to_string(),
             cwd: cwd.to_string(),
         };

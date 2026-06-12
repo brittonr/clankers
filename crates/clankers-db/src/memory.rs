@@ -92,7 +92,7 @@ impl MemoryEntry {
             scope,
             source: MemorySource::Agent,
             tags: Vec::new(),
-            created_at: Utc::now(),
+            created_at: crate::db_clock_now(),
             session_id: None,
         }
     }
@@ -127,7 +127,7 @@ pub(crate) fn generate_id() -> u64 {
 
     static LAST: AtomicU64 = AtomicU64::new(0);
 
-    let now = Utc::now().timestamp_micros() as u64;
+    let now = crate::db_clock_now().timestamp_micros() as u64;
     let mut last = LAST.load(Ordering::Relaxed);
     loop {
         let next = now.max(last + 1);

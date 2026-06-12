@@ -204,12 +204,12 @@ mod tests {
             session_id: id.to_string(),
             cwd: cwd.to_string(),
             model: "claude-sonnet".to_string(),
-            created_at: Utc::now(),
+            created_at: crate::db_clock_now(),
             message_count: 5,
             first_prompt: prompt.to_string(),
             file_path: format!("/sessions/{id}.jsonl"),
             agent: None,
-            updated_at: Utc::now(),
+            updated_at: crate::db_clock_now(),
         }
     }
 
