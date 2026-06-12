@@ -16,7 +16,6 @@
         tigerstyle::unbounded_channel,
         tigerstyle::ambiguous_params,
         tigerstyle::too_many_parameters,
-        tigerstyle::bool_naming,
         tigerstyle::unbounded_loop,
         tigerstyle::unbounded_collection_growth,
         tigerstyle::unchecked_narrowing,

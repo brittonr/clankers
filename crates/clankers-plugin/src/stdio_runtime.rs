@@ -528,13 +528,13 @@ async fn run_stdio_connection(
     if let LaunchSandbox::Restricted(policy) = &launch.sandbox {
         let read_roots = policy.read_roots.clone();
         let writable_roots = policy.writable_roots.clone();
-        let allow_network = policy.allow_network;
+        let is_network_allowed = policy.allow_network;
         unsafe {
             command.pre_exec(move || {
                 if let Err(error) = crate::restricted_sandbox::apply_restricted_sandbox_to_current(
                     &read_roots,
                     &writable_roots,
-                    allow_network,
+                    is_network_allowed,
                 ) {
                     let message = format!("restricted sandbox bootstrap failed: {error}\n");
                     let _ = libc::write(libc::STDERR_FILENO, message.as_ptr().cast(), message.len());
@@ -616,8 +616,8 @@ async fn run_stdio_connection(
         })
         .map_err(|_| format!("stdio plugin '{}' failed before host hello could be sent", name))?;
 
-    let mut hello_seen = false;
-    let mut ready_seen = false;
+    let mut is_hello_seen = false;
+    let mut is_ready_seen = false;
     let mut pending_disconnect_reason: Option<String> = None;
     let mut pending_calls: HashMap<String, PendingToolCall> = HashMap::new();
 
@@ -627,7 +627,7 @@ async fn run_stdio_connection(
             command = command_rx.recv() => {
                 match command {
                     Some(SupervisorCommand::DeliverEvent { event_name, data }) => {
-                        if !ready_seen {
+                        if !is_ready_seen {
                             continue;
                         }
                         writer_tx.send(HostToPluginFrame::Event {
@@ -639,7 +639,7 @@ async fn run_stdio_connection(
                         }).ok();
                     }
                     Some(SupervisorCommand::InvokeTool { call_id, tool, args, event_tx }) => {
-                        if !ready_seen {
+                        if !is_ready_seen {
                             event_tx.send(StdioToolCallEvent::Error(format!(
                                 "Plugin '{}' is not ready for tool '{}'",
                                 name, tool,
@@ -702,8 +702,8 @@ async fn run_stdio_connection(
             Some(event) = event_rx.recv() => {
                 match event {
                     SupervisorEvent::Frame(frame) => {
-                        if !ready_seen {
-                            handle_startup_frame(&manager, name, run_id, &mut hello_seen, &mut ready_seen, frame)?;
+                        if !is_ready_seen {
+                            handle_startup_frame(&manager, name, run_id, &mut is_hello_seen, &mut is_ready_seen, frame)?;
                         } else {
                             handle_runtime_frame(&manager, name, run_id, &mut pending_calls, frame)?;
                         }
@@ -723,7 +723,7 @@ async fn run_stdio_connection(
                 let reason = match status {
                     Ok(status) if status.success() => {
                         pending_disconnect_reason.unwrap_or_else(|| {
-                            if ready_seen {
+                            if is_ready_seen {
                                 format!("stdio plugin '{}' exited unexpectedly", name)
                             } else {
                                 format!("stdio plugin '{}' exited before ready", name)
@@ -740,7 +740,7 @@ async fn run_stdio_connection(
                 };
                 finish_pending_calls(&mut pending_calls, StdioToolCallEvent::Disconnected(reason.clone()));
                 return Ok(ConnectionOutcome::UnexpectedExit {
-                    ready_seen,
+                    ready_seen: is_ready_seen,
                     reason,
                 });
             }
@@ -869,14 +869,14 @@ fn collect_restricted_policy(
         push_unique_path(&mut read_roots, parent.to_path_buf());
     }
 
-    let allow_network = stdio.allow_network
+    let is_network_allowed = stdio.allow_network
         && crate::sandbox::has_permission(&info.manifest.permissions, crate::sandbox::Permission::Net);
 
     Ok(RestrictedSandboxPolicy {
         state_dir,
         writable_roots,
         read_roots,
-        allow_network,
+        allow_network: is_network_allowed,
     })
 }
 

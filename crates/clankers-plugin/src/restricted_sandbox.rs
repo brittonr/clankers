@@ -39,8 +39,8 @@ pub(crate) fn apply_restricted_sandbox_to_current(
     }
 
     let merged_read_roots = merge_read_roots(read_roots);
-    let landlock_supported = apply_landlock_rules(&merged_read_roots, writable_roots)?;
-    if !landlock_supported {
+    let is_landlock_supported = apply_landlock_rules(&merged_read_roots, writable_roots)?;
+    if !is_landlock_supported {
         return Err("restricted sandbox mode is unavailable on this host (Landlock unsupported)".to_string());
     }
 
