@@ -53,7 +53,7 @@ pub(crate) fn accepted_engine_prompt_from_core_outcome(
         }
     };
 
-    let mut replay_queued_prompt = false;
+    let mut is_queued_prompt_replayed = false;
     let mut accepted_prompt = None;
     for effect in effects {
         let candidate = match effect {
@@ -78,7 +78,7 @@ pub(crate) fn accepted_engine_prompt_from_core_outcome(
                 image_count: FOLLOW_UP_IMAGE_COUNT,
             })),
             CoreEffect::ReplayQueuedPrompt => {
-                replay_queued_prompt = true;
+                is_queued_prompt_replayed = true;
                 None
             }
             CoreEffect::EmitLogicalEvent(_)
@@ -96,7 +96,7 @@ pub(crate) fn accepted_engine_prompt_from_core_outcome(
 
     match accepted_prompt {
         Some(prompt) => Ok(prompt),
-        None if replay_queued_prompt => Err(CoreEffectGateRejection::ReplayQueuedPromptNeedsFreshCorePrompt),
+        None if is_queued_prompt_replayed => Err(CoreEffectGateRejection::ReplayQueuedPromptNeedsFreshCorePrompt),
         None => Err(CoreEffectGateRejection::MissingEnginePromptEffect),
     }
 }
@@ -148,7 +148,7 @@ impl SessionController {
     }
 
     pub(crate) fn execute_tool_filter_request_effects(&mut self, effects: Vec<CoreEffect>) -> bool {
-        let mut all_feedback_applied = true;
+        let mut is_all_feedback_applied = true;
 
         if let Some(application) = effect_interpretation::interpret_tool_filter_application(&effects) {
             if let Some(rebuilder) = self.tool_rebuilder.as_ref() {
@@ -161,18 +161,18 @@ impl SessionController {
                 });
             }
 
-            let applied = self.apply_tool_filter_feedback(ToolFilterApplied {
+            let is_applied = self.apply_tool_filter_feedback(ToolFilterApplied {
                 effect_id: application.effect_id,
                 applied_disabled_tool_set: application.disabled_tools,
             });
-            all_feedback_applied &= applied;
+            is_all_feedback_applied &= is_applied;
         }
 
         debug_assert!(
             effect_interpretation::interpret_tool_filter_application(&effects).is_some(),
             "disabled-tools transition must emit ApplyToolFilter"
         );
-        all_feedback_applied
+        is_all_feedback_applied
     }
 
     pub(crate) fn execute_tool_filter_feedback_effects(&mut self, effects: Vec<CoreEffect>) {
@@ -182,14 +182,14 @@ impl SessionController {
     }
 
     pub(crate) fn execute_start_loop_effects(&mut self, effects: Vec<CoreEffect>) {
-        let mut saw_loop_state_change = false;
+        let mut is_loop_state_change_seen = false;
 
         for effect in effects {
             if let CoreEffect::EmitLogicalEvent(CoreLogicalEvent::LoopStateChanged {
                 active_loop_state: Some(active_loop_state),
             }) = effect
             {
-                saw_loop_state_change = true;
+                is_loop_state_change_seen = true;
                 let config = LoopConfig {
                     name: active_loop_state.loop_id,
                     prompt: Some(active_loop_state.prompt_text),
@@ -202,23 +202,23 @@ impl SessionController {
             }
         }
 
-        debug_assert!(saw_loop_state_change, "start-loop transition must emit LoopStateChanged");
+        debug_assert!(is_loop_state_change_seen, "start-loop transition must emit LoopStateChanged");
     }
 
     pub(crate) fn execute_stop_loop_effects(&mut self, effects: Vec<CoreEffect>) {
-        let mut saw_loop_state_change = false;
+        let mut is_loop_state_change_seen = false;
 
         for effect in effects {
             if let CoreEffect::EmitLogicalEvent(CoreLogicalEvent::LoopStateChanged {
                 active_loop_state: None,
             }) = effect
             {
-                saw_loop_state_change = true;
+                is_loop_state_change_seen = true;
                 self.stop_loop();
             }
         }
 
-        debug_assert!(saw_loop_state_change, "stop-loop transition must emit LoopStateChanged");
+        debug_assert!(is_loop_state_change_seen, "stop-loop transition must emit LoopStateChanged");
     }
 
     pub(crate) fn execute_post_prompt_effects(
@@ -284,18 +284,18 @@ impl SessionController {
     }
 
     fn execute_follow_up_failure_effects(&mut self, effects: Vec<CoreEffect>, completion_status: &CompletionStatus) {
-        let mut loop_finished = false;
+        let mut is_loop_finished = false;
 
         for effect in effects {
             if let CoreEffect::EmitLogicalEvent(CoreLogicalEvent::LoopStateChanged {
                 active_loop_state: None,
             }) = effect
             {
-                loop_finished = true;
+                is_loop_finished = true;
             }
         }
 
-        if loop_finished {
+        if is_loop_finished {
             self.finish_loop("failed (follow-up)");
             return;
         }

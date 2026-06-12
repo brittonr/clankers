@@ -533,11 +533,11 @@ impl SessionController {
             }
         };
 
-        let applied = self.apply_prompt_completion(clankers_core::PromptCompleted {
+        let is_applied = self.apply_prompt_completion(clankers_core::PromptCompleted {
             effect_id: prompt_effect_id,
             completion_status,
         });
-        debug_assert!(applied, "prompt completion should match the pending prompt");
+        debug_assert!(is_applied, "prompt completion should match the pending prompt");
         self.emit(DaemonEvent::PromptDone { error: prompt_error });
         true
     }
@@ -729,11 +729,11 @@ impl SessionController {
             }
         };
 
-        let applied = self.apply_prompt_completion(clankers_core::PromptCompleted {
+        let is_applied = self.apply_prompt_completion(clankers_core::PromptCompleted {
             effect_id: prompt_effect_id,
             completion_status: completion_status.clone(),
         });
-        debug_assert!(applied, "prompt completion should match the pending prompt");
+        debug_assert!(is_applied, "prompt completion should match the pending prompt");
 
         self.emit(DaemonEvent::PromptDone { error: prompt_error });
         self.flush_outgoing_for_streaming(&mut on_events);

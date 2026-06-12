@@ -66,11 +66,11 @@ impl SessionController {
             "follow-up prompt completion must use complete_dispatched_follow_up"
         );
 
-        let applied = self.apply_prompt_completion(clankers_core::PromptCompleted {
+        let is_applied = self.apply_prompt_completion(clankers_core::PromptCompleted {
             effect_id: pending_prompt.effect_id,
             completion_status: completion_status.to_core(),
         });
-        debug_assert!(applied, "embedded prompt completion should match the pending prompt");
+        debug_assert!(is_applied, "embedded prompt completion should match the pending prompt");
     }
 
     /// Check if auto-test should run after a prompt completes. Returns a
@@ -201,11 +201,11 @@ impl SessionController {
             return;
         }
 
-        let prompt_applied = self.apply_prompt_completion(clankers_core::PromptCompleted {
+        let is_prompt_applied = self.apply_prompt_completion(clankers_core::PromptCompleted {
             effect_id: pending_prompt.effect_id,
             completion_status: core_completion_status.clone(),
         });
-        if !prompt_applied {
+        if !is_prompt_applied {
             return;
         }
 

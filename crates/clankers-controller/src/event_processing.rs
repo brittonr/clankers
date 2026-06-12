@@ -87,8 +87,8 @@ impl SessionController {
             && self.core_state.pending_prompt.is_none()
             && let AgentEvent::BeforeAgentStart { prompt, .. } = event
         {
-            let started = self.start_embedded_prompt(prompt, 0);
-            debug_assert!(started, "embedded before-agent-start should seed a pending prompt");
+            let is_started = self.start_embedded_prompt(prompt, 0);
+            debug_assert!(is_started, "embedded before-agent-start should seed a pending prompt");
         }
 
         // 3. Track tool call names

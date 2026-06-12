@@ -16,7 +16,6 @@
         tigerstyle::ambient_clock,
         tigerstyle::usize_in_public_api,
         tigerstyle::sentinel_fallback,
-        tigerstyle::bool_naming,
         tigerstyle::no_panic,
         tigerstyle::no_unwrap,
         tigerstyle::unbounded_channel,
