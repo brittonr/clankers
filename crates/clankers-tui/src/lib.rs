@@ -19,7 +19,6 @@
         tigerstyle::ambient_clock,
         tigerstyle::too_many_parameters,
         tigerstyle::compound_condition,
-        tigerstyle::bool_naming,
         tigerstyle::no_panic,
         reason = "TUI layout/rendering shell uses terminal-bounded coordinate formulas, ratatui builder defaults, display-only costs/timestamps, and visual snapshot coverage"
     )

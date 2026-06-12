@@ -33,7 +33,7 @@ impl ExperimentDashboardState {
         let log = clankers_autoresearch::jsonl::read_log(path)?;
         let config = log.config;
         let metric_name = config.as_ref().map(|c| c.metric_name.clone()).unwrap_or_else(|| "metric".to_string());
-        let minimize = config.as_ref().is_some_and(|c| c.is_minimize());
+        let is_minimize = config.as_ref().is_some_and(|config| config.is_minimize());
         let title = config.as_ref().map(|c| c.name.clone()).unwrap_or_else(|| "Autoresearch".to_string());
         let mut kept = 0usize;
         let mut discarded = 0usize;
@@ -47,7 +47,7 @@ impl ExperimentDashboardState {
                     kept += 1;
                     best_metric = Some(match best_metric {
                         None => result.metric,
-                        Some(best) if minimize => best.min(result.metric),
+                        Some(best) if is_minimize => best.min(result.metric),
                         Some(best) => best.max(result.metric),
                     });
                 }
