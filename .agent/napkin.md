@@ -2,6 +2,7 @@
 
 ## Working Notes
 
+- 2026-06-11: clankers-db ambiguous-params drain only flagged private `make_key(&str, &str)` helpers in `file_cache.rs` and `registry.rs`; replacing them with tiny `FileCacheKeyParts` / `RegistryKeyParts` structs kept public APIs unchanged. Remember to update private tests that call `make_key` directly.
 - 2026-06-11: clankers-db ambient-clock crate allow drain: add one `db_clock_now()` shell-boundary helper in `lib.rs` with a narrow ambient-clock allow, replace all `Utc::now()` / `chrono::Utc::now()` in db modules with `crate::db_clock_now()`, and remove now-unused test `chrono::Utc` imports. Package/full Tigerstyle and db lib tests stay green.
 - 2026-06-11: clankers-db explicit-defaults crate allow drain was tiny after prior work: remove only the crate-level explicit-defaults allow, drop `#[serde(default)]` from Option fields in `registry.rs` legacy cost wire type and `skill_usage.rs` note field; missing Option fields still deserialize as None and package/full Tigerstyle plus db lib tests stay green.
 - 2026-06-11: clankers-core reducer assertion-density drain: after removing the seven local allows, only those seven reducer functions failed. Lightweight stable assertions were UTF-8 char/byte bounds for prompt/loop strings, Vec len/capacity for disabled tool sets, and explicit enum-shape `matches!` assertions for completion/dispatch statuses; package and full Tigerstyle stayed green.

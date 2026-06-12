@@ -51,7 +51,7 @@ impl<'db> FileReadCache<'db> {
     /// Check if we have a valid cache entry for this file.
     /// Returns Hit if the file mtime and size match, Miss otherwise.
     pub fn check(&self, session_id: &str, path: &str, current_mtime: i64, current_size: u64) -> Result<CacheLookup> {
-        let key = make_key(session_id, path);
+        let key = make_key(FileCacheKeyParts { session_id, path });
         let tx = self.db.begin_read()?;
         let table = tx.open_table(TABLE).map_err(db_err)?;
 
@@ -73,7 +73,10 @@ impl<'db> FileReadCache<'db> {
 
     /// Record a file read (insert or update cache entry).
     pub fn record(&self, entry: &CachedFileRead) -> Result<()> {
-        let key = make_key(&entry.session_id, &entry.path);
+        let key = make_key(FileCacheKeyParts {
+            session_id: &entry.session_id,
+            path: &entry.path,
+        });
         let bytes = serde_json::to_vec(entry).map_err(|e| crate::error::DbError {
             message: format!("failed to serialize file cache entry: {e}"),
         })?;
@@ -89,7 +92,7 @@ impl<'db> FileReadCache<'db> {
 
     /// Increment the hit count for a cache entry.
     pub fn record_hit(&self, session_id: &str, path: &str) -> Result<()> {
-        let key = make_key(session_id, path);
+        let key = make_key(FileCacheKeyParts { session_id, path });
 
         // First read the current entry
         let current_entry = {
@@ -157,7 +160,10 @@ impl<'db> FileReadCache<'db> {
         {
             let mut table = tx.open_table(TABLE).map_err(db_err)?;
             for entry in &entries {
-                let key = make_key(&entry.session_id, &entry.path);
+                let key = make_key(FileCacheKeyParts {
+                    session_id: &entry.session_id,
+                    path: &entry.path,
+                });
                 table.remove(key.as_str()).map_err(db_err)?;
             }
         }
@@ -179,15 +185,20 @@ impl<'db> FileReadCache<'db> {
     }
 }
 
+struct FileCacheKeyParts<'a> {
+    session_id: &'a str,
+    path: &'a str,
+}
+
 /// Build the cache key from session ID and file path.
 /// Uses a hash of the path to keep keys short and avoid special characters.
-fn make_key(session_id: &str, path: &str) -> String {
+fn make_key(parts: FileCacheKeyParts<'_>) -> String {
     use std::collections::hash_map::DefaultHasher;
     use std::hash::Hash;
     use std::hash::Hasher;
     let mut hasher = DefaultHasher::new();
-    path.hash(&mut hasher);
-    format!("{}:{:016x}", session_id, hasher.finish())
+    parts.path.hash(&mut hasher);
+    format!("{}:{:016x}", parts.session_id, hasher.finish())
 }
 
 #[cfg(test)]
@@ -460,28 +471,49 @@ mod tests {
 
     #[test]
     fn make_key_is_deterministic() {
-        let key1 = make_key("sess-1", "/path/to/file.rs");
-        let key2 = make_key("sess-1", "/path/to/file.rs");
+        let key1 = make_key(FileCacheKeyParts {
+            session_id: "sess-1",
+            path: "/path/to/file.rs",
+        });
+        let key2 = make_key(FileCacheKeyParts {
+            session_id: "sess-1",
+            path: "/path/to/file.rs",
+        });
         assert_eq!(key1, key2);
     }
 
     #[test]
     fn make_key_different_paths_different_keys() {
-        let key1 = make_key("sess-1", "/path/to/file1.rs");
-        let key2 = make_key("sess-1", "/path/to/file2.rs");
+        let key1 = make_key(FileCacheKeyParts {
+            session_id: "sess-1",
+            path: "/path/to/file1.rs",
+        });
+        let key2 = make_key(FileCacheKeyParts {
+            session_id: "sess-1",
+            path: "/path/to/file2.rs",
+        });
         assert_ne!(key1, key2);
     }
 
     #[test]
     fn make_key_different_sessions_different_keys() {
-        let key1 = make_key("sess-1", "/path/to/file.rs");
-        let key2 = make_key("sess-2", "/path/to/file.rs");
+        let key1 = make_key(FileCacheKeyParts {
+            session_id: "sess-1",
+            path: "/path/to/file.rs",
+        });
+        let key2 = make_key(FileCacheKeyParts {
+            session_id: "sess-2",
+            path: "/path/to/file.rs",
+        });
         assert_ne!(key1, key2);
     }
 
     #[test]
     fn make_key_includes_session_prefix() {
-        let key = make_key("sess-123", "/any/path");
+        let key = make_key(FileCacheKeyParts {
+            session_id: "sess-123",
+            path: "/any/path",
+        });
         assert!(key.starts_with("sess-123:"));
     }
 

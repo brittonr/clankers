@@ -210,9 +210,14 @@ fn major_units_to_micros(units: f64) -> std::result::Result<u64, String> {
     Ok(micros.round() as u64)
 }
 
+struct RegistryKeyParts<'a> {
+    kind: &'a str,
+    name: &'a str,
+}
+
 /// Build the table key from kind and name.
-fn make_key(kind: &str, name: &str) -> String {
-    format!("{kind}:{name}")
+fn make_key(parts: RegistryKeyParts<'_>) -> String {
+    format!("{}:{}", parts.kind, parts.name)
 }
 
 /// Accessor for the resource registry table.
@@ -228,7 +233,7 @@ impl<'db> Registry<'db> {
     /// Upsert a resource entry. If it exists, updates path and updated_at
     /// but preserves use stats. If new, inserts with defaults.
     pub fn upsert(&self, kind: ResourceKind, name: &str, path: &str) -> Result<()> {
-        let key = make_key(kind.as_str(), name);
+        let key = make_key(RegistryKeyParts { kind: kind.as_str(), name });
 
         let entry = match self.get_by_key(&key)? {
             Some(mut existing) => {
@@ -244,7 +249,7 @@ impl<'db> Registry<'db> {
 
     /// Record a use of the resource (bumps count and last_used).
     pub fn record_use(&self, kind: &str, name: &str) -> Result<()> {
-        let key = make_key(kind, name);
+        let key = make_key(RegistryKeyParts { kind, name });
 
         let Some(mut entry) = self.get_by_key(&key)? else {
             return Ok(()); // Resource not registered — no-op
@@ -259,7 +264,7 @@ impl<'db> Registry<'db> {
 
     /// Record token usage and cost (for agent entries).
     pub fn record_tokens(&self, name: &str, tokens: u64, cost: CostMicros) -> Result<()> {
-        let key = make_key("agent", name);
+        let key = make_key(RegistryKeyParts { kind: "agent", name });
 
         let Some(mut entry) = self.get_by_key(&key)? else {
             return Ok(());
@@ -274,7 +279,7 @@ impl<'db> Registry<'db> {
 
     /// Set enabled/disabled state.
     pub fn set_enabled(&self, kind: &str, name: &str, enabled: bool) -> Result<bool> {
-        let key = make_key(kind, name);
+        let key = make_key(RegistryKeyParts { kind, name });
 
         let Some(mut entry) = self.get_by_key(&key)? else {
             return Ok(false);
@@ -289,7 +294,7 @@ impl<'db> Registry<'db> {
 
     /// Record an error for a resource.
     pub fn record_error(&self, kind: &str, name: &str, error: &str) -> Result<()> {
-        let key = make_key(kind, name);
+        let key = make_key(RegistryKeyParts { kind, name });
 
         let Some(mut entry) = self.get_by_key(&key)? else {
             return Ok(());
@@ -303,7 +308,7 @@ impl<'db> Registry<'db> {
 
     /// Clear the last error for a resource.
     pub fn clear_error(&self, kind: &str, name: &str) -> Result<()> {
-        let key = make_key(kind, name);
+        let key = make_key(RegistryKeyParts { kind, name });
 
         let Some(mut entry) = self.get_by_key(&key)? else {
             return Ok(());
@@ -317,7 +322,7 @@ impl<'db> Registry<'db> {
 
     /// Get a single entry by kind and name.
     pub fn get(&self, kind: &str, name: &str) -> Result<Option<RegistryEntry>> {
-        self.get_by_key(&make_key(kind, name))
+        self.get_by_key(&make_key(RegistryKeyParts { kind, name }))
     }
 
     /// List all entries of a given kind.
@@ -377,7 +382,7 @@ impl<'db> Registry<'db> {
 
     /// Remove a single entry.
     pub fn remove(&self, kind: &str, name: &str) -> Result<bool> {
-        let key = make_key(kind, name);
+        let key = make_key(RegistryKeyParts { kind, name });
         let tx = self.db.begin_write()?;
         let was_removed = {
             let mut table = tx.open_table(TABLE).map_err(db_err)?;
@@ -430,7 +435,7 @@ impl<'db> Registry<'db> {
 
         // Upsert all discovered resources
         for &(name, path) in resources {
-            let key = make_key(kind.as_str(), name);
+            let key = make_key(RegistryKeyParts { kind: kind.as_str(), name });
             if self.get_by_key(&key)?.is_none() {
                 registered += 1;
             }

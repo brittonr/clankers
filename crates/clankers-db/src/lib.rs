@@ -22,7 +22,6 @@
         tigerstyle::unbounded_collection_growth,
         tigerstyle::raw_arithmetic_overflow,
         tigerstyle::usize_in_public_api,
-        tigerstyle::ambiguous_params,
         reason = "embedded database APIs preserve stored schema/public query contracts; integration tests cover persistence behavior during Tigerstyle drain"
     )
 )]
