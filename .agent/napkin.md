@@ -2,6 +2,7 @@
 
 ## Working Notes
 
+- 2026-06-12: root `src/lib.rs` platform-dependent-cast drain is tiny: remove only `platform_dependent_cast`, replace inline turn `u32 as usize` with `usize::try_from(*index)` and return on impossible narrow platforms. Root lib no-run plus package/full Tigerstyle pass.
 - 2026-06-12: root `src/lib.rs` no-recursion drain is small: remove only `no_recursion`, convert recursive skill directory scans in `modes/schedule_prompt.rs` and `tools/skill_view.rs` (including linked-file collection) to explicit `Vec<PathBuf>` stacks. Root lib no-run plus package/full Tigerstyle pass.
 - 2026-06-12: root `src/lib.rs` ignored-result drain is small: remove only `ignored_result`, replace ignored `write!` results with `let result = ...; assert!(result.is_ok())`, and log process wait errors after kill instead of `let _ = child.wait().await`. Root lib no-run plus package/full Tigerstyle pass.
 - 2026-06-12: root `src/lib.rs` bool-naming drain is medium but mechanical: remove only `bool_naming` from the root crate allow, rename root-shell locals like `is_provider_explicit`, `is_prompt_sent`, `is_dispatched_follow_up_completed`, `should_show_tools`, `is_json_mode`, `should_replace_all`, quote/frontmatter flags, and process newline flags. `cargo test -p clankers --lib --no-run` needs the gcc/bfd linker override; package and full Tigerstyle pass.

@@ -105,7 +105,9 @@ impl InlineState {
     pub fn apply(&mut self, event: &AgentEvent) {
         match event {
             AgentEvent::TurnStart { index } => {
-                let idx = *index as usize;
+                let Ok(idx) = usize::try_from(*index) else {
+                    return;
+                };
                 self.current_turn = idx;
                 while self.turns.len() <= idx {
                     self.turns.push(Vec::new());
