@@ -1,6 +1,10 @@
 //! Output truncation utilities
 
 use std::path::PathBuf;
+use std::sync::atomic::AtomicU64;
+use std::sync::atomic::Ordering;
+
+static OUTPUT_FILE_SEQUENCE: AtomicU64 = AtomicU64::new(0);
 
 pub struct TruncationRequest<'a> {
     pub content: &'a str,
@@ -134,22 +138,15 @@ fn save_full_output(content: &str) -> Option<PathBuf> {
     use std::io::Write;
 
     let temp_dir = std::env::temp_dir();
-    let timestamp = truncation_clock_now().duration_since(std::time::UNIX_EPOCH).ok()?.as_millis();
-    let file_name = format!("clankers-output-{}.txt", timestamp);
+    let sequence = OUTPUT_FILE_SEQUENCE.fetch_add(1, Ordering::Relaxed);
+    let process_id = std::process::id();
+    let file_name = format!("clankers-output-{}-{}.txt", process_id, sequence);
     let path = temp_dir.join(file_name);
 
     let mut file = std::fs::File::create(&path).ok()?;
     file.write_all(content.as_bytes()).ok()?;
 
     Some(path)
-}
-
-#[cfg_attr(
-    dylint_lib = "tigerstyle",
-    allow(tigerstyle::ambient_clock, reason = "truncation shell-boundary temp filename timestamp source")
-)]
-fn truncation_clock_now() -> std::time::SystemTime {
-    std::time::SystemTime::now()
 }
 
 #[cfg(test)]
