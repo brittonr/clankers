@@ -339,7 +339,13 @@ pub async fn run_inline_with_options(
     // Spawn the agent on a Send-compatible task; render on the current
     // thread because InlineRenderer contains non-Send dyn trait objects.
     let cwd = std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("."));
-    let expanded = clankers_util::at_file::expand_at_refs_with_images(prompt, &cwd.to_string_lossy());
+    let cwd_text = cwd.to_string_lossy();
+    let expanded = clankers_util::at_file::expand_at_refs_with_images(
+        clankers_util::at_file::ExpandAtRefsRequest {
+            text: prompt,
+            cwd: &cwd_text,
+        },
+    );
     let prompt_owned = expanded.text;
     let images = expanded.images;
     let agent_handle = tokio::spawn(async move { agent.prompt_with_images(&prompt_owned, images).await });

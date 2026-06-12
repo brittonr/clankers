@@ -2,6 +2,12 @@
 
 use std::path::PathBuf;
 
+pub struct TruncationRequest<'a> {
+    pub content: &'a str,
+    pub max_lines: usize,
+    pub max_bytes: usize,
+}
+
 /// Truncate content from the head (keep first N lines/bytes).
 ///
 /// Returns the truncated content and optionally a path to the full output file.
@@ -15,7 +21,10 @@ use std::path::PathBuf;
 /// # Returns
 ///
 /// A tuple of (truncated_content, full_output_path)
-pub fn truncate_head(content: &str, max_lines: usize, max_bytes: usize) -> (String, Option<PathBuf>) {
+pub fn truncate_head(request: TruncationRequest<'_>) -> (String, Option<PathBuf>) {
+    let content = request.content;
+    let max_lines = request.max_lines;
+    let max_bytes = request.max_bytes;
     assert!(content.chars().count() <= content.len());
     let lines: Vec<&str> = content.lines().collect();
     assert!(lines.len() <= content.len().saturating_add(1));
@@ -73,7 +82,10 @@ pub fn truncate_head(content: &str, max_lines: usize, max_bytes: usize) -> (Stri
 /// # Returns
 ///
 /// A tuple of (truncated_content, full_output_path)
-pub fn truncate_tail(content: &str, max_lines: usize, max_bytes: usize) -> (String, Option<PathBuf>) {
+pub fn truncate_tail(request: TruncationRequest<'_>) -> (String, Option<PathBuf>) {
+    let content = request.content;
+    let max_lines = request.max_lines;
+    let max_bytes = request.max_bytes;
     assert!(content.chars().count() <= content.len());
     let lines: Vec<&str> = content.lines().collect();
     assert!(lines.len() <= content.len().saturating_add(1));
@@ -146,7 +158,7 @@ mod tests {
 
     #[test]
     fn test_truncate_short_text() {
-        let (result, path) = truncate_tail("hello\nworld", 100, 100_000);
+        let (result, path) = truncate_tail(TruncationRequest { content: "hello\nworld", max_lines: 100, max_bytes: 100_000 });
         assert_eq!(result, "hello\nworld");
         assert!(path.is_none());
     }
@@ -154,7 +166,7 @@ mod tests {
     #[test]
     fn test_truncate_by_lines() {
         let text = (0..100).map(|i| format!("line {}", i)).collect::<Vec<_>>().join("\n");
-        let (result, _path) = truncate_tail(&text, 10, 100_000);
+        let (result, _path) = truncate_tail(TruncationRequest { content: &text, max_lines: 10, max_bytes: 100_000 });
         let lines: Vec<&str> = result.lines().collect();
         assert!(lines.len() <= 11); // 10 lines + possible truncation notice
     }
@@ -162,14 +174,14 @@ mod tests {
     #[test]
     fn test_truncate_by_bytes() {
         let text = "a".repeat(200);
-        let (result, _path) = truncate_tail(&text, 1000, 50);
+        let (result, _path) = truncate_tail(TruncationRequest { content: &text, max_lines: 1000, max_bytes: 50 });
         assert!(result.len() <= 100); // 50 bytes + truncation notice
     }
 
     #[test]
     fn test_truncate_head_no_truncation() {
         let content = "line1\nline2\nline3";
-        let (result, full_path) = truncate_head(content, 10, 1000);
+        let (result, full_path) = truncate_head(TruncationRequest { content: content, max_lines: 10, max_bytes: 1000 });
         assert_eq!(result, content);
         assert!(full_path.is_none());
     }
@@ -177,7 +189,7 @@ mod tests {
     #[test]
     fn test_truncate_head_by_lines() {
         let content = "line1\nline2\nline3\nline4\nline5";
-        let (result, full_path) = truncate_head(content, 3, 1000);
+        let (result, full_path) = truncate_head(TruncationRequest { content: content, max_lines: 3, max_bytes: 1000 });
         assert_eq!(result, "line1\nline2\nline3");
         assert!(full_path.is_some());
     }
@@ -185,7 +197,7 @@ mod tests {
     #[test]
     fn test_truncate_head_by_bytes() {
         let content = "line1\nline2\nline3";
-        let (result, full_path) = truncate_head(content, 100, 10);
+        let (result, full_path) = truncate_head(TruncationRequest { content: content, max_lines: 100, max_bytes: 10 });
         assert!(full_path.is_some());
         assert!(result.len() <= 10);
     }
@@ -193,7 +205,7 @@ mod tests {
     #[test]
     fn test_truncate_tail_no_truncation() {
         let content = "line1\nline2\nline3";
-        let (result, full_path) = truncate_tail(content, 10, 1000);
+        let (result, full_path) = truncate_tail(TruncationRequest { content: content, max_lines: 10, max_bytes: 1000 });
         assert_eq!(result, content);
         assert!(full_path.is_none());
     }
@@ -201,7 +213,7 @@ mod tests {
     #[test]
     fn test_truncate_tail_by_lines() {
         let content = "line1\nline2\nline3\nline4\nline5";
-        let (result, full_path) = truncate_tail(content, 3, 1000);
+        let (result, full_path) = truncate_tail(TruncationRequest { content: content, max_lines: 3, max_bytes: 1000 });
         assert_eq!(result, "line3\nline4\nline5");
         assert!(full_path.is_some());
     }

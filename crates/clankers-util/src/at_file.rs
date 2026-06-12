@@ -266,18 +266,58 @@ fn parse_line_range(s: &str) -> Option<(usize, usize)> {
     }
 }
 
+pub struct ExpandAtRefsRequest<'a> {
+    pub text: &'a str,
+    pub cwd: &'a str,
+}
+
+pub struct ExpandAtRefsWithPolicyRequest<'a> {
+    pub text: &'a str,
+    pub cwd: &'a str,
+    pub policy: &'a ContextReferencePolicy,
+}
+
+struct ResolvePathRequest<'a> {
+    path: &'a str,
+    cwd: &'a str,
+}
+
+struct PositionKeyRequest<'a> {
+    text: &'a str,
+    raw: &'a str,
+}
+
+struct GitDiffReferenceRequest<'a> {
+    path: &'a str,
+    cwd: &'a str,
+    max_bytes: usize,
+}
+
+struct ReplacementRequest<'a> {
+    path: &'a str,
+    content: &'a str,
+}
+
 /// Expand @file references in a prompt, replacing them with file contents.
 /// Returns the expanded prompt text.
 /// Expand `@file` references, returning structured content with text + images.
 ///
 /// Image files (`.jpg`, `.png`, `.gif`, `.webp`) are base64-encoded as
 /// `Content::Image` blocks. Text files are inlined as before.
-pub fn expand_at_refs_with_images(text: &str, cwd: &str) -> ExpandedContent {
-    expand_at_refs_with_policy(text, cwd, &ContextReferencePolicy::default())
+pub fn expand_at_refs_with_images(request: ExpandAtRefsRequest<'_>) -> ExpandedContent {
+    let policy = ContextReferencePolicy::default();
+    expand_at_refs_with_policy(ExpandAtRefsWithPolicyRequest {
+        text: request.text,
+        cwd: request.cwd,
+        policy: &policy,
+    })
 }
 
 /// Expand context references with explicit policy controls for bounded diffs and URL fetches.
-pub fn expand_at_refs_with_policy(text: &str, cwd: &str, policy: &ContextReferencePolicy) -> ExpandedContent {
+pub fn expand_at_refs_with_policy(request: ExpandAtRefsWithPolicyRequest<'_>) -> ExpandedContent {
+    let text = request.text;
+    let cwd = request.cwd;
+    let policy = request.policy;
     assert!(text.chars().count() <= text.len());
     assert!(cwd.chars().count() <= cwd.len());
     let refs = find_at_refs(text);
@@ -300,8 +340,15 @@ pub fn expand_at_refs_with_policy(text: &str, cwd: &str, policy: &ContextReferen
 
     for at_ref in sorted_refs {
         if is_git_diff_reference(&at_ref.path) {
-            let diff = read_git_diff_reference(&at_ref.path, cwd, policy.max_reference_bytes);
-            let replacement = format_replacement(&at_ref.raw, &diff.content);
+            let diff = read_git_diff_reference(GitDiffReferenceRequest {
+                path: &at_ref.path,
+                cwd,
+                max_bytes: policy.max_reference_bytes,
+            });
+            let replacement = format_replacement(ReplacementRequest {
+                path: &at_ref.raw,
+                content: &diff.content,
+            });
             replace_raw(&mut result, &at_ref, &replacement);
             references.push(match diff.error {
                 Some(message) => ContextReferenceMetadata::error(&at_ref, diff.target, message),
@@ -324,7 +371,10 @@ pub fn expand_at_refs_with_policy(text: &str, cwd: &str, policy: &ContextReferen
                     sanitize_reference_raw(&at_ref.raw)
                 )
             } else {
-                format_replacement(&sanitize_reference_raw(&at_ref.raw), &fetched.content)
+                format_replacement(ReplacementRequest {
+                    path: &sanitize_reference_raw(&at_ref.raw),
+                    content: &fetched.content,
+                })
             };
             replace_raw(&mut result, &at_ref, &replacement);
             references.push(match fetched.error {
@@ -351,7 +401,7 @@ pub fn expand_at_refs_with_policy(text: &str, cwd: &str, policy: &ContextReferen
             continue;
         }
 
-        let resolved = resolve_path(&at_ref.path, cwd);
+        let resolved = resolve_path(ResolvePathRequest { path: &at_ref.path, cwd });
         let target = display_target(&resolved);
 
         if is_image_extension(&at_ref.path) {
@@ -384,7 +434,10 @@ pub fn expand_at_refs_with_policy(text: &str, cwd: &str, policy: &ContextReferen
         } else {
             // Existing text file handling
             let read = read_file_content(&resolved, at_ref.line_range);
-            let replacement = format_replacement(&at_ref.path, &read.content);
+            let replacement = format_replacement(ReplacementRequest {
+                path: &at_ref.path,
+                content: &read.content,
+            });
             replace_raw(&mut result, &at_ref, &replacement);
             references.push(match read.error {
                 Some(message) => ContextReferenceMetadata::error(&at_ref, target.clone(), message),
@@ -399,7 +452,7 @@ pub fn expand_at_refs_with_policy(text: &str, cwd: &str, policy: &ContextReferen
         }
     }
 
-    references.sort_by_key(|m| sorted_position_key(text, &m.raw));
+    references.sort_by_key(|m| sorted_position_key(PositionKeyRequest { text, raw: &m.raw }));
     assert!(images.len() <= references.len());
     assert_eq!(references.len(), reference_count);
 
@@ -411,12 +464,12 @@ pub fn expand_at_refs_with_policy(text: &str, cwd: &str, policy: &ContextReferen
 }
 
 /// Get completion suggestions for a partial @path
-fn resolve_path(path: &str, cwd: &str) -> std::path::PathBuf {
-    let p = Path::new(path);
+fn resolve_path(request: ResolvePathRequest<'_>) -> std::path::PathBuf {
+    let p = Path::new(request.path);
     if p.is_absolute() {
         p.to_path_buf()
     } else {
-        Path::new(cwd).join(p)
+        Path::new(request.cwd).join(p)
     }
 }
 
@@ -522,8 +575,8 @@ fn display_target(path: &Path) -> String {
     path.display().to_string()
 }
 
-fn sorted_position_key(text: &str, raw: &str) -> (bool, usize) {
-    match text.find(raw) {
+fn sorted_position_key(request: PositionKeyRequest<'_>) -> (bool, usize) {
+    match request.text.find(request.raw) {
         Some(position) => (false, position),
         None => (true, 0),
     }
@@ -545,19 +598,19 @@ fn is_git_diff_reference(path: &str) -> bool {
     path == "diff" || path.starts_with("diff:") || path == "git:diff" || path.starts_with("git:diff:")
 }
 
-fn read_git_diff_reference(path: &str, cwd: &str, max_bytes: usize) -> ReadContent {
-    assert!(path.chars().count() <= path.len());
-    assert!(cwd.chars().count() <= cwd.len());
-    let target = if path == "diff" || path == "git:diff" {
+fn read_git_diff_reference(request: GitDiffReferenceRequest<'_>) -> ReadContent {
+    assert!(request.path.chars().count() <= request.path.len());
+    assert!(request.cwd.chars().count() <= request.cwd.len());
+    let target = if request.path == "diff" || request.path == "git:diff" {
         "git:diff".to_string()
     } else {
-        format!("git:{}", path)
+        format!("git:{}", request.path)
     };
     let mut command = Command::new("git");
-    command.current_dir(cwd).args(["diff", "--no-ext-diff", "--no-color"]);
-    if path == "diff:staged" || path == "git:diff:staged" {
+    command.current_dir(request.cwd).args(["diff", "--no-ext-diff", "--no-color"]);
+    if request.path == "diff:staged" || request.path == "git:diff:staged" {
         command.arg("--cached");
-    } else if let Some(scope) = path.strip_prefix("diff:").or_else(|| path.strip_prefix("git:diff:"))
+    } else if let Some(scope) = request.path.strip_prefix("diff:").or_else(|| request.path.strip_prefix("git:diff:"))
         && !scope.is_empty()
         && scope != "unstaged"
     {
@@ -568,7 +621,7 @@ fn read_git_diff_reference(path: &str, cwd: &str, max_bytes: usize) -> ReadConte
             String::from_utf8_lossy(&output.stdout).into_owned(),
             ContextReferenceKind::GitDiff,
             target,
-            max_bytes,
+            request.max_bytes,
             "git diff reference exceeded configured byte limit",
         ),
         Ok(output) => ReadContent {
@@ -720,11 +773,14 @@ fn unsupported_message(path: &str) -> &'static str {
     }
 }
 
-fn format_replacement(path: &str, content: &str) -> String {
+fn format_replacement(request: ReplacementRequest<'_>) -> String {
     // Determine language for syntax highlighting
-    let lang = Path::new(path).extension().and_then(|e| e.to_str()).unwrap_or("");
+    let lang = Path::new(request.path).extension().and_then(|e| e.to_str()).unwrap_or("");
 
-    format!("\n<file path=\"{}\">\n```{}\n{}\n```\n</file>\n", path, lang, content)
+    format!(
+        "\n<file path=\"{}\">\n```{}\n{}\n```\n</file>\n",
+        request.path, lang, request.content
+    )
 }
 
 #[cfg(test)]
@@ -774,7 +830,10 @@ mod tests {
 
     #[test]
     fn test_format_replacement() {
-        let result = format_replacement("src/main.rs", "fn main() {}");
+        let result = format_replacement(ReplacementRequest {
+            path: "src/main.rs",
+            content: "fn main() {}",
+        });
         assert!(result.contains("```rs"));
         assert!(result.contains("fn main()"));
     }
@@ -804,7 +863,7 @@ mod tests {
 
     #[test]
     fn test_expand_at_refs_with_images_no_refs() {
-        let result = expand_at_refs_with_images("just plain text", "/tmp");
+        let result = expand_at_refs_with_images(ExpandAtRefsRequest { text: "just plain text", cwd: "/tmp" });
         assert_eq!(result.text, "just plain text");
         assert!(result.images.is_empty());
     }
@@ -812,14 +871,14 @@ mod tests {
     #[test]
     fn test_expand_at_refs_with_images_text_file() {
         // Non-existent text file should produce an error in text, no images
-        let result = expand_at_refs_with_images("look at @nonexistent.rs", "/tmp");
+        let result = expand_at_refs_with_images(ExpandAtRefsRequest { text: "look at @nonexistent.rs", cwd: "/tmp" });
         assert!(result.images.is_empty());
         assert!(result.text.contains("Error reading file"));
     }
 
     #[test]
     fn test_expand_at_refs_with_images_missing_image() {
-        let result = expand_at_refs_with_images("check @missing.png", "/tmp");
+        let result = expand_at_refs_with_images(ExpandAtRefsRequest { text: "check @missing.png", cwd: "/tmp" });
         assert!(result.images.is_empty());
         assert!(result.text.contains("Error reading image"));
     }
@@ -832,7 +891,7 @@ mod tests {
         std::fs::write(&img_path, b"fake png bytes").ok();
 
         let text = format!("look at @{}", img_path.display());
-        let result = expand_at_refs_with_images(&text, "/");
+        let result = expand_at_refs_with_images(ExpandAtRefsRequest { text: &text, cwd: "/" });
         assert_eq!(result.images.len(), 1);
         assert!(result.text.contains("[image:"));
         match &result.images[0] {
@@ -853,7 +912,10 @@ mod tests {
         let file = dir.path().join("notes.rs");
         std::fs::write(&file, "one\ntwo\nthree\n").unwrap();
 
-        let result = expand_at_refs_with_images("read @notes.rs:2-3", dir.path().to_str().unwrap());
+        let result = expand_at_refs_with_images(ExpandAtRefsRequest {
+            text: "read @notes.rs:2-3",
+            cwd: dir.path().to_str().unwrap(),
+        });
 
         assert!(result.text.contains("two\nthree"));
         assert_eq!(result.references.len(), 1);
@@ -873,7 +935,10 @@ mod tests {
         std::fs::write(dir.path().join("a.txt"), "a").unwrap();
         std::fs::create_dir(dir.path().join("nested")).unwrap();
 
-        let result = expand_at_refs_with_images("list @./", dir.path().to_str().unwrap());
+        let result = expand_at_refs_with_images(ExpandAtRefsRequest {
+            text: "list @./",
+            cwd: dir.path().to_str().unwrap(),
+        });
 
         assert!(result.text.contains("a.txt"));
         assert!(result.text.contains("nested/"));
@@ -885,7 +950,7 @@ mod tests {
 
     #[test]
     fn test_unsupported_url_is_explicit() {
-        let result = expand_at_refs_with_images("fetch @https://example.com/path", "/tmp");
+        let result = expand_at_refs_with_images(ExpandAtRefsRequest { text: "fetch @https://example.com/path", cwd: "/tmp" });
 
         assert!(result.images.is_empty());
         assert!(result.text.contains("Unsupported context reference @https://example.com/path"));
@@ -920,11 +985,12 @@ mod tests {
             .unwrap();
         std::fs::write(&file, "one\ntwo\n").unwrap();
 
-        let result = expand_at_refs_with_policy(
-            "review @diff",
-            dir.path().to_str().unwrap(),
-            &ContextReferencePolicy::default(),
-        );
+        let policy = ContextReferencePolicy::default();
+        let result = expand_at_refs_with_policy(ExpandAtRefsWithPolicyRequest {
+            text: "review @diff",
+            cwd: dir.path().to_str().unwrap(),
+            policy: &policy,
+        });
 
         assert!(result.text.contains("+two"));
         assert_eq!(result.references.len(), 1);
@@ -957,7 +1023,7 @@ mod tests {
         };
         let prompt = format!("read @http://{addr}/note");
 
-        let result = expand_at_refs_with_policy(&prompt, "/tmp", &policy);
+        let result = expand_at_refs_with_policy(ExpandAtRefsWithPolicyRequest { text: &prompt, cwd: "/tmp", policy: &policy });
         handle.join().unwrap();
 
         assert!(result.text.contains("hello url ref"));
@@ -969,7 +1035,7 @@ mod tests {
 
     #[test]
     fn test_url_reference_metadata_redacts_userinfo() {
-        let result = expand_at_refs_with_images("fetch @https://token@example.com/private", "/tmp");
+        let result = expand_at_refs_with_images(ExpandAtRefsRequest { text: "fetch @https://token@example.com/private", cwd: "/tmp" });
 
         let rendered = serde_json::to_string(&result.references).unwrap();
         assert!(!rendered.contains("token@example.com"));
@@ -979,7 +1045,7 @@ mod tests {
 
     #[test]
     fn test_missing_file_records_error_metadata() {
-        let result = expand_at_refs_with_images("look at @missing.rs", "/tmp");
+        let result = expand_at_refs_with_images(ExpandAtRefsRequest { text: "look at @missing.rs", cwd: "/tmp" });
 
         assert!(result.text.contains("Error reading file"));
         assert_eq!(result.references.len(), 1);

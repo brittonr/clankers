@@ -277,11 +277,18 @@ fn syn_style_to_token_kind(style: SynStyle) -> TokenKind {
     }
 }
 
+pub struct HighlightRequest<'a> {
+    pub code: &'a str,
+    pub language: &'a str,
+}
+
 /// Highlight a code string, returning spans with token classifications.
 ///
 /// Uses syntect for languages it recognizes. Falls back to plain text
 /// for unknown languages.
-pub fn highlight(code: &str, language: &str) -> Vec<HighlightSpan> {
+pub fn highlight(request: HighlightRequest<'_>) -> Vec<HighlightSpan> {
+    let code = request.code;
+    let language = request.language;
     assert!(code.chars().count() <= code.len());
     assert!(language.chars().count() <= language.len());
     let syntax = match find_syntax(language) {
@@ -325,11 +332,13 @@ pub fn highlight(code: &str, language: &str) -> Vec<HighlightSpan> {
 }
 
 /// Highlight code and return an ANSI-colored string for terminal output.
-pub fn highlight_ansi(code: &str, language: &str) -> String {
+pub fn highlight_ansi(request: HighlightRequest<'_>) -> String {
     use std::fmt::Write;
+    let code = request.code;
+    let language = request.language;
     assert!(code.chars().count() <= code.len());
     assert!(language.chars().count() <= language.len());
-    let spans = highlight(code, language);
+    let spans = highlight(HighlightRequest { code, language });
     let mut out = String::with_capacity(code.len().saturating_mul(2));
     for span in &spans {
         match span.kind {
@@ -356,8 +365,8 @@ pub fn highlight_ansi(code: &str, language: &str) -> String {
 }
 
 /// Highlight code and return a vector of ratatui `Span`s for TUI rendering.
-pub fn highlight_ratatui<'a>(code: &str, language: &str) -> Vec<ratatui::text::Span<'a>> {
-    let spans = highlight(code, language);
+pub fn highlight_ratatui<'a>(request: HighlightRequest<'_>) -> Vec<ratatui::text::Span<'a>> {
+    let spans = highlight(request);
     spans.into_iter().map(|s| ratatui::text::Span::styled(s.text, s.kind.to_style())).collect()
 }
 
@@ -371,7 +380,7 @@ pub struct SyntectHighlighter;
 
 impl rat_markdown::SyntaxHighlighter for SyntectHighlighter {
     fn highlight(&self, code: &str, language: &str) -> Vec<rat_markdown::HighlightSpan> {
-        highlight(code, language)
+        highlight(HighlightRequest { code, language })
             .into_iter()
             .map(|s| {
                 let fg = s.fg;
@@ -387,7 +396,7 @@ mod tests {
 
     #[test]
     fn test_highlight_rust_keyword() {
-        let spans = highlight("let x = 42;", "rust");
+        let spans = highlight(HighlightRequest { code: "let x = 42;", language: "rust" });
         // syntect should produce multiple spans; at least one should contain "let"
         let has_let = spans.iter().any(|s| s.text.contains("let"));
         assert!(has_let, "should highlight 'let': {:?}", spans);
@@ -395,7 +404,7 @@ mod tests {
 
     #[test]
     fn test_highlight_rust_produces_colors() {
-        let spans = highlight("fn main() {}", "rust");
+        let spans = highlight(HighlightRequest { code: "fn main() {}", language: "rust" });
         // Should have at least some colored spans
         let has_color = spans.iter().any(|s| s.fg.is_some());
         assert!(has_color, "should produce colored spans: {:?}", spans);
@@ -403,14 +412,14 @@ mod tests {
 
     #[test]
     fn test_highlight_python() {
-        let spans = highlight("def foo(x):\n    return x + 1\n", "python");
+        let spans = highlight(HighlightRequest { code: "def foo(x):\n    return x + 1\n", language: "python" });
         let has_def = spans.iter().any(|s| s.text.contains("def"));
         assert!(has_def);
     }
 
     #[test]
     fn test_highlight_unknown_language() {
-        let spans = highlight("whatever code", "brainfuck");
+        let spans = highlight(HighlightRequest { code: "whatever code", language: "brainfuck" });
         assert_eq!(spans.len(), 1);
         assert_eq!(spans[0].kind, TokenKind::Plain);
     }
@@ -433,7 +442,7 @@ mod tests {
 
     #[test]
     fn test_highlight_ansi_contains_escape_codes() {
-        let out = highlight_ansi("fn main() {}", "rust");
+        let out = highlight_ansi(HighlightRequest { code: "fn main() {}", language: "rust" });
         assert!(out.contains("\x1b["));
     }
 
@@ -460,7 +469,7 @@ mod tests {
             ("diff", "+added\n-removed"),
         ];
         for (lang, code) in cases {
-            let spans = highlight(code, lang);
+            let spans = highlight(HighlightRequest { code, language: lang });
             assert!(!spans.is_empty(), "should produce spans for {}", lang);
         }
     }
@@ -473,7 +482,7 @@ mod tests {
 
     #[test]
     fn test_highlight_ratatui() {
-        let spans = highlight_ratatui("let x = 42;", "rust");
+        let spans = highlight_ratatui(HighlightRequest { code: "let x = 42;", language: "rust" });
         assert!(!spans.is_empty());
     }
 }

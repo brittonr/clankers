@@ -334,7 +334,11 @@ impl ReadTool {
         const MAX_BYTES: usize = 50 * 1024;
 
         let (truncated_output, full_output_path) =
-            crate::tools::truncation::truncate_head(&output, MAX_LINES, MAX_BYTES);
+            crate::tools::truncation::truncate_head(crate::tools::truncation::TruncationRequest {
+                content: &output,
+                max_lines: MAX_LINES,
+                max_bytes: MAX_BYTES,
+            });
 
         let mut result = ToolResult::text(truncated_output);
 

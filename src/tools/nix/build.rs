@@ -189,7 +189,11 @@ pub fn format_and_truncate_result(
     // Apply truncation
     const MAX_LINES: usize = 2000;
     const MAX_BYTES: usize = 50 * 1024;
-    let (truncated, full_path) = crate::tools::truncation::truncate_tail(&output, MAX_LINES, MAX_BYTES);
+    let (truncated, full_path) = crate::tools::truncation::truncate_tail(crate::tools::truncation::TruncationRequest {
+        content: &output,
+        max_lines: MAX_LINES,
+        max_bytes: MAX_BYTES,
+    });
 
     let mut result = ToolResult::text(truncated);
     if let Some(path) = full_path {

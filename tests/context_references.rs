@@ -10,6 +10,8 @@ use clankers_session::entry::SessionEntry;
 use clankers_util::at_file::ContextReferenceKind;
 use clankers_util::at_file::ContextReferencePolicy;
 use clankers_util::at_file::ContextReferenceStatus;
+use clankers_util::at_file::ExpandAtRefsRequest;
+use clankers_util::at_file::ExpandAtRefsWithPolicyRequest;
 use clankers_util::at_file::expand_at_refs_with_images;
 use clankers_util::at_file::expand_at_refs_with_policy;
 
@@ -20,7 +22,10 @@ fn context_reference_primary_path_expands_file_and_persists_metadata() {
     std::fs::create_dir(&cwd).unwrap();
     std::fs::write(cwd.join("notes.md"), "alpha\nbeta\ngamma\n").unwrap();
 
-    let expanded = expand_at_refs_with_images("summarize @notes.md:2", cwd.to_str().unwrap());
+    let expanded = expand_at_refs_with_images(ExpandAtRefsRequest {
+        text: "summarize @notes.md:2",
+        cwd: cwd.to_str().unwrap(),
+    });
 
     assert!(expanded.text.contains("beta"));
     assert!(expanded.images.is_empty());
@@ -67,7 +72,7 @@ fn context_reference_primary_path_expands_file_and_persists_metadata() {
 
 #[test]
 fn context_reference_unsupported_url_is_actionable_failure() {
-    let expanded = expand_at_refs_with_images("read @https://example.com/private", "/tmp");
+    let expanded = expand_at_refs_with_images(ExpandAtRefsRequest { text: "read @https://example.com/private", cwd: "/tmp" });
 
     assert!(expanded.images.is_empty());
     assert!(expanded.text.contains("Unsupported context reference @https://example.com/private"));
@@ -104,7 +109,10 @@ fn context_reference_git_diff_expands_and_records_metadata() {
     );
     std::fs::write(&file, "alpha\nbeta\n").unwrap();
 
-    let expanded = expand_at_refs_with_images("review @diff", tmp.path().to_str().unwrap());
+    let expanded = expand_at_refs_with_images(ExpandAtRefsRequest {
+        text: "review @diff",
+        cwd: tmp.path().to_str().unwrap(),
+    });
 
     assert!(expanded.text.contains("+beta"));
     assert_eq!(expanded.references.len(), 1);
@@ -131,7 +139,7 @@ fn context_reference_url_fetch_expands_when_policy_allows() {
     };
     let prompt = format!("fetch @http://{addr}/note");
 
-    let expanded = expand_at_refs_with_policy(&prompt, "/tmp", &policy);
+    let expanded = expand_at_refs_with_policy(ExpandAtRefsWithPolicyRequest { text: &prompt, cwd: "/tmp", policy: &policy });
     handle.join().unwrap();
 
     assert!(expanded.text.contains("url content!"));

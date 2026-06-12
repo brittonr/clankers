@@ -180,7 +180,11 @@ impl ExecuteCodeTool {
 
     fn format_result(collected_output: String, exit_code: i32) -> ToolResult {
         let (truncated_output, full_output_path) =
-            crate::tools::truncation::truncate_tail(&collected_output, MAX_LINES, MAX_BYTES);
+            crate::tools::truncation::truncate_tail(crate::tools::truncation::TruncationRequest {
+                content: &collected_output,
+                max_lines: MAX_LINES,
+                max_bytes: MAX_BYTES,
+            });
 
         let result_text = if exit_code == 0 {
             truncated_output

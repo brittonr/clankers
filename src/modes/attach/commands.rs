@@ -166,7 +166,9 @@ pub(super) fn submit_input_attach(
         dispatch_attach_slash(app, client, &command, &args, slash_registry, parity_tracker);
     } else {
         // Regular prompt — expand @file/context references, then send text plus any image blocks.
-        let expanded = clankers_util::at_file::expand_at_refs_with_images(text, &app.cwd);
+        let expanded = clankers_util::at_file::expand_at_refs_with_images(
+            clankers_util::at_file::ExpandAtRefsRequest { text, cwd: &app.cwd },
+        );
         if !expanded.references.is_empty() {
             tracing::info!(
                 metadata = %serde_json::json!({

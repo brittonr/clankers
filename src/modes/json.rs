@@ -69,7 +69,13 @@ pub async fn run_json_with_options(
     });
 
     let cwd = std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("."));
-    let expanded = clankers_util::at_file::expand_at_refs_with_images(prompt, &cwd.to_string_lossy());
+    let cwd_text = cwd.to_string_lossy();
+    let expanded = clankers_util::at_file::expand_at_refs_with_images(
+        clankers_util::at_file::ExpandAtRefsRequest {
+            text: prompt,
+            cwd: &cwd_text,
+        },
+    );
     agent.prompt_with_images(&expanded.text, expanded.images).await?;
     json_handle.await.ok();
     Ok(())

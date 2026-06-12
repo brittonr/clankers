@@ -439,7 +439,9 @@ pub(crate) fn handle_input_with_plugins(
         cmd_tx.send(super::interactive::AgentCommand::ResetCancel).ok();
         let mut pending_images = app.take_pending_images();
 
-        let expanded = clankers_util::at_file::expand_at_refs_with_images(text, &app.cwd);
+        let expanded = clankers_util::at_file::expand_at_refs_with_images(
+            clankers_util::at_file::ExpandAtRefsRequest { text, cwd: &app.cwd },
+        );
         if !expanded.references.is_empty() {
             let data = serde_json::json!({
                 "source": "context_references",
