@@ -71,9 +71,9 @@ impl MetricsStore<'_> {
         Ok(Some(session_to_report(&summary)))
     }
 
-    pub fn historical_report(&self, days: usize) -> Result<HistoricalReport> {
-        let rollups = self.recent_daily_rollups(days)?;
-        let mut report = HistoricalReport {
+    pub fn historical_report(&self, day_count: u32) -> Result<HistoricalReport> {
+        let rollups = self.recent_daily_rollups(day_count)?;
+        let mut history = HistoricalReport {
             days: Vec::new(),
             total_sessions: 0,
             total_turns: 0,
@@ -82,12 +82,12 @@ impl MetricsStore<'_> {
             total_tool_calls: 0,
         };
         for r in &rollups {
-            report.total_sessions += r.sessions;
-            report.total_turns += r.turns;
-            report.total_input_tokens += r.input_tokens;
-            report.total_output_tokens += r.output_tokens;
-            report.total_tool_calls += r.tool_calls;
-            report.days.push(DaySummary {
+            history.total_sessions += r.sessions;
+            history.total_turns += r.turns;
+            history.total_input_tokens += r.input_tokens;
+            history.total_output_tokens += r.output_tokens;
+            history.total_tool_calls += r.tool_calls;
+            history.days.push(DaySummary {
                 date: r.date.clone(),
                 sessions: r.sessions,
                 turns: r.turns,
@@ -96,11 +96,11 @@ impl MetricsStore<'_> {
                 tool_calls: r.tool_calls,
             });
         }
-        Ok(report)
+        Ok(history)
     }
 
-    pub fn recent_events_report(&self, session_id: &str, limit: usize) -> Result<Vec<RecentEvent>> {
-        let events = self.recent_events_for_session(session_id, limit)?;
+    pub fn recent_events_report(&self, session_id: &str, limit_count: u32) -> Result<Vec<RecentEvent>> {
+        let events = self.recent_events_for_session(session_id, limit_count)?;
         Ok(events.iter().map(event_to_report).collect())
     }
 }

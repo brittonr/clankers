@@ -84,11 +84,12 @@ impl MemoryTool {
         }
     }
 
-    fn char_limit_for_scope(&self, scope: &MemoryScope) -> usize {
-        match scope {
+    fn char_limit_for_scope(&self, scope: &MemoryScope) -> u64 {
+        let limit = match scope {
             MemoryScope::Global => self.limits.global_char_limit,
             MemoryScope::Project { .. } => self.limits.project_char_limit,
-        }
+        };
+        u64::try_from(limit).unwrap_or(u64::MAX)
     }
 
     fn format_usage(&self, db: &clankers_db::Db, scope: &MemoryScope) -> String {
@@ -107,7 +108,8 @@ impl MemoryTool {
         let limit = self.char_limit_for_scope(&scope);
         let current = db.memory().total_chars(Some(&scope)).unwrap_or(0);
 
-        if current + text.len() > limit {
+        let text_chars = u64::try_from(text.len()).unwrap_or(u64::MAX);
+        if current.saturating_add(text_chars) > limit {
             let entries = db.memory().list(Some(&scope)).unwrap_or_default();
             let mut listing = String::new();
             for e in &entries {
@@ -116,7 +118,7 @@ impl MemoryTool {
             return ToolResult::error(format!(
                 "Memory at {current}/{limit} chars. Adding this entry ({} chars) would exceed the limit.\n\
                  Replace or remove existing entries first.\n\nCurrent entries:\n{listing}",
-                text.len()
+                text_chars
             ));
         }
 
@@ -169,13 +171,16 @@ impl MemoryTool {
         let scope = entry.scope.clone();
         let limit = self.char_limit_for_scope(&scope);
         let current = db.memory().total_chars(Some(&scope)).unwrap_or(0);
-        let size_delta = new_text.len() as isize - entry.text.len() as isize;
-
-        if size_delta > 0 && current as isize + size_delta > limit as isize {
-            return ToolResult::error(format!(
-                "Replacing would exceed capacity ({current}/{limit} chars, delta: +{size_delta}).\n\
-                 Remove other entries or shorten the replacement text."
-            ));
+        let new_text_chars = u64::try_from(new_text.len()).unwrap_or(u64::MAX);
+        let old_text_chars = u64::try_from(entry.text.len()).unwrap_or(u64::MAX);
+        if new_text_chars > old_text_chars {
+            let size_delta = new_text_chars.saturating_sub(old_text_chars);
+            if current.saturating_add(size_delta) > limit {
+                return ToolResult::error(format!(
+                    "Replacing would exceed capacity ({current}/{limit} chars, delta: +{size_delta}).\n\
+                     Remove other entries or shorten the replacement text."
+                ));
+            }
         }
 
         entry.text = new_text.to_string();

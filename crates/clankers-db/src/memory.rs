@@ -262,8 +262,8 @@ impl<'db> MemoryStore<'db> {
     pub fn context_for_with_limits(
         &self,
         project_path: Option<&str>,
-        global_limit: Option<usize>,
-        project_limit: Option<usize>,
+        global_limit: Option<u64>,
+        project_limit: Option<u64>,
     ) -> Result<String> {
         let entries = self.list(None)?;
         if entries.is_empty() {
@@ -293,7 +293,7 @@ impl<'db> MemoryStore<'db> {
         let mut out = String::new();
 
         if !global.is_empty() {
-            let chars: usize = global.iter().map(|e| e.text.len()).sum();
+            let chars: u64 = global.iter().map(|e| crate::db_count_from_len(e.text.len())).sum();
             let header = match global_limit {
                 Some(limit) if limit > 0 => {
                     let pct = chars.saturating_mul(100) / limit;
@@ -308,7 +308,7 @@ impl<'db> MemoryStore<'db> {
         }
 
         if !project.is_empty() {
-            let chars: usize = project.iter().map(|e| e.text.len()).sum();
+            let chars: u64 = project.iter().map(|e| crate::db_count_from_len(e.text.len())).sum();
             let header = match project_limit {
                 Some(limit) if limit > 0 => {
                     let pct = chars.saturating_mul(100) / limit;
@@ -332,9 +332,9 @@ impl<'db> MemoryStore<'db> {
     ///
     /// Used for capacity enforcement — the memory tool checks this against
     /// the configured char limit before saving new entries.
-    pub fn total_chars(&self, scope: Option<&MemoryScope>) -> Result<usize> {
+    pub fn total_chars(&self, scope: Option<&MemoryScope>) -> Result<u64> {
         let entries = self.list(scope)?;
-        Ok(entries.iter().map(|e| e.text.len()).sum())
+        Ok(entries.iter().map(|e| crate::db_count_from_len(e.text.len())).sum())
     }
 
     /// Count total memories.

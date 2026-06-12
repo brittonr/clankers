@@ -77,14 +77,14 @@ impl<'db> HistoryDb<'db> {
     }
 
     /// Get the N most recent entries (newest first).
-    pub fn most_recent(&self, limit: usize) -> Result<Vec<HistoryEntry>> {
+    pub fn most_recent(&self, limit_count: u32) -> Result<Vec<HistoryEntry>> {
         let tx = self.db.begin_read()?;
         let table = tx.open_table(TABLE).map_err(db_err)?;
 
         let mut entries = Vec::new();
         // Reverse iteration: redb range returns ascending, so we use rev()
         for item in table.iter().map_err(db_err)?.rev() {
-            if entries.len() >= limit {
+            if entries.len() >= crate::db_limit_entries(limit_count) {
                 break;
             }
             let (_key, value) = item.map_err(db_err)?;
@@ -96,9 +96,9 @@ impl<'db> HistoryDb<'db> {
     }
 
     /// Search history by substring (case-insensitive), newest first.
-    pub fn search(&self, query: &str, limit: usize) -> Result<Vec<HistoryEntry>> {
+    pub fn search(&self, query: &str, limit_count: u32) -> Result<Vec<HistoryEntry>> {
         if query.is_empty() {
-            return self.most_recent(limit);
+            return self.most_recent(limit_count);
         }
 
         let lower = query.to_lowercase();
@@ -107,7 +107,7 @@ impl<'db> HistoryDb<'db> {
 
         let mut entries = Vec::new();
         for item in table.iter().map_err(db_err)?.rev() {
-            if entries.len() >= limit {
+            if entries.len() >= crate::db_limit_entries(limit_count) {
                 break;
             }
             let (_key, value) = item.map_err(db_err)?;
@@ -121,14 +121,14 @@ impl<'db> HistoryDb<'db> {
     }
 
     /// Search history filtered by cwd (for project-relevant results).
-    pub fn search_in_cwd(&self, query: &str, cwd: &str, limit: usize) -> Result<Vec<HistoryEntry>> {
+    pub fn search_in_cwd(&self, query: &str, cwd: &str, limit_count: u32) -> Result<Vec<HistoryEntry>> {
         let lower = query.to_lowercase();
         let tx = self.db.begin_read()?;
         let table = tx.open_table(TABLE).map_err(db_err)?;
 
         let mut entries = Vec::new();
         for item in table.iter().map_err(db_err)?.rev() {
-            if entries.len() >= limit {
+            if entries.len() >= crate::db_limit_entries(limit_count) {
                 break;
             }
             let (_key, value) = item.map_err(db_err)?;

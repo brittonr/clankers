@@ -92,8 +92,9 @@ impl<'db> ToolResultStore<'db> {
     }
 
     /// Count results for a session.
-    pub fn count_for_session(&self, session_id: &str) -> Result<usize> {
-        Ok(self.for_session(session_id)?.len())
+    pub fn count_for_session(&self, session_id: &str) -> Result<u64> {
+        let entries = self.for_session(session_id)?;
+        Ok(crate::db_count_from_len(entries.len()))
     }
 
     /// Count total stored results.
@@ -104,9 +105,9 @@ impl<'db> ToolResultStore<'db> {
     }
 
     /// Remove all results for a session.
-    pub fn clear_session(&self, session_id: &str) -> Result<usize> {
+    pub fn clear_session(&self, session_id: &str) -> Result<u64> {
         let entries = self.for_session(session_id)?;
-        let count = entries.len();
+        let count = crate::db_count_from_len(entries.len());
         if count == 0 {
             return Ok(0);
         }

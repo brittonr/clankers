@@ -157,14 +157,14 @@ impl<'db> UsageTracker<'db> {
     }
 
     /// Get usage for the last N days (newest first).
-    pub fn recent_days(&self, n: usize) -> Result<Vec<DailyUsage>> {
+    pub fn recent_days(&self, day_count: u32) -> Result<Vec<DailyUsage>> {
         let tx = self.db.begin_read()?;
         let table = tx.open_table(TABLE).map_err(db_err)?;
 
         let mut entries = Vec::new();
         // Date strings sort lexicographically = chronologically
         for item in table.iter().map_err(db_err)?.rev() {
-            if entries.len() >= n {
+            if entries.len() >= crate::db_limit_entries(day_count) {
                 break;
             }
             let (_key, value) = item.map_err(db_err)?;

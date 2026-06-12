@@ -393,7 +393,7 @@ impl SlashHandler for MetricsHandler {
         } else {
             trimmed
         };
-        let days: usize = days_str.parse().unwrap_or(7);
+        let days: u32 = days_str.parse().unwrap_or(7);
 
         if json_mode {
             let session_id = &ctx.app.session_id;

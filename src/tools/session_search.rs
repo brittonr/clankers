@@ -364,7 +364,9 @@ fn search_tantivy(
     let Some(search_index) = ctx.service::<clankers_db::search_index::SearchIndex>() else {
         return Vec::new();
     };
-    let Ok(hits) = search_index.search(query, limit * 3) else {
+    let search_limit = limit.saturating_mul(3);
+    let search_limit_count = u32::try_from(search_limit).unwrap_or(u32::MAX);
+    let Ok(hits) = search_index.search(query, search_limit_count) else {
         return Vec::new();
     };
     let mut seen_sessions = HashSet::new();

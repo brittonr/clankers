@@ -149,9 +149,9 @@ impl<'db> FileReadCache<'db> {
     }
 
     /// Clear all entries for a session.
-    pub fn clear_session(&self, session_id: &str) -> Result<usize> {
+    pub fn clear_session(&self, session_id: &str) -> Result<u64> {
         let entries = self.for_session(session_id)?;
-        let count = entries.len();
+        let count = crate::db_count_from_len(entries.len());
         if count == 0 {
             return Ok(0);
         }

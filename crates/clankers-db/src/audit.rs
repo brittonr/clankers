@@ -118,13 +118,13 @@ impl<'db> AuditLog<'db> {
     }
 
     /// Get the most recent N entries across all sessions (newest first).
-    pub fn recent(&self, n: usize) -> Result<Vec<AuditEntry>> {
+    pub fn recent(&self, limit_count: u32) -> Result<Vec<AuditEntry>> {
         let tx = self.db.begin_read()?;
         let table = tx.open_table(TABLE).map_err(db_err)?;
 
         let mut entries = Vec::new();
         for item in table.iter().map_err(db_err)?.rev() {
-            if entries.len() >= n {
+            if entries.len() >= crate::db_limit_entries(limit_count) {
                 break;
             }
             let (_key, value) = item.map_err(db_err)?;

@@ -147,7 +147,7 @@ impl SearchIndex {
         Ok(count)
     }
 
-    pub fn search(&self, query_str: &str, limit: usize) -> Result<Vec<SearchHit>> {
+    pub fn search(&self, query_str: &str, limit_count: u32) -> Result<Vec<SearchHit>> {
         if query_str.trim().is_empty() {
             return Ok(Vec::new());
         }
@@ -158,7 +158,7 @@ impl SearchIndex {
             message: format!("failed to parse search query: {e}"),
         })?;
 
-        let collector = TopDocs::with_limit(limit).order_by_score();
+        let collector = TopDocs::with_limit(crate::db_limit_entries(limit_count)).order_by_score();
         let top_docs = searcher.search(&query, &collector).map_err(|e| crate::error::DbError {
             message: format!("search failed: {e}"),
         })?;

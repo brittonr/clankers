@@ -108,9 +108,11 @@ impl AgentMemoryContextProvider for DbMemoryContextProvider {
         global_limit: Option<usize>,
         project_limit: Option<usize>,
     ) -> Option<String> {
+        let global_limit_chars = global_limit.and_then(|limit| u64::try_from(limit).ok());
+        let project_limit_chars = project_limit.and_then(|limit| u64::try_from(limit).ok());
         self.db
             .memory()
-            .context_for_with_limits(cwd, global_limit, project_limit)
+            .context_for_with_limits(cwd, global_limit_chars, project_limit_chars)
             .ok()
             .filter(|context| !context.is_empty())
     }

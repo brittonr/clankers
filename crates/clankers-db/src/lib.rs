@@ -17,9 +17,7 @@
 #![cfg_attr(
     dylint_lib = "tigerstyle",
     allow(
-        tigerstyle::numeric_units,
         tigerstyle::raw_arithmetic_overflow,
-        tigerstyle::usize_in_public_api,
         reason = "embedded database APIs preserve stored schema/public query contracts; integration tests cover persistence behavior during Tigerstyle drain"
     )
 )]
@@ -46,6 +44,20 @@ pub(crate) fn db_collection_capacity(row_count: u64) -> usize {
     match usize::try_from(row_count) {
         Ok(capacity) => capacity,
         Err(_) => usize::MAX,
+    }
+}
+
+pub(crate) fn db_limit_entries(limit_count: u32) -> usize {
+    match usize::try_from(limit_count) {
+        Ok(capacity) => capacity,
+        Err(_) => usize::MAX,
+    }
+}
+
+pub(crate) fn db_count_from_len(len_count: usize) -> u64 {
+    match u64::try_from(len_count) {
+        Ok(count) => count,
+        Err(_) => u64::MAX,
     }
 }
 pub mod insights;

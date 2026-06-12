@@ -57,12 +57,12 @@ impl<'db> MetricsStore<'db> {
         }
     }
 
-    pub fn list_session_summaries(&self, limit: usize) -> Result<Vec<SessionMetricsSummary>> {
+    pub fn list_session_summaries(&self, limit_count: u32) -> Result<Vec<SessionMetricsSummary>> {
         let tx = self.db.begin_read()?;
         let table = tx.open_table(SESSION_SUMMARY_TABLE).map_err(db_err)?;
         let mut out = Vec::new();
         for item in table.iter().map_err(db_err)?.rev() {
-            if out.len() >= limit {
+            if out.len() >= crate::db_limit_entries(limit_count) {
                 break;
             }
             let (_key, value) = item.map_err(db_err)?;
@@ -102,12 +102,12 @@ impl<'db> MetricsStore<'db> {
         }
     }
 
-    pub fn recent_daily_rollups(&self, n: usize) -> Result<Vec<DailyMetricsRollup>> {
+    pub fn recent_daily_rollups(&self, limit_count: u32) -> Result<Vec<DailyMetricsRollup>> {
         let tx = self.db.begin_read()?;
         let table = tx.open_table(DAILY_ROLLUP_TABLE).map_err(db_err)?;
         let mut out = Vec::new();
         for item in table.iter().map_err(db_err)?.rev() {
-            if out.len() >= n {
+            if out.len() >= crate::db_limit_entries(limit_count) {
                 break;
             }
             let (_key, value) = item.map_err(db_err)?;
@@ -165,7 +165,7 @@ impl<'db> MetricsStore<'db> {
         Ok(())
     }
 
-    pub fn recent_events_for_session(&self, session_id: &str, limit: usize) -> Result<Vec<MetricEventRecord>> {
+    pub fn recent_events_for_session(&self, session_id: &str, limit_count: u32) -> Result<Vec<MetricEventRecord>> {
         let tx = self.db.begin_read()?;
         let table = tx.open_table(RECENT_EVENTS_TABLE).map_err(db_err)?;
         let prefix = format!("{session_id}:");
@@ -175,7 +175,7 @@ impl<'db> MetricsStore<'db> {
             if !key.value().starts_with(&prefix) {
                 break;
             }
-            if out.len() >= limit {
+            if out.len() >= crate::db_limit_entries(limit_count) {
                 break;
             }
             if let Ok(e) = serde_json::from_slice::<MetricEventRecord>(value.value()) {
