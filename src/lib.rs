@@ -25,11 +25,9 @@
         tigerstyle::unchecked_narrowing,
         tigerstyle::platform_dependent_cast,
         tigerstyle::no_recursion,
-        tigerstyle::catch_all_on_enum,
-        reason = "root crate is CLI/orchestration shell across existing daemon, tool, and mode contracts; behavior is covered by focused integration tests during Tigerstyle drain"
+        reason = "root crate remains CLI/orchestration shell; catch_all_on_enum was drained so new enum variants cannot silently hit deny fallbacks"
     )
 )]
-
 pub use clankers_agent_defs as agent_defs;
 
 pub(crate) fn session_clock_now() -> chrono::DateTime<chrono::Utc> {

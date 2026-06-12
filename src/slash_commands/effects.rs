@@ -84,7 +84,24 @@ pub(crate) fn agent_command_effect(
         }
         AgentCommand::CompressContext => Some(SlashEffect::Session(session_command_policy::manual_compaction_effect())),
         AgentCommand::SetModel(model) => Some(SlashEffect::SendSessionCommand(SessionCommand::SetModel { model })),
-        _ => None,
+        AgentCommand::Prompt(_)
+        | AgentCommand::PromptWithImages { .. }
+        | AgentCommand::RewriteAndPrompt(_)
+        | AgentCommand::RewriteAndPromptWithImages { .. }
+        | AgentCommand::Abort
+        | AgentCommand::ResetCancel
+        | AgentCommand::ClearHistory
+        | AgentCommand::TruncateMessages(_)
+        | AgentCommand::SeedMessages(_)
+        | AgentCommand::SetSessionId(_)
+        | AgentCommand::SetCompactionSummary(_)
+        | AgentCommand::Quit
+        | AgentCommand::Login { .. }
+        | AgentCommand::SetSystemPrompt(_)
+        | AgentCommand::GetSystemPrompt(_)
+        | AgentCommand::SwitchAccount(_)
+        | AgentCommand::SwitchProviderAccount { .. }
+        | AgentCommand::ReloadCredentials => None,
     }
 }
 

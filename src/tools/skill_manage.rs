@@ -198,8 +198,14 @@ impl SkillManageTool {
 
 fn required_str<'a>(params: &'a Value, key: &str) -> Result<&'a str, ToolResult> {
     match params.get(key).and_then(|value| value.as_str()) {
-        Some(value) if !value.is_empty() => Ok(value),
-        _ => Err(ToolResult::error(format!("Missing required '{key}' parameter."))),
+        Some(value) => {
+            if value.is_empty() {
+                Err(ToolResult::error(format!("Missing required '{key}' parameter.")))
+            } else {
+                Ok(value)
+            }
+        }
+        None => Err(ToolResult::error(format!("Missing required '{key}' parameter."))),
     }
 }
 

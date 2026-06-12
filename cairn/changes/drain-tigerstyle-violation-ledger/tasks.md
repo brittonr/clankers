@@ -6,8 +6,8 @@
 
 ## Phase 2: Drain Allow Sites
 
-- [ ] [serial] I#root-lib-allow-site: Drain or narrow the Tigerstyle allow site in `src/lib.rs`. r[tigerstyle-compliance.violation-ledger] [covers=tigerstyle-compliance.violation-ledger,tigerstyle-compliance.boundary-exceptions]
-- [ ] [serial] V#root-lib-allow-site: Validate the `src/lib.rs` drain slice with focused/root tests and full Tigerstyle. r[tigerstyle-compliance.slice-validation] [covers=tigerstyle-compliance.slice-validation,tigerstyle-compliance.public-api-validation] [evidence=cairn/changes/drain-tigerstyle-violation-ledger/evidence/root-lib-allow-site.md]
+- [x] [serial] I#root-lib-allow-site: Drain or narrow the Tigerstyle allow site in `src/lib.rs`. r[tigerstyle-compliance.violation-ledger] [covers=tigerstyle-compliance.violation-ledger,tigerstyle-compliance.boundary-exceptions]
+- [x] [serial] V#root-lib-allow-site: Validate the `src/lib.rs` drain slice with focused/root tests and full Tigerstyle. r[tigerstyle-compliance.slice-validation] [covers=tigerstyle-compliance.slice-validation,tigerstyle-compliance.public-api-validation] [evidence=cairn/changes/drain-tigerstyle-violation-ledger/evidence/root-lib-allow-site.md]
 - [ ] [serial] I#root-main-allow-site: Drain or narrow the Tigerstyle allow site in `src/main.rs`. r[tigerstyle-compliance.violation-ledger] [covers=tigerstyle-compliance.violation-ledger,tigerstyle-compliance.boundary-exceptions]
 - [ ] [serial] V#root-main-allow-site: Validate the `src/main.rs` drain slice with focused/root tests and full Tigerstyle. r[tigerstyle-compliance.slice-validation] [covers=tigerstyle-compliance.slice-validation,tigerstyle-compliance.public-api-validation] [evidence=cairn/changes/drain-tigerstyle-violation-ledger/evidence/root-main-allow-site.md]
 - [ ] [serial] I#agent-lib-allow-site: Drain or narrow the Tigerstyle allow site in `crates/clankers-agent/src/lib.rs`. r[tigerstyle-compliance.violation-ledger] [covers=tigerstyle-compliance.violation-ledger,tigerstyle-compliance.boundary-exceptions]

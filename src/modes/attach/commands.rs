@@ -186,7 +186,13 @@ pub(super) fn submit_input_attach(
                 clanker_message::Content::Image {
                     source: clanker_message::ImageSource::Base64 { media_type, data },
                 } => Some(clankers_protocol::ImageData { data, media_type }),
-                _ => None,
+                clanker_message::Content::Text { .. }
+                | clanker_message::Content::Thinking { .. }
+                | clanker_message::Content::ToolUse { .. }
+                | clanker_message::Content::ToolResult { .. }
+                | clanker_message::Content::Image {
+                    source: clanker_message::ImageSource::Url { .. },
+                } => None,
             })
             .collect();
         client.prompt_with_images(expanded.text, images);
