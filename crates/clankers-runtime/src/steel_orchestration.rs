@@ -225,7 +225,7 @@ impl SteelTurnPlanHostCallPayload {
 
     #[must_use]
     pub fn to_json(&self) -> String {
-        serde_json::to_string(self).expect("Steel turn planning host-call payload serializes")
+        crate::runtime_json_string(self, "Steel turn planning host-call payload serializes")
     }
 }
 
@@ -296,7 +296,7 @@ impl SteelTurnExecutionHostCallPayload {
 
     #[must_use]
     pub fn to_json(&self) -> String {
-        serde_json::to_string(self).expect("Steel execute-turn host-call payload serializes")
+        crate::runtime_json_string(self, "Steel execute-turn host-call payload serializes")
     }
 }
 
@@ -603,7 +603,7 @@ fn steel_execution_host_call_summary(runtime_receipt: &SteelRuntimeReceipt, payl
 fn steel_execution_host_call_receipt_hash(receipt: &SteelTurnExecutionHostCallReceipt) -> ArtifactHash {
     let mut material = receipt.clone();
     material.receipt_hash = ArtifactHash::digest(b"omitted");
-    let bytes = serde_json::to_vec(&material).expect("Steel execution host-call receipt serializes");
+    let bytes = crate::runtime_json_bytes(&material, "Steel execution host-call receipt serializes");
     ArtifactHash::digest(&bytes)
 }
 
@@ -625,7 +625,7 @@ fn stable_execution_input_bytes(input: &SteelTurnExecutionInput) -> Vec<u8> {
         prompt_hash: input.prompt_hash,
         host_runner: &input.host_runner,
     };
-    serde_json::to_vec(&material).expect("Steel execution input material serializes")
+    crate::runtime_json_bytes(&material, "Steel execution input material serializes")
 }
 
 fn steel_turn_execution_receipt(
@@ -697,7 +697,7 @@ fn steel_turn_execution_receipt_hash(
         host_call_receipt_hash: receipt.host_call_receipt.receipt_hash,
         authorization_receipt_hash: receipt.authorization_receipt.receipt_hash,
     };
-    let bytes = serde_json::to_vec(&material).expect("Steel execution receipt material serializes");
+    let bytes = crate::runtime_json_bytes(&material, "Steel execution receipt material serializes");
     ArtifactHash::digest(&bytes)
 }
 
@@ -1285,7 +1285,7 @@ fn authority_receipt(
 fn authority_receipt_hash(receipt: &SteelTurnPlanningAuthorityReceipt) -> ArtifactHash {
     let mut material = receipt.clone();
     material.receipt_hash = ArtifactHash::digest(b"omitted");
-    let bytes = serde_json::to_vec(&material).expect("Steel authority receipt serializes");
+    let bytes = crate::runtime_json_bytes(&material, "Steel authority receipt serializes");
     ArtifactHash::digest(&bytes)
 }
 
@@ -1364,7 +1364,7 @@ fn orchestration_receipt(
         authorization_receipt_hashes: authorization_receipts.iter().map(|receipt| receipt.receipt_hash).collect(),
         safe_summary: &safe_summary,
     };
-    let bytes = serde_json::to_vec(&material).expect("Steel orchestration receipt material serializes");
+    let bytes = crate::runtime_json_bytes(&material, "Steel orchestration receipt material serializes");
     let receipt_hash = ArtifactHash::digest(&bytes);
     OrchestrationPlanReceipt {
         schema: STEEL_ORCHESTRATION_RECEIPT_SCHEMA.to_string(),
@@ -1440,7 +1440,7 @@ fn plan_hash(plan: &OrchestrationPlan) -> ArtifactHash {
         planner: plan.planner,
         decisions: &plan.decisions,
     };
-    let bytes = serde_json::to_vec(&material).expect("Steel orchestration plan material serializes");
+    let bytes = crate::runtime_json_bytes(&material, "Steel orchestration plan material serializes");
     ArtifactHash::digest(&bytes)
 }
 

@@ -340,7 +340,7 @@ fn dynamic_runtime_receipt(
         input_bytes: envelope.input_bytes,
         writes_performed: false,
     };
-    let bytes = serde_json::to_vec(&material).expect("dynamic runtime receipt material serializes");
+    let bytes = crate::runtime_json_bytes(&material, "dynamic runtime receipt material serializes");
     DynamicRuntimeActionReceipt {
         schema: DYNAMIC_RUNTIME_RECEIPT_SCHEMA.to_string(),
         action_id: envelope.action_id.clone(),

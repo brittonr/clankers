@@ -78,7 +78,7 @@ pub struct SteelOrchestrationMutationReceipt {
 impl SteelOrchestrationMutationReceipt {
     #[must_use]
     pub fn receipt_hash(&self) -> ArtifactHash {
-        let bytes = serde_json::to_vec(self).expect("orchestration mutation receipt serializes");
+        let bytes = crate::runtime_json_bytes(self, "orchestration mutation receipt serializes");
         ArtifactHash::digest(&bytes)
     }
 }

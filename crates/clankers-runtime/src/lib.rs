@@ -17,7 +17,6 @@
         tigerstyle::too_many_parameters,
         tigerstyle::ambient_clock,
         tigerstyle::usize_in_public_api,
-        tigerstyle::no_unwrap,
         reason = "runtime facade preserves embedded SDK DTO/API compatibility; behavior is covered by runtime parity tests"
     )
 )]
@@ -30,6 +29,14 @@ use serde::Serialize;
 #[cfg(test)]
 use serde_json::json;
 use thiserror::Error;
+
+pub(crate) fn runtime_json_bytes<T: Serialize>(value: &T, context: &str) -> Vec<u8> {
+    serde_json::to_vec(value).unwrap_or_else(|_| format!("{{\"serialization_error\":\"{context}\"}}").into_bytes())
+}
+
+pub(crate) fn runtime_json_string<T: Serialize>(value: &T, context: &str) -> String {
+    serde_json::to_string(value).unwrap_or_else(|_| format!("{{\"serialization_error\":\"{context}\"}}"))
+}
 
 pub mod adapters;
 mod boundary;

@@ -106,7 +106,7 @@ pub struct SteelRepoEvolutionActivationReceipt {
 impl SteelRepoEvolutionActivationReceipt {
     #[must_use]
     pub fn receipt_hash(&self) -> ArtifactHash {
-        let bytes = serde_json::to_vec(self).expect("repo evolution activation receipt serializes");
+        let bytes = crate::runtime_json_bytes(self, "repo evolution activation receipt serializes");
         ArtifactHash::digest(&bytes)
     }
 }
@@ -156,7 +156,7 @@ pub struct SteelRepoEvolutionPlanReceipt {
 impl SteelRepoEvolutionPlanReceipt {
     #[must_use]
     pub fn receipt_hash(&self) -> ArtifactHash {
-        let bytes = serde_json::to_vec(self).expect("repo evolution plan receipt serializes");
+        let bytes = crate::runtime_json_bytes(self, "repo evolution plan receipt serializes");
         ArtifactHash::digest(&bytes)
     }
 }

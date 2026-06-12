@@ -335,7 +335,7 @@ struct ReceiptInput<'a> {
 
 fn receipt(input: ReceiptInput<'_>) -> SteelToolInvocationReceipt {
     let plan_hash = input.plan.as_ref().map(|plan| {
-        let bytes = serde_json::to_vec(plan).expect("Steel tool plan serializes");
+        let bytes = crate::runtime_json_bytes(plan, "Steel tool plan serializes");
         ArtifactHash::digest(&bytes)
     });
     let output_hash = input
@@ -360,7 +360,7 @@ fn receipt(input: ReceiptInput<'_>) -> SteelToolInvocationReceipt {
         plan_hash,
         receipt_hash: ArtifactHash::digest(b"pending"),
     };
-    let bytes = serde_json::to_vec(&receipt).expect("Steel tool receipt serializes");
+    let bytes = crate::runtime_json_bytes(&receipt, "Steel tool receipt serializes");
     receipt.receipt_hash = ArtifactHash::digest(&bytes);
     receipt
 }

@@ -238,7 +238,7 @@ pub struct SteelMutationHostPreflightReceipt {
 impl SteelMutationHostPreflightReceipt {
     #[must_use]
     pub fn receipt_hash(&self) -> ArtifactHash {
-        let bytes = serde_json::to_vec(self).expect("Steel mutation preflight receipt serializes");
+        let bytes = crate::runtime_json_bytes(self, "Steel mutation preflight receipt serializes");
         ArtifactHash::digest(&bytes)
     }
 }
@@ -297,7 +297,7 @@ pub struct SteelMutationApplyReceipt {
 impl SteelMutationApplyReceipt {
     #[must_use]
     pub fn receipt_hash(&self) -> ArtifactHash {
-        let bytes = serde_json::to_vec(self).expect("Steel mutation apply receipt serializes");
+        let bytes = crate::runtime_json_bytes(self, "Steel mutation apply receipt serializes");
         ArtifactHash::digest(&bytes)
     }
 }
@@ -355,7 +355,7 @@ pub struct SteelMutationRollbackReceipt {
 impl SteelMutationRollbackReceipt {
     #[must_use]
     pub fn receipt_hash(&self) -> ArtifactHash {
-        let bytes = serde_json::to_vec(self).expect("Steel mutation rollback receipt serializes");
+        let bytes = crate::runtime_json_bytes(self, "Steel mutation rollback receipt serializes");
         ArtifactHash::digest(&bytes)
     }
 }

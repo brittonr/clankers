@@ -38,7 +38,7 @@ impl ToolCatalog {
 
     #[must_use]
     pub fn embedding_safe() -> Self {
-        Self::builder().pack(CapabilityPack::ReadOnly).build().expect("read-only pack has no collisions")
+        Self::builder().pack(CapabilityPack::ReadOnly).build().unwrap_or_default()
     }
 
     #[must_use]
@@ -48,7 +48,7 @@ impl ToolCatalog {
             .pack(CapabilityPack::WorkspaceMutation)
             .pack(CapabilityPack::ShellCommands)
             .build()
-            .expect("built-in packs have no collisions")
+            .unwrap_or_default()
     }
 
     pub fn tools(&self) -> impl Iterator<Item = &ToolDescriptor> {

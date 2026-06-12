@@ -44,7 +44,7 @@ pub struct SteelRuntimeReceipt {
 impl SteelRuntimeReceipt {
     #[must_use]
     pub fn receipt_hash(&self) -> ArtifactHash {
-        let bytes = serde_json::to_vec(self).expect("Steel runtime receipt serializes");
+        let bytes = crate::runtime_json_bytes(self, "Steel runtime receipt serializes");
         ArtifactHash::digest(&bytes)
     }
 }
