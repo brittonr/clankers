@@ -18,7 +18,6 @@
     dylint_lib = "tigerstyle",
     allow(
         tigerstyle::numeric_units,
-        tigerstyle::acronym_style,
         tigerstyle::unbounded_collection_growth,
         tigerstyle::raw_arithmetic_overflow,
         tigerstyle::usize_in_public_api,
