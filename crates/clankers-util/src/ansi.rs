@@ -8,48 +8,61 @@
 /// simple two-byte escapes (`\x1bX`), and bare `\r` carriage returns.
 pub fn strip_ansi(s: &str) -> String {
     let mut out = String::with_capacity(s.len());
-    let mut chars = s.chars().peekable();
-    while let Some(c) = chars.next() {
+    let chars: Vec<char> = s.chars().collect();
+    let mut index = 0usize;
+
+    while index < chars.len() {
+        let c = chars[index];
+        index = index.saturating_add(1);
+
         if c == '\x1b' {
-            match chars.peek() {
-                Some('[') => {
-                    // CSI sequence: consume until final byte (0x40-0x7E)
-                    chars.next();
-                    while let Some(&ch) = chars.peek() {
-                        chars.next();
-                        if ('\x40'..='\x7e').contains(&ch) {
-                            break;
-                        }
-                    }
-                }
-                Some(']') => {
-                    // OSC sequence: consume until ST (\x1b\\ or \x07)
-                    chars.next();
-                    while let Some(ch) = chars.next() {
-                        if ch == '\x07' {
-                            break;
-                        }
-                        if ch == '\x1b' && chars.peek() == Some(&'\\') {
-                            chars.next();
-                            break;
-                        }
-                    }
-                }
-                Some(_) => {
-                    // Simple two-byte escape
-                    chars.next();
-                }
-                None => {}
-            }
-        } else if c == '\r' {
-            // Strip bare carriage returns
-        } else {
+            index = skip_escape_sequence(&chars, index);
+        } else if c != '\r' {
             out.push(c);
         }
     }
+
     assert!(out.len() <= s.len());
     assert!(!out.contains('\x1b'));
     out
+}
+
+fn skip_escape_sequence(chars: &[char], index: usize) -> usize {
+    if index >= chars.len() {
+        return index;
+    }
+
+    match chars[index] {
+        '[' => skip_csi_sequence(chars, index.saturating_add(1)),
+        ']' => skip_osc_sequence(chars, index.saturating_add(1)),
+        _ => index.saturating_add(1),
+    }
+}
+
+fn skip_csi_sequence(chars: &[char], mut index: usize) -> usize {
+    while index < chars.len() {
+        let ch = chars[index];
+        index = index.saturating_add(1);
+        if ('\x40'..='\x7e').contains(&ch) {
+            break;
+        }
+    }
+    index
+}
+
+fn skip_osc_sequence(chars: &[char], mut index: usize) -> usize {
+    while index < chars.len() {
+        let ch = chars[index];
+        index = index.saturating_add(1);
+        if ch == '\x07' {
+            break;
+        }
+        if ch == '\x1b' && chars.get(index) == Some(&'\\') {
+            index = index.saturating_add(1);
+            break;
+        }
+    }
+    index
 }
 
 #[cfg(test)]

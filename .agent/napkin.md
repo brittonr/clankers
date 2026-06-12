@@ -2,6 +2,7 @@
 
 ## Working Notes
 
+- 2026-06-11: clankers-util final crate-level drain: removing `usize_in_public_api` was zero-finding, `unbounded_loop` only hit `ansi::strip_ansi` (bounded index walks over collected chars fixed it), and `function_length` only hit `expand_at_refs_with_policy` (split by reference kind). Full Tigerstyle stayed green; only local util truncation ambient-clock allow remains as its own Cairn task.
 - 2026-06-11: Cairn Tigerstyle ledger lives at `cairn/changes/drain-tigerstyle-violation-ledger/`; it tracks every current source Tigerstyle allow site under `src/` and `crates/` with proposal/design/tasks gates passing. Use its evidence files when checking off future drain slices.
 - 2026-06-11: clankers-util ambiguous-params drain: public `expand_at_refs*`, syntax highlight, and truncation helpers need request structs (`ExpandAtRefsRequest`, `ExpandAtRefsWithPolicyRequest`, `HighlightRequest`, `TruncationRequest`); private at-file helpers also need tiny request structs. After API changes, run util lib tests, `tests/context_references.rs`, and full Tigerstyle because root callers compile only in workspace-wide runs.
 - 2026-06-11: clankers-util raw-arithmetic drain: after removing the crate allow, findings were localized to at-file index math, duration seconds multipliers, syntax highlight buffer capacity, and truncation byte counters. Use `saturating_add/sub/mul`; annotate truncation `current_bytes: usize` or numeric inference fails.

@@ -298,6 +298,13 @@ struct ReplacementRequest<'a> {
     content: &'a str,
 }
 
+struct ExpansionState {
+    result: String,
+    images: Vec<Content>,
+    references: Vec<ContextReferenceMetadata>,
+    reference_count: usize,
+}
+
 /// Expand @file references in a prompt, replacing them with file contents.
 /// Returns the expanded prompt text.
 /// Expand `@file` references, returning structured content with text + images.
@@ -329,138 +336,173 @@ pub fn expand_at_refs_with_policy(request: ExpandAtRefsWithPolicyRequest<'_>) ->
         };
     }
 
-    let mut result = text.to_string();
-
-    // Process in reverse order so indices stay valid
+    // Process in reverse order so indices stay valid.
     let mut sorted_refs = refs;
-    let mut images = Vec::with_capacity(sorted_refs.len());
-    let mut references = Vec::with_capacity(sorted_refs.len());
     sorted_refs.sort_by_key(|r| Reverse(r.start));
-    let reference_count = sorted_refs.len();
+
+    let mut state = ExpansionState {
+        result: text.to_string(),
+        images: Vec::with_capacity(sorted_refs.len()),
+        references: Vec::with_capacity(sorted_refs.len()),
+        reference_count: sorted_refs.len(),
+    };
 
     for at_ref in sorted_refs {
-        if is_git_diff_reference(&at_ref.path) {
-            let diff = read_git_diff_reference(GitDiffReferenceRequest {
-                path: &at_ref.path,
-                cwd,
-                max_bytes: policy.max_reference_bytes,
-            });
-            let replacement = format_replacement(ReplacementRequest {
-                path: &at_ref.raw,
-                content: &diff.content,
-            });
-            replace_raw(&mut result, &at_ref, &replacement);
-            references.push(match diff.error {
-                Some(message) => ContextReferenceMetadata::error(&at_ref, diff.target, message),
-                None => ContextReferenceMetadata::expanded(
-                    &at_ref,
-                    ContextReferenceKind::GitDiff,
-                    diff.target,
-                    diff.line_count,
-                    diff.byte_count,
-                ),
-            });
-            continue;
-        }
-
-        if is_url_reference(&at_ref.path) {
-            let fetched = read_url_reference(&at_ref.path, policy);
-            let replacement = if fetched.error.is_some() && !policy.allow_url_fetch {
-                format!(
-                    "[Unsupported context reference {}: URL references are disabled by policy]",
-                    sanitize_reference_raw(&at_ref.raw)
-                )
-            } else {
-                format_replacement(ReplacementRequest {
-                    path: &sanitize_reference_raw(&at_ref.raw),
-                    content: &fetched.content,
-                })
-            };
-            replace_raw(&mut result, &at_ref, &replacement);
-            references.push(match fetched.error {
-                Some(message) if policy.allow_url_fetch => {
-                    ContextReferenceMetadata::error(&at_ref, fetched.target, message)
-                }
-                Some(message) => ContextReferenceMetadata::unsupported(&at_ref, message),
-                None => ContextReferenceMetadata::expanded(
-                    &at_ref,
-                    ContextReferenceKind::Url,
-                    fetched.target,
-                    fetched.line_count,
-                    fetched.byte_count,
-                ),
-            });
-            continue;
-        }
-
-        if is_unsupported_reference(&at_ref.path) {
-            let message = unsupported_message(&at_ref.path);
-            let replacement = format!("[Unsupported context reference {}: {}]", at_ref.raw, message);
-            replace_raw(&mut result, &at_ref, &replacement);
-            references.push(ContextReferenceMetadata::unsupported(&at_ref, message));
-            continue;
-        }
-
-        let resolved = resolve_path(ResolvePathRequest { path: &at_ref.path, cwd });
-        let target = display_target(&resolved);
-
-        if is_image_extension(&at_ref.path) {
-            // Read as binary image, encode to base64
-            match std::fs::read(&resolved) {
-                Ok(bytes) => {
-                    let media_type = image_media_type(&at_ref.path);
-                    let data = BASE64.encode(&bytes);
-                    images.push(Content::Image {
-                        source: ImageSource::Base64 { media_type, data },
-                    });
-                    // Replace the @ref with a short label in the text
-                    let label = format!("[image: {}]", at_ref.path);
-                    replace_raw(&mut result, &at_ref, &label);
-                    references.push(ContextReferenceMetadata::expanded(
-                        &at_ref,
-                        ContextReferenceKind::Image,
-                        target.clone(),
-                        None,
-                        Some(bytes.len()),
-                    ));
-                }
-                Err(e) => {
-                    let message = format!("Error reading image: {}", e);
-                    let replacement = format!("[Error reading image {}: {}]", at_ref.path, e);
-                    replace_raw(&mut result, &at_ref, &replacement);
-                    references.push(ContextReferenceMetadata::error(&at_ref, target.clone(), message));
-                }
-            }
-        } else {
-            // Existing text file handling
-            let read = read_file_content(&resolved, at_ref.line_range);
-            let replacement = format_replacement(ReplacementRequest {
-                path: &at_ref.path,
-                content: &read.content,
-            });
-            replace_raw(&mut result, &at_ref, &replacement);
-            references.push(match read.error {
-                Some(message) => ContextReferenceMetadata::error(&at_ref, target.clone(), message),
-                None => ContextReferenceMetadata::expanded(
-                    &at_ref,
-                    read.kind,
-                    target.clone(),
-                    read.line_count,
-                    read.byte_count,
-                ),
-            });
-        }
+        expand_one_reference(&mut state, &at_ref, cwd, policy);
     }
 
-    references.sort_by_key(|m| sorted_position_key(PositionKeyRequest { text, raw: &m.raw }));
-    assert!(images.len() <= references.len());
-    assert_eq!(references.len(), reference_count);
+    state.references.sort_by_key(|m| sorted_position_key(PositionKeyRequest { text, raw: &m.raw }));
+    assert!(state.images.len() <= state.references.len());
+    assert_eq!(state.references.len(), state.reference_count);
 
     ExpandedContent {
-        text: result,
-        images,
-        references,
+        text: state.result,
+        images: state.images,
+        references: state.references,
     }
+}
+
+fn expand_one_reference(
+    state: &mut ExpansionState,
+    at_ref: &AtFileRef,
+    cwd: &str,
+    policy: &ContextReferencePolicy,
+) {
+    if is_git_diff_reference(&at_ref.path) {
+        expand_git_diff_reference(state, at_ref, cwd, policy);
+    } else if is_url_reference(&at_ref.path) {
+        expand_url_reference(state, at_ref, policy);
+    } else if is_unsupported_reference(&at_ref.path) {
+        expand_unsupported_reference(state, at_ref);
+    } else {
+        expand_local_reference(state, at_ref, cwd);
+    }
+}
+
+fn expand_git_diff_reference(
+    state: &mut ExpansionState,
+    at_ref: &AtFileRef,
+    cwd: &str,
+    policy: &ContextReferencePolicy,
+) {
+    assert!(is_git_diff_reference(&at_ref.path));
+    assert!(state.references.len() <= state.reference_count);
+    let diff = read_git_diff_reference(GitDiffReferenceRequest {
+        path: &at_ref.path,
+        cwd,
+        max_bytes: policy.max_reference_bytes,
+    });
+    let replacement = format_replacement(ReplacementRequest {
+        path: &at_ref.raw,
+        content: &diff.content,
+    });
+    replace_raw(&mut state.result, at_ref, &replacement);
+    state.references.push(match diff.error {
+        Some(message) => ContextReferenceMetadata::error(at_ref, diff.target, message),
+        None => ContextReferenceMetadata::expanded(
+            at_ref,
+            ContextReferenceKind::GitDiff,
+            diff.target,
+            diff.line_count,
+            diff.byte_count,
+        ),
+    });
+}
+
+fn expand_url_reference(
+    state: &mut ExpansionState,
+    at_ref: &AtFileRef,
+    policy: &ContextReferencePolicy,
+) {
+    assert!(is_url_reference(&at_ref.path));
+    assert!(state.references.len() <= state.reference_count);
+    let fetched = read_url_reference(&at_ref.path, policy);
+    let replacement = if fetched.error.is_some() && !policy.allow_url_fetch {
+        format!(
+            "[Unsupported context reference {}: URL references are disabled by policy]",
+            sanitize_reference_raw(&at_ref.raw)
+        )
+    } else {
+        format_replacement(ReplacementRequest {
+            path: &sanitize_reference_raw(&at_ref.raw),
+            content: &fetched.content,
+        })
+    };
+    replace_raw(&mut state.result, at_ref, &replacement);
+    state.references.push(match fetched.error {
+        Some(message) if policy.allow_url_fetch => ContextReferenceMetadata::error(at_ref, fetched.target, message),
+        Some(message) => ContextReferenceMetadata::unsupported(at_ref, message),
+        None => ContextReferenceMetadata::expanded(
+            at_ref,
+            ContextReferenceKind::Url,
+            fetched.target,
+            fetched.line_count,
+            fetched.byte_count,
+        ),
+    });
+}
+
+fn expand_unsupported_reference(state: &mut ExpansionState, at_ref: &AtFileRef) {
+    let message = unsupported_message(&at_ref.path);
+    let replacement = format!("[Unsupported context reference {}: {}]", at_ref.raw, message);
+    replace_raw(&mut state.result, at_ref, &replacement);
+    state.references.push(ContextReferenceMetadata::unsupported(at_ref, message));
+}
+
+fn expand_local_reference(state: &mut ExpansionState, at_ref: &AtFileRef, cwd: &str) {
+    let resolved = resolve_path(ResolvePathRequest { path: &at_ref.path, cwd });
+    let target = display_target(&resolved);
+    if is_image_extension(&at_ref.path) {
+        expand_image_reference(state, at_ref, &resolved, &target);
+    } else {
+        expand_text_reference(state, at_ref, &resolved, &target);
+    }
+}
+
+fn expand_image_reference(state: &mut ExpansionState, at_ref: &AtFileRef, resolved: &Path, target: &str) {
+    match std::fs::read(resolved) {
+        Ok(bytes) => {
+            let media_type = image_media_type(&at_ref.path);
+            let data = BASE64.encode(&bytes);
+            state.images.push(Content::Image {
+                source: ImageSource::Base64 { media_type, data },
+            });
+            let label = format!("[image: {}]", at_ref.path);
+            replace_raw(&mut state.result, at_ref, &label);
+            state.references.push(ContextReferenceMetadata::expanded(
+                at_ref,
+                ContextReferenceKind::Image,
+                target.to_string(),
+                None,
+                Some(bytes.len()),
+            ));
+        }
+        Err(e) => {
+            let message = format!("Error reading image: {}", e);
+            let replacement = format!("[Error reading image {}: {}]", at_ref.path, e);
+            replace_raw(&mut state.result, at_ref, &replacement);
+            state.references.push(ContextReferenceMetadata::error(at_ref, target.to_string(), message));
+        }
+    }
+}
+
+fn expand_text_reference(state: &mut ExpansionState, at_ref: &AtFileRef, resolved: &Path, target: &str) {
+    let read = read_file_content(resolved, at_ref.line_range);
+    let replacement = format_replacement(ReplacementRequest {
+        path: &at_ref.path,
+        content: &read.content,
+    });
+    replace_raw(&mut state.result, at_ref, &replacement);
+    state.references.push(match read.error {
+        Some(message) => ContextReferenceMetadata::error(at_ref, target.to_string(), message),
+        None => ContextReferenceMetadata::expanded(
+            at_ref,
+            read.kind,
+            target.to_string(),
+            read.line_count,
+            read.byte_count,
+        ),
+    });
 }
 
 /// Get completion suggestions for a partial @path
