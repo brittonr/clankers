@@ -655,7 +655,8 @@ impl ProcessTool {
                         format!("watch_pattern[{pattern_index}]={pattern}")
                     }
                 };
-                let _ = write!(text, "\n- {} {}: {}", notification.event_id.0, kind, notification.summary);
+                let result = write!(text, "\n- {} {}: {}", notification.event_id.0, kind, notification.summary);
+                assert!(result.is_ok());
             }
         }
         ToolResult::text(text)

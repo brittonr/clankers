@@ -266,7 +266,8 @@ impl InlineState {
             let mut line = format!("tokens: {}in / {}out", usage.input_tokens, usage.output_tokens,);
             if usage.cache_read > 0 || usage.cache_write > 0 {
                 use std::fmt::Write;
-                let _ = write!(line, "  cache: {}read / {}write", usage.cache_read, usage.cache_write,);
+                let result = write!(line, "  cache: {}read / {}write", usage.cache_read, usage.cache_write,);
+                assert!(result.is_ok());
             }
             view = view.keyed("usage", InlineText::new(line).style(Style::default().add_modifier(Modifier::DIM)));
         }

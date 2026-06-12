@@ -301,7 +301,8 @@ fn encode_resource_segment(input: &str) -> String {
         if is_unreserved(*byte) {
             encoded.push(char::from(*byte));
         } else {
-            let _ = write!(encoded, "%{byte:02X}");
+            let result = write!(encoded, "%{byte:02X}");
+            assert!(result.is_ok());
         }
     }
     encoded

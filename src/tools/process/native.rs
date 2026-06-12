@@ -957,12 +957,16 @@ async fn terminate_process_group(pid: Option<u32>, child: &mut tokio::process::C
         unsafe {
             libc::kill(-pid, libc::SIGKILL);
         }
-        let _ = child.wait().await;
+        if let Err(error) = child.wait().await {
+            tracing::debug!(source = "process_native", error = %error, "wait after process-group kill failed");
+        }
         return NativeTerminationOutcome::EscalatedKill;
     }
 
     child.start_kill().ok();
-    let _ = child.wait().await;
+    if let Err(error) = child.wait().await {
+        tracing::debug!(source = "process_native", error = %error, "wait after direct kill failed");
+    }
     NativeTerminationOutcome::DirectKill
 }
 

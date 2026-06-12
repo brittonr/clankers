@@ -19,7 +19,6 @@
         tigerstyle::unbounded_loop,
         tigerstyle::ambiguous_params,
         tigerstyle::too_many_parameters,
-        tigerstyle::ignored_result,
         tigerstyle::sentinel_fallback,
         tigerstyle::unchecked_narrowing,
         tigerstyle::platform_dependent_cast,

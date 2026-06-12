@@ -2,6 +2,7 @@
 
 ## Working Notes
 
+- 2026-06-12: root `src/lib.rs` ignored-result drain is small: remove only `ignored_result`, replace ignored `write!` results with `let result = ...; assert!(result.is_ok())`, and log process wait errors after kill instead of `let _ = child.wait().await`. Root lib no-run plus package/full Tigerstyle pass.
 - 2026-06-12: root `src/lib.rs` bool-naming drain is medium but mechanical: remove only `bool_naming` from the root crate allow, rename root-shell locals like `is_provider_explicit`, `is_prompt_sent`, `is_dispatched_follow_up_completed`, `should_show_tools`, `is_json_mode`, `should_replace_all`, quote/frontmatter flags, and process newline flags. `cargo test -p clankers --lib --no-run` needs the gcc/bfd linker override; package and full Tigerstyle pass.
 - 2026-06-12: clankers-db local ambient-clock review kept the narrow `db_clock_now()` helper allow: it is `pub(crate)`, centralized, and explicitly documented as the database shell-boundary timestamp source. `cargo test -p clankers-db --lib` and package/full Tigerstyle pass.
 - 2026-06-12: clankers-tui bool-naming drain is a one-binding slice: remove only `bool_naming` from the crate allow and rename experiment dashboard `minimize` to `is_minimize`. `cargo test -p clankers-tui --lib` and package/full Tigerstyle pass.

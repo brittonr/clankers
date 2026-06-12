@@ -262,7 +262,8 @@ fn encode_resource_segment(input: &str) -> String {
         if matches!(*byte, b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'.' | b'_') {
             encoded.push(char::from(*byte));
         } else {
-            let _ = write!(encoded, "%{byte:02X}");
+            let result = write!(encoded, "%{byte:02X}");
+            assert!(result.is_ok());
         }
     }
     encoded
