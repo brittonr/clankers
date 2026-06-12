@@ -6,7 +6,6 @@
     allow(
         tigerstyle::function_length,
         tigerstyle::unbounded_loop,
-        tigerstyle::raw_arithmetic_overflow,
         tigerstyle::ambiguous_params,
         tigerstyle::usize_in_public_api,
         reason = "utility APIs preserve existing parser/truncation contracts and have focused tests"

@@ -193,19 +193,19 @@ pub fn find_at_refs(text: &str) -> Vec<AtFileRef> {
     while i < len {
         if chars[i] == '@' {
             // Check that @ is at the start or preceded by whitespace
-            if i > 0 && !chars[i - 1].is_whitespace() {
-                i += 1;
+            if i > 0 && !chars[i.saturating_sub(1)].is_whitespace() {
+                i = i.saturating_add(1);
                 continue;
             }
 
             // Collect the path characters after @
             let start = i;
-            i += 1; // skip @
+            i = i.saturating_add(1); // skip @
             let path_start = i;
 
             // Consume path characters: alphanumeric, _, ., /, -
             while i < len && (chars[i].is_alphanumeric() || "_./-:@".contains(chars[i])) {
-                i += 1;
+                i = i.saturating_add(1);
             }
 
             if i == path_start {
@@ -227,7 +227,7 @@ pub fn find_at_refs(text: &str) -> Vec<AtFileRef> {
             // unsupported-reference handling.
             let (path, line_range) = if let Some(colon_pos) = candidate.rfind(':') {
                 let path_part = &candidate[..colon_pos];
-                let range_part = &candidate[colon_pos + 1..];
+                let range_part = &candidate[colon_pos.saturating_add(1)..];
                 if let Some(range) = parse_line_range(range_part) {
                     (path_part.to_string(), Some(range))
                 } else {
@@ -483,7 +483,7 @@ fn read_file_content(path: &Path, line_range: Option<(usize, usize)>) -> ReadCon
                     let lines: Vec<&str> = content.lines().collect();
                     if lines.len() > 500 {
                         let truncated: String = lines[..500].join("\n");
-                        format!("{}\n\n[... {} more lines truncated]", truncated, lines.len() - 500)
+                        format!("{}\n\n[... {} more lines truncated]", truncated, lines.len().saturating_sub(500))
                     } else {
                         content
                     }
@@ -514,7 +514,7 @@ fn read_file_content(path: &Path, line_range: Option<(usize, usize)>) -> ReadCon
 
 fn replace_raw(result: &mut String, at_ref: &AtFileRef, replacement: &str) {
     if let Some(pos) = result.find(&at_ref.raw) {
-        result.replace_range(pos..pos + at_ref.raw.len(), replacement);
+        result.replace_range(pos..pos.saturating_add(at_ref.raw.len()), replacement);
     }
 }
 
@@ -676,11 +676,14 @@ fn bounded_content(
 
 fn sanitize_reference_raw(raw: &str) -> String {
     if let Some(scheme_pos) = raw.find("://") {
-        let authority_start = scheme_pos + 3;
-        let authority_end = raw[authority_start..].find('/').map(|idx| authority_start + idx).unwrap_or(raw.len());
+        let authority_start = scheme_pos.saturating_add(3);
+        let authority_end = raw[authority_start..]
+            .find('/')
+            .map(|idx| authority_start.saturating_add(idx))
+            .unwrap_or(raw.len());
         let authority = &raw[authority_start..authority_end];
         if let Some(at_pos) = authority.rfind('@') {
-            let host = &authority[at_pos + 1..];
+            let host = &authority[at_pos.saturating_add(1)..];
             return format!("{}://[redacted]@{}{}", &raw[..scheme_pos], host, &raw[authority_end..]);
         }
     }

@@ -330,7 +330,7 @@ pub fn highlight_ansi(code: &str, language: &str) -> String {
     assert!(code.chars().count() <= code.len());
     assert!(language.chars().count() <= language.len());
     let spans = highlight(code, language);
-    let mut out = String::with_capacity(code.len() * 2);
+    let mut out = String::with_capacity(code.len().saturating_mul(2));
     for span in &spans {
         match span.kind {
             TokenKind::Syntect { r, g, b, bold, italic } => {

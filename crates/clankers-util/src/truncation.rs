@@ -31,7 +31,7 @@ pub fn truncate_head(content: &str, max_lines: usize, max_bytes: usize) -> (Stri
     }
 
     let mut result = String::new();
-    let mut current_bytes = 0;
+    let mut current_bytes: usize = 0;
 
     for (line_count, line) in lines.iter().enumerate() {
         if line_count >= max_lines {
@@ -41,12 +41,12 @@ pub fn truncate_head(content: &str, max_lines: usize, max_bytes: usize) -> (Stri
         let line_with_newline = format!("{}\n", line);
         let line_bytes = line_with_newline.len();
 
-        if current_bytes + line_bytes > max_bytes {
+        if current_bytes.saturating_add(line_bytes) > max_bytes {
             break;
         }
 
         result.push_str(&line_with_newline);
-        current_bytes += line_bytes;
+        current_bytes = current_bytes.saturating_add(line_bytes);
     }
 
     // Remove trailing newline if present
@@ -87,7 +87,7 @@ pub fn truncate_tail(content: &str, max_lines: usize, max_bytes: usize) -> (Stri
     }
 
     let mut result_lines = Vec::new();
-    let mut current_bytes = 0;
+    let mut current_bytes: usize = 0;
 
     // Iterate from the end
     for line in lines.iter().rev() {
@@ -98,12 +98,12 @@ pub fn truncate_tail(content: &str, max_lines: usize, max_bytes: usize) -> (Stri
         let line_with_newline = format!("{}\n", line);
         let line_bytes = line_with_newline.len();
 
-        if current_bytes + line_bytes > max_bytes {
+        if current_bytes.saturating_add(line_bytes) > max_bytes {
             break;
         }
 
         result_lines.push(*line);
-        current_bytes += line_bytes;
+        current_bytes = current_bytes.saturating_add(line_bytes);
     }
 
     // Reverse to get original order

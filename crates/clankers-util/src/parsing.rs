@@ -26,10 +26,10 @@ pub fn parse_duration(s: &str) -> Option<std::time::Duration> {
 
     let num: u64 = num_str.parse().ok()?;
     let secs = match unit {
-        'm' => num * 60,
-        'h' => num * 3600,
-        'd' => num * 86400,
-        'y' => num * 86400 * 365,
+        'm' => num.saturating_mul(60),
+        'h' => num.saturating_mul(3600),
+        'd' => num.saturating_mul(86400),
+        'y' => num.saturating_mul(86400).saturating_mul(365),
         _ => return None,
     };
 
