@@ -218,30 +218,30 @@ fn discover_skill_records(global_dir: &Path, project_dir: Option<&Path>) -> Vec<
 
 fn scan_skill_root(root: &Path) -> Vec<SkillRecord> {
     let mut records = Vec::new();
-    if root.is_dir() {
-        scan_skill_root_inner(root, root, &mut records);
+    if !root.is_dir() {
+        return records;
+    }
+    let mut pending = vec![root.to_path_buf()];
+    while let Some(current) = pending.pop() {
+        let Ok(entries) = std::fs::read_dir(&current) else {
+            continue;
+        };
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if !path.is_dir() {
+                continue;
+            }
+            let skill_file = path.join(SKILL_FILE_NAME);
+            if skill_file.is_file() {
+                if let Some(record) = load_skill_record(root, &skill_file) {
+                    records.push(record);
+                }
+                continue;
+            }
+            pending.push(path);
+        }
     }
     records
-}
-
-fn scan_skill_root_inner(root: &Path, current: &Path, records: &mut Vec<SkillRecord>) {
-    let Ok(entries) = std::fs::read_dir(current) else {
-        return;
-    };
-    for entry in entries.flatten() {
-        let path = entry.path();
-        if !path.is_dir() {
-            continue;
-        }
-        let skill_file = path.join(SKILL_FILE_NAME);
-        if skill_file.is_file() {
-            if let Some(record) = load_skill_record(root, &skill_file) {
-                records.push(record);
-            }
-            continue;
-        }
-        scan_skill_root_inner(root, &path, records);
-    }
 }
 
 fn load_skill_record(root: &Path, skill_file: &Path) -> Option<SkillRecord> {

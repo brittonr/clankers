@@ -213,28 +213,27 @@ fn scan_skill_root(root: &Path, source: &'static str) -> Vec<SkillRecord> {
     if !root.is_dir() {
         return records;
     }
-    scan_skill_root_inner(root, root, source, &mut records);
-    records
-}
-
-fn scan_skill_root_inner(root: &Path, current: &Path, source: &'static str, records: &mut Vec<SkillRecord>) {
-    let Ok(entries) = std::fs::read_dir(current) else {
-        return;
-    };
-    for entry in entries.flatten() {
-        let path = entry.path();
-        if !path.is_dir() {
+    let mut pending = vec![root.to_path_buf()];
+    while let Some(current) = pending.pop() {
+        let Ok(entries) = std::fs::read_dir(&current) else {
             continue;
-        }
-        let skill_file = path.join(SKILL_FILE_NAME);
-        if skill_file.is_file() {
-            if let Some(record) = load_record(root, &skill_file, source) {
-                records.push(record);
+        };
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if !path.is_dir() {
+                continue;
             }
-            continue;
+            let skill_file = path.join(SKILL_FILE_NAME);
+            if skill_file.is_file() {
+                if let Some(record) = load_record(root, &skill_file, source) {
+                    records.push(record);
+                }
+                continue;
+            }
+            pending.push(path);
         }
-        scan_skill_root_inner(root, &path, source, records);
     }
+    records
 }
 
 fn load_record(root: &Path, skill_file: &Path, source: &'static str) -> Option<SkillRecord> {
@@ -327,17 +326,20 @@ fn linked_files(skill_dir: &Path) -> BTreeMap<String, Vec<String>> {
 }
 
 fn collect_files(root: &Path, current: &Path, files: &mut Vec<String>) {
-    let Ok(entries) = std::fs::read_dir(current) else {
-        return;
-    };
-    for entry in entries.flatten() {
-        let path = entry.path();
-        if path.is_dir() {
-            collect_files(root, &path, files);
-        } else if path.is_file()
-            && let Ok(rel) = path.strip_prefix(root)
-        {
-            files.push(rel.to_string_lossy().to_string());
+    let mut pending = vec![current.to_path_buf()];
+    while let Some(current) = pending.pop() {
+        let Ok(entries) = std::fs::read_dir(&current) else {
+            continue;
+        };
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.is_dir() {
+                pending.push(path);
+            } else if path.is_file()
+                && let Ok(rel) = path.strip_prefix(root)
+            {
+                files.push(rel.to_string_lossy().to_string());
+            }
         }
     }
 }

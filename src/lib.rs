@@ -22,7 +22,6 @@
         tigerstyle::sentinel_fallback,
         tigerstyle::unchecked_narrowing,
         tigerstyle::platform_dependent_cast,
-        tigerstyle::no_recursion,
         reason = "root crate remains CLI/orchestration shell; catch_all_on_enum was drained so new enum variants cannot silently hit deny fallbacks"
     )
 )]
