@@ -181,11 +181,11 @@ impl Provider for AnthropicProvider {
                                 }
                             }
 
-                            let mut refresh_attempted = false;
+                            let mut is_refresh_attempted = false;
                             // 401 on OAuth → try refreshing before moving to next credential
                             if status == 401 && cred.is_oauth() && self.credential_manager.is_some() {
                                 info!("Got 401 on '{}', attempting token refresh", lease.account());
-                                refresh_attempted = true;
+                                is_refresh_attempted = true;
                                 if let Ok(refreshed) = self.force_refresh_credential().await {
                                     match self.try_with_credential(&request, &refreshed, &tx).await {
                                         Ok(()) => {
@@ -201,7 +201,7 @@ impl Provider for AnthropicProvider {
                             }
 
                             let mut classified = classify_api_error(Some(last_status), &last_error, self.name());
-                            if refresh_attempted && matches!(classified.reason, crate::FailoverReason::Auth) {
+                            if is_refresh_attempted && matches!(classified.reason, crate::FailoverReason::Auth) {
                                 classified = crate::classify_transport_error(&last_error, self.name());
                                 classified.reason = crate::FailoverReason::AuthPermanent;
                                 classified.retryable = false;

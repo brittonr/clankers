@@ -24,7 +24,6 @@
         tigerstyle::no_recursion,
         tigerstyle::ambient_clock,
         tigerstyle::no_unwrap,
-        tigerstyle::bool_naming,
         tigerstyle::platform_dependent_cast,
         tigerstyle::usize_in_public_api,
         reason = "provider crate preserves live provider request contracts; fixture and transport tests cover behavior during Tigerstyle drain"

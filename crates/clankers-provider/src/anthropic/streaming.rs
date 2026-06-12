@@ -103,7 +103,7 @@ struct SseErrorInner {
 pub async fn parse_sse_stream(
     response: reqwest::Response,
     tx: mpsc::Sender<StreamEvent>,
-    reverse_map: bool,
+    is_reverse_map_enabled: bool,
 ) -> Result<()> {
     use futures::StreamExt;
 
@@ -136,7 +136,7 @@ pub async fn parse_sse_stream(
                 match parse_sse_event(&event_type, data) {
                     Some(event) => {
                         consecutive_parse_failures = 0;
-                        let events = if reverse_map {
+                        let events = if is_reverse_map_enabled {
                             rewriter.rewrite(event)
                         } else {
                             vec![event]

@@ -308,7 +308,7 @@ impl RouterProvider {
                 let mut collected = Vec::new();
                 let mut input_tokens = 0u64;
                 let mut output_tokens = 0u64;
-                let mut downstream_open = true;
+                let mut is_downstream_open = true;
 
                 while let Some(event) = inner_rx.recv().await {
                     if let StreamEvent::MessageDelta { usage, .. } = &event {
@@ -316,8 +316,8 @@ impl RouterProvider {
                         output_tokens += usage.output_tokens as u64;
                     }
                     collected.push(event.clone());
-                    if downstream_open && forward_tx.send(event).await.is_err() {
-                        downstream_open = false;
+                    if is_downstream_open && forward_tx.send(event).await.is_err() {
+                        is_downstream_open = false;
                     }
                 }
 
