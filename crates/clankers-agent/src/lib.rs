@@ -14,12 +14,10 @@
         tigerstyle::unbounded_loop,
         tigerstyle::unbounded_collection_growth,
         tigerstyle::explicit_defaults,
-        tigerstyle::bool_naming,
         tigerstyle::sentinel_fallback,
-        reason = "agent crate is a compatibility shell around provider/tool/event contracts; focused turn and compaction tests cover behavior during Tigerstyle drain"
+        reason = "agent crate remains a compatibility shell around provider/tool/event contracts; bool_naming was drained so local predicates read as questions"
     )
 )]
-
 pub mod builder;
 pub mod compaction;
 pub mod context;
@@ -251,14 +249,14 @@ fn token_count_to_u64(value: usize) -> u64 {
 }
 
 fn turn_hook_usage_since(messages: &[AgentMessage], start_index: usize) -> Option<AgentHookUsage> {
-    let mut saw_usage = false;
+    let mut is_usage_seen = false;
     let mut usage = AgentHookUsage::default();
 
     for message in messages.iter().skip(start_index) {
         let AgentMessage::Assistant(assistant) = message else {
             continue;
         };
-        saw_usage = true;
+        is_usage_seen = true;
         usage.input_tokens = usage.input_tokens.saturating_add(token_count_to_u64(assistant.usage.input_tokens));
         usage.output_tokens = usage.output_tokens.saturating_add(token_count_to_u64(assistant.usage.output_tokens));
         usage.cache_creation_input_tokens = usage
@@ -269,7 +267,7 @@ fn turn_hook_usage_since(messages: &[AgentMessage], start_index: usize) -> Optio
             .saturating_add(token_count_to_u64(assistant.usage.cache_read_input_tokens));
     }
 
-    saw_usage.then_some(usage)
+    is_usage_seen.then_some(usage)
 }
 
 fn tool_call_count_since(messages: &[AgentMessage], start_index: usize) -> usize {
@@ -1123,7 +1121,7 @@ impl Agent {
         let max_input = self.provider.max_input_tokens(&self.model).unwrap_or(200_000);
         let turn_start_message_index = self.messages.len();
         let mut turn_model = self.model.clone();
-        let mut pre_turn_fired = false;
+        let mut is_pre_turn_fired = false;
 
         let result = async {
             for (phase_idx, phase) in plan.phases.iter().enumerate() {
@@ -1184,9 +1182,9 @@ impl Agent {
 
                 self.emit_repo_steel_evolution_pack_status()?;
 
-                if !pre_turn_fired {
+                if !is_pre_turn_fired {
                     turn_model.clone_from(&config.model);
-                    pre_turn_fired = true;
+                    is_pre_turn_fired = true;
                     self.fire_pre_turn_hook(prompt_id, user_text, &turn_model, turn_start_message_index).await?;
                 }
 
@@ -1241,11 +1239,11 @@ impl Agent {
         }
         .await;
 
-        if pre_turn_fired {
+        if is_pre_turn_fired {
             self.fire_post_turn_hook(prompt_id, user_text, &turn_model, turn_start_message_index, &result);
         }
 
-        if pre_turn_fired || result.is_ok() {
+        if is_pre_turn_fired || result.is_ok() {
             self.event_tx
                 .send(AgentEvent::AgentEnd {
                     messages: self.messages.clone(),
@@ -1336,36 +1334,36 @@ impl Agent {
 
     fn last_completed_turn(&self) -> Option<TurnToolUsage> {
         let mut tool_call_count = NO_SKILL_NUDGE_COUNT;
-        let mut used_skill_manage = false;
-        let mut in_latest_turn = false;
+        let mut is_skill_manage_used = false;
+        let mut is_in_latest_turn = false;
 
         for message in self.messages.iter().rev() {
             match message {
                 AgentMessage::ToolResult(tool_result) => {
-                    in_latest_turn = true;
+                    is_in_latest_turn = true;
                     tool_call_count += 1;
                     if tool_result.tool_name == SKILL_MANAGE_TOOL_NAME {
-                        used_skill_manage = true;
+                        is_skill_manage_used = true;
                     }
                 }
                 AgentMessage::Assistant(assistant) => {
-                    if in_latest_turn {
+                    if is_in_latest_turn {
                         for content in &assistant.content {
                             if let Content::ToolUse { name, .. } = content {
                                 tool_call_count += 1;
                                 if name == SKILL_MANAGE_TOOL_NAME {
-                                    used_skill_manage = true;
+                                    is_skill_manage_used = true;
                                 }
                             }
                         }
                         return Some(TurnToolUsage {
                             tool_call_count,
-                            used_skill_manage,
+                            used_skill_manage: is_skill_manage_used,
                         });
                     }
                 }
                 AgentMessage::User(_) => {
-                    if in_latest_turn {
+                    if is_in_latest_turn {
                         break;
                     }
                 }

@@ -290,10 +290,10 @@ impl ToolCapabilityService for ControllerCapabilityService {
         }
 
         if let Some(filter) = &self.user_tool_filter {
-            let allowed = filter.iter().any(|pattern| {
+            let is_allowed = filter.iter().any(|pattern| {
                 pattern == "*" || pattern.split(',').any(|candidate| candidate.trim() == request.tool_name)
             });
-            if !allowed {
+            if !is_allowed {
                 return Ok(CapabilityDecision::Denied {
                     reason: "Tool not in active capability set (use /capabilities to adjust)".to_string(),
                 });
