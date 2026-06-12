@@ -41,7 +41,7 @@ Package tests may be adjusted for non-library crates or plugin crates, but the e
 | `I#runtime-lib-allow-site` | `crates/clankers-runtime/src/lib.rs` | assertion_density, numeric_units, explicit_defaults, unbounded_collection_growth, raw_arithmetic_overflow, too_many_parameters, ambient_clock, usize_in_public_api (narrowed: no_unwrap drained) |
 | `I#tui-lib-allow-site` | `crates/clankers-tui/src/lib.rs` | platform_dependent_cast, explicit_defaults, usize_in_public_api, ambiguous_params, raw_arithmetic_overflow, numeric_units, unbounded_collection_growth, ambient_clock, too_many_parameters, compound_condition, no_panic (narrowed: bool_naming drained) |
 | `I#util-lib-allow-site` | `crates/clankers-util/src/lib.rs` | function_length, unbounded_loop, usize_in_public_api |
-| `I#db-clock-allow-site` | `crates/clankers-db/src/lib.rs` | ambient_clock |
+| `I#db-clock-allow-site` | `crates/clankers-db/src/lib.rs` | ambient_clock (reviewed: kept as narrow `db_clock_now()` shell-boundary timestamp source) |
 | `I#matrix-bridge-clock-allow-site` | `crates/clankers-matrix/src/bridge.rs` | ambient_clock |
 | `I#matrix-protocol-clock-allow-site` | `crates/clankers-matrix/src/protocol.rs` | ambient_clock |
 | `I#nix-derivation-recursion-allow-site` | `crates/clankers-nix/src/derivation.rs` | no_recursion |

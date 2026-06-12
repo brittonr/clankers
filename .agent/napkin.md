@@ -2,6 +2,7 @@
 
 ## Working Notes
 
+- 2026-06-12: clankers-db local ambient-clock review kept the narrow `db_clock_now()` helper allow: it is `pub(crate)`, centralized, and explicitly documented as the database shell-boundary timestamp source. `cargo test -p clankers-db --lib` and package/full Tigerstyle pass.
 - 2026-06-12: clankers-tui bool-naming drain is a one-binding slice: remove only `bool_naming` from the crate allow and rename experiment dashboard `minimize` to `is_minimize`. `cargo test -p clankers-tui --lib` and package/full Tigerstyle pass.
 - 2026-06-12: clankers-runtime no-unwrap drain is serialization-heavy: remove only `no_unwrap` from the crate allow, add runtime JSON fallback helpers for receipt/hash material, replace production `serde_json::to_vec/to_string(...).expect(...)`, and use non-panicking built-in tool catalog fallbacks. `cargo test -p clankers-runtime --lib` and package/full Tigerstyle pass.
 - 2026-06-12: clanker-router bool-naming drain is moderate: remove only `bool_naming` from crate allow, fix auth removal/active flags, Anthropic/Codex refresh flags, credential file lock flag, quorum assignment/similarity/agreement flags, router retry/quorum flags, and feature-enabled RPC `complete_done` found only by full Tigerstyle. `cargo test -p clanker-router --lib` and full Tigerstyle pass.
