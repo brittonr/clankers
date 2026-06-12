@@ -44,7 +44,7 @@ pub struct DailyUsage {
 impl DailyUsage {
     /// Total tokens (input + output).
     pub fn total_tokens(&self) -> u64 {
-        self.input_tokens + self.output_tokens
+        self.input_tokens.saturating_add(self.output_tokens)
     }
 }
 

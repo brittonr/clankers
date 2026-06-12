@@ -79,7 +79,7 @@ pub fn migrate(db: &redb::Database) -> Result<()> {
 
     for (i, migration) in MIGRATIONS.iter().enumerate() {
         let from = i as u32;
-        let to = from + 1;
+        let to = from.saturating_add(1);
         if from >= current {
             info!(from, to, "applying migration");
             migration(&tx)?;

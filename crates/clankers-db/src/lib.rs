@@ -14,14 +14,6 @@
 //! tokio blocking threadpool, avoiding stalls on the async runtime.
 #![allow(unexpected_cfgs)]
 #![cfg_attr(dylint_lib = "tigerstyle", feature(register_tool), register_tool(tigerstyle))]
-#![cfg_attr(
-    dylint_lib = "tigerstyle",
-    allow(
-        tigerstyle::raw_arithmetic_overflow,
-        reason = "embedded database APIs preserve stored schema/public query contracts; integration tests cover persistence behavior during Tigerstyle drain"
-    )
-)]
-
 pub mod audit;
 pub mod error;
 pub mod file_cache;

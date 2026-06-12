@@ -2,6 +2,7 @@
 
 ## Working Notes
 
+- 2026-06-11: clankers-db raw-arithmetic final drain: remove the last crate allow entirely, replace token/count/sequence `+` with `saturating_add`, including tests/assertions, and watch line count after multi-line assertion rewrites (`format_insights_terminal` tripped function_length until the expected-token assertion was compacted).
 - 2026-06-11: clankers-db usize-public-api drain: convert public limit parameters from `usize` to `u32`, public length/count returns from `usize` to `u64`, add `db_limit_entries(u32) -> usize` and `db_count_from_len(usize) -> u64`, and avoid local `limit`/`limit_entries` variables because numeric-units still flags them after the numeric drain. Root callers need explicit `u32::try_from(...).unwrap_or(u32::MAX)` or u32 parsing.
 - 2026-06-11: clankers-db numeric-units drain was nearly zero-code: removing the crate allow exposed only local `report` in `metrics/query.rs`; rename it to `history`. Validate package/full Tigerstyle and db lib tests.
 - 2026-06-11: clankers-db unbounded-collection-growth drain: reserve table-scan Vecs from `table.len()` via a shared `db_collection_capacity(u64) -> usize` helper using `usize::try_from` fallback, and reserve command redaction tokens from `split_whitespace().count()`. Direct `as usize` casts trip platform-dependent-cast even while working on unbounded-growth.

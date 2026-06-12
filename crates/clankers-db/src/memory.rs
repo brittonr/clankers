@@ -130,7 +130,7 @@ pub(crate) fn generate_id() -> u64 {
     let now = crate::db_clock_now().timestamp_micros() as u64;
     let mut last = LAST.load(Ordering::Relaxed);
     loop {
-        let next = now.max(last + 1);
+        let next = now.max(last.saturating_add(1));
         match LAST.compare_exchange_weak(last, next, Ordering::Relaxed, Ordering::Relaxed) {
             Ok(_) => return next,
             Err(actual) => last = actual,

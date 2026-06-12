@@ -37,7 +37,7 @@ pub struct Overview {
 
 impl Overview {
     pub fn total_tokens(&self) -> u64 {
-        self.total_input_tokens + self.total_output_tokens
+        self.total_input_tokens.saturating_add(self.total_output_tokens)
     }
 }
 
@@ -104,8 +104,8 @@ pub fn generate_insights(db: &Db, days: u32) -> Result<InsightsReport> {
 
         daily_map
             .entry(day.date.clone())
-            .and_modify(|(_, t)| *t += day.input_tokens + day.output_tokens)
-            .or_insert((0, day.input_tokens + day.output_tokens));
+            .and_modify(|(_, t)| *t = t.saturating_add(day.input_tokens.saturating_add(day.output_tokens)))
+            .or_insert((0, day.input_tokens.saturating_add(day.output_tokens)));
     }
 
     overview.sessions = session_data.len() as u32;
@@ -125,7 +125,7 @@ pub fn generate_insights(db: &Db, days: u32) -> Result<InsightsReport> {
             .into_iter()
             .map(|(model, (input, output, requests))| {
                 let pct = if total_tokens > 0 {
-                    (input + output) as f64 / total_tokens as f64 * 100.0
+                    input.saturating_add(output) as f64 / total_tokens as f64 * 100.0
                 } else {
                     0.0
                 };
@@ -139,7 +139,7 @@ pub fn generate_insights(db: &Db, days: u32) -> Result<InsightsReport> {
                 }
             })
             .collect();
-        entries.sort_by_key(|entry| Reverse(entry.input_tokens + entry.output_tokens));
+        entries.sort_by_key(|entry| Reverse(entry.input_tokens.saturating_add(entry.output_tokens)));
         entries
     };
 
@@ -223,7 +223,8 @@ fn build_top_sessions(
 // ── Terminal rendering ──────────────────────────────────────────────
 
 pub fn format_insights_terminal(report: &InsightsReport) -> String {
-    assert_eq!(report.overview.total_tokens(), report.overview.total_input_tokens + report.overview.total_output_tokens);
+    let expected_tokens = report.overview.total_input_tokens.saturating_add(report.overview.total_output_tokens);
+    assert_eq!(report.overview.total_tokens(), expected_tokens);
     assert!(report.model_breakdown.iter().all(|entry| entry.requests > 0));
     let mut out = String::new();
     use std::fmt::Write;

@@ -107,7 +107,7 @@ impl<'db> AuditLog<'db> {
     /// Get the next sequence number for a session.
     pub fn next_seq(&self, session_id: &str) -> Result<u32> {
         let entries = self.for_session(session_id)?;
-        Ok(entries.last().map(|e| e.seq + 1).unwrap_or(0))
+        Ok(entries.last().map(|e| e.seq.saturating_add(1)).unwrap_or(0))
     }
 
     /// Count total entries across all sessions.
@@ -153,7 +153,7 @@ impl<'db> AuditLog<'db> {
                 "✅ OK"
             };
 
-            writeln!(out, "{}. **{}** {} ({}ms)", e.seq + 1, e.tool, status, e.duration_ms).ok();
+            writeln!(out, "{}. **{}** {} ({}ms)", e.seq.saturating_add(1), e.tool, status, e.duration_ms).ok();
 
             // Show key parameters
             match e.tool.as_str() {

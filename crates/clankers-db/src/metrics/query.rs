@@ -106,7 +106,7 @@ impl MetricsStore<'_> {
 }
 
 fn session_to_report(s: &SessionMetricsSummary) -> CurrentSessionReport {
-    assert_eq!(s.total_tokens(), s.input_tokens + s.output_tokens);
+    assert_eq!(s.total_tokens(), s.input_tokens.saturating_add(s.output_tokens));
     assert!(s.turns_cancelled <= s.turns_total);
     let mut top_models: Vec<_> = s.models.top().iter().map(|(k, v)| (k.clone(), *v)).collect();
     top_models.sort_by_key(|entry| Reverse(entry.1));

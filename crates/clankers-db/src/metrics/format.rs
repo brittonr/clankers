@@ -6,7 +6,7 @@ use super::query::CurrentSessionReport;
 use super::query::HistoricalReport;
 
 pub fn format_current_session(r: &CurrentSessionReport) -> String {
-    assert_eq!(r.total_tokens, r.input_tokens + r.output_tokens);
+    assert_eq!(r.total_tokens, r.input_tokens.saturating_add(r.output_tokens));
     assert!(r.turns_cancelled <= r.turns);
     let mut out = String::new();
     writeln!(out, "## Current Session: {}", r.session_id).ok();
@@ -106,7 +106,7 @@ pub fn format_historical(r: &HistoricalReport) -> String {
                 d.date,
                 d.sessions,
                 d.turns,
-                format_count(d.input_tokens + d.output_tokens),
+                format_count(d.input_tokens.saturating_add(d.output_tokens)),
                 d.tool_calls
             )
             .ok();

@@ -81,7 +81,10 @@ pub struct SkillStats {
 impl SkillStats {
     /// Correction rate as a percentage (0-100). Returns 0 if no resolved outcomes.
     pub fn correction_rate(&self) -> f64 {
-        let resolved = self.successes + self.corrections + self.failures;
+        let resolved = self
+            .successes
+            .saturating_add(self.corrections)
+            .saturating_add(self.failures);
         if resolved == 0 {
             return 0.0;
         }
@@ -90,7 +93,10 @@ impl SkillStats {
 
     /// Success rate as a percentage (0-100). Returns 0 if no resolved outcomes.
     pub fn success_rate(&self) -> f64 {
-        let resolved = self.successes + self.corrections + self.failures;
+        let resolved = self
+            .successes
+            .saturating_add(self.corrections)
+            .saturating_add(self.failures);
         if resolved == 0 {
             return 0.0;
         }
