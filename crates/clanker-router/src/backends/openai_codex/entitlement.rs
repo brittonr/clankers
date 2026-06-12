@@ -222,7 +222,7 @@ async fn send_probe_request(credential: &StoredCredential) -> Result<reqwest::Re
 pub(crate) async fn live_probe(credential: &StoredCredential, manager: Option<&CredentialManager>) -> ProbeOutcome {
     let retry = RetryConfig::deterministic();
     let mut transient_attempt = 0;
-    let mut did_refresh = false;
+    let mut is_refresh_done = false;
     let mut current = credential.clone();
 
     loop {
@@ -240,12 +240,12 @@ pub(crate) async fn live_probe(credential: &StoredCredential, manager: Option<&C
 
         let status = response.status().as_u16();
 
-        if status == 401 && !did_refresh {
+        if status == 401 && !is_refresh_done {
             if let Some(manager) = manager {
                 match manager.force_refresh().await {
                     Ok(refreshed) => {
                         current = refreshed;
-                        did_refresh = true;
+                        is_refresh_done = true;
                         continue;
                     }
                     Err(e) => {

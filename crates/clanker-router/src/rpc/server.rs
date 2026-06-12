@@ -238,14 +238,14 @@ async fn handle_complete(request: &Request, router: &Router, send: &mut iroh::en
     let complete_fut = router.complete(completion_request, tx);
     tokio::pin!(complete_fut);
 
-    let mut complete_done = false;
+    let mut is_complete_done = false;
     let mut complete_result: std::result::Result<(), Error> = Ok(());
 
     loop {
         tokio::select! {
-            result = &mut complete_fut, if !complete_done => {
+            result = &mut complete_fut, if !is_complete_done => {
                 complete_result = result;
-                complete_done = true;
+                is_complete_done = true;
                 // Don't break — drain remaining events from rx
             }
             event = rx.recv() => {

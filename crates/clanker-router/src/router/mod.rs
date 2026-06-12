@@ -302,8 +302,8 @@ impl Router {
             match self.try_complete(provider, &provider_name, &original_model, model_id, attempt_request, &tx).await {
                 Ok(()) => return Ok(()),
                 Err(e) => {
-                    let retryable = e.is_retryable();
-                    warn!("{provider_name}:{model_id} failed: {e}{}", if retryable { " (retryable)" } else { "" });
+                    let is_retryable = e.is_retryable();
+                    warn!("{provider_name}:{model_id} failed: {e}{}", if is_retryable { " (retryable)" } else { "" });
 
                     // Record error for rate-limit tracking
                     if let Some(ref db) = self.db {
@@ -313,7 +313,7 @@ impl Router {
                         }
                     }
 
-                    if !retryable {
+                    if !is_retryable {
                         // Non-retryable errors (auth, bad request, etc.)
                         // stop immediately — fallbacks won't help
                         return Err(e);
@@ -590,7 +590,7 @@ impl Router {
             }
         };
 
-        let quorum_met = agreeing_count >= min_agree;
+        let is_quorum_met = agreeing_count >= min_agree;
 
         // ── Compute total usage (fan-out + optional judge) ──────────
         let mut total_usage = Usage::default();
@@ -618,7 +618,7 @@ impl Router {
             agreeing_count,
             successful_count,
             agreement * 100.0,
-            quorum_met
+            is_quorum_met
         );
 
         Ok(QuorumResult {
@@ -627,7 +627,7 @@ impl Router {
             all_responses: responses,
             agreeing_count,
             agreement,
-            quorum_met,
+            quorum_met: is_quorum_met,
             consensus: quorum_req.consensus,
             judge_reasoning,
             total_usage,

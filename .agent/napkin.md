@@ -2,6 +2,7 @@
 
 ## Working Notes
 
+- 2026-06-12: clanker-router bool-naming drain is moderate: remove only `bool_naming` from crate allow, fix auth removal/active flags, Anthropic/Codex refresh flags, credential file lock flag, quorum assignment/similarity/agreement flags, router retry/quorum flags, and feature-enabled RPC `complete_done` found only by full Tigerstyle. `cargo test -p clanker-router --lib` and full Tigerstyle pass.
 - 2026-06-12: clankers-provider bool-naming drain is tiny: remove only `bool_naming` from crate allow, rename `reverse_map`→`is_reverse_map_enabled`, `refresh_attempted`→`is_refresh_attempted`, and `downstream_open`→`is_downstream_open`. `cargo test -p clankers-provider --lib` and full Tigerstyle pass.
 - 2026-06-12: clankers-plugin bool-naming drain is small: remove only `bool_naming` from crate allow, rename local `allow_network` booleans to `is_network_allowed`, stdio startup flags to `is_hello_seen`/`is_ready_seen`, and `landlock_supported` to `is_landlock_supported`. `cargo test -p clankers-plugin --lib` and full Tigerstyle pass.
 - 2026-06-12: clankers-controller bool-naming drain is straightforward: remove only `bool_naming` from crate allow, rename prompt-completion booleans to `is_applied`/`is_prompt_applied`, replay flag to `is_queued_prompt_replayed`, loop-state flag to `is_loop_state_change_seen`, loop completion to `is_loop_finished`, and embedded prompt start to `is_started`. `cargo test -p clankers-controller --lib` and full Tigerstyle pass.

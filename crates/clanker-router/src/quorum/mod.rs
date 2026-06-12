@@ -286,17 +286,17 @@ pub fn cluster_by_similarity(texts: &[&str], threshold: f64) -> Vec<Vec<usize>> 
     let mut clusters: Vec<Vec<usize>> = Vec::new();
 
     for i in 0..n {
-        let mut assigned = false;
+        let mut is_assigned = false;
         for cluster in &mut clusters {
             // Check similarity against every member of this cluster
-            let similar = cluster.iter().all(|&j| text_similarity(texts[i], texts[j]) >= threshold);
-            if similar {
+            let is_similar = cluster.iter().all(|&j| text_similarity(texts[i], texts[j]) >= threshold);
+            if is_similar {
                 cluster.push(i);
-                assigned = true;
+                is_assigned = true;
                 break;
             }
         }
-        if !assigned {
+        if !is_assigned {
             clusters.push(vec![i]);
         }
     }
@@ -345,25 +345,25 @@ pub(crate) fn evaluate_unanimous(
     let text_refs: Vec<&str> = texts.iter().map(|s| s.as_str()).collect();
 
     // Check all pairs
-    let mut all_agree = true;
+    let mut is_all_agree = true;
     for i in 0..text_refs.len() {
         for j in (i + 1)..text_refs.len() {
             if text_similarity(text_refs[i], text_refs[j]) < threshold {
-                all_agree = false;
+                is_all_agree = false;
                 break;
             }
         }
-        if !all_agree {
+        if !is_all_agree {
             break;
         }
     }
 
-    let agreeing = if all_agree { ok.len() } else { 1 };
-    let agreement = if all_agree { 1.0 } else { 1.0 / ok.len() as f64 };
+    let agreeing = if is_all_agree { ok.len() } else { 1 };
+    let agreement = if is_all_agree { 1.0 } else { 1.0 / ok.len() as f64 };
 
     // Pick the representative (shortest response that is still complete,
     // or first if unanimous)
-    let winner = if all_agree {
+    let winner = if is_all_agree {
         cluster_representative(&text_refs, &(0..ok.len()).collect::<Vec<_>>())
     } else {
         0

@@ -86,7 +86,6 @@
         tigerstyle::too_many_parameters,
         tigerstyle::no_unwrap,
         tigerstyle::platform_dependent_cast,
-        tigerstyle::bool_naming,
         tigerstyle::unbounded_loop,
         tigerstyle::usize_in_public_api,
         tigerstyle::unchecked_division,

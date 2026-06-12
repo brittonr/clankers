@@ -43,7 +43,7 @@ impl OpenAICodexAttempt {
 
     pub(crate) async fn run(&mut self) -> Result<()> {
         let mut transient_attempt = 0;
-        let mut did_refresh = false;
+        let mut is_refresh_done = false;
 
         loop {
             let response = self.send_request().await?;
@@ -53,11 +53,11 @@ impl OpenAICodexAttempt {
             }
 
             let body_text = response.text().await.unwrap_or_default();
-            if status == 401 && !did_refresh {
+            if status == 401 && !is_refresh_done {
                 match self.credential_manager.force_refresh().await {
                     Ok(refreshed) => {
                         self.credential = refreshed;
-                        did_refresh = true;
+                        is_refresh_done = true;
                         continue;
                     }
                     Err(e) => {

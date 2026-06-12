@@ -321,7 +321,7 @@ impl AnthropicProvider {
 
         let mut attempt = 0;
         let mut active_cred = cred.clone();
-        let mut did_reactive_refresh = false;
+        let mut is_reactive_refresh_done = false;
         loop {
             attempt += 1;
             let cred = &active_cred;
@@ -379,14 +379,14 @@ impl AnthropicProvider {
             // wait briefly for it to update the credential, then retry once.
             if status_code == 401
                 && cred.is_oauth()
-                && !did_reactive_refresh
+                && !is_reactive_refresh_done
                 && let Some(ref notify) = self.refresh_notify
             {
                 warn!("Anthropic 401 with OAuth token — triggering reactive refresh");
                 notify.notify_one();
                 tokio::time::sleep(Duration::from_secs(2)).await;
                 active_cred = self.credential.read().await.clone();
-                did_reactive_refresh = true;
+                is_reactive_refresh_done = true;
                 attempt -= 1; // don't count the 401 as a retry attempt
                 continue;
             }

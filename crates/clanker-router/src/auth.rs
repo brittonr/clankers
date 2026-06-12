@@ -287,11 +287,11 @@ impl AuthStore {
     /// Remove an account from a provider
     pub fn remove_account(&mut self, provider: &str, account: &str) -> bool {
         if let Some(prov) = self.providers.get_mut(provider) {
-            let removed = prov.accounts.remove(account).is_some();
-            if removed && prov.active_account.as_deref() == Some(account) {
+            let is_removed = prov.accounts.remove(account).is_some();
+            if is_removed && prov.active_account.as_deref() == Some(account) {
                 prov.active_account = prov.accounts.keys().next().cloned();
             }
-            return removed;
+            return is_removed;
         }
         false
     }
@@ -339,9 +339,9 @@ impl AuthStore {
 
         // Sort: active account first, then alphabetical
         creds.sort_by(|(a, _), (b, _)| {
-            let a_active = a == active;
-            let b_active = b == active;
-            b_active.cmp(&a_active).then_with(|| a.cmp(b))
+            let is_a_active = a == active;
+            let is_b_active = b == active;
+            is_b_active.cmp(&is_a_active).then_with(|| a.cmp(b))
         });
 
         creds

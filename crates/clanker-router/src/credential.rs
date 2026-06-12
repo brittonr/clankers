@@ -304,24 +304,24 @@ fn save_with_file_lock(auth_paths: &AuthStorePaths, provider: &str, credential: 
 
     // Acquire exclusive lock
     let lock_file = fs::File::open(auth_path)?;
-    let mut locked = false;
+    let mut is_locked = false;
     for _ in 0..30 {
         match fs4::fs_std::FileExt::try_lock_exclusive(&lock_file) {
             Ok(true) => {
-                locked = true;
+                is_locked = true;
                 break;
             }
             _ => std::thread::sleep(Duration::from_secs(1)),
         }
     }
 
-    if !locked {
+    if !is_locked {
         warn!("Could not acquire auth file lock after 30s, proceeding without lock");
     }
 
     // RAII unlock guard
     let _guard = LockGuard {
-        locked,
+        locked: is_locked,
         file: &lock_file,
     };
 
