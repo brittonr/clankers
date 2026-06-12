@@ -88,7 +88,7 @@ impl<'db> AuditLog<'db> {
         let tx = self.db.begin_read()?;
         let table = tx.open_table(TABLE).map_err(db_err)?;
 
-        let mut entries = Vec::new();
+        let mut entries = Vec::with_capacity(crate::db_collection_capacity(table.len().map_err(db_err)?));
         // Range scan: all keys starting with "{session_id}:"
         let start = prefix.as_str();
         // End range: increment the last char of the prefix to get an exclusive upper bound.

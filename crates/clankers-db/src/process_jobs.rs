@@ -208,7 +208,7 @@ impl<'db> ProcessJobStore<'db> {
     pub fn list(&self) -> Result<Vec<StoredProcessJobRecord>> {
         let tx = self.db.begin_read()?;
         let table = tx.open_table(TABLE).map_err(db_err)?;
-        let mut records = Vec::new();
+        let mut records = Vec::with_capacity(crate::db_collection_capacity(table.len().map_err(db_err)?));
         for item in table.iter().map_err(db_err)? {
             let (_key, value) = item.map_err(db_err)?;
             if let Some(record) = decode_supported_record(value.value())? {
@@ -290,7 +290,7 @@ pub fn redact_command_preview(command: &str) -> String {
         return REDACTED.to_string();
     }
 
-    let mut redacted = Vec::new();
+    let mut redacted = Vec::with_capacity(command.split_whitespace().count());
     for token in command.split_whitespace() {
         if token.len() > MAX_COMMAND_PREVIEW_LEN {
             redacted.push(format!("{}…", &token[..MAX_COMMAND_PREVIEW_LEN]));

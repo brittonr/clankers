@@ -330,7 +330,7 @@ impl<'db> Registry<'db> {
         let prefix = format!("{kind}:");
         let tx = self.db.begin_read()?;
         let table = tx.open_table(TABLE).map_err(db_err)?;
-        let mut entries = Vec::new();
+        let mut entries = Vec::with_capacity(crate::db_collection_capacity(table.len().map_err(db_err)?));
 
         for item in table.iter().map_err(db_err)? {
             let (key, value) = item.map_err(db_err)?;
@@ -349,7 +349,7 @@ impl<'db> Registry<'db> {
     pub fn list_all(&self) -> Result<Vec<RegistryEntry>> {
         let tx = self.db.begin_read()?;
         let table = tx.open_table(TABLE).map_err(db_err)?;
-        let mut entries = Vec::new();
+        let mut entries = Vec::with_capacity(crate::db_collection_capacity(table.len().map_err(db_err)?));
 
         for item in table.iter().map_err(db_err)? {
             let (_key, value) = item.map_err(db_err)?;

@@ -200,7 +200,7 @@ impl<'db> SkillUsageStore<'db> {
         let tx = self.db.begin_read()?;
         let table = tx.open_table(TABLE).map_err(db_err)?;
 
-        let mut entries = Vec::new();
+        let mut entries = Vec::with_capacity(crate::db_collection_capacity(table.len().map_err(db_err)?));
         for item in table.iter().map_err(db_err)? {
             let (_key, value) = item.map_err(db_err)?;
             if let Ok(entry) = serde_json::from_slice::<SkillUsageEntry>(value.value())

@@ -2,6 +2,7 @@
 
 ## Working Notes
 
+- 2026-06-11: clankers-db unbounded-collection-growth drain: reserve table-scan Vecs from `table.len()` via a shared `db_collection_capacity(u64) -> usize` helper using `usize::try_from` fallback, and reserve command redaction tokens from `split_whitespace().count()`. Direct `as usize` casts trip platform-dependent-cast even while working on unbounded-growth.
 - 2026-06-11: clankers-db acronym-style drain was zero-code: removing only `tigerstyle::acronym_style` from the crate allow produced no package findings; validate package/full Tigerstyle and db lib tests, then commit just the allow removal.
 - 2026-06-11: clankers-db ambiguous-params drain only flagged private `make_key(&str, &str)` helpers in `file_cache.rs` and `registry.rs`; replacing them with tiny `FileCacheKeyParts` / `RegistryKeyParts` structs kept public APIs unchanged. Remember to update private tests that call `make_key` directly.
 - 2026-06-11: clankers-db ambient-clock crate allow drain: add one `db_clock_now()` shell-boundary helper in `lib.rs` with a narrow ambient-clock allow, replace all `Utc::now()` / `chrono::Utc::now()` in db modules with `crate::db_clock_now()`, and remove now-unused test `chrono::Utc` imports. Package/full Tigerstyle and db lib tests stay green.

@@ -18,7 +18,6 @@
     dylint_lib = "tigerstyle",
     allow(
         tigerstyle::numeric_units,
-        tigerstyle::unbounded_collection_growth,
         tigerstyle::raw_arithmetic_overflow,
         tigerstyle::usize_in_public_api,
         reason = "embedded database APIs preserve stored schema/public query contracts; integration tests cover persistence behavior during Tigerstyle drain"
@@ -41,6 +40,13 @@ pub use error::db_err;
 )]
 pub(crate) fn db_clock_now() -> DateTime<Utc> {
     Utc::now()
+}
+
+pub(crate) fn db_collection_capacity(row_count: u64) -> usize {
+    match usize::try_from(row_count) {
+        Ok(capacity) => capacity,
+        Err(_) => usize::MAX,
+    }
 }
 pub mod insights;
 pub mod memory;

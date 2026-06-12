@@ -131,7 +131,7 @@ impl<'db> FileReadCache<'db> {
         let tx = self.db.begin_read()?;
         let table = tx.open_table(TABLE).map_err(db_err)?;
 
-        let mut entries = Vec::new();
+        let mut entries = Vec::with_capacity(crate::db_collection_capacity(table.len().map_err(db_err)?));
         for item in table.range(prefix.as_str()..end.as_str()).map_err(db_err)? {
             let (_key, value) = item.map_err(db_err)?;
             if let Ok(entry) = serde_json::from_slice::<CachedFileRead>(value.value()) {

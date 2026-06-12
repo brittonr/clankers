@@ -178,7 +178,7 @@ impl<'db> MemoryStore<'db> {
     pub fn list(&self, scope: Option<&MemoryScope>) -> Result<Vec<MemoryEntry>> {
         let tx = self.db.begin_read()?;
         let table = tx.open_table(TABLE).map_err(db_err)?;
-        let mut entries = Vec::new();
+        let mut entries = Vec::with_capacity(crate::db_collection_capacity(table.len().map_err(db_err)?));
 
         for item in table.iter().map_err(db_err)? {
             let (_key, value) = item.map_err(db_err)?;
@@ -270,8 +270,8 @@ impl<'db> MemoryStore<'db> {
             return Ok(String::new());
         }
 
-        let mut global = Vec::new();
-        let mut project = Vec::new();
+        let mut global = Vec::with_capacity(entries.len());
+        let mut project = Vec::with_capacity(entries.len());
 
         for entry in &entries {
             match &entry.scope {

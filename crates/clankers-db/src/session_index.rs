@@ -97,9 +97,9 @@ impl<'db> SessionIndex<'db> {
 
     /// List sessions for a given cwd, newest first.
     pub fn list_by_cwd(&self, cwd: &str) -> Result<Vec<SessionIndexEntry>> {
-        let mut entries = Vec::new();
         let tx = self.db.begin_read()?;
         let table = tx.open_table(TABLE).map_err(db_err)?;
+        let mut entries = Vec::with_capacity(crate::db_collection_capacity(table.len().map_err(db_err)?));
 
         for item in table.iter().map_err(db_err)? {
             let (_key, value) = item.map_err(db_err)?;
@@ -117,9 +117,9 @@ impl<'db> SessionIndex<'db> {
 
     /// List all sessions, newest first.
     pub fn list_all(&self) -> Result<Vec<SessionIndexEntry>> {
-        let mut entries = Vec::new();
         let tx = self.db.begin_read()?;
         let table = tx.open_table(TABLE).map_err(db_err)?;
+        let mut entries = Vec::with_capacity(crate::db_collection_capacity(table.len().map_err(db_err)?));
 
         for item in table.iter().map_err(db_err)? {
             let (_key, value) = item.map_err(db_err)?;
@@ -135,9 +135,9 @@ impl<'db> SessionIndex<'db> {
     /// Search sessions by substring in the first prompt (case-insensitive).
     pub fn search(&self, query: &str) -> Result<Vec<SessionIndexEntry>> {
         let lower = query.to_lowercase();
-        let mut entries = Vec::new();
         let tx = self.db.begin_read()?;
         let table = tx.open_table(TABLE).map_err(db_err)?;
+        let mut entries = Vec::with_capacity(crate::db_collection_capacity(table.len().map_err(db_err)?));
 
         for item in table.iter().map_err(db_err)? {
             let (_key, value) = item.map_err(db_err)?;
