@@ -8528,7 +8528,16 @@ dependencies = [
 name = "rat-branches"
 version = "0.1.0"
 dependencies = [
+ "rat-chrome",
  "ratatui",
+]
+
+[[package]]
+name = "rat-chrome"
+version = "0.1.0"
+dependencies = [
+ "ratatui",
+ "unicode-width",
 ]
 
 [[package]]
@@ -8553,6 +8562,7 @@ dependencies = [
 name = "rat-leaderkey"
 version = "0.1.0"
 dependencies = [
+ "rat-chrome",
  "ratatui",
  "ratcore",
 ]
@@ -8573,6 +8583,7 @@ version = "0.1.0"
 name = "rat-widgets"
 version = "0.1.0"
 dependencies = [
+ "rat-chrome",
  "rat-spinner",
  "ratatui",
  "serde_json",
@@ -8676,6 +8687,9 @@ dependencies = [
 [[package]]
 name = "ratcore"
 version = "0.1.0"
+dependencies = [
+ "blake3",
+]
 
 [[package]]
 name = "rav1e"

@@ -190,7 +190,7 @@ struct ChunkFunction {
 struct ChunkUsage {
     prompt_tokens: usize,
     completion_tokens: usize,
-    total_tokens: usize,
+    total_tokens: u64,
 }
 
 /// Non-streaming response.
