@@ -31,6 +31,7 @@ use crate::error::Result;
 /// - Anthropic (ANTHROPIC_API_KEY, OAuth, or auth.json)
 /// - OpenAI (OPENAI_API_KEY)
 /// - OpenRouter (OPENROUTER_API_KEY)
+/// - Hugging Face (HF_TOKEN)
 /// - Groq (GROQ_API_KEY)
 /// - DeepSeek (DEEPSEEK_API_KEY)
 pub async fn build_router_with_rpc(
@@ -227,6 +228,7 @@ pub fn build_router(
     let compat_providers: &[(&str, CompatFactory)] = &[
         ("OPENAI_API_KEY", OpenAICompatConfig::openai),
         ("OPENROUTER_API_KEY", OpenAICompatConfig::openrouter),
+        ("HF_TOKEN", OpenAICompatConfig::huggingface),
         ("GROQ_API_KEY", OpenAICompatConfig::groq),
         ("DEEPSEEK_API_KEY", OpenAICompatConfig::deepseek),
         ("MISTRAL_API_KEY", OpenAICompatConfig::mistral),
@@ -585,6 +587,46 @@ mod tests {
             "models: {:?}",
             provider.models().iter().map(|model| (&model.provider, &model.id)).collect::<Vec<_>>()
         );
+    }
+
+    #[test]
+    fn build_router_discovers_huggingface_from_auth_store() {
+        let _env = EnvVarGuard::unset("HF_TOKEN");
+        let dir = tempfile::TempDir::new().expect("tempdir should exist");
+        let auth_path = dir.path().join("auth.json");
+        let mut store = crate::auth::AuthStore::default();
+        store.set_credential("huggingface", "work", crate::auth::StoredCredential::ApiKey {
+            api_key: "hf_test".to_string(),
+            label: Some("work".to_string()),
+        });
+        store.save(&auth_path).expect("auth store should save");
+
+        let runtime = tokio::runtime::Runtime::new().expect("runtime should build");
+        let provider = runtime
+            .block_on(async { build_router(None, None, &auth_path, None, None) })
+            .expect("router should build");
+        assert!(
+            provider
+                .models()
+                .iter()
+                .any(|model| model.provider == "huggingface" && model.id == "WeiboAI/VibeThinker-3B"),
+            "models: {:?}",
+            provider.models().iter().map(|model| (&model.provider, &model.id)).collect::<Vec<_>>()
+        );
+    }
+
+    #[test]
+    fn build_router_omits_huggingface_without_credentials() {
+        let _env = EnvVarGuard::unset("HF_TOKEN");
+        let dir = tempfile::TempDir::new().expect("tempdir should exist");
+        let auth_path = dir.path().join("auth.json");
+        crate::auth::AuthStore::default().save(&auth_path).expect("auth store should save");
+
+        let runtime = tokio::runtime::Runtime::new().expect("runtime should build");
+        let provider = runtime
+            .block_on(async { build_router(None, None, &auth_path, None, None) })
+            .expect("router should build");
+        assert!(provider.models().iter().all(|model| model.provider != "huggingface"));
     }
 
     #[test]

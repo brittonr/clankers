@@ -92,6 +92,7 @@ impl ModelAliases {
             "llama-70b" | "hf-llama" => Some("meta-llama/Llama-3.3-70B-Instruct"),
             "qwen-72b" | "hf-qwen" => Some("Qwen/Qwen2.5-72B-Instruct"),
             "qwen-coder" | "hf-coder" => Some("Qwen/Qwen2.5-Coder-32B-Instruct"),
+            "vibethinker" | "vibethinker-3b" | "hf-vibethinker" | "hf-vibethinker-3b" => Some("WeiboAI/VibeThinker-3B"),
             "phi-4" | "hf-phi" => Some("microsoft/Phi-4"),
             "gemma-27b" | "hf-gemma" => Some("google/gemma-2-27b-it"),
             _ => None,
@@ -143,6 +144,7 @@ mod tests {
         assert_eq!(ModelAliases::resolve("sonnet"), Some("claude-sonnet-4-5-20250514"));
         assert_eq!(ModelAliases::resolve("opus"), Some("claude-opus-4-20250514"));
         assert_eq!(ModelAliases::resolve("gpt-4o"), Some("gpt-4o"));
+        assert_eq!(ModelAliases::resolve("hf-vibethinker"), Some("WeiboAI/VibeThinker-3B"));
         assert_eq!(ModelAliases::resolve("unknown-model"), None);
     }
 }

@@ -55,6 +55,10 @@ impl OpenAICompatConfig {
     }
 }
 
+const VIBETHINKER_3B_MODEL_ID: &str = "WeiboAI/VibeThinker-3B";
+const VIBETHINKER_3B_CONTEXT_TOKENS: usize = 64_000;
+const VIBETHINKER_3B_MAX_OUTPUT_TOKENS: usize = 102_400;
+
 /// Default set of popular models available on HuggingFace Serverless Inference.
 ///
 /// These are models that are commonly available without a dedicated endpoint.
@@ -128,6 +132,18 @@ fn default_hf_models() -> Vec<Model> {
             max_input_tokens: 8_192,
             max_output_tokens: 4_096,
             supports_thinking: false,
+            supports_images: false,
+            supports_tools: false,
+            input_cost_per_mtok: None,
+            output_cost_per_mtok: None,
+        },
+        Model {
+            id: VIBETHINKER_3B_MODEL_ID.into(),
+            name: "VibeThinker 3B (HF)".into(),
+            provider: "huggingface".into(),
+            max_input_tokens: VIBETHINKER_3B_CONTEXT_TOKENS,
+            max_output_tokens: VIBETHINKER_3B_MAX_OUTPUT_TOKENS,
+            supports_thinking: true,
             supports_images: false,
             supports_tools: false,
             input_cost_per_mtok: None,
@@ -818,6 +834,19 @@ mod tests {
             assert_eq!(m.provider, "huggingface");
             assert!(m.id.contains('/'), "model ID should be org/name format: {}", m.id);
         }
+    }
+
+    #[test]
+    fn test_default_models_include_vibethinker_reasoning_without_tools() {
+        let models = default_hf_models();
+        let model = models
+            .iter()
+            .find(|model| model.id == VIBETHINKER_3B_MODEL_ID)
+            .expect("VibeThinker should be in the built-in Hugging Face catalog");
+        assert_eq!(model.max_input_tokens, VIBETHINKER_3B_CONTEXT_TOKENS);
+        assert_eq!(model.max_output_tokens, VIBETHINKER_3B_MAX_OUTPUT_TOKENS);
+        assert!(model.supports_thinking);
+        assert!(!model.supports_tools);
     }
 
     #[test]
